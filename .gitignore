@@ -1,8 +1,8 @@
-__pycache__/
-*.pyc
-.env
-venv/
-.DS_Store
-*.log
-lightning_logs/
-scripts/outputs/
+# 忽略根目錄下的所有檔案與目錄
+/*
+
+# 允許我們需要的特定項目
+!/scripts/
+!/.gitignore
+!/README.md
+!/requirements.txt

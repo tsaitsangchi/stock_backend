@@ -1,9 +1,0 @@
-2026-04-14 13:26:27,688 [INFO] === TSMC 30 天趨勢預測 — 推論開始 ===
-2026-04-14 13:26:27,688 [INFO] === 建立每日特徵框架（stock_id=2330）===
-2026-04-14 13:26:29,185 [INFO] === 每日框架完成：7,960 交易日 × 81 欄  （1994-10-01 ~ 2026-04-13）===
-Traceback (most recent call last):
-  File "/home/hugo/project/stock_backend/scripts/predict.py", line 442, in <module>
-    main()
-  File "/home/hugo/project/stock_backend/scripts/predict.py", line 414, in main
-    df_feat = build_features(raw, for_inference=True)
-TypeError: build_features() got an unexpected keyword argument 'for_inference'
