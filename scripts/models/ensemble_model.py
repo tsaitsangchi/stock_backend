@@ -11,7 +11,7 @@ Level-1 表格學習器，與 TFT 並列組成 Stacking Ensemble。
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -570,7 +570,10 @@ class RegimeEnsemble:
             self.high_vol_model.xgb_clf.calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
             self.high_vol_model.lgb_clf.calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
 
-    def predict(self, X: pd.DataFrame, tft_pred: Optional[np.ndarray] = None) -> dict:
+    def predict(self, X: pd.DataFrame, tft_pred: Optional[Union[np.ndarray, float]] = None) -> dict:
+        if isinstance(tft_pred, (float, int)):
+            tft_pred = np.full(len(X), float(tft_pred))
+            
         mask = self._split_mask(X)
         
         # 就算空 Series 也要有基礎結構

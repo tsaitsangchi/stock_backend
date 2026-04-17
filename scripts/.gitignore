@@ -1,0 +1,16 @@
+# 忽略所有 scripts 底下的檔案
+*
+# 允許進入子目錄
+!*/
+
+# 只允許特定的檔案
+!/.gitignore
+!/README.md
+!/requirements.txt
+!*.py
+
+# 排除快取與特定目錄 (避免意外加入)
+__pycache__/
+*.pyc
+outputs/
+lightning_logs/
