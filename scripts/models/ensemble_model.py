@@ -337,9 +337,14 @@ class StackingEnsemble:
         self.scaler     = StandardScaler()
         self.tft_col    = "tft_pred"    # TFT 預測欄位名稱
         self._calibrator = None         # Isotonic Calibrator（joblib 必須初始化才會序列化）
+        self.feature_names: Optional[list[str]] = None
 
     def _get_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        feat_cols = [c for c in ALL_FEATURES if c in df.columns]
+        if self.feature_names is not None:
+            feat_cols = [c for c in self.feature_names if c in df.columns]
+        else:
+            from config import ALL_FEATURES
+            feat_cols = [c for c in ALL_FEATURES if c in df.columns]
         X = df[feat_cols].fillna(0)
         return X
 
@@ -348,6 +353,7 @@ class StackingEnsemble:
                    X_train: pd.DataFrame, y_train: pd.Series,
                    X_val:   pd.DataFrame, y_val:   pd.Series):
         """分別訓練 XGB 和 LGB。"""
+        self.feature_names = X_train.columns.tolist()
         logger.info("  [L1] 訓練 XGBoost…")
         self.xgb_clf.fit(X_train, y_train, X_val, y_val)
 
@@ -484,139 +490,157 @@ class StackingEnsemble:
 
 class RegimeEnsemble:
     """
-    分 Regime 訓練：依據 realised_vol_20d 切分兩套 StackingEnsemble。
-    預設以 30% 做切分，解決高/低波動期特徵重要性截然不同的問題。
+    分 Regime 訓練：依據 realised_vol_20d 切分三套 StackingEnsemble。
+    預設以 20% 和 40% 做切分，解決高/中/低波動期特徵重要性截然不同的問題。
     """
-    def __init__(self, task: str = "classification", vol_threshold: float = 0.30):
+    def __init__(self, task: str = "classification", vol_low: float = 0.20, vol_high: float = 0.40):
         self.task = task
-        self.vol_threshold = vol_threshold
+        self.vol_low = vol_low
+        self.vol_high = vol_high
         self.vol_col = "realized_vol_20d"
         
-        self.normal_model = StackingEnsemble(task)
+        self.low_vol_model = StackingEnsemble(task)
+        self.mid_vol_model = StackingEnsemble(task)
         self.high_vol_model = StackingEnsemble(task)
         self.feature_names = None
         
-    def _split_mask(self, X: pd.DataFrame) -> pd.Series:
+    def _split_mask(self, X: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
         if self.vol_col in X.columns:
-            return X[self.vol_col] >= self.vol_threshold
+            v = X[self.vol_col]
+            return (v < self.vol_low), ((v >= self.vol_low) & (v < self.vol_high)), (v >= self.vol_high)
         else:
-            logger.warning(f"[RegimeEnsemble] 缺少 {self.vol_col}，全部視為 normal regime。")
-            return pd.Series(False, index=X.index)
+            logger.warning(f"[RegimeEnsemble] 缺少 {self.vol_col}，全部視為 mid regime。")
+            f = pd.Series(False, index=X.index)
+            t = pd.Series(True, index=X.index)
+            return f, t, f
 
     def fit_level1(self, X_train: pd.DataFrame, y_train: pd.Series,
                    X_val: pd.DataFrame, y_val: pd.Series):
         self.feature_names = X_train.columns.tolist()
         
-        tr_mask = self._split_mask(X_train)
-        va_mask = self._split_mask(X_val)
+        tr_low, tr_mid, tr_high = self._split_mask(X_train)
+        va_low, va_mid, va_high = self._split_mask(X_val)
         
-        n_high_tr = tr_mask.sum()
-        n_norm_tr = len(tr_mask) - n_high_tr
+        n_low_tr = tr_low.sum()
+        n_mid_tr = tr_mid.sum()
+        n_high_tr = tr_high.sum()
 
-        logger.info(f"  [Regime] 訓練集切分：Normal={n_norm_tr}, High-Vol={n_high_tr}")
+        logger.info(f"  [Regime] 訓練集切分：Low-Vol={n_low_tr}, Mid-Vol={n_mid_tr}, High-Vol={n_high_tr}")
         
-        # 訓練 Normal Model
-        self.normal_model.fit_level1(
-            X_train[~tr_mask], y_train[~tr_mask],
-            X_val[~va_mask] if (~va_mask).sum() > 0 else X_val, 
-            y_val[~va_mask] if (~va_mask).sum() > 0 else y_val
-        )
-        
-        # 訓練 High Vol Model，若樣本太少(如剛開始)可能 fail，加保護
-        if n_high_tr > 20:
-            self.high_vol_model.fit_level1(
-                X_train[tr_mask], y_train[tr_mask],
-                X_val[va_mask] if va_mask.sum() > 0 else X_val, 
-                y_val[va_mask] if va_mask.sum() > 0 else y_val
+        # 訓練 Low Vol Model
+        if n_low_tr > 20:
+            self.low_vol_model.fit_level1(
+                X_train[tr_low], y_train[tr_low],
+                X_val[va_low] if va_low.sum() > 0 else X_val, 
+                y_val[va_low] if va_low.sum() > 0 else y_val
             )
         else:
-            logger.warning(f"  [Regime] High-Vol 樣本過少 ({n_high_tr})，借用 normal model 權重")
-            self.high_vol_model = self.normal_model
+            logger.warning(f"  [Regime] Low-Vol 樣本過少 ({n_low_tr})，將借用 mid model 權重")
+            
+        # 訓練 Mid Vol Model
+        if n_mid_tr > 20:
+            self.mid_vol_model.fit_level1(
+                X_train[tr_mid], y_train[tr_mid],
+                X_val[va_mid] if va_mid.sum() > 0 else X_val, 
+                y_val[va_mid] if va_mid.sum() > 0 else y_val
+            )
+        else:
+            logger.warning(f"  [Regime] Mid-Vol 樣本過少 ({n_mid_tr})，將借用其他模型權重")
+
+        # 處理樣本過少的情況 (權重借用)
+        if n_low_tr <= 20:
+            self.low_vol_model = self.mid_vol_model
+        if n_mid_tr <= 20:
+            self.mid_vol_model = self.low_vol_model if n_low_tr > 20 else self.high_vol_model
+        
+        # 訓練 High Vol Model
+        if n_high_tr > 20:
+            self.high_vol_model.fit_level1(
+                X_train[tr_high], y_train[tr_high],
+                X_val[va_high] if va_high.sum() > 0 else X_val, 
+                y_val[va_high] if va_high.sum() > 0 else y_val
+            )
+        else:
+            logger.warning(f"  [Regime] High-Vol 樣本過少 ({n_high_tr})，借用 mid model 權重")
+            self.high_vol_model = self.mid_vol_model
 
     def fit_meta(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
-        """
-        傳入 X_oof 讓 meta 知道 OOF 的 vol 狀態
-        """
         if X_oof is None:
-            logger.warning("[RegimeEnsemble.fit_meta] X_oof 為空，無法切分 oof，使用 normal_model 訓練 meta")
-            self.normal_model.fit_meta(oof_df, y_meta)
+            logger.warning("[RegimeEnsemble.fit_meta] X_oof 為空，無法切分 oof，使用 mid_model 訓練 meta")
+            self.low_vol_model.fit_meta(oof_df, y_meta)
+            self.mid_vol_model.fit_meta(oof_df, y_meta)
             self.high_vol_model.fit_meta(oof_df, y_meta)
             return
 
-        mask = self._split_mask(X_oof)
-        n_high = mask.sum()
+        m_low, m_mid, m_high = self._split_mask(X_oof)
         
-        self.normal_model.fit_meta(oof_df[~mask], y_meta[~mask])
-        
-        if n_high > 10:
-            self.high_vol_model.fit_meta(oof_df[mask], y_meta[mask])
+        if m_low.sum() > 10:
+            self.low_vol_model.fit_meta(oof_df[m_low], y_meta[m_low])
         else:
-            self.high_vol_model.meta = self.normal_model.meta
+            self.low_vol_model.meta = self.mid_vol_model.meta
+            
+        if m_mid.sum() > 10:
+            self.mid_vol_model.fit_meta(oof_df[m_mid], y_meta[m_mid])
+        else:
+            self.mid_vol_model.meta = self.low_vol_model.meta if m_low.sum() > 10 else self.high_vol_model.meta
+            
+        if m_high.sum() > 10:
+            self.high_vol_model.fit_meta(oof_df[m_high], y_meta[m_high])
+        else:
+            self.high_vol_model.meta = self.mid_vol_model.meta
 
     def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
-        """分別對 normal 和 high vol 模型做 isotonic calibration"""
         if X_oof is None:
-            self.normal_model.xgb_clf.calibrate(oof_df["xgb_pred"].values, y_meta.values)
-            self.normal_model.lgb_clf.calibrate(oof_df["lgb_pred"].values, y_meta.values)
-            self.high_vol_model.xgb_clf.calibrate(oof_df["xgb_pred"].values, y_meta.values)
-            self.high_vol_model.lgb_clf.calibrate(oof_df["lgb_pred"].values, y_meta.values)
+            for model in [self.low_vol_model, self.mid_vol_model, self.high_vol_model]:
+                model.xgb_clf.calibrate(oof_df["xgb_pred"].values, y_meta.values)
+                model.lgb_clf.calibrate(oof_df["lgb_pred"].values, y_meta.values)
             return
             
-        mask = self._split_mask(X_oof)
-        if (~mask).sum() >= 50:
-            self.normal_model.xgb_clf.calibrate(oof_df.loc[~mask, "xgb_pred"].values, y_meta[~mask].values)
-            self.normal_model.lgb_clf.calibrate(oof_df.loc[~mask, "lgb_pred"].values, y_meta[~mask].values)
-        if mask.sum() >= 50:
-            self.high_vol_model.xgb_clf.calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
-            self.high_vol_model.lgb_clf.calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
+        m_low, m_mid, m_high = self._split_mask(X_oof)
+        
+        for mask, model in [(m_low, self.low_vol_model), (m_mid, self.mid_vol_model), (m_high, self.high_vol_model)]:
+            if mask.sum() >= 50:
+                model.xgb_clf.calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
+                model.lgb_clf.calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
 
     def predict(self, X: pd.DataFrame, tft_pred: Optional[Union[np.ndarray, float]] = None) -> dict:
         if isinstance(tft_pred, (float, int)):
             tft_pred = np.full(len(X), float(tft_pred))
             
-        mask = self._split_mask(X)
+        m_low, m_mid, m_high = self._split_mask(X)
         
-        # 就算空 Series 也要有基礎結構
-        pred_norm = self.normal_model.predict(X[~mask], tft_pred[~mask] if tft_pred is not None else None) if (~mask).sum() > 0 else None
-        pred_high = self.high_vol_model.predict(X[mask], tft_pred[mask] if tft_pred is not None else None) if mask.sum() > 0 else None
+        p_low = self.low_vol_model.predict(X[m_low], tft_pred[m_low] if tft_pred is not None else None) if m_low.sum() > 0 else None
+        p_mid = self.mid_vol_model.predict(X[m_mid], tft_pred[m_mid] if tft_pred is not None else None) if m_mid.sum() > 0 else None
+        p_high = self.high_vol_model.predict(X[m_high], tft_pred[m_high] if tft_pred is not None else None) if m_high.sum() > 0 else None
         
         res = {}
-        # 合併所有 key 的 Dict
-        keys = ["ensemble", "xgb", "lgb", "tft", "xgb_cal", "lgb_cal", "tft_cal"]
-        
-        for k in keys:
+        for k in ["ensemble", "xgb", "lgb", "tft", "xgb_cal", "lgb_cal", "tft_cal"]:
             merged = pd.Series(index=X.index, dtype=float)
-            if pred_norm is not None and k in pred_norm:
-                merged.loc[~mask] = pred_norm[k]
-            if pred_high is not None and k in pred_high:
-                merged.loc[mask] = pred_high[k]
+            if p_low is not None and k in p_low: merged.loc[m_low] = p_low[k]
+            if p_mid is not None and k in p_mid: merged.loc[m_mid] = p_mid[k]
+            if p_high is not None and k in p_high: merged.loc[m_high] = p_high[k]
             res[k] = merged.values
             
         return res
 
     def predict_meta(self, oof_df: pd.DataFrame, X_oof: pd.DataFrame) -> np.ndarray:
-        """只用 Meta Learner 推論（處理 OOF 時使用）"""
-        mask = self._split_mask(X_oof)
+        m_low, m_mid, m_high = self._split_mask(X_oof)
         ensemble_prob = pd.Series(index=oof_df.index, dtype=float)
         
-        if (~mask).sum() > 0:
-            ensemble_prob.loc[~mask] = self.normal_model.predict_meta(oof_df[~mask])
-        if mask.sum() > 0:
-            ensemble_prob.loc[mask] = self.high_vol_model.predict_meta(oof_df[mask])
+        if m_low.sum() > 0: ensemble_prob.loc[m_low] = self.low_vol_model.predict_meta(oof_df[m_low])
+        if m_mid.sum() > 0: ensemble_prob.loc[m_mid] = self.mid_vol_model.predict_meta(oof_df[m_mid])
+        if m_high.sum() > 0: ensemble_prob.loc[m_high] = self.high_vol_model.predict_meta(oof_df[m_high])
             
         return ensemble_prob.values
 
     def combined_importance(self) -> pd.DataFrame:
-        """回傳加權平均或並列的特徵重要性"""
-        df_norm = self.normal_model.combined_importance().rename(columns={"mean": "mean_norm"})
-        if self.high_vol_model != self.normal_model:
-            df_high = self.high_vol_model.combined_importance().rename(columns={"mean": "mean_high"})
-            # 合併
-            df = df_norm[['mean_norm']].join(df_high[['mean_high']], how='outer').fillna(0)
-            df['mean'] = (df['mean_norm'] + df['mean_high']) / 2
-            return df.sort_values("mean", ascending=False)
-        else:
-            return df_norm
+        df_low = self.low_vol_model.combined_importance().rename(columns={"mean": "mean_low"})
+        df_mid = self.mid_vol_model.combined_importance().rename(columns={"mean": "mean_mid"})
+        df_high = self.high_vol_model.combined_importance().rename(columns={"mean": "mean_high"})
+        
+        df = df_low[['mean_low']].join(df_mid[['mean_mid']], how='outer').join(df_high[['mean_high']], how='outer').fillna(0)
+        df['mean'] = (df['mean_low'] + df['mean_mid'] + df['mean_high']) / 3
+        return df.sort_values("mean", ascending=False)
 
     def evaluate(self, X: pd.DataFrame, y: pd.Series,
                  tft_pred: Optional[np.ndarray] = None) -> dict:

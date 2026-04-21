@@ -44,6 +44,7 @@ from sklearn.metrics import roc_auc_score
 from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
     MODEL_DIR, OUTPUT_DIR, REGIME_CONFIG, TFT_PARAMS, WF_CONFIG,
+    STOCK_CONFIGS, get_all_features
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features
@@ -331,8 +332,10 @@ def regime_analysis(
 
 def get_feature_matrix(
     df: pd.DataFrame,
+    stock_id: str,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
-    feat_cols = [c for c in ALL_FEATURES if c in df.columns]
+    all_features = get_all_features(stock_id)
+    feat_cols = [c for c in all_features if c in df.columns]
     X = df[feat_cols].copy()
     # inf → NaN → 0（雙重保險：feature_engineering 已清一次，這裡再補一次）
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
@@ -349,6 +352,7 @@ def get_feature_matrix(
 
 def run_walk_forward(
     df:              pd.DataFrame,
+    stock_id:        str,
     use_tft:         bool = False,
     calibrate_probs: bool = True,
 ) -> dict:
@@ -374,7 +378,7 @@ def run_walk_forward(
         "meta_ensemble":  RegimeEnsemble, # 帶有訓練好 Meta 的 ensemble（供最終模型使用）
     }
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df)
+    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id)
     n = len(df)
 
     _test_window = WF_CONFIG.get("test_window", WF_CONFIG["step_days"])
@@ -415,7 +419,7 @@ def run_walk_forward(
                 tft = TFTPredictor(TFT_PARAMS)
                 tft.fit(
                     df.iloc[ti], df.iloc[vi],
-                    checkpoint_dir=str(MODEL_DIR / f"tft_fold{fold.fold_id}"),
+                    checkpoint_dir=str(MODEL_DIR / f"tft_{stock_id}_fold{fold.fold_id}"),
                 )
                 # predict 需要足夠的 encoder context：取 test fold 前 max_enc 天
                 max_enc    = TFT_PARAMS["max_encoder_length"]
@@ -430,8 +434,9 @@ def run_walk_forward(
                 logger.warning(f"  Fold {fold.fold_id}  TFT 失敗：{e}，略過")
 
         # ── Level-1：XGBoost + LightGBM ───────────────────────
-        split_vol = REGIME_CONFIG.get("train_split", 0.30)
-        ens = RegimeEnsemble(task="hybrid", vol_threshold=split_vol)
+        vol_low = REGIME_CONFIG["vol_low"]
+        vol_high = REGIME_CONFIG["vol_high"]
+        ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
         ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
 
         # 取出各 Level-1 模型的原始預測（不經 meta，確保 OOF 無洩漏）
@@ -535,8 +540,9 @@ def run_walk_forward(
     #   3. predict.py 的 xgb_cal / lgb_cal 直接反映真實校準後機率
     logger.info("\n=== 個別模型 Isotonic Calibration ===")
     # 複用最後一個 fold 的 ens（包含 XGB/LGB 結構）作為 template
-    split_vol = REGIME_CONFIG.get("train_split", 0.30)
-    meta_ensemble = RegimeEnsemble(task="hybrid", vol_threshold=split_vol)
+    vol_low = REGIME_CONFIG["vol_low"]
+    vol_high = REGIME_CONFIG["vol_high"]
+    meta_ensemble = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
 
     # ── 個別模型 Isotonic Calibration（在 meta 訓練前完成）──
     # 使用已收集的 OOF 機率 vs 真實標籤
@@ -555,9 +561,12 @@ def run_walk_forward(
     meta_ensemble.fit_meta(oof_valid, y_meta, X_oof=X.loc[valid_mask])
 
     logger.info("✅ Level-2 Meta-Learner 已完成訓練（基於全 OOF，無未來洩漏）")
-    if hasattr(meta_ensemble.normal_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.normal_model.meta.coef_.flatten()))
-        logger.info(f"   [Normal] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
+    if hasattr(meta_ensemble.low_vol_model.meta, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.low_vol_model.meta.coef_.flatten()))
+        logger.info(f"   [Low Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
+    if hasattr(meta_ensemble.mid_vol_model.meta, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.mid_vol_model.meta.coef_.flatten()))
+        logger.info(f"   [Mid Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
     if hasattr(meta_ensemble.high_vol_model.meta, "coef_"):
         coef_dict = dict(zip(oof_valid.columns, meta_ensemble.high_vol_model.meta.coef_.flatten()))
         logger.info(f"   [High Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
@@ -607,6 +616,7 @@ def run_walk_forward(
 
 def train_final_model(
     df:                    pd.DataFrame,
+    stock_id:              str,
     use_tft:               bool = False,
     meta_ensemble_from_cv: Optional[RegimeEnsemble] = None,
 ) -> RegimeEnsemble:
@@ -620,7 +630,7 @@ def train_final_model(
       移植至最終模型，避免在有限的 Hold-Out 上重訓 Meta 導致過擬合。
       CV OOF 的樣本量遠大於 Hold-Out，Meta 在此訓練更穩健。
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df)
+    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id)
     oos_window = REGIME_CONFIG["oos_window"]   # 預設 504（2 年）
     # 若資料不足 5 年 + 2 年，退回 1 年 Hold-Out
     min_train = 252 * 5
@@ -641,7 +651,7 @@ def train_final_model(
             tft = TFTPredictor(TFT_PARAMS)
             tft.fit(
                 df.iloc[:split], df.iloc[split:],
-                checkpoint_dir=str(MODEL_DIR / "tft_final"),
+                checkpoint_dir=str(MODEL_DIR / f"tft_{stock_id}_final"),
             )
             # predict 補 encoder context：取 split 前 max_enc 天
             max_enc   = TFT_PARAMS["max_encoder_length"]
@@ -649,28 +659,29 @@ def train_final_model(
             tft_input = df.iloc[ctx_start:]                 # context + test window
             result    = tft.predict(tft_input)
             tft_prob  = float(result["prob_up"])
-            tft.save(str(MODEL_DIR / "tft_final.ckpt"))
+            tft.save(str(MODEL_DIR / f"tft_{stock_id}_final.ckpt"))
         except Exception as e:
             logger.warning(f"最終 TFT 訓練失敗：{e}")
 
-    split_vol = REGIME_CONFIG.get("train_split", 0.30)
-    ens = RegimeEnsemble(task="hybrid", vol_threshold=split_vol)
+    vol_low = REGIME_CONFIG["vol_low"]
+    vol_high = REGIME_CONFIG["vol_high"]
+    ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
     ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
 
     # ── 移植 CV 訓練好的 Meta-Learner（核心優化）────────────────
-    if meta_ensemble_from_cv is not None and meta_ensemble_from_cv.meta is not None:
-        ens.meta    = meta_ensemble_from_cv.meta
-        ens.scaler  = meta_ensemble_from_cv.scaler
-        # 一併移植 meta Calibrator（若有）
-        if hasattr(meta_ensemble_from_cv, "_calibrator"):
-            ens._calibrator = meta_ensemble_from_cv._calibrator
-        # 移植個別模型 Isotonic Calibrators（XGB / LGB）
-        if meta_ensemble_from_cv.xgb_clf._calibrator is not None:
-            ens.xgb_clf._calibrator = meta_ensemble_from_cv.xgb_clf._calibrator
-            logger.info("  ✅ XGB 個別 Calibrator 移植完成")
-        if meta_ensemble_from_cv.lgb_clf._calibrator is not None:
-            ens.lgb_clf._calibrator = meta_ensemble_from_cv.lgb_clf._calibrator
-            logger.info("  ✅ LGB 個別 Calibrator 移植完成")
+    if meta_ensemble_from_cv is not None:
+        for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
+            cv_model = getattr(meta_ensemble_from_cv, attr)
+            ens_model = getattr(ens, attr)
+            if cv_model.meta is not None:
+                ens_model.meta = cv_model.meta
+                ens_model.scaler = cv_model.scaler
+            if hasattr(cv_model, "_calibrator"):
+                ens_model._calibrator = cv_model._calibrator
+            if cv_model.xgb_clf._calibrator is not None:
+                ens_model.xgb_clf._calibrator = cv_model.xgb_clf._calibrator
+            if cv_model.lgb_clf._calibrator is not None:
+                ens_model.lgb_clf._calibrator = cv_model.lgb_clf._calibrator
         logger.info("✅ Meta-Learner + 個別 Calibrators 已從 CV 移植至最終模型")
     else:
         # Fallback：在 Hold-Out 上訓練 Meta（樣本少，僅供緊急使用）
@@ -737,6 +748,7 @@ def _parse_args():
     p.add_argument("--no-tft",          action="store_true",        help="跳過 TFT（較快，只用 XGB+LGB）")
     p.add_argument("--wf-only",         action="store_true",        help="只做 Walk-Forward，不訓練最終模型")
     p.add_argument("--no-calibration",  action="store_true",        help="停用 Isotonic Calibration")
+    p.add_argument("--step-days",       type=int,                   help="Walk-Forward 步進天數（覆蓋 config.RETRAIN_FREQ）")
     return p.parse_args()
 
 
@@ -753,6 +765,10 @@ def main():
     args             = _parse_args()
     use_tft          = not args.no_tft
     calibrate_probs  = not args.no_calibration
+
+    # 更新 WF 設定
+    if args.step_days:
+        WF_CONFIG["step_days"] = args.step_days
 
     logger.info("=" * 60)
     logger.info("  TSMC 2330 — 30 天趨勢預測系統  訓練開始")
@@ -776,12 +792,23 @@ def main():
 
     # ── Step 2：特徵工程 ───────────────────────────────────────
     logger.info("\n[Step 2] 特徵工程…")
-    df = build_features(raw)
+    # ── 根據 stock_id 更新配置 ────────────────────────────
+    stock_id = args.stock_id
+    config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS["2330"])
+    
+    # 動態獲取特徵清單
+    all_features = get_all_features(stock_id)
+    
+    # 更新 Regime 閾值
+    REGIME_CONFIG["vol_low"] = config["vol_low"]
+    REGIME_CONFIG["vol_high"] = config["vol_high"]
+
+    df = build_features(raw, stock_id=stock_id)
     logger.info(f"  特徵框架：{len(df):,} 天 × {df.shape[1]} 欄")
 
     # ── Step 3：Walk-Forward CV（含 Meta-Learner 訓練）─────────
     logger.info("\n[Step 3] Purged Walk-Forward CV + Meta-Learner 訓練…")
-    wf_result = run_walk_forward(df, use_tft=use_tft, calibrate_probs=calibrate_probs)
+    wf_result = run_walk_forward(df, stock_id=stock_id, use_tft=use_tft, calibrate_probs=calibrate_probs)
     wf_result["oof_metrics"].to_csv(OUTPUT_DIR / "wf_fold_metrics.csv")
     wf_result["importance"].to_csv(OUTPUT_DIR / "feature_importance.csv")
 
@@ -810,10 +837,11 @@ def main():
         logger.info("\n[Step 4] 最終全量訓練（Hold-Out OOS）…")
         final_model = train_final_model(
             df,
+            stock_id              = stock_id,
             use_tft               = use_tft,
             meta_ensemble_from_cv = wf_result["meta_ensemble"],  # 移植 Meta
         )
-        out_path = MODEL_DIR / "ensemble_final.pkl"
+        out_path = MODEL_DIR / f"ensemble_{stock_id}.pkl"
         joblib.dump(final_model, out_path)
         logger.info(f"  最終模型已儲存：{out_path}")
 
