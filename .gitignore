@@ -6,3 +6,7 @@
 !/.gitignore
 !/README.md
 !/requirements.txt
+!/requirements_raw.txt
+!/Dockerfile
+!/create_table.sql
+!/check_db.py

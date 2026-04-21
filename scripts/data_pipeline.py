@@ -23,7 +23,7 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 
-from config import STOCK_ID
+from config import STOCK_ID, STOCK_CONFIGS, DEFAULT_STOCK_ID
 
 logger = logging.getLogger(__name__)
 
@@ -379,16 +379,16 @@ def load_interest_rate() -> pd.DataFrame:
     return wide
 
 
-def load_exchange_rate(currencies: tuple = ("USD",)) -> pd.DataFrame:
+def load_exchange_rate(currencies: tuple = ("USD", "JPY", "EUR")) -> pd.DataFrame:
     """
-    exchange_rate：匯率（預設只取 USD/TWD）
+    exchange_rate：匯率（取得 USD/TWD, JPY/TWD, EUR/TWD 中間價）
     DB schema: date, currency, cash_buy, cash_sell, spot_buy, spot_sell
     """
     ph = ",".join(["%s"] * len(currencies))
     sql = f"""
         SELECT date, currency,
-               spot_buy::float  AS usd_twd_buy,
-               spot_sell::float AS usd_twd_sell
+               spot_buy::float,
+               spot_sell::float
         FROM   exchange_rate
         WHERE  currency IN ({ph})
         ORDER  BY date, currency
@@ -398,20 +398,37 @@ def load_exchange_rate(currencies: tuple = ("USD",)) -> pd.DataFrame:
         return pd.DataFrame()
     df["date"] = pd.to_datetime(df["date"])
 
-    usd = df[df["currency"] == "USD"].copy()
-    if not usd.empty:
-        usd["usd_twd_mid"] = (usd["usd_twd_buy"] + usd["usd_twd_sell"]) / 2
-        usd = usd.drop(columns=["currency"]).set_index("date").sort_index()
-        logger.debug(f"[exchange_rate] {len(usd):,} 筆（USD）")
-        return usd
-
-    # 多幣種時 pivot
-    wide = df.pivot_table(
-        index="date", columns="currency",
-        values=["usd_twd_buy", "usd_twd_sell"], aggfunc="last",
-    )
-    wide.columns = ["_".join(c) for c in wide.columns]
+    # 計算中間價並 pivot
+    df["mid"] = (df["spot_buy"] + df["spot_sell"]) / 2
+    wide = df.pivot_table(index="date", columns="currency", values="mid", aggfunc="last")
+    wide.columns = [f"{c.lower()}_twd_mid" for c in wide.columns]
+    
+    logger.debug(f"[exchange_rate] {len(wide):,} 筆，幣別：{wide.columns.tolist()}")
     return wide.sort_index()
+
+
+def load_bond_yield() -> pd.DataFrame:
+    """
+    bond_yield：公債殖利率（US10Y, US2Y 等）
+    並計算利差 (Spread)
+    """
+    sql = """
+        SELECT date, bond_id, value::float
+        FROM   bond_yield
+        ORDER  BY date, bond_id
+    """
+    df = _query(sql)
+    if df.empty:
+        return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    wide = df.pivot_table(index="date", columns="bond_id", values="value", aggfunc="last").sort_index()
+    
+    # 計算利差
+    if "US10Y" in wide.columns and "US2Y" in wide.columns:
+        wide["us_yield_spread"] = wide["US10Y"] - wide["US2Y"]
+        
+    logger.debug(f"[bond_yield] {len(wide):,} 筆")
+    return wide
 
 
 def load_total_return_index() -> pd.DataFrame:
@@ -436,6 +453,46 @@ def load_total_return_index() -> pd.DataFrame:
     logger.debug(f"[total_return_index] {len(wide):,} 筆  "
                  f"指數：{wide.columns.tolist()}")
     return wide
+
+
+def load_commodities() -> pd.DataFrame:
+    """
+    載入 crude_oil_prices (Brent/WTI) 與 gold_price。
+    """
+    # ── 原油 ──
+    sql_oil = """
+        SELECT date, name, price::float
+        FROM crude_oil_prices
+        ORDER BY date, name
+    """
+    df_oil = _query(sql_oil)
+    oil_wide = pd.DataFrame()
+    if not df_oil.empty:
+        df_oil["date"] = pd.to_datetime(df_oil["date"])
+        oil_wide = df_oil.pivot_table(
+            index="date", columns="name", values="price", aggfunc="last"
+        ).sort_index()
+        oil_wide.columns = [f"oil_{c.lower()}" for c in oil_wide.columns]
+
+    # ── 黃金 ──
+    sql_gold = """
+        SELECT date, price::float AS gold_price
+        FROM gold_price
+        ORDER BY date
+    """
+    df_gold = _query(sql_gold)
+    gold_df = pd.DataFrame()
+    if not df_gold.empty:
+        df_gold["date"] = pd.to_datetime(df_gold["date"])
+        gold_df = df_gold.set_index("date").sort_index()
+
+    if oil_wide.empty and gold_df.empty:
+        return pd.DataFrame()
+
+    if oil_wide.empty: return gold_df
+    if gold_df.empty: return oil_wide
+
+    return oil_wide.join(gold_df, how="outer").sort_index()
 
 
 # ─────────────────────────────────────────────
@@ -540,7 +597,7 @@ def load_tfo_options(
 
 
 def load_us_stocks(
-    target_stocks: tuple = ("TSM", "NVDA", "AAPL", "SOXX"),
+    target_stocks: list[str] = ["TSM", "NVDA", "AAPL", "SOXX"],
     start_date: Optional[str] = None,
     end_date:   Optional[str] = None,
 ) -> pd.DataFrame:
@@ -548,6 +605,9 @@ def load_us_stocks(
     載入 us_stock_price 美股收盤價（adj_close），
     包含台積電 ADR、輝達、蘋果、半導體指數等供應鏈指標。
     """
+    if not target_stocks:
+        return pd.DataFrame()
+
     params = list(target_stocks)
     ph = ",".join(["%s"] * len(target_stocks))
     
@@ -628,12 +688,19 @@ def build_daily_frame(
         ("shareholding",   load_shareholding(stock_id)),
         ("interest_rate",  load_interest_rate()),
         ("exchange_rate",  load_exchange_rate()),
+        ("bond_yield",     load_bond_yield()),
         ("return_index",   load_total_return_index()),
         # ── 期貨籌碼（新增）────────────────────────────────
         ("tx_futures",     load_tx_futures(start_date, end_date)),
         ("tfo_options",    load_tfo_options(start_date, end_date)),
         # ── 美股特徵（新增）────────────────────────────────
-        ("us_stocks",      load_us_stocks(start_date=start_date, end_date=end_date)),
+        ("us_stocks",      load_us_stocks(
+            target_stocks = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS[DEFAULT_STOCK_ID])["us_chain_tickers"],
+            start_date    = start_date, 
+            end_date      = end_date
+        )),
+        # ── 大宗商品（新增）────────────────────────────────
+        ("commodities",    load_commodities()),
     ]
     for name, df in daily_sources:
         if df.empty:
@@ -775,9 +842,7 @@ if __name__ == "__main__":
 
     df = build_daily_frame()
 
-    PREVIEW = ["close", "per", "foreign_net", "margin_balance",
-               "foreign_investment_shares_ratio",
-               "revenue", "FED", "usd_twd_mid", "revenue_stmt", "eps"]
+    PREVIEW = ["close", "FED", "usd_twd_mid", "jpy_twd_mid", "US10Y", "US2Y", "us_yield_spread"]
     avail = [c for c in PREVIEW if c in df.columns]
 
     print(f"\nshape      : {df.shape}")

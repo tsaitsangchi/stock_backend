@@ -1,0 +1,1 @@
+pandas\nnumpy\npsycopg2-binary\nscikit-learn\nlightgbm\nxgboost\ntorch\nmatplotlib\nseaborn\nrequests\ntqdm

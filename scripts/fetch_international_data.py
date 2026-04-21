@@ -37,6 +37,7 @@ from datetime import date, timedelta, datetime
 import psycopg2
 import psycopg2.extras
 import requests
+import pandas as pd
 
 # ======================
 # 設定 logging
@@ -384,16 +385,20 @@ def get_us_stock_ids(delay: float) -> list:
 # 主要抓取函式
 # ──────────────────────────────────────────────
 def fetch_us_stock_price(
-    conn, start_date: str, end_date: str, delay: float, force: bool
+    conn, start_date: str, end_date: str, delay: float, force: bool, tickers: list = None
 ):
     """
-    逐支抓取美股股價（USStockPrice）並寫入 us_stock_price。
+    抓取美股股價（USStockPrice）。若 tickers 為 None 則抓取全市場。
     """
     logger.info("=== [us_stock_price] 開始抓取 ===")
 
-    stock_ids = get_us_stock_ids(delay)
-    if not stock_ids:
-        return
+    if tickers:
+        stock_ids = tickers
+        logger.info(f"  指定抓取 {len(stock_ids)} 支股票：{stock_ids}")
+    else:
+        stock_ids = get_us_stock_ids(delay)
+        if not stock_ids:
+            return
 
     # 批次載入 DB 最新日期
     latest_dates = get_latest_date(conn, "us_stock_price", key_col="stock_id")
@@ -415,6 +420,10 @@ def fetch_us_stock_price(
         )
         if data:
             rows = [map_us_stock_row(r) for r in data]
+            # 依 (date, stock_id) 去重
+            df_dedup = pd.DataFrame(rows).drop_duplicates(subset=[0, 1], keep="last")
+            rows = [tuple(x) for x in df_dedup.values]
+            
             bulk_upsert(conn, UPSERT_US_STOCK_PRICE, rows, template)
             total_rows += len(rows)
 
@@ -484,6 +493,10 @@ def fetch_gold_price(
     )
     if data:
         rows = [map_gold_price_row(r) for r in data]
+        # 依 date 去重
+        df_dedup = pd.DataFrame(rows).drop_duplicates(subset=[0], keep="last")
+        rows = [tuple(x) for x in df_dedup.values]
+        
         template = "(%s::date,%s::numeric)"
         bulk_upsert(conn, UPSERT_GOLD_PRICE, rows, template)
         logger.info(f"  [gold_price] 寫入 {len(rows)} 筆")
@@ -520,6 +533,10 @@ def parse_args():
         help="每次 API 請求後等待秒數（預設 1.2）",
     )
     parser.add_argument(
+        "--tickers", nargs="+",
+        help="指定要抓取的美股代號（如 AAPL MSFT），若未指定則抓取全市場",
+    )
+    parser.add_argument(
         "--force", action="store_true",
         help="強制重抓：忽略 DB 已有資料，從 --start 重新覆蓋",
     )
@@ -551,7 +568,7 @@ def main():
 
         # 依序執行各資料集
         if "us_stock_price" in tables:
-            fetch_us_stock_price(conn, args.start, args.end, args.delay, args.force)
+            fetch_us_stock_price(conn, args.start, args.end, args.delay, args.force, tickers=args.tickers)
 
         if "crude_oil_prices" in tables:
             fetch_crude_oil_prices(conn, args.start, args.end, args.delay, args.force)

@@ -12,7 +12,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from config import FEATURE_GROUPS, HORIZON
+from config import FEATURE_GROUPS, HORIZON, STOCK_CONFIGS, DEFAULT_STOCK_ID
 
 logger = logging.getLogger(__name__)
 
@@ -330,17 +330,23 @@ def add_macro_features(df: pd.DataFrame) -> pd.DataFrame:
     for country, col in [("BOJ", "boj_rate"), ("ECB", "ecb_rate")]:
         df[col] = df[country] if country in df.columns else np.nan
 
-    # 匯率（USD/TWD）
-    if "usd_twd_mid" in df.columns:
-        df["usd_twd_spot"]    = df["usd_twd_mid"]
-        df["usd_twd_chg_10d"] = df["usd_twd_mid"].pct_change(10)
-    else:
-        df["usd_twd_spot"] = df["usd_twd_chg_10d"] = np.nan
+    # 匯率（USD/TWD, JPY/TWD, EUR/TWD）
+    for curr in ["usd", "jpy", "eur"]:
+        col = f"{curr}_twd_mid"
+        if col in df.columns:
+            df[f"{curr}_twd_spot"] = df[col]
+            df[f"{curr}_twd_chg_10d"] = df[col].pct_change(10)
+        else:
+            df[f"{curr}_twd_spot"] = df[f"{curr}_twd_chg_10d"] = np.nan
+
+    # 公債殖利率與利差
+    for bid in ["US10Y", "US2Y", "us_yield_spread"]:
+        if bid not in df.columns:
+            df[bid] = np.nan
 
     # 大盤指數報酬
     for idx_name, prefix in [("TAIEX", "taiex"), ("TPEx", "tpex")]:
         if idx_name in df.columns:
-            idx_r = np.log(df[idx_name] / df[idx_name].shift(1))
             df[f"{prefix}_ret_5d"]  = np.log(df[idx_name] / df[idx_name].shift(5))
             df[f"{prefix}_ret_20d"] = np.log(df[idx_name] / df[idx_name].shift(20))
         else:
@@ -460,6 +466,9 @@ def add_futures_chip_features(df: pd.DataFrame) -> pd.DataFrame:
 # 滾動高階統計
 # ─────────────────────────────────────────────
 
+    return df
+
+
 def add_rolling_stats(df: pd.DataFrame) -> pd.DataFrame:
     log_r = df.get("log_return_1d", np.log(df["close"] / df["close"].shift(1)))
 
@@ -477,32 +486,71 @@ def add_rolling_stats(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_us_chain_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_volatility_clustering_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    計算波動率聚類特徵（Volatility Clustering & Regime Shift）。
+    """
+    log_r = df.get("log_return_1d", np.log(df["close"] / df["close"].shift(1)))
+    
+    # 波動率加速度
+    vol_20 = log_r.rolling(20).std()
+    df["vol_acceleration"] = vol_20 / vol_20.shift(5) - 1
+    
+    # 偏度與峰度的變動率
+    for n in [20, 60]:
+        df[f"skew_chg_{n}d"] = df[f"skew_{n}d"].diff(5)
+        df[f"kurt_chg_{n}d"] = df[f"kurt_{n}d"].diff(5)
+        
+    return df
+
+
+def add_us_chain_features(df: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID) -> pd.DataFrame:
     """
     美股供應鏈與 ADR 特徵（US Chain Features）。
-    整合台積電 ADR (TSM)、輝達 (NVDA)、蘋果 (AAPL) 與半導體指數 (SOXX) 的外圍市場動能。
+    進化 v3.0：新增 Lead-Lag 領先指標與群體動能。
     """
-    # 1. TSM 現貨溢價差距 (TSM Premium)
-    # TSM ADR 1 單位 = 5 股 2330 零股。需先轉換成台幣
-    if "tsm_close" in df.columns and "usd_twd_mid" in df.columns:
-        tsm_adr_twd = df["tsm_close"] * df["usd_twd_mid"] / 5
-        df["tsm_premium"] = tsm_adr_twd / df["close"] - 1
-        df["tsm_premium_ma5"] = df["tsm_premium"].rolling(5).mean()
-    else:
-        df["tsm_premium"] = 0.0
-        df["tsm_premium_ma5"] = 0.0
+    config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS[DEFAULT_STOCK_ID])
+    us_tickers = [t.lower().replace("^", "") for t in config["us_chain_tickers"]]
+    
+    # 1. ADR 溢價 (擴張版)
+    if config.get("use_adr_premium", False):
+        if "tsm_close" in df.columns and "usd_twd_mid" in df.columns:
+            tsm_adr_twd = df["tsm_close"] * df["usd_twd_mid"] / 5
+            df["tsm_premium"] = tsm_adr_twd / df["close"] - 1
+            df["tsm_premium_ma5"] = df["tsm_premium"].rolling(5).mean()
+            # 溢價波動度 (衡量恐慌程度)
+            df["tsm_premium_vol"] = df["tsm_premium"].rolling(20).std()
+        else:
+            df["tsm_premium"] = df["tsm_premium_ma5"] = df["tsm_premium_vol"] = 0.0
 
-    # 2. 主要科技/半導體股動能 (NVIDIA, AAPL, SOXX)
-    for ticker in ["nvda", "aapl", "soxx"]:
+    # 2. 主要科技/半導體/金融股動能
+    chain_rets = []
+    for ticker in us_tickers:
         col = f"{ticker}_close"
         if col in df.columns:
-            df[f"{ticker}_ret_1d"] = df[col].pct_change(1)
+            # 領先 1 日報酬 (美股前一晚表現)
+            ret_1d = df[col].pct_change(1)
+            df[f"{ticker}_ret_1d_lag1"] = ret_1d.shift(0) # 因為 data_pipeline 已對齊日期，這裡 1d 就是領先信號
             df[f"{ticker}_ret_5d"] = df[col].pct_change(5)
-            df[f"{ticker}_ret_20d"] = df[col].pct_change(20)
+            chain_rets.append(ret_1d)
         else:
-            df[f"{ticker}_ret_1d"] = 0.0
+            df[f"{ticker}_ret_1d_lag1"] = 0.0
             df[f"{ticker}_ret_5d"] = 0.0
-            df[f"{ticker}_ret_20d"] = 0.0
+
+    # 3. 群體動能 (Chain Composite Momentum)
+    if chain_rets:
+        df["us_chain_composite_ret"] = pd.concat(chain_rets, axis=1).mean(axis=1)
+        df["us_chain_composite_ma5"] = df["us_chain_composite_ret"].rolling(5).mean()
+    else:
+        df["us_chain_composite_ret"] = 0.0
+        df["us_chain_composite_ma5"] = 0.0
+
+    # 4. 美股大盤相對強度 (SOXX / QQQ)
+    for index_ticker in ["soxx_close", "qqq_close"]:
+        if index_ticker in df.columns:
+            df[f"{index_ticker}_mom"] = df[index_ticker].pct_change(5)
+        else:
+            df[f"{index_ticker}_mom"] = 0.0
 
     return df
 
@@ -542,7 +590,24 @@ def add_targets(df: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
 # 主函式
 # ─────────────────────────────────────────────
 
-def build_features(raw: pd.DataFrame, for_inference: bool = False) -> pd.DataFrame:
+def add_commodity_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    計算原油 (WTI/Brent) 與黃金的報酬率特徵。
+    對塑膠 (台塑)、鋼鐵 (中鋼)、航運 (長榮) 具備強大解釋力。
+    """
+    df = df.copy()
+    for col in ["oil_wti", "oil_brent", "gold_price"]:
+        if col in df.columns:
+            # 1. 報酬率
+            df[f"{col}_ret_5d"] = df[col].pct_change(5)
+            df[f"{col}_ret_20d"] = df[col].pct_change(20)
+            # 2. 乖離率 (相對於 20 日均線)
+            ma20 = df[col].rolling(20).mean()
+            df[f"{col}_bias_20d"] = (df[col] - ma20) / ma20
+    return df
+
+
+def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
     """
@@ -568,7 +633,10 @@ def build_features(raw: pd.DataFrame, for_inference: bool = False) -> pd.DataFra
     df = add_macro_features(df)
     logger.info(f"  宏觀因子特徵完成，shape={df.shape}")
 
-    df = add_us_chain_features(df)
+    df = add_commodity_features(df)
+    logger.info(f"  大宗商品特徵完成，shape={df.shape}")
+
+    df = add_us_chain_features(df, stock_id)
     logger.info(f"  美股供應鏈特徵完成，shape={df.shape}")
 
     df = add_event_features(df)
@@ -576,6 +644,9 @@ def build_features(raw: pd.DataFrame, for_inference: bool = False) -> pd.DataFra
 
     df = add_rolling_stats(df)
     logger.info(f"  滾動統計特徵完成，shape={df.shape}")
+
+    df = add_volatility_clustering_features(df)
+    logger.info(f"  波動率聚類特徵完成，shape={df.shape}")
 
     df = add_targets(df, HORIZON)
     logger.info(f"  目標變數完成，shape={df.shape}")

@@ -1,0 +1,10 @@
+joblib
+multiprocessing
+numpy
+optuna
+pandas
+psycopg2
+re
+requests
+subprocess
+warnings

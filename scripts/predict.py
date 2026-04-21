@@ -28,7 +28,7 @@ import pandas as pd
 
 from config import (
     ALL_FEATURES, HORIZON, MODEL_DIR, OUTPUT_DIR,
-    TFT_PARAMS, EVAL_TARGETS,
+    TFT_PARAMS, EVAL_TARGETS, STOCK_CONFIGS, get_all_features
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features
@@ -39,23 +39,32 @@ logger = logging.getLogger(__name__)
 # 載入已訓練模型
 # ─────────────────────────────────────────────
 
-def load_ensemble(path: Optional[Path] = None):
+def load_ensemble(stock_id: str, path: Optional[Path] = None):
     import joblib
-    path = path or (MODEL_DIR / "ensemble_final.pkl")
+    path = path or (MODEL_DIR / f"ensemble_{stock_id}.pkl")
+    if not path.exists():
+        # Fallback to general final model if specific one doesn't exist
+        path = MODEL_DIR / "ensemble_final.pkl"
+        
     if not path.exists():
         raise FileNotFoundError(
-            f"找不到模型 {path}，請先執行 train_evaluate.py"
+            f"找不到股票 {stock_id} 的模型，請先執行 train_evaluate.py --stock-id {stock_id}"
         )
     model = joblib.load(path)
     logger.info(f"模型載入：{path}")
     return model
 
 
-def load_tft(path: Optional[Path] = None):
-    path = path or (MODEL_DIR / "tft_final.ckpt")
+def load_tft(stock_id: str, path: Optional[Path] = None):
+    path = path or (MODEL_DIR / f"tft_{stock_id}_final.ckpt")
     if not path.exists():
-        logger.warning(f"找不到 TFT checkpoint {path}，跳過 TFT")
-        return None
+        # Fallback to legacy path
+        legacy_path = MODEL_DIR / "tft_final.ckpt"
+        if legacy_path.exists():
+            path = legacy_path
+        else:
+            logger.warning(f"找不到 TFT checkpoint {path}，跳過 TFT")
+            return None
     try:
         from models.tft_model import TFTPredictor
         return TFTPredictor.load(str(path), TFT_PARAMS)
@@ -190,8 +199,9 @@ def explain_prediction(ensemble, X_latest: pd.DataFrame) -> dict:
 # ─────────────────────────────────────────────
 
 def run_prediction(
-    df_feat: pd.DataFrame,
+    df_feat:     pd.DataFrame,
     ensemble,
+    stock_id:    str,
     tft=None,
     drift_check: bool = False,
 ) -> dict:
@@ -377,7 +387,7 @@ def run_prediction(
 
         trajectory.append({
             "predict_date":     today_str,
-            "stock_id":         "2330",
+            "stock_id":         stock_id,
             "forecast_date":    bdate.strftime("%Y-%m-%d"),
             "day_offset":       day_offset,
             "price_q10":        p_q10,
@@ -402,7 +412,7 @@ def run_prediction(
         "as_of_date":        today_str,
         "target_date":       target_str,
         "horizon_days":      HORIZON,
-        "stock_id":          "2330",
+        "stock_id":          stock_id,
         "current_close":     current_close,
 
         # 核心預測
@@ -458,8 +468,10 @@ def run_prediction(
 # ─────────────────────────────────────────────
 
 def print_report(report: dict):
+    stock_id = report.get("stock_id", "Unknown")
+    stock_name = STOCK_CONFIGS.get(stock_id, {}).get("name", "")
     print("\n" + "═" * 60)
-    print(f"  台積電 (2330) 30 天趨勢預測報告")
+    print(f"  {stock_name} ({stock_id}) 30 天趨勢預測報告")
     print(f"  基準日：{report['as_of_date']} → 目標日：{report['target_date']}")
     print("═" * 60)
 
@@ -516,6 +528,7 @@ def print_report(report: dict):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="TSMC 30 天趨勢每日推論")
+    parser.add_argument("--stock-id", default="2330", help="股票代碼")
     parser.add_argument("--output-json", default=None, help="輸出 JSON 路徑")
     parser.add_argument("--drift-check", action="store_true", help="啟用資料漂移偵測")
     parser.add_argument("--no-tft", action="store_true", help="跳過 TFT 推論")
@@ -533,17 +546,18 @@ def main():
     logger.info("=== TSMC 30 天趨勢預測 — 推論開始 ===")
 
     # 資料層
-    raw     = build_daily_frame()
-    df_feat = build_features(raw, for_inference=True)
+    raw     = build_daily_frame(stock_id=args.stock_id)
+    df_feat = build_features(raw, stock_id=args.stock_id, for_inference=True)
 
     # 載入模型
-    ensemble = load_ensemble()
-    tft      = None if args.no_tft else load_tft()
+    ensemble = load_ensemble(stock_id=args.stock_id)
+    tft      = None if args.no_tft else load_tft(stock_id=args.stock_id)
 
     # 推論
     report = run_prediction(
         df_feat,
         ensemble,
+        stock_id=args.stock_id,
         tft=tft,
         drift_check=args.drift_check,
     )
