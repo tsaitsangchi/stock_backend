@@ -98,7 +98,7 @@ python scripts/fetch_technical_data.py --start 2024-01-01
 
 ```bash
 # 完整訓練（含 TFT，首次約 2~4 小時）
-python train_evaluate.py --start 2015-01-01
+python train_evaluate.py --start 2010-01-01
 
 # 快速版（僅 XGBoost + LightGBM，約 10~30 分鐘）
 python train_evaluate.py --start 2018-01-01 --no-tft

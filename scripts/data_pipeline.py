@@ -8,7 +8,7 @@ DB 連線設定與 fetch_technical_data.py 一致（psycopg2）。
 使用方式：
     from data_pipeline import build_daily_frame
     df = build_daily_frame()                            # 全歷史
-    df = build_daily_frame(start_date="2015-01-01")    # 指定起始日
+    df = build_daily_frame(start_date="2010-01-01")    # 指定起始日
 """
 
 from __future__ import annotations
