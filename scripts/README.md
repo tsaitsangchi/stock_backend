@@ -15,6 +15,7 @@ tsmc_predictor/
 ├── feature_engineering.py  # 特徵工程：5 大類 ~100 個通用特徵 + 動態產業特徵
 ├── train_evaluate.py       # 訓練核心：Purged Walk-Forward CV + 評估 + 模型儲存
 ├── parallel_train.py       # 並行管理器：全自動並行訓練 80+ 標的模型
+├── parallel_fetch.py       # 並行抓取器：高速抓取全市場技術、籌碼、基本面數據
 ├── predict.py              # 推論核心：每日執行，輸出趨勢報告
 ├── model_health_check.py   # 健康檢查：監控資料鮮度與實戰 DA
 ├── automate_daily.py       # 自動化流水線：一鍵完成推論、檢查與組合優化
@@ -83,7 +84,17 @@ python data_pipeline.py
 ```
 成功會印出 shape、date range、最後 5 筆關鍵欄及缺失率。
 
-### 3. 訓練模型
+### 3. 資料抓取與更新
+
+```bash
+# [推薦] 並行高速抓取 (技術、籌碼、基本面、國際市場、期權)
+python scripts/parallel_fetch.py
+
+# 或是手動執行單項抓取 (範例：技術面資料)
+python scripts/fetch_technical_data.py --start 2024-01-01
+```
+
+### 4. 訓練模型
 
 ```bash
 # 完整訓練（含 TFT，首次約 2~4 小時）
