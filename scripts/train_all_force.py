@@ -1,9 +1,10 @@
 """
-train_all_force.py — 強制重新訓練所有標的模型
+train_all_force.py — 強制重新訓練所有標的模型 (含系統監控與進度條)
 """
 import os
 import time
 import subprocess
+import threading
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from config import STOCK_CONFIGS, MODEL_DIR
@@ -19,8 +20,6 @@ def train_one_stock(stock_id):
     log_dir = Path("scripts/outputs/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"train_force_{stock_id}.log"
-    
-    print(f"🚀 [開始] 強制重新訓練: {stock_id} ({stock_name})...")
     
     # 執行 train_evaluate.py，啟動 TFT
     cmd = [
@@ -40,33 +39,48 @@ def train_one_stock(stock_id):
         duration = time.time() - start_t
         return stock_id, False, duration, str(e)
 
+def monitor_system(pbar, stop_event):
+    """背景執行緒：定期更新進度條的系統資訊"""
+    import psutil
+    while not stop_event.is_set():
+        cpu_usage = psutil.cpu_percent(interval=1)
+        ram_usage = psutil.virtual_memory().percent
+        pbar.set_description(f"CPU: {cpu_usage}% | RAM: {ram_usage}%")
+        time.sleep(5)
+
 def main():
     all_stocks = list(STOCK_CONFIGS.keys())
     
     print(f"🔥 啟動全標的強制重新訓練任務...")
     print(f"總計標的數: {len(all_stocks)}")
     print(f"設定並行數: {MAX_WORKERS}")
-    print(f"預計耗時: 每標的約 10-30 分鐘，總量較大，建議背景執行。")
     
     start_time = time.time()
     results = {"success": [], "failed": []}
     
     from tqdm import tqdm
-    pbar = tqdm(total=len(all_stocks), desc="Overall Progress", unit="stock")
+    pbar = tqdm(total=len(all_stocks), desc="Initializing...", unit="stock")
     
-    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(train_one_stock, sid): sid for sid in all_stocks}
-        
-        for future in as_completed(futures):
-            sid, success, dur, error = future.result()
-            if success:
-                results["success"].append(sid)
-            else:
-                results["failed"].append(sid)
-            pbar.update(1)
-            pbar.set_postfix({"last": sid, "status": "OK" if success else "FAIL"})
+    stop_event = threading.Event()
+    monitor_thread = threading.Thread(target=monitor_system, args=(pbar, stop_event), daemon=True)
+    monitor_thread.start()
+    
+    try:
+        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {executor.submit(train_one_stock, sid): sid for sid in all_stocks}
+            
+            for future in as_completed(futures):
+                sid, success, dur, error = future.result()
+                if success:
+                    results["success"].append(sid)
+                else:
+                    results["failed"].append(sid)
                 
-    pbar.close()
+                pbar.update(1)
+                pbar.set_postfix({"last": sid, "status": "OK" if success else "FAIL"})
+    finally:
+        stop_event.set()
+        pbar.close()
                 
     end_time = time.time()
     total_duration = (end_time - start_time) / 3600
