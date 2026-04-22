@@ -1,7 +1,8 @@
-# TSMC (2330) 30 天股價趨勢預測系統
+# 全方位多標的量化趨勢預測框架 (Multi-Asset Alpha Framework)
 
+> **版本 v3.0**：支援 80+ 標的並行訓練、動態產業特徵與 Regime-Aware 風控系統。  
 > 資料來源：**PostgreSQL 17**（不使用 CSV 檔案）  
-> 模型架構：Temporal Fusion Transformer + XGBoost + LightGBM → Stacking Ensemble
+> 模型架構：TFT (Temporal Fusion Transformer) + XGBoost + LightGBM → Stacking Ensemble
 
 ---
 
@@ -9,19 +10,15 @@
 
 ```
 tsmc_predictor/
-├── config.py               # 全域設定（路徑、超參數、特徵分組）
+├── config.py               # 全域設定（路徑、超參數、個股客製化配置）
 ├── data_pipeline.py        # 資料層：從 PostgreSQL 讀取 → 每日寬格式 DataFrame
-├── feature_engineering.py  # 特徵工程：5 大類 ~100 個特徵 + 目標變數
-├── train_evaluate.py       # 訓練：Purged Walk-Forward CV + 評估 + 儲存模型
-├── predict.py              # 推論：每日執行，輸出趨勢報告（console + JSON）
+├── feature_engineering.py  # 特徵工程：5 大類 ~100 個通用特徵 + 動態產業特徵
+├── train_evaluate.py       # 訓練核心：Purged Walk-Forward CV + 評估 + 模型儲存
+├── parallel_train.py       # 並行管理器：全自動並行訓練 80+ 標的模型
+├── predict.py              # 推論核心：每日執行，輸出趨勢報告
+├── model_health_check.py   # 健康檢查：監控資料鮮度與實戰 DA
+├── automate_daily.py       # 自動化流水線：一鍵完成推論、檢查與組合優化
 ├── models/
-│   ├── __init__.py
-│   ├── tft_model.py        # Temporal Fusion Transformer（骨幹）
-│   └── ensemble_model.py   # XGBoost + LightGBM + Stacking Meta-Learner
-├── outputs/
-│   ├── models/             # 訓練完成的模型（ensemble_final.pkl, tft_final.ckpt）
-│   └── logs/               # 訓練日誌
-└── requirements.txt
 ```
 
 ---
