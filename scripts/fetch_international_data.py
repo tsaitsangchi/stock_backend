@@ -66,7 +66,7 @@ DB_CONFIG = {
     "dbname": "stock",
     "user": "stock",
     "password": "stock",
-    "host": "localhost",
+    "host": "172.31.122.166",
     "port": "5432",
 }
 
@@ -197,7 +197,7 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
         for attempt in range(1, 4):
             try:
                 resp = requests.get(
-                    FINMIND_API_URL, headers=headers, params=base_params, timeout=60
+                    FINMIND_API_URL, headers=headers, params=base_params, timeout=120
                 )
                 if resp.status_code == 402:
                     wait_until_next_hour()

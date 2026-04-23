@@ -57,7 +57,7 @@ DB_CONFIG = {
     "dbname":   "stock",
     "user":     "stock",
     "password": "stock",
-    "host":     "localhost",
+    "host": "172.31.122.166",
     "port":     "5432",
 }
 BATCH_SIZE = 50

@@ -9,6 +9,9 @@ fetch_stock_info.py
 import logging
 import sys
 
+import time
+from datetime import datetime, timedelta
+
 import psycopg2
 import psycopg2.extras
 import requests
@@ -40,7 +43,7 @@ DB_CONFIG = {
     "dbname": "stock",
     "user": "stock",
     "password": "stock",
-    "host": "localhost",
+    "host": "172.31.122.166",
     "port": "5432",
 }
 
@@ -73,35 +76,73 @@ DO UPDATE SET
 """
 
 
+# ======================
+# 工具函式
+# ======================
+def wait_until_next_hour():
+    """
+    當遇到 402 (Payment Required) 錯誤時，代表 API 用量達上限。
+    通常 FinMind 會在整點重置配額，因此等待至下一整點。
+    """
+    now = datetime.now()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    wait_sec = (next_hour - now).total_seconds() + 65
+    logger.warning(
+        f"API 用量達上限（402），等待至下一整點重置。"
+        f"目前時間：{now.strftime('%H:%M:%S')}，"
+        f"預計恢復：{next_hour.strftime('%H:%M:%S')}，"
+        f"等待 {wait_sec:.0f} 秒…"
+    )
+    time.sleep(wait_sec)
+    logger.info("等待結束，恢復請求。")
+
+
 # ──────────────────────────────────────────────
 # 1. 從 FinMind 抓資料
 # ──────────────────────────────────────────────
 def fetch_stock_info() -> list[dict]:
     """
     呼叫 FinMind TaiwanStockInfo API，回傳原始 data list。
-    TaiwanStockInfo 不需要帶 data_id / start_date / end_date。
+    包含自動處理 402 (Payment Required) 錯誤的重試機制。
     """
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     params = {"dataset": "TaiwanStockInfo"}
 
-    logger.info("呼叫 FinMind API：TaiwanStockInfo ...")
-    resp = requests.get(FINMIND_API_URL, headers=headers, params=params, timeout=60)
+    while True:
+        try:
+            logger.info("呼叫 FinMind API：TaiwanStockInfo ...")
+            resp = requests.get(FINMIND_API_URL, headers=headers, params=params, timeout=60)
 
-    # HTTP 層錯誤
-    resp.raise_for_status()
+            # 檢查 HTTP 狀態碼
+            if resp.status_code == 402:
+                wait_until_next_hour()
+                continue
 
-    payload = resp.json()
+            resp.raise_for_status()
+            payload = resp.json()
 
-    # API 業務層錯誤（如 402 用量超出）
-    status = payload.get("status")
-    if status != 200:
-        raise RuntimeError(
-            f"FinMind API 回傳非成功狀態：status={status}, msg={payload.get('msg')}"
-        )
+            # 檢查 API 業務邏輯狀態碼
+            status = payload.get("status")
+            if status == 402:
+                wait_until_next_hour()
+                continue
 
-    data = payload.get("data", [])
-    logger.info(f"共取得 {len(data)} 筆股票資料")
-    return data
+            if status != 200:
+                raise RuntimeError(
+                    f"FinMind API 回傳非成功狀態：status={status}, msg={payload.get('msg')}"
+                )
+
+            data = payload.get("data", [])
+            logger.info(f"共取得 {len(data)} 筆股票資料")
+            return data
+
+        except requests.exceptions.RequestException as e:
+            # 處理可能被 raise_for_status 拋出的 402
+            if isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code == 402:
+                wait_until_next_hour()
+                continue
+            logger.error(f"請求 FinMind API 時發生異常：{e}")
+            raise
 
 
 # ──────────────────────────────────────────────

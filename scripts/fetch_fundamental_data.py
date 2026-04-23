@@ -91,7 +91,7 @@ DB_CONFIG = {
     "dbname": "stock",
     "user": "stock",
     "password": "stock",
-    "host": "localhost",
+    "host": "172.31.122.166",
     "port": "5432",
 }
 
@@ -386,13 +386,17 @@ def get_expected_latest_date(dataset_key: str) -> str:
 
 
 def wait_until_next_hour():
+    """
+    當遇到 402 (Payment Required) 錯誤時，代表 API 用量達上限。
+    通常 FinMind 會在整點重置配額，因此等待至下一整點。
+    """
     now = datetime.now()
-    wait_sec = 30 * 60
-    resume_time = now + timedelta(seconds=wait_sec)
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    wait_sec = (next_hour - now).total_seconds() + 65
     logger.warning(
-        f"API 用量達上限（402），等待 30 分鐘後重試。"
+        f"API 用量達上限（402），等待至下一整點重置。"
         f"目前時間：{now.strftime('%H:%M:%S')}，"
-        f"預計恢復：{resume_time.strftime('%H:%M:%S')}，"
+        f"預計恢復：{next_hour.strftime('%H:%M:%S')}，"
         f"等待 {wait_sec:.0f} 秒…"
     )
     time.sleep(wait_sec)
@@ -412,7 +416,7 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
         for attempt in range(1, 4):
             try:
                 resp = requests.get(
-                    FINMIND_API_URL, headers=headers, params=req_params, timeout=60
+                    FINMIND_API_URL, headers=headers, params=req_params, timeout=120
                 )
                 if resp.status_code == 402:
                     wait_until_next_hour()
