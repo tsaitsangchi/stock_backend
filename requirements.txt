@@ -1,1 +1,11 @@
-pandas\nnumpy\npsycopg2-binary\nscikit-learn\nlightgbm\nxgboost\ntorch\nmatplotlib\nseaborn\nrequests\ntqdm
+pandas
+numpy
+psycopg2-binary
+scikit-learn
+lightgbm
+xgboost
+torch
+matplotlib
+seaborn
+requests
+tqdm
