@@ -258,11 +258,12 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     req_params = {"dataset": dataset, **params}
 
+    max_retries = 5
     while True:
-        for attempt in range(1, 4):
+        for attempt in range(1, max_retries + 1):
             try:
                 resp = requests.get(
-                    FINMIND_API_URL, headers=headers, params=req_params, timeout=(15, 120)
+                    FINMIND_API_URL, headers=headers, params=req_params, timeout=(30, 180)
                 )
                 if resp.status_code == 402:
                     wait_until_next_hour()
@@ -294,17 +295,18 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
                     break
                 else:
                     logger.warning(f"[{dataset}] HTTP {code} 錯誤：{http_err}")
-                    if attempt < 3:
-                        time.sleep(delay * 3)
+                    if attempt < max_retries:
+                        time.sleep(delay * (2 ** attempt))
                     else:
-                        logger.error(f"[{dataset}] 重試 3 次均失敗，跳過")
+                        logger.error(f"[{dataset}] 重試 {max_retries} 次均失敗，跳過")
                         return []
             except Exception as exc:
                 logger.warning(f"[{dataset}] 第 {attempt} 次請求失敗：{exc}")
-                if attempt < 3:
-                    time.sleep(delay * 3)
+                if attempt < max_retries:
+                    # 指數退避: 2, 4, 8, 16... 秒
+                    time.sleep(delay * (2 ** attempt))
                 else:
-                    logger.error(f"[{dataset}] 重試 3 次均失敗，跳過")
+                    logger.error(f"[{dataset}] 重試 {max_retries} 次均失敗，跳過")
                     return []
         else:
             break
@@ -331,12 +333,12 @@ def bulk_upsert(conn, sql: str, rows: list, template: str, page_size: int = 2000
     return len(rows)
 
 
-def get_all_stock_ids(conn) -> list:
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT stock_id FROM stock_info WHERE type IN ('twse', 'otc') ORDER BY stock_id"
-        )
-        return [row[0] for row in cur.fetchall()]
+def get_all_stock_ids(conn, config_only: bool = False) -> list:
+    if config_only:
+        from config import STOCK_CONFIGS
+        return list(STOCK_CONFIGS.keys())
+    from config import STOCK_CONFIGS
+    return list(STOCK_CONFIGS.keys())
 
 
 def get_latest_date(conn, table: str, stock_id: str):
