@@ -31,7 +31,8 @@ from config import (
     TFT_PARAMS, EVAL_TARGETS, STOCK_CONFIGS, get_all_features
 )
 from data_pipeline import build_daily_frame
-from feature_engineering import build_features
+from feature_engineering import build_features, build_features_with_medium_term
+from signal_filter import SignalFilter, FilterResult
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +462,35 @@ def run_prediction(
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
+    # ── 訊號過濾（Signal Filtering）───────────────────────────
+    try:
+        sf = SignalFilter()
+        filter_result = sf.evaluate(report, df_feat)
+        report["signal_filter"] = {
+            "decision":       filter_result.decision,
+            "overall_score":  round(filter_result.overall_score, 1),
+            "is_tradeable":   filter_result.is_tradeable,
+            "stop_loss":      filter_result.stop_loss,
+            "take_profit":    filter_result.take_profit,
+            "blocking_reasons": filter_result.blocking_reasons,
+            "boosting_reasons": filter_result.boosting_reasons,
+            "dimensions": [
+                {
+                    "name": d.name, "passed": d.passed,
+                    "score": round(d.score, 3), "detail": d.detail,
+                }
+                for d in filter_result.dimensions
+            ],
+        }
+        report["_filter_result"] = filter_result   # 供 print_report 使用
+        logger.info(
+            f"[SignalFilter] decision={filter_result.decision}  "
+            f"score={filter_result.overall_score:.0f}/100"
+        )
+    except Exception as e:
+        logger.warning(f"[SignalFilter] 過濾失敗，略過：{e}")
+        report["signal_filter"] = {"decision": "UNKNOWN", "overall_score": 0}
+
     return report
 
 # ─────────────────────────────────────────────
@@ -513,9 +543,22 @@ def print_report(report: dict):
     warnings = report["warnings"]
     if any(warnings.values()):
         print(f"\n  ⚠️  警示：")
-        if warnings["macro_shock"]:  print("    ・宏觀衝擊偵測（利率/匯率/指數急變）")
-        if warnings["data_drift"]:   print("    ・特徵分佈漂移（建議重新訓練）")
+        if warnings["macro_shock"]:    print("    ・宏觀衝擊偵測（利率/匯率/指數急變）")
+        if warnings["data_drift"]:    print("    ・特徵分佈漂移（建議重新訓練）")
         if warnings["low_confidence"]: print("    ・預測信心不足，建議謹慎")
+
+    # ── 訊號過濾決策（Signal Filtering）──────────────────────
+    filter_result: FilterResult | None = report.get("_filter_result")
+    if filter_result is not None:
+        print("")
+        print(filter_result.summary())
+    elif "signal_filter" in report:
+        sf_data = report["signal_filter"]
+        icon = {"LONG": "🟢", "HOLD_CASH": "🔴", "WATCH": "🟡"}.get(
+            sf_data.get("decision", ""), "⚪"
+        )
+        print(f"\n  訊號過濾：{icon} {sf_data.get('decision')}  "
+              f"（綜合評分：{sf_data.get('overall_score', 0):.0f}/100）")
 
     print("\n" + "─" * 60)
     print(f"  生成時間：{report['generated_at']}")
@@ -547,7 +590,7 @@ def main():
 
     # 資料層
     raw     = build_daily_frame(stock_id=args.stock_id)
-    df_feat = build_features(raw, stock_id=args.stock_id, for_inference=True)
+    df_feat = build_features_with_medium_term(raw, stock_id=args.stock_id, for_inference=True)
 
     # 載入模型
     ensemble = load_ensemble(stock_id=args.stock_id)

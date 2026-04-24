@@ -434,7 +434,39 @@ def main():
     logger.info(f"  live 紀錄：{len(df_live)} 筆（可驗證：已過期且有實際收盤）")
     print_live_summary(df_live)
 
-    # ── ③ 建議 ─────────────────────────────────────────────────
+    # ── ③ Signal Filtering 回測比較 ─────────────────────────────
+    # 比較「全部訊號交易」vs「只在過濾通過時交易」的績效差異
+    if len(df_live) > 0 and "actual_close" in df_live.columns and not df_live["actual_close"].isna().all():
+        try:
+            df_day30 = df_live[df_live["day_offset"] == 30].copy()
+            if len(df_day30) >= 5:
+                df_day30["actual_ret"] = df_day30["actual_close"] / df_day30["current_close"] - 1
+                df_day30["signal_dir"] = (df_day30["prob_up"] >= 0.5).astype(int) * 2 - 1
+                df_day30["strat_ret_all"] = df_day30["signal_dir"] * df_day30["actual_ret"]
+
+                # 過濾：prob > 0.65 才交易
+                filtered = df_day30[df_day30["prob_up"] >= 0.65].copy()
+
+                print("\n" + "═" * 65)
+                print("  ④ Signal Filtering 效益比較（prob > 0.65 門檻）")
+                print("─" * 65)
+                print(f"  全部訊號交易  ：{len(df_day30)} 次  "
+                      f"DA={( (df_day30['signal_dir']*df_day30['actual_ret']) > 0).mean():.1%}  "
+                      f"平均報酬={df_day30['strat_ret_all'].mean():.2%}")
+                if len(filtered) > 0:
+                    filtered["strat_ret"] = (
+                        (filtered["prob_up"] >= 0.5).astype(int) * 2 - 1
+                    ) * filtered["actual_ret"]
+                    print(f"  過濾後只交易  ：{len(filtered)} 次  "
+                          f"DA={((filtered['strat_ret']) > 0).mean():.1%}  "
+                          f"平均報酬={filtered['strat_ret'].mean():.2%}")
+                    reduction = 1 - len(filtered) / len(df_day30)
+                    print(f"  交易次數減少  ：{reduction:.0%}（僅保留高信心訊號）")
+                print("═" * 65)
+        except Exception as e:
+            logger.warning(f"Signal Filter 回測比較失敗：{e}")
+
+    # ── ⑤ 建議 ─────────────────────────────────────────────────
     print_recommendation(wf_data, df_live)
 
     # ── 儲存 CSV ─────────────────────────────────────────────
