@@ -651,7 +651,8 @@ def load_holding_shares(stock_id: str) -> pd.DataFrame:
     sql = """
         SELECT date, SUM(percent)::float AS large_holder_pct
         FROM holding_shares_per
-        WHERE stock_id = %s AND CAST(level AS INTEGER) >= 15
+        WHERE stock_id = %s 
+          AND level IN ('400,001-600,000', '600,001-800,000', '800,001-1,000,000', 'more than 1,000,001')
         GROUP BY date
         ORDER BY date
     """
@@ -1048,7 +1049,7 @@ def build_medium_term_features(df: pd.DataFrame, stock_id: str = STOCK_ID) -> pd
 
     # 台指期未平倉方向（OI Direction）
     if "tx_oi" in out.columns:
-        tx_oi = out["tx_oi"].fillna(method="ffill")
+        tx_oi = out["tx_oi"].ffill()
         out["tx_oi_chg_5d"]       = tx_oi.diff(5)
         out["tx_oi_direction_5d"] = np.sign(out["tx_oi_chg_5d"]).astype(float)
         logger.debug("[medium_term] ③ tx_oi_direction 完成")
@@ -1058,6 +1059,44 @@ def build_medium_term_features(df: pd.DataFrame, stock_id: str = STOCK_ID) -> pd
         f"{[c for c in out.columns if c not in df.columns]}"
     )
     return out
+
+# ─────────────────────────────────────────────
+# Feature Store Loader
+# ─────────────────────────────────────────────
+
+def load_features_from_store(stock_id: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    """
+    從 PostgreSQL 的 daily_features (Feature Store) 載入已經預先算好的所有特徵。
+    此方法將 JSONB 欄位直接解析為 DataFrame。
+    """
+    sql = "SELECT date, features FROM daily_features WHERE stock_id = %s"
+    params = [stock_id]
+    
+    if start_date:
+        sql += " AND date >= %s"
+        params.append(start_date)
+    if end_date:
+        sql += " AND date <= %s"
+        params.append(end_date)
+        
+    sql += " ORDER BY date"
+    
+    df = _query(sql, tuple(params))
+    if df.empty:
+        logger.warning(f"Feature Store for {stock_id} is empty.")
+        return df
+        
+    # JSONB array unpacking
+    features_df = pd.json_normalize(df['features'])
+    
+    # Set datetime index
+    features_df.index = pd.to_datetime(df['date'])
+    
+    # Ensure correct datatypes
+    for col in features_df.columns:
+        features_df[col] = pd.to_numeric(features_df[col], errors='coerce')
+    
+    return features_df
 
 
 # ─────────────────────────────────────────────

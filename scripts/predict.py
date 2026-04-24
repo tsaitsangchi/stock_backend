@@ -589,8 +589,13 @@ def main():
     logger.info("=== TSMC 30 天趨勢預測 — 推論開始 ===")
 
     # 資料層
-    raw     = build_daily_frame(stock_id=args.stock_id)
-    df_feat = build_features_with_medium_term(raw, stock_id=args.stock_id, for_inference=True)
+    from data_pipeline import load_features_from_store
+    df_feat = load_features_from_store(stock_id=args.stock_id)
+    
+    if df_feat.empty:
+        logger.warning(f"Feature Store 為空，嘗試即時計算特徵...")
+        raw     = build_daily_frame(stock_id=args.stock_id)
+        df_feat = build_features_with_medium_term(raw, stock_id=args.stock_id, for_inference=True)
 
     # 載入模型
     ensemble = load_ensemble(stock_id=args.stock_id)

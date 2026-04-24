@@ -834,29 +834,25 @@ def main():
                 f"val={WF_CONFIG['val_window']}d  "
                 f"step={WF_CONFIG['step_days']}d  "
                 f"embargo={WF_CONFIG['embargo_days']}d")
-    # ── Step 1：從 PostgreSQL 載入資料 ─────────────────────────
-    logger.info("\n[Step 1] 從 PostgreSQL 載入資料…")
-    raw = build_daily_frame(
-        stock_id   = args.stock_id,
-        start_date = args.start,
-        end_date   = args.end,
-    )
-
-    # ── Step 2：特徵工程（含中期信號 + 趨勢 Regime + 多時程目標）──
-    logger.info("\n[Step 2] 特徵工程（含中期信號特徵）…")
-    # ── 根據 stock_id 更新配置 ────────────────────────────
+    # ── Step 1 & 2：從 PostgreSQL Feature Store 載入預先算好的特徵 ─────────────────────────
+    logger.info("\n[Step 1 & 2] 從 PostgreSQL Feature Store 載入預先算好的特徵…")
     stock_id = args.stock_id
     config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS["2330"])
-
+    
     # 動態獲取特徵清單
     all_features = get_all_features(stock_id)
 
     # 更新 Regime 閾值
     REGIME_CONFIG["vol_low"] = config["vol_low"]
     REGIME_CONFIG["vol_high"] = config["vol_high"]
-
-    # ★ 使用包含中期信號的完整特徵工程入口
-    df = build_features_with_medium_term(raw, stock_id=stock_id)
+    
+    from data_pipeline import load_features_from_store
+    df = load_features_from_store(stock_id, start_date=args.start, end_date=args.end)
+    
+    if df.empty:
+        logger.error(f"  {stock_id} 的特徵庫沒有資料，請先執行 python scripts/update_feature_store.py")
+        sys.exit(1)
+        
     logger.info(f"  特徵框架：{len(df):,} 天 × {df.shape[1]} 欄")
 
     # ── 多時程共識統計 ────────────────────────────────────
