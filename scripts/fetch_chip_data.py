@@ -333,12 +333,21 @@ def bulk_upsert(conn, sql: str, rows: list, template: str, page_size: int = 2000
     return len(rows)
 
 
-def get_all_stock_ids(conn, config_only: bool = False) -> list:
-    if config_only:
-        from config import STOCK_CONFIGS
-        return list(STOCK_CONFIGS.keys())
+def get_target_stock_ids(conn, stock_id_arg=None):
+    if stock_id_arg:
+        return [s.strip() for s in stock_id_arg.split(",")]
+    
+    # 預設先抓 87 支重點股
     from config import STOCK_CONFIGS
     return list(STOCK_CONFIGS.keys())
+
+def get_db_stock_info(conn):
+    """取得所有 WSE/OTC 股票的基本資訊（供非 87 支時使用）"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT stock_id FROM stock_info WHERE type IN ('twse', 'otc') ORDER BY stock_id"
+        )
+        return [row[0] for row in cur.fetchall()]
 
 
 def get_latest_date(conn, table: str, stock_id: str):
@@ -378,17 +387,16 @@ def resolve_start(conn, table: str, stock_id: str, global_start: str, dataset_ke
 # ──────────────────────────────────────────────
 # institutional_investors_buy_sell（三大法人）
 # ──────────────────────────────────────────────
-def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay: float, force: bool):
-    logger.info("=== [institutional_investors_buy_sell] 開始抓取 ===")
+def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
+    logger.info(f"\n=== [institutional_investors_buy_sell] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_INSTITUTIONAL_INVESTORS)
-        stock_ids = get_all_stock_ids(conn)
-        logger.info(f"共 {len(stock_ids)} 支股票待處理")
+        targets = stock_ids if stock_ids else get_db_stock_info(conn)
         total_rows = 0
         skipped = 0
 
-        for i, sid in enumerate(stock_ids, 1):
+        for i, sid in enumerate(targets, 1):
             actual_start = resolve_start(
                 conn, "institutional_investors_buy_sell", sid,
                 start_date, "institutional_investors_buy_sell", force
@@ -420,7 +428,7 @@ def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay
                 "(%s::date, %s, %s, %s, %s)",
             )
             if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
+                logger.info(f"  進度：{i}/{len(targets)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
 
     finally:
         conn.close()
@@ -430,17 +438,16 @@ def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay
 # ──────────────────────────────────────────────
 # margin_purchase_short_sale（融資融券）
 # ──────────────────────────────────────────────
-def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: float, force: bool):
-    logger.info("=== [margin_purchase_short_sale] 開始抓取 ===")
+def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
+    logger.info(f"\n=== [margin_purchase_short_sale] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_MARGIN_PURCHASE)
-        stock_ids = get_all_stock_ids(conn)
-        logger.info(f"共 {len(stock_ids)} 支股票待處理")
+        targets = stock_ids if stock_ids else get_db_stock_info(conn)
         total_rows = 0
         skipped = 0
 
-        for i, sid in enumerate(stock_ids, 1):
+        for i, sid in enumerate(targets, 1):
             actual_start = resolve_start(
                 conn, "margin_purchase_short_sale", sid,
                 start_date, "margin_purchase_short_sale", force
@@ -483,7 +490,7 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
                 "(%s::date, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             )
             if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
+                logger.info(f"  進度：{i}/{len(targets)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
 
     finally:
         conn.close()
@@ -493,17 +500,16 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
 # ──────────────────────────────────────────────
 # shareholding（外資持股）
 # ──────────────────────────────────────────────
-def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool):
-    logger.info("=== [shareholding] 開始抓取 ===")
+def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
+    logger.info(f"\n=== [shareholding] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_SHAREHOLDING)
-        stock_ids = get_all_stock_ids(conn)
-        logger.info(f"共 {len(stock_ids)} 支股票待處理")
+        targets = stock_ids if stock_ids else get_db_stock_info(conn)
         total_rows = 0
         skipped = 0
 
-        for i, sid in enumerate(stock_ids, 1):
+        for i, sid in enumerate(targets, 1):
             actual_start = resolve_start(
                 conn, "shareholding", sid,
                 start_date, "shareholding", force
@@ -586,6 +592,7 @@ def parse_args():
         "--force", action="store_true",
         help="強制重抓：忽略 DB 已有資料，從 --start 開始重新覆蓋",
     )
+    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
     return parser.parse_args()
 
 
@@ -593,15 +600,29 @@ def main():
     args = parse_args()
     tables = list(TABLE_FUNCS.keys()) if "all" in args.tables else args.tables
 
+    conn = get_db_conn()
+    
+    # 決定目標股票
+    if args.stock_id:
+        target_stocks = [s.strip() for s in args.stock_id.split(",")]
+    else:
+        # 如果沒指定，預設先抓 87 支重點股
+        from config import STOCK_CONFIGS
+        target_stocks = list(STOCK_CONFIGS.keys())
+        
     mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"
     logger.info(f"抓取資料表：{tables}")
+    logger.info(f"模式：{mode}，目標股票數：{len(target_stocks)}")
     logger.info(f"日期區間：{args.start} ~ {args.end}")
     logger.info(f"請求間隔：{args.delay} 秒")
     logger.info(f"執行模式：{mode}")
 
+    conn = get_db_conn()
+    target_stocks = get_target_stock_ids(conn, args.stock_id)
+    
     for table in tables:
         try:
-            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force)
+            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force, target_stocks)
         except RuntimeError as e:
             logger.error(str(e))
             sys.exit(1)
