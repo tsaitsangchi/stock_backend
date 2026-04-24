@@ -13,7 +13,7 @@ DB_CONFIG = {
     "dbname": "stock",
     "user": "stock",
     "password": "stock",
-    "host": "172.31.122.166",
+    "host": "localhost",
     "port": "5432",
 }
 
