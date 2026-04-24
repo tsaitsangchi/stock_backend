@@ -405,18 +405,29 @@ def wait_until_next_hour():
 
 def finmind_get(dataset: str, params: dict, delay: float) -> list:
     """
-    通用 FinMind API 請求。
-    params 帶 data_id → 單支股票
-    params 不帶 data_id → 全市場（批次模式用）
+    通用 FinMind API 請求（v2 — 強化超時與重試）。
+
+    修正項目：
+      ① timeout 改為 (connect=15, read=120)：connect 過慢直接中斷，不等滿 120 秒
+      ② 指數退避（5s → 20s → 60s）：避免連線風暴，給 API 服務器恢復時間
+      ③ 最多重試 5 次（逾時類錯誤）/ 3 次（其他 HTTP 錯誤）
+      ④ ConnectTimeout 與 ReadTimeout 分開處理，記錄更清晰
     """
+    import random
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     req_params = {"dataset": dataset, **params}
 
+    MAX_RETRIES   = 5       # 連線逾時最多重試次數
+    BASE_WAIT     = 5.0     # 指數退避基礎秒數
+
     while True:
-        for attempt in range(1, 4):
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
                 resp = requests.get(
-                    FINMIND_API_URL, headers=headers, params=req_params, timeout=120
+                    FINMIND_API_URL,
+                    headers=headers,
+                    params=req_params,
+                    timeout=(15, 120),   # (connect_timeout, read_timeout)
                 )
                 if resp.status_code == 402:
                     wait_until_next_hour()
@@ -435,6 +446,32 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
                 time.sleep(delay)
                 return payload.get("data", [])
 
+            except requests.exceptions.ConnectTimeout:
+                # 連線階段超時（DNS 慢或 API 服務器暫時不回應）
+                wait_sec = BASE_WAIT * (3 ** (attempt - 1)) + random.uniform(0, 3)
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"[{dataset}] 連線逾時（第 {attempt}/{MAX_RETRIES} 次），"
+                        f"{wait_sec:.0f} 秒後重試…"
+                    )
+                    time.sleep(wait_sec)
+                else:
+                    logger.error(f"[{dataset}] 連線逾時，已重試 {MAX_RETRIES} 次，跳過")
+                    return []
+
+            except requests.exceptions.ReadTimeout:
+                # 讀取階段超時（資料量過大或 API 服務器處理慢）
+                wait_sec = BASE_WAIT * (2 ** (attempt - 1)) + random.uniform(0, 2)
+                if attempt < MAX_RETRIES:
+                    logger.warning(
+                        f"[{dataset}] 讀取逾時（第 {attempt}/{MAX_RETRIES} 次），"
+                        f"{wait_sec:.0f} 秒後重試…"
+                    )
+                    time.sleep(wait_sec)
+                else:
+                    logger.error(f"[{dataset}] 讀取逾時，已重試 {MAX_RETRIES} 次，跳過")
+                    return []
+
             except requests.HTTPError as http_err:
                 code = http_err.response.status_code if http_err.response is not None else 0
                 if code == 400:
@@ -447,18 +484,24 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
                     wait_until_next_hour()
                     break
                 else:
-                    logger.warning(f"[{dataset}] HTTP {code} 錯誤：{http_err}")
+                    wait_sec = BASE_WAIT * (2 ** (attempt - 1))
+                    logger.warning(f"[{dataset}] HTTP {code} 錯誤，{wait_sec:.0f} 秒後重試：{http_err}")
                     if attempt < 3:
-                        time.sleep(delay * 3)
+                        time.sleep(wait_sec)
                     else:
-                        logger.error(f"[{dataset}] 重試 3 次均失敗，跳過")
+                        logger.error(f"[{dataset}] HTTP 錯誤，已重試 3 次，跳過")
                         return []
+
             except Exception as exc:
-                logger.warning(f"[{dataset}] 第 {attempt} 次請求失敗：{exc}")
-                if attempt < 3:
-                    time.sleep(delay * 3)
+                wait_sec = BASE_WAIT * (2 ** (attempt - 1)) + random.uniform(0, 2)
+                logger.warning(
+                    f"[{dataset}] 第 {attempt}/{MAX_RETRIES} 次請求失敗：{exc}，"
+                    f"{wait_sec:.0f} 秒後重試"
+                )
+                if attempt < MAX_RETRIES:
+                    time.sleep(wait_sec)
                 else:
-                    logger.error(f"[{dataset}] 重試 3 次均失敗，跳過")
+                    logger.error(f"[{dataset}] 已重試 {MAX_RETRIES} 次，跳過")
                     return []
         else:
             break
