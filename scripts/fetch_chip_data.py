@@ -262,7 +262,7 @@ def finmind_get(dataset: str, params: dict, delay: float) -> list:
         for attempt in range(1, 4):
             try:
                 resp = requests.get(
-                    FINMIND_API_URL, headers=headers, params=req_params, timeout=120
+                    FINMIND_API_URL, headers=headers, params=req_params, timeout=(15, 120)
                 )
                 if resp.status_code == 402:
                     wait_until_next_hour()
