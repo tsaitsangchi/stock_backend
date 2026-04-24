@@ -755,6 +755,210 @@ def build_daily_frame(
     )
     return base
 
+
+# ─────────────────────────────────────────────
+# 中期信號特徵工程（Medium-term Signal Features）
+# 補強未來 15~30 天預測所需的三大類信號：
+#   ① 基本面動量 (Fundamental Momentum)
+#   ② 機構資金趨勢 (Institutional Fund Trends)
+#   ③ 市場結構信號 (Market Structure Signals)
+# ─────────────────────────────────────────────
+
+def build_medium_term_features(df: pd.DataFrame, stock_id: str = STOCK_ID) -> pd.DataFrame:
+    """
+    接收 build_daily_frame() 的輸出，計算並附加中期信號特徵欄位。
+
+    ① 基本面動量
+       - rev_yoy_positive_months : 月營收連續 YoY 正成長月數（動量確認）
+       - rev_yoy_3m              : 近 3 個月月營收平均 YoY（短期動量）
+       - gross_margin_qoq        : 最新季毛利率 QoQ 變化方向（+1/0/-1）
+       - gross_margin_qoq_val    : 最新季毛利率 QoQ 實際變化值
+       - eps_accel_proxy         : EPS 近兩季加速度代理（近季/前季 - 1）
+
+    ② 機構資金趨勢
+       - foreign_net_weekly      : 外資近 5 交易日累計淨買超（週化籌碼）
+       - foreign_net_accel       : 外資買超加速度（近週 vs 前週的差值）
+       - margin_chg_rate_5d      : 融資餘額 5 日變化率（散戶擁擠度）
+       - margin_chg_rate_20d     : 融資餘額 20 日變化率（中期散戶趨勢）
+       - short_chg_rate_5d       : 融券餘額 5 日變化率（放空動能）
+
+    ③ 市場結構信號
+       - rs_line_20d             : 個股 vs TAIEX 相對強弱（20日移動比）
+       - rs_line_slope_5d        : RS line 5 日斜率（趨勢加速/減速）
+       - adr_premium_5d_chg      : TSM ADR 折溢價 5 日變化（外資外部觀點）
+       - tx_oi_direction_5d      : 台指期未平倉量 5 日方向（+1/-1/0）
+       - tx_oi_chg_5d            : 台指期未平倉量 5 日累計變化（絕對量）
+
+    回傳：原 df 加上上述欄位（無法計算時為 NaN）
+    """
+    out = df.copy()
+
+    # ─────────────────────────────────────────────
+    # ① 基本面動量
+    # ─────────────────────────────────────────────
+
+    # 月營收連續 YoY 正成長月數（最多回溯 24 個月）
+    if "revenue" in out.columns:
+        rev = out["revenue"].copy()
+        yoy = rev / rev.shift(252) - 1          # 用交易日估算：252 日 ≈ 12 個月
+        yoy_pos = (yoy > 0).astype(float)
+
+        # 連續正成長月數（每日更新版本：rolling 計算最近 N 個非 NaN 均為正）
+        def _consec_positive(s: pd.Series, max_look: int = 504) -> pd.Series:
+            """回傳每個日期為止連續正值的天數（用日線代替月線）"""
+            result = pd.Series(np.nan, index=s.index)
+            vals = s.values
+            for i in range(len(vals)):
+                if np.isnan(vals[i]):
+                    continue
+                cnt = 0
+                for j in range(i, max(i - max_look, -1), -1):
+                    if np.isnan(vals[j]):
+                        break
+                    if vals[j] > 0:
+                        cnt += 1
+                    else:
+                        break
+                result.iloc[i] = cnt
+            return result
+
+        # 用月化版本：每月最後一個交易日重新採樣
+        rev_monthly = rev.resample("ME").last()
+        yoy_monthly = rev_monthly / rev_monthly.shift(12) - 1
+        yoy_pos_monthly = (yoy_monthly > 0).astype(float)
+
+        consec = []
+        for i in range(len(yoy_pos_monthly)):
+            cnt = 0
+            for j in range(i, max(i - 24, -1), -1):
+                if pd.isna(yoy_pos_monthly.iloc[j]):
+                    break
+                if yoy_pos_monthly.iloc[j] > 0:
+                    cnt += 1
+                else:
+                    break
+            consec.append(cnt)
+
+        consec_monthly = pd.Series(consec, index=yoy_pos_monthly.index)
+        # 前向填值到每日 index
+        out["rev_yoy_positive_months"] = consec_monthly.reindex(out.index, method="ffill")
+
+        # 近 3 個月月營收 YoY 均值（前向填值月資料）
+        yoy_monthly_ffill = yoy_monthly.reindex(out.index, method="ffill")
+        out["rev_yoy_3m"] = yoy_monthly_ffill.rolling(63, min_periods=21).mean()
+
+        logger.debug("[medium_term] ① rev_yoy_positive_months, rev_yoy_3m 完成")
+
+    # 季報毛利率 QoQ 變化
+    if "gross_profit" in out.columns and "revenue_stmt" in out.columns:
+        gross_margin_q = (out["gross_profit"] / out["revenue_stmt"].replace(0, np.nan)).copy()
+        # 取季度最後一個非 NaN 值（已前向填值，直接計算季差）
+        # 利用 resample 季末對齊，再前向填值
+        gm_q = gross_margin_q.resample("QE").last().dropna()
+        if len(gm_q) >= 2:
+            gm_qoq_val = gm_q.diff()
+            gm_qoq_dir = np.sign(gm_qoq_val).astype(float)
+            out["gross_margin_qoq"]     = gm_qoq_val.reindex(out.index, method="ffill")
+            out["gross_margin_qoq_dir"] = gm_qoq_dir.reindex(out.index, method="ffill")
+            logger.debug("[medium_term] ① gross_margin_qoq 完成")
+
+    # EPS 加速度代理（近季 / 前季 - 1）
+    if "eps" in out.columns:
+        eps_q = out["eps"].resample("QE").last().dropna()
+        if len(eps_q) >= 2:
+            eps_accel = (eps_q / eps_q.shift(1) - 1).replace([np.inf, -np.inf], np.nan)
+            out["eps_accel_proxy"] = eps_accel.reindex(out.index, method="ffill")
+            logger.debug("[medium_term] ① eps_accel_proxy 完成")
+
+    # ─────────────────────────────────────────────
+    # ② 機構資金趨勢
+    # ─────────────────────────────────────────────
+
+    # 外資連續買超週數（以週化方式，比月化更細緻）
+    if "foreign_net" in out.columns:
+        fn = out["foreign_net"].fillna(0)
+
+        # 外資近 5 交易日（1 週）累計淨買超
+        out["foreign_net_weekly"] = fn.rolling(5, min_periods=1).sum()
+
+        # 外資買超加速度：近週 vs 前週差值
+        week_now  = fn.rolling(5, min_periods=1).sum()
+        week_prev = fn.shift(5).rolling(5, min_periods=1).sum()
+        out["foreign_net_accel"] = week_now - week_prev
+
+        logger.debug("[medium_term] ② foreign_net_weekly, foreign_net_accel 完成")
+
+    # 融資餘額變化率（散戶擁擠度）
+    if "margin_balance" in out.columns:
+        mb = out["margin_balance"].replace(0, np.nan)
+        out["margin_chg_rate_5d"]  = mb.pct_change(5)
+        out["margin_chg_rate_20d"] = mb.pct_change(20)
+        logger.debug("[medium_term] ② margin_chg_rate_5d/20d 完成")
+
+    # 融券餘額變化率（空方動能）
+    if "short_balance" in out.columns:
+        sb = out["short_balance"].replace(0, np.nan)
+        out["short_chg_rate_5d"] = sb.pct_change(5)
+        logger.debug("[medium_term] ② short_chg_rate_5d 完成")
+
+    # ─────────────────────────────────────────────
+    # ③ 市場結構信號
+    # ─────────────────────────────────────────────
+
+    # 相對強弱線（RS Line）：個股 vs TAIEX
+    taiex_col = None
+    for candidate in ["Y9999", "TAIEX", "tw50", "TW50"]:
+        if candidate in out.columns:
+            taiex_col = candidate
+            break
+
+    if taiex_col and "close" in out.columns:
+        stock_ret  = out["close"].pct_change()
+        taiex_ret  = out[taiex_col].pct_change()
+
+        # RS Line = 累積股票超額報酬（相對 TAIEX）
+        rs_daily = (1 + stock_ret).div(1 + taiex_ret.fillna(0))
+        rs_line  = rs_daily.cumprod()
+
+        # 20 日移動平均 RS（平滑雜訊）
+        out["rs_line_20d"]      = rs_line.rolling(20, min_periods=10).mean()
+        # RS line 5 日斜率（正值 = 相對強度在改善）
+        rs_ma = out["rs_line_20d"]
+        out["rs_line_slope_5d"] = rs_ma.diff(5) / rs_ma.shift(5).replace(0, np.nan)
+        logger.debug(f"[medium_term] ③ rs_line（vs {taiex_col}）完成")
+    else:
+        logger.debug("[medium_term] ③ 未找到 TAIEX 欄位，rs_line 跳過")
+
+    # ADR 折溢價趨勢（TSM ADR 相對於台積電本地股）
+    # ADR 折溢價 = TSM ADR 收盤 * 匯率 / (台積電股價 * ADR 換算比例)
+    # TSM 1 ADR = 5 台積電股（換算比例 = 5）
+    tsm_col = next((c for c in out.columns if "tsm" in c.lower() and "close" in c.lower()), None)
+    usd_col = next((c for c in out.columns if "usd_twd" in c.lower()), None)
+
+    if tsm_col and usd_col and "close" in out.columns:
+        tsm_price_twd = out[tsm_col] * out[usd_col] / 5.0    # 換算為台幣、5股換1ADR
+        adr_premium   = tsm_price_twd / out["close"].replace(0, np.nan) - 1
+        out["adr_premium"]        = adr_premium
+        out["adr_premium_5d_chg"] = adr_premium.diff(5)       # 5日變化趨勢
+        out["adr_premium_ma5"]    = adr_premium.rolling(5, min_periods=3).mean()
+        logger.debug("[medium_term] ③ adr_premium 完成")
+    else:
+        logger.debug("[medium_term] ③ 缺少 TSM 或 USD 欄位，adr_premium 跳過")
+
+    # 台指期未平倉方向（OI Direction）
+    if "tx_oi" in out.columns:
+        tx_oi = out["tx_oi"].fillna(method="ffill")
+        out["tx_oi_chg_5d"]       = tx_oi.diff(5)
+        out["tx_oi_direction_5d"] = np.sign(out["tx_oi_chg_5d"]).astype(float)
+        logger.debug("[medium_term] ③ tx_oi_direction 完成")
+
+    logger.info(
+        f"[medium_term] 中期信號特徵完成，新增欄位："
+        f"{[c for c in out.columns if c not in df.columns]}"
+    )
+    return out
+
+
 # ─────────────────────────────────────────────
 # 預測逐日軌跡寫入 (Insert Daily Trajectory)
 # ─────────────────────────────────────────────

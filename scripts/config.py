@@ -835,6 +835,31 @@ FEATURE_GROUPS = {
         "tx_vol_ma_ratio", # 台指期量能相對強度
         "tfo_pcr_volume",  # Put/Call 成交量比（恐慌指標）
         "tfo_pcr_oi",      # Put/Call 未平倉比（機構避險）
+        # ★ 新增（中期信號）
+        "tx_oi_chg_5d",      # 台指期 OI 5日累計變化
+        "tx_oi_direction_5d",# 台指期 OI 方向（+1=多方進場/-1=空方進場）
+    ],
+    # ⑨ 中期信號（Medium-term Signals）─────────────────────────
+    # 補強未來 15~30 天預測的核心信號群
+    "medium_term": [
+        # ① 基本面動量
+        "rev_yoy_positive_months",  # 月營收連續 YoY 正成長月數（動量確認）
+        "rev_yoy_3m",               # 近 3 個月月營收 YoY 均值（短期動量）
+        "gross_margin_qoq",         # 季毛利率 QoQ 實際變化值
+        "gross_margin_qoq_dir",     # 季毛利率 QoQ 方向（+1/0/-1）
+        "eps_accel_proxy",          # EPS 季加速度代理
+        # ② 機構資金趨勢
+        "foreign_net_weekly",       # 外資近 5 日累計淨買超（週化）
+        "foreign_net_accel",        # 外資買超加速度（近週 vs 前週）
+        "margin_chg_rate_5d",       # 融資餘額 5 日變化率（散戶擁擠度）
+        "margin_chg_rate_20d",      # 融資餘額 20 日變化率（中期趨勢）
+        "short_chg_rate_5d",        # 融券餘額 5 日變化率（空方動能）
+        # ③ 市場結構信號
+        "rs_line_20d",              # 個股 vs TAIEX 相對強弱（20日均）
+        "rs_line_slope_5d",         # RS line 5 日斜率（是否在改善）
+        "adr_premium",              # TSM ADR 折溢價（外資外部定價）
+        "adr_premium_5d_chg",       # ADR 折溢價 5 日變化趨勢
+        "adr_premium_ma5",          # ADR 折溢價 5 日均值
     ],
     "us_chain": [], # 佔位，由 get_all_features 動態填充
 }
