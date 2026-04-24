@@ -30,6 +30,7 @@ PHASE_1 = [
     "scripts/fetch_fundamental_data.py",    # 月營收、季報 (季報合併迴圈模式)
     "scripts/fetch_derivative_data.py",     # 台指期、選擇權籌碼
     "scripts/fetch_sponsor_chip_data.py",   # Sponsor: 持股分級、分點、八大行庫、期貨大額OI
+    "scripts/fetch_macro_fundamental_data.py", # Sponsor/Backer: 景氣對策信號、市值比重、產業鏈
 ]
 
 # 建議並行數：3
