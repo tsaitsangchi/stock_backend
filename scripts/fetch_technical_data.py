@@ -676,6 +676,7 @@ def parse_args():
         "--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS,
         help=f"批次請求每段天數（預設 {DEFAULT_CHUNK_DAYS}，避免單次回傳筆數過多）",
     )
+    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
     return parser.parse_args()
 
 

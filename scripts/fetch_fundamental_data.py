@@ -659,7 +659,7 @@ def map_div_row(r: dict) -> tuple:
 # ──────────────────────────────────────────────
 def fetch_quarterly_combined(
     start_date: str, end_date: str, delay: float, force: bool,
-    tables: list,
+    tables: list, stock_ids: list,
 ):
     """
     財報合併迴圈：financial_statements 與 balance_sheet 共享同一支股票迴圈。
@@ -686,7 +686,6 @@ def fetch_quarterly_combined(
         if do_fin: ensure_ddl(conn, DDL_FINANCIAL_STATEMENTS)
         if do_bs:  ensure_ddl(conn, DDL_BALANCE_SHEET)
 
-        stock_ids = get_all_stock_ids(conn)
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         # ① 批次預載兩張表最新日期
@@ -907,6 +906,7 @@ def fetch_month_revenue_per_stock(
 def fetch_month_revenue(
     start_date: str, end_date: str, delay: float, force: bool,
     per_stock: bool, chunk_days: int, batch_threshold: int,
+    stock_ids: list,
 ):
     expected = get_expected_latest_date("month_revenue")
     logger.info(f"=== [month_revenue] 開始抓取（預期最新：{expected}）===")
@@ -914,7 +914,6 @@ def fetch_month_revenue(
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_MONTH_REVENUE)
-        stock_ids = get_all_stock_ids(conn)
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         if per_stock:
@@ -933,7 +932,7 @@ def fetch_month_revenue(
 # ──────────────────────────────────────────────
 # ④ dividend（逐支 + 快取最新日期）
 # ──────────────────────────────────────────────
-def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool):
+def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list):
     expected = get_expected_latest_date("dividend")
     logger.info(f"=== [dividend] 開始抓取（預期最新：{expected}）===")
 
@@ -941,7 +940,6 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool):
     try:
         ensure_ddl(conn, DDL_DIVIDEND)
         migrate_dividend_columns(conn)
-        stock_ids = get_all_stock_ids(conn)
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         # ① 批次預載最新日期
@@ -1042,6 +1040,7 @@ def parse_args():
         "--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS,
         help=f"批次每段天數（預設 {DEFAULT_CHUNK_DAYS}）",
     )
+    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
     return parser.parse_args()
 
 
@@ -1049,7 +1048,12 @@ def main():
     args = parse_args()
     tables = ALL_TABLES if "all" in args.tables else args.tables
 
+    conn = get_db_conn()
+    target_stocks = get_target_stock_ids(conn, args.stock_id)
+    conn.close()
+
     mode_str = "強制重抓" if args.force else "增量模式（依公告週期智慧跳過）"
+    logger.info(f"目標股票數：{len(target_stocks)}")
     logger.info(f"抓取資料表：{tables}")
     logger.info(f"日期區間：{args.start} ~ {args.end}")
     logger.info(f"請求間隔：{args.delay} 秒")
@@ -1066,28 +1070,21 @@ def main():
         # ── 季報：財報 + 資負表（合併或分別）──────────────
         quarterly = [t for t in tables if t in QUARTERLY_TABLES]
         if quarterly:
-            if args.per_table:
-                # 分別執行（--per-table 舊行為）
-                for t in quarterly:
-                    fetch_quarterly_combined(
-                        args.start, args.end, args.delay, args.force, [t]
-                    )
-            else:
-                # 合併迴圈（預設）
-                fetch_quarterly_combined(
-                    args.start, args.end, args.delay, args.force, quarterly
-                )
+            fetch_quarterly_combined(
+                args.start, args.end, args.delay, args.force, quarterly, target_stocks
+            )
 
         # ── 月營收（批次或逐支）────────────────────────────
         if "month_revenue" in tables:
             fetch_month_revenue(
                 args.start, args.end, args.delay, args.force,
                 args.per_stock, args.chunk_days, args.batch_threshold,
+                target_stocks
             )
 
         # ── 股利（逐支 + 快取）─────────────────────────────
         if "dividend" in tables:
-            fetch_dividend(args.start, args.end, args.delay, args.force)
+            fetch_dividend(args.start, args.end, args.delay, args.force, target_stocks)
 
     except psycopg2.OperationalError as e:
         logger.error(f"PostgreSQL 連線失敗：{e}")
