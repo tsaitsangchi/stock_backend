@@ -31,6 +31,7 @@ PHASE_1 = [
     "scripts/fetch_derivative_data.py",     # 台指期、選擇權籌碼
     "scripts/fetch_sponsor_chip_data.py",   # Sponsor: 持股分級、分點、八大行庫、期貨大額OI
     "scripts/fetch_macro_fundamental_data.py", # Sponsor/Backer: 景氣對策信號、市值比重、產業鏈
+    "scripts/fetch_derivative_sentiment_data.py", # Sponsor/Backer: 選擇權大額OI、恐懼貪婪指數、鉅額交易
 ]
 
 # 建議並行數：3
