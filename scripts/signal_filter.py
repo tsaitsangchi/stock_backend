@@ -69,10 +69,11 @@ FILTER_CONFIG = {
 
 # 各維度的權重（用於綜合評分，0~100）
 FILTER_WEIGHTS = {
-    "prob":        35,   # 模型機率（最重要）
-    "regime":      25,   # Regime 適合度
-    "chip":        25,   # 機構籌碼
-    "fundamental": 15,   # 基本面動量
+    "prob":            35,   # 模型機率（最重要）
+    "regime":          20,   # Regime 適合度
+    "chip":            20,   # 機構籌碼
+    "fundamental":     15,   # 基本面動量
+    "sentiment_macro": 10,   # 恐懼貪婪與大額選擇權
 }
 
 
@@ -229,10 +230,12 @@ class SignalFilter:
         accel_ok   = foreign_accel >= self.cfg["min_foreign_net_accel"]
         passed     = weekly_ok and accel_ok
 
-        # 評分：週淨買超正負 + 加速度方向
+        smart_sync = int(latest.get("smart_money_sync_buy", 0))
+
+        # 評分：週淨買超正負 + 加速度方向 + 聰明錢同步
         weekly_score = 1.0 if foreign_weekly > 1e8 else (0.5 if foreign_weekly > 0 else 0.0)
         accel_score  = 1.0 if foreign_accel > 0 else 0.3
-        score = weekly_score * 0.6 + accel_score * 0.4
+        score = (weekly_score * 0.5 + accel_score * 0.3 + smart_sync * 0.2)
 
         detail = (f"外資週淨買超={foreign_weekly/1e8:.1f}億  "
                   f"加速度={'↑' if foreign_accel > 0 else '↓'}")
@@ -267,6 +270,29 @@ class SignalFilter:
         gm_str  = f"GM_QoQ={gm_qoq:+.1%}" if not np.isnan(gm_qoq) else "GM_QoQ=N/A"
         detail  = f"{rev_str}  {gm_str}"
         return FilterDimension("④基本面動量", passed, score, detail, rev_pos_months)
+
+    def _eval_sentiment_macro(self, df_feat: pd.DataFrame) -> FilterDimension:
+        """⑤ 情緒與宏觀維度"""
+        latest = df_feat.iloc[-1]
+        
+        fg_score = float(latest.get("fear_greed_score", 50))
+        pc_ratio = float(latest.get("put_call_large_ratio", 1.0))
+        macro_color = str(latest.get("macro_monitoring_color", "N/A"))
+        
+        # 簡單評估：沒有極端貪婪，且 Put/Call 比率沒有極端看空 (<1.2)
+        passed = (fg_score <= 75) and (pc_ratio < 1.2)
+        
+        # 評分
+        score = 0.5
+        if fg_score < 25: score += 0.3
+        elif fg_score > 75: score -= 0.3
+        
+        if macro_color == 'blue': score += 0.2
+        elif macro_color == 'red': score -= 0.2
+        
+        score = min(1.0, max(0.0, score))
+        detail = f"FG={fg_score:.0f}  P/C={pc_ratio:.2f}  Macro={macro_color}"
+        return FilterDimension("⑤情緒與宏觀", passed, score, detail, fg_score)
 
     # ─────────────────────────────────────────────
     # 主評估函式
@@ -322,15 +348,17 @@ class SignalFilter:
         dim_regime = self._eval_regime(report, df_feat)
         dim_chip  = self._eval_chip(df_feat)
         dim_fund  = self._eval_fundamental(df_feat)
-        dimensions = [dim_prob, dim_regime, dim_chip, dim_fund]
+        dim_smacro = self._eval_sentiment_macro(df_feat)
+        dimensions = [dim_prob, dim_regime, dim_chip, dim_fund, dim_smacro]
 
         # ── 加權綜合評分（0~100）────────────────────────────────
         w = FILTER_WEIGHTS
         overall = (
-            dim_prob.score   * w["prob"]        +
+            dim_prob.score   * w["prob"]         +
             dim_regime.score * w["regime"]       +
             dim_chip.score   * w["chip"]         +
-            dim_fund.score   * w["fundamental"]
+            dim_fund.score   * w["fundamental"]  +
+            dim_smacro.score * w["sentiment_macro"]
         )
 
         # ── 阻斷與強化條件 ───────────────────────────────────────
@@ -348,6 +376,15 @@ class SignalFilter:
         if not dim_regime.passed:
             blocking_reasons.append(f"市場 Regime 不適合進場 ({trend_regime} / vol={vol_20d:.0%})")
 
+        # 懲罰條件
+        is_extreme_greed = int(latest.get("is_extreme_greed", 0))
+        if is_extreme_greed:
+            blocking_reasons.append(f"極度貪婪 (Greed > 75) — 追高風險 (扣減綜合分數)")
+
+        large_holder_change_3m = float(latest.get("large_holder_change_3m", 0))
+        if large_holder_change_3m < -0.05:
+            blocking_reasons.append(f"大戶籌碼顯著流失 ({large_holder_change_3m:+.1%}) — 建議觀望")
+
         # 強化條件（加分項）
         foreign_weekly = float(latest.get("foreign_net_weekly", 0))
         if foreign_weekly > 5e8:
@@ -357,10 +394,26 @@ class SignalFilter:
         eps_accel = float(latest.get("eps_accel_proxy", np.nan))
         if not np.isnan(eps_accel) and eps_accel > 0.1:
             boosting_reasons.append(f"EPS 加速成長 ({eps_accel:+.0%})")
+            
+        is_extreme_fear = int(latest.get("is_extreme_fear", 0))
+        if is_extreme_fear:
+            boosting_reasons.append("極度恐懼 (Fear < 25) — 逢低反向佈局時機")
+            
+        smart_money_sync = int(latest.get("smart_money_sync_buy", 0))
+        if smart_money_sync:
+            boosting_reasons.append("聰明錢護航 (外資與八大行庫同步買超)")
+            
+        macro_color = str(latest.get("macro_monitoring_color", "N/A"))
+        if macro_color == 'blue':
+            boosting_reasons.append("景氣藍燈 — 週期底部")
 
         # ── 最終決策 ─────────────────────────────────────────────
         # 必要條件：模型機率 + 波動率/趨勢 Regime 都必須通過
         must_pass = dim_prob.passed and dim_regime.passed
+
+        # 大戶流失視為強制阻斷
+        if large_holder_change_3m < -0.05:
+            must_pass = False
 
         if must_pass and overall >= 60:
             decision = "LONG"
