@@ -9,7 +9,12 @@ done
 wall "🚀 [系統通知] 87 支重點股票資料已補齊！"
 wall "🚀 [系統通知] 即將啟動模型訓練，並接續啟動全市場資料抓取..."
 
-# 2. 啟動模型訓練 (背景)
+# 2. 更新 Feature Store (特徵庫)
+echo "Updating Feature Store..."
+./venv/bin/python scripts/update_feature_store.py > scripts/outputs/logs/feature_store.log 2>&1
+echo "Feature Store updated."
+
+# 3. 啟動模型訓練 (背景)
 nohup ./venv/bin/python scripts/train_evaluate.py --all > scripts/outputs/logs/train.log 2>&1 &
 echo "Training started."
 
