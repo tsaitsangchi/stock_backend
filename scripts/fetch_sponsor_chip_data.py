@@ -435,9 +435,8 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
 def get_stock_ids(conn, stock_id_arg):
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
-    with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT stock_id FROM stock_info ORDER BY stock_id")
-        return [r[0] for r in cur.fetchall()]
+    from config import STOCK_CONFIGS
+    return list(STOCK_CONFIGS.keys())
 
 
 def parse_args():
