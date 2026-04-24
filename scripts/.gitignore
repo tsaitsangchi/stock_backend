@@ -9,6 +9,7 @@
 !/requirements.txt
 !*.py
 !*.txt
+!*.sh
 
 # 排除快取與特定目錄 (避免意外加入)
 __pycache__/
