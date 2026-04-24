@@ -23,12 +23,13 @@ VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
 PHASE_0 = ["scripts/fetch_stock_info.py"]
 
 PHASE_1 = [
-    "scripts/fetch_technical_data.py",    # 股價、PER (Batch 模式)
-    "scripts/fetch_chip_data.py",         # 三大法人、融資融券
-    "scripts/fetch_international_data.py",# 美股、ADR、匯率
-    "scripts/fetch_macro_data.py",        # 利率、大宗商品
-    "scripts/fetch_fundamental_data.py",  # 月營收、季報 (季報合併迴圈模式)
-    "scripts/fetch_derivative_data.py",   # 台指期、選擇權籌碼
+    "scripts/fetch_technical_data.py",      # 股價、PER (Batch 模式)
+    "scripts/fetch_chip_data.py",           # 三大法人、融資融券
+    "scripts/fetch_international_data.py",  # 美股、ADR、匯率
+    "scripts/fetch_macro_data.py",          # 利率、大宗商品
+    "scripts/fetch_fundamental_data.py",    # 月營收、季報 (季報合併迴圈模式)
+    "scripts/fetch_derivative_data.py",     # 台指期、選擇權籌碼
+    "scripts/fetch_sponsor_chip_data.py",   # Sponsor: 持股分級、分點、八大行庫、期貨大額OI
 ]
 
 # 建議並行數：3
