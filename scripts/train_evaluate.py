@@ -47,7 +47,7 @@ from config import (
     STOCK_CONFIGS, get_all_features
 )
 from data_pipeline import build_daily_frame
-from feature_engineering import build_features
+from feature_engineering import build_features, build_features_with_medium_term
 from models.ensemble_model import RegimeEnsemble
 
 # ── 全域 Warning 過濾（第三方套件雜訊）────────────────────────────────────
@@ -253,11 +253,16 @@ def regime_analysis(
     oof_pred: pd.Series,
 ) -> dict:
     """
-    依市場波動 regime（低波動 / 中波動 / 高波動）分組評估 OOF 預測表現。
+    依市場波動 regime（低波動 / 中波動 / 高波動）+ 趨勢 regime（牛/熊/整理）分組評估 OOF 預測表現。
 
     原理：realized_vol_20d（年化）是代理「市場不確定性」最即時的指標。
       低波動 regime → 趨勢穩定，模型通常較準
       高波動 regime → 震盪/危機，模型最容易衰退（重點監控）
+
+    v2 新增：同時評估趨勢 Regime（bull/bear/sideways）
+      bull  regime → 看漲訊號準確率通常更高
+      bear  regime → 看跌訊號準確率通常更高，但假突破噪音也大
+      sideways     → 訊號品質最低，建議避免操作
 
     回傳 dict：{regime_label: metric_dict}
     """
@@ -277,16 +282,17 @@ def regime_analysis(
     y_reg = df.loc[valid_idx, "target_30d"]
     pred  = oof_pred.loc[valid_idx]
 
-    regimes = {
+    # ── 波動率 Regime ─────────────────────────────────────────────
+    vol_regimes = {
         f"低波動（vol < {vol_low:.0%}）": vol < vol_low,
-        f"中波動（{vol_low:.0%} ≤ vol < {vol_high:.0%}）":
+        f"中波動（{vol_low:.0%} ≤ vol < {vol_high:.0%})":
             (vol >= vol_low) & (vol < vol_high),
         f"高波動（vol ≥ {vol_high:.0%}）": vol >= vol_high,
     }
 
     results = {}
-    logger.info("\n=== Regime 分析（低/中/高波動分群評估）===")
-    for label, mask in regimes.items():
+    logger.info("\n=== Regime 分析（波動率分群）===")
+    for label, mask in vol_regimes.items():
         n = mask.sum()
         if n < 20:
             logger.info(f"  {label}：樣本不足（{n} 筆），略過")
@@ -294,7 +300,6 @@ def regime_analysis(
         try:
             m = evaluate_fold(y_reg[mask], pred[mask])
             results[label] = m
-            # f-string で format spec 内に条件式は使えないため先に文字列化する
             _auc_str = f"{m['auc']:.3f}" if not np.isnan(m['auc']) else " NaN"
             _ic_str  = f"{m['ic']:.3f}"  if not np.isnan(m['ic'])  else " NaN"
             logger.info(
@@ -307,6 +312,55 @@ def regime_analysis(
             )
         except Exception as e:
             logger.warning(f"  {label} 評估失敗：{e}")
+
+    # ── 趨勢 Regime（新增）───────────────────────────────────────
+    if "trend_regime" in df.columns:
+        trend_col = df.loc[valid_idx, "trend_regime"]
+        trend_regimes = {
+            "牛市（bull）": trend_col == "bull",
+            "熊市（bear）": trend_col == "bear",
+            "整理期（sideways）": trend_col == "sideways",
+        }
+        logger.info("\n=== Regime 分析（趨勢分群）===")
+        for label, mask in trend_regimes.items():
+            n = mask.sum()
+            if n < 20:
+                logger.info(f"  {label}：樣本不足（{n} 筆），略過")
+                continue
+            try:
+                m = evaluate_fold(y_reg[mask], pred[mask])
+                results[f"trend_{label}"] = m
+                _auc_str = f"{m['auc']:.3f}" if not np.isnan(m['auc']) else " NaN"
+                logger.info(
+                    f"  {label}（n={n:4d}）｜"
+                    f"DA={m['directional_accuracy']:.3f}  "
+                    f"AUC={_auc_str}  Sharpe={m['sharpe']:.2f}"
+                )
+            except Exception as e:
+                logger.warning(f"  {label} 評估失敗：{e}")
+
+    # ── 多時程共識評估（新增）────────────────────────────────────
+    if "target_consensus_binary" in df.columns:
+        consensus = df.loc[valid_idx, "target_consensus_binary"].astype(float)
+        # 只在三者完全一致（consensus=0.0 或 1.0）時評估：訊號最純淨的子集
+        full_consensus_mask = (consensus == 0.0) | (consensus == 1.0)
+        n_full = full_consensus_mask.sum()
+        if n_full >= 20:
+            try:
+                m_consensus = evaluate_fold(
+                    y_reg[full_consensus_mask],
+                    pred[full_consensus_mask]
+                )
+                results["三時程完全共識"] = m_consensus
+                logger.info(
+                    f"\n=== 多時程共識評估 ==="
+                    f"\n  三者完全一致子集（n={n_full}）｜"
+                    f"DA={m_consensus['directional_accuracy']:.3f}  "
+                    f"Sharpe={m_consensus['sharpe']:.2f}  "
+                    f"（對比全樣本 DA={evaluate_fold(y_reg, pred)['directional_accuracy']:.3f}）"
+                )
+            except Exception as e:
+                logger.warning(f"  多時程共識評估失敗：{e}")
 
     # 高波動 vs 低波動衰退量（最重要的穩定性指標）
     low_key  = [k for k in results if "低波動" in k]
@@ -322,8 +376,6 @@ def regime_analysis(
         results["_da_decay_high_vs_low"] = decay
 
     return results
-
-
 
 
 # ─────────────────────────────────────────────
@@ -790,21 +842,33 @@ def main():
         end_date   = args.end,
     )
 
-    # ── Step 2：特徵工程 ───────────────────────────────────────
-    logger.info("\n[Step 2] 特徵工程…")
+    # ── Step 2：特徵工程（含中期信號 + 趨勢 Regime + 多時程目標）──
+    logger.info("\n[Step 2] 特徵工程（含中期信號特徵）…")
     # ── 根據 stock_id 更新配置 ────────────────────────────
     stock_id = args.stock_id
     config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS["2330"])
-    
+
     # 動態獲取特徵清單
     all_features = get_all_features(stock_id)
-    
+
     # 更新 Regime 閾值
     REGIME_CONFIG["vol_low"] = config["vol_low"]
     REGIME_CONFIG["vol_high"] = config["vol_high"]
 
-    df = build_features(raw, stock_id=stock_id)
+    # ★ 使用包含中期信號的完整特徵工程入口
+    df = build_features_with_medium_term(raw, stock_id=stock_id)
     logger.info(f"  特徵框架：{len(df):,} 天 × {df.shape[1]} 欄")
+
+    # ── 多時程共識統計 ────────────────────────────────────
+    if "target_consensus_binary" in df.columns:
+        consensus_rate = df["target_consensus_binary"].mean()
+        logger.info(f"  多時程共識上漲率：{consensus_rate:.2%}（15/21/30 天三者多數決）")
+        for h in (15, 21, 30):
+            col = f"target_{h}d_binary"
+            if col in df.columns:
+                rate = df[col].astype(float).mean()
+                logger.info(f"    target_{h}d_binary 上漲率：{rate:.2%}")
+
 
     # ── Step 3：Walk-Forward CV（含 Meta-Learner 訓練）─────────
     logger.info("\n[Step 3] Purged Walk-Forward CV + Meta-Learner 訓練…")

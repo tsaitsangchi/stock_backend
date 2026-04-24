@@ -2,7 +2,11 @@
 feature_engineering.py — 特徵工程層
 依第一性原則 5 大類特徵，基於 build_daily_frame() 的輸出建構模型輸入。
 
-輸出：pd.DataFrame，新增 ~100 個特徵欄 + target_30d（回歸）+ direction_30d（分類）
+輸出：pd.DataFrame，新增 ~100 個特徵欄
+   + target_30d（回歸）+ direction_30d（分類）+ target_binary（二元）
+   + 多時程目標：target_15d / target_21d / target_30d（漲 X% 的二元分類）
+   + 趨勢 Regime 標籤：trend_regime（bull/bear/sideways）
+   + 中期信號特徵（由 build_medium_term_features 計算後透過 build_features_with_medium_term 整合）
 """
 
 from __future__ import annotations
@@ -556,7 +560,138 @@ def add_us_chain_features(df: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID) ->
 
 
 # ─────────────────────────────────────────────
-# 目標變數
+# 趨勢 Regime 偵測（新增）
+# ─────────────────────────────────────────────
+
+def add_trend_regime_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    偵測趨勢 Regime（牛市/熊市/整理期），補充現有的波動率 Regime。
+
+    波動率 Regime（已有）：衡量「市場動盪程度」
+    趨勢 Regime（新增）  ：衡量「市場方向性」
+
+    合併兩者使模型能理解：
+      - 低波動 + 牛市 → 最佳進場環境（訊號可信度最高）
+      - 高波動 + 熊市 → 保守或空倉（訊號可信度最低）
+      - 整理期         → 避免頻繁操作（小幅雜訊多）
+
+    趨勢判斷邏輯（多重驗證）：
+      price_vs_ma120 > +5%  AND ma20 > ma50  → 牛市
+      price_vs_ma120 < -5%  AND ma20 < ma50  → 熊市
+      其餘                                    → 整理期
+
+    輸出欄位：
+      trend_regime        : 'bull' / 'bear' / 'sideways'（字串）
+      trend_regime_int    : 1 / -1 / 0（整數，供模型使用）
+      trend_strength      : ma20/ma50 比值（連續，衡量趨勢強度）
+      price_vs_ma120      : 股價偏離 120 日均線百分比
+      bull_bear_slope_20d : 20 日股價斜率（正=上升趨勢）
+    """
+    c = df["close"]
+
+    # 若這些欄位在 add_technical_features 中已計算則複用
+    ma20  = df["ma_20"]  if "ma_20"  in df.columns else c.rolling(20).mean()
+    ma50  = df["ma_50"]  if "ma_50"  in df.columns else c.rolling(50).mean()
+    ma120 = df["ma_120"] if "ma_120" in df.columns else c.rolling(120).mean()
+
+    # 趨勢強度指標
+    df["trend_strength"]    = ma20 / ma50.replace(0, np.nan) - 1
+    df["price_vs_ma120"]    = c / ma120.replace(0, np.nan) - 1
+
+    # 20 日股價斜率（OLS 正規化斜率）
+    log_c = np.log(c.replace(0, np.nan))
+    df["bull_bear_slope_20d"] = log_c.diff(20) / 20   # 平均每日 log 報酬率
+
+    # 趨勢 Regime 分類（三重條件）
+    is_bull = (
+        (df["price_vs_ma120"] > 0.05) &    # 股價在 120 日均線以上 5%
+        (ma20 > ma50)                        # 短均線 > 長均線（黃金交叉）
+    )
+    is_bear = (
+        (df["price_vs_ma120"] < -0.05) &   # 股價在 120 日均線以下 5%
+        (ma20 < ma50)                        # 短均線 < 長均線（死亡交叉）
+    )
+
+    trend_regime_int = pd.Series(0, index=df.index, dtype=int)   # 預設整理期
+    trend_regime_int[is_bull] = 1
+    trend_regime_int[is_bear] = -1
+
+    df["trend_regime_int"] = trend_regime_int
+    df["trend_regime"]     = trend_regime_int.map({1: "bull", -1: "bear", 0: "sideways"})
+
+    # 複合 Regime 標籤（趨勢 × 波動率，供詳細分析用）
+    if "realized_vol_20d" in df.columns:
+        vol = df["realized_vol_20d"]
+        vol_regime = pd.cut(
+            vol,
+            bins=[-np.inf, 0.20, 0.40, np.inf],
+            labels=["low_vol", "mid_vol", "high_vol"],
+        ).astype(str)
+        df["compound_regime"] = trend_regime_int.map(
+            {1: "bull", -1: "bear", 0: "sideways"}
+        ) + "_" + vol_regime
+
+    logger.debug("[trend_regime] 趨勢 Regime 特徵完成")
+    return df
+
+
+# ─────────────────────────────────────────────
+# 多時程目標變數（新增）
+# ─────────────────────────────────────────────
+
+def add_multi_horizon_targets(
+    df: pd.DataFrame,
+    horizons: tuple[int, ...] = (15, 21, 30),
+    threshold_pct: float = 0.02,         # 2% = 視為「有效上漲」的最低門檻
+) -> pd.DataFrame:
+    """
+    為多個時間視窗建立二元分類目標：「N 天後是否上漲超過 threshold_pct」
+
+    設計理念：
+      - 將連續報酬率轉換為二元分類，提升訊號純淨度
+      - 同時訓練 15/21/30 天，取三者共識方向（多數決）降低噪音
+      - threshold_pct 篩除橫盤期（±2% 視為無方向性），提升訊號品質
+
+    輸出欄位：
+      target_{n}d_binary : 1（上漲 > threshold）/ 0（其他）
+      target_{n}d_return : 未來 N 日的連續對數報酬率（回歸輔助用）
+      target_consensus   : 15/21/30 天三者共識（多數決，0.0~1.0）
+    """
+    c = df["close"]
+    binary_cols = []
+
+    for h in horizons:
+        future_return = np.log(c.shift(-h) / c)
+        col_binary = f"target_{h}d_binary"
+        col_return = f"target_{h}d_return"
+
+        # 二元分類：漲幅 > threshold → 1，否則 → 0，NaN 保留
+        df[col_return] = future_return
+        df[col_binary] = (
+            (future_return > np.log(1 + threshold_pct)).astype("Int64")
+        )
+        # 最後 h 筆 NaN
+        df.loc[df.index[-h:], col_binary] = pd.NA
+        df.loc[df.index[-h:], col_return] = np.nan
+
+        binary_cols.append(col_binary)
+        logger.debug(f"[multi_horizon] target_{h}d_binary 完成 (threshold={threshold_pct:.1%})")
+
+    # 多時程共識：三者多數決（上漲票數 / 總票數）
+    binary_mat = df[binary_cols].astype(float)
+    df["target_consensus"] = binary_mat.mean(axis=1)   # 0.0, 0.33, 0.67, 1.0
+    df["target_consensus_binary"] = (df["target_consensus"] >= 0.5).astype("Int64")
+
+    logger.info(
+        f"[multi_horizon] 多時程目標完成：horizons={horizons}  "
+        f"threshold={threshold_pct:.1%}  共識上漲率="
+        f"{df['target_consensus_binary'].mean():.2%}"
+    )
+    return df
+
+
+# ─────────────────────────────────────────────
+# 目標變數（原有）
 # ─────────────────────────────────────────────
 
 def add_targets(df: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
@@ -610,6 +745,10 @@ def add_commodity_features(df: pd.DataFrame) -> pd.DataFrame:
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
+
+    v2 新增：
+      - add_trend_regime_features()  ：趨勢 Regime 偵測（牛市/熊市/整理期）
+      - add_multi_horizon_targets()  ：多時程二元目標（15/21/30 天）
     """
     logger.info("=== 開始特徵工程 ===")
     df = raw.copy()
@@ -625,7 +764,6 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
 
     df = add_fundamental_features(df)
     logger.info(f"  基本面脈衝特徵完成，shape={df.shape}")
-
 
     df = add_valuation_features(df)
     logger.info(f"  估值錨點特徵完成，shape={df.shape}")
@@ -648,8 +786,17 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     df = add_volatility_clustering_features(df)
     logger.info(f"  波動率聚類特徵完成，shape={df.shape}")
 
+    # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
+    df = add_trend_regime_features(df)
+    logger.info(f"  趨勢 Regime 特徵完成，shape={df.shape}")
+
+    # ── 舊版目標（向後兼容）──────────────────────────────────
     df = add_targets(df, HORIZON)
     logger.info(f"  目標變數完成，shape={df.shape}")
+
+    # ── 新增：多時程二元目標（15/21/30 天）───────────────────
+    df = add_multi_horizon_targets(df, horizons=(15, 21, 30), threshold_pct=0.02)
+    logger.info(f"  多時程目標完成，shape={df.shape}")
 
     # 推論時不能移除最後的 HORIZON 天，因為我們要預測未來
     if not for_inference:
@@ -666,7 +813,15 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
 
     # 移除極端值（±5σ clip），只對數值型浮點欄套用
     # 注意：絕對股價與成交量等非平穩序列（Non-stationary data）絕不可 clip，否則會切斷創新高的最新價格！
-    exclude_clip_cols = {"target_30d", "direction_30d", "target_binary", "close", "open", "high", "low", "volume"}
+    exclude_clip_cols = {
+        "target_30d", "direction_30d", "target_binary", "target_consensus",
+        "target_consensus_binary", "close", "open", "high", "low", "volume",
+        "trend_regime", "trend_regime_int", "compound_regime",
+    }
+    # 多時程目標也排除 clip
+    exclude_clip_cols |= {f"target_{h}d_binary" for h in (15, 21, 30)}
+    exclude_clip_cols |= {f"target_{h}d_return" for h in (15, 21, 30)}
+
     for col in df.columns:
         if col in exclude_clip_cols:
             continue
@@ -677,6 +832,36 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
 
     logger.info(f"=== 特徵工程完成：{len(df):,} 筆 × {df.shape[1]} 欄 ===")
     return df
+
+
+def build_features_with_medium_term(
+    raw: pd.DataFrame,
+    stock_id: str = DEFAULT_STOCK_ID,
+    for_inference: bool = False,
+) -> pd.DataFrame:
+    """
+    完整特徵工程入口（含中期信號）。
+
+    流程：
+      1. data_pipeline.build_medium_term_features()  → 計算 15 個中期信號特徵
+      2. build_features()                             → 全部特徵工程（含趨勢 Regime + 多時程目標）
+
+    這是推薦的訓練入口，用法：
+        from data_pipeline import build_daily_frame, build_medium_term_features
+        from feature_engineering import build_features_with_medium_term
+
+        raw = build_daily_frame(stock_id="2330")
+        df  = build_features_with_medium_term(raw, stock_id="2330")
+    """
+    try:
+        from data_pipeline import build_medium_term_features
+        raw_enhanced = build_medium_term_features(raw, stock_id=stock_id)
+        logger.info("[pipeline] 中期信號特徵已整合")
+    except Exception as e:
+        logger.warning(f"[pipeline] 中期信號特徵計算失敗，略過：{e}")
+        raw_enhanced = raw
+
+    return build_features(raw_enhanced, stock_id=stock_id, for_inference=for_inference)
 
 
 if __name__ == "__main__":
