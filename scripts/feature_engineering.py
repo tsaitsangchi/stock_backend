@@ -742,6 +742,48 @@ def add_commodity_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_sponsor_chip_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Sponsor/Backer 進階籌碼特徵：大戶、八大行庫、鉅額交易"""
+    # 1. 大戶籌碼集中度：近 3 個月持股比例變化率
+    if "large_holder_pct" in df.columns:
+        df["large_holder_change_3m"] = df["large_holder_pct"] - df["large_holder_pct"].shift(60)
+        df["large_holder_change_1m"] = df["large_holder_pct"] - df["large_holder_pct"].shift(20)
+
+    # 2. 聰明錢護航指標：外資與八大行庫是否同步買超
+    if "eight_banks_net" in df.columns and "foreign_net" in df.columns:
+        df["smart_money_sync_buy"] = ((df["foreign_net"] > 0) & (df["eight_banks_net"] > 0)).astype(int)
+        df["smart_money_sync_sell"] = ((df["foreign_net"] < 0) & (df["eight_banks_net"] < 0)).astype(int)
+        df["eight_banks_net_roll_5"] = df["eight_banks_net"].rolling(5).sum()
+
+    # 3. 鉅額交易淨額佔比
+    if "block_net" in df.columns and "volume" in df.columns:
+        df["block_trade_net_ratio"] = df["block_net"] / (df["volume"] * 1000 + 1)
+        df["block_net_roll_5"] = df["block_net"].rolling(5).sum()
+        
+    return df
+
+def add_sentiment_macro_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Sponsor/Backer 進階情緒與宏觀特徵：選擇權大戶、恐懼貪婪、景氣對策"""
+    # 1. 選擇權大額 OI Put/Call Ratio
+    if "put_top10_oi" in df.columns and "call_top10_oi" in df.columns:
+        df["put_call_large_ratio"] = df["put_top10_oi"] / (df["call_top10_oi"] + 1)
+        df["put_call_large_ratio_diff"] = df["put_call_large_ratio"].diff()
+
+    # 2. 恐懼與貪婪指數
+    if "fear_greed_score" in df.columns:
+        df["fear_greed_roll_5"] = df["fear_greed_score"].rolling(5).mean()
+        df["is_extreme_fear"] = (df["fear_greed_score"] < 25).astype(int)
+        df["is_extreme_greed"] = (df["fear_greed_score"] > 75).astype(int)
+
+    # 3. 景氣對策信號與大盤市值比重
+    if "macro_monitoring_score" in df.columns:
+        df["macro_score_diff"] = df["macro_monitoring_score"].diff()
+    if "market_weight_pct" in df.columns:
+        df["market_weight_diff"] = df["market_weight_pct"].diff()
+
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -776,6 +818,12 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
 
     df = add_us_chain_features(df, stock_id)
     logger.info(f"  美股供應鏈特徵完成，shape={df.shape}")
+
+    df = add_sponsor_chip_features(df)
+    logger.info(f"  進階籌碼特徵完成，shape={df.shape}")
+
+    df = add_sentiment_macro_features(df)
+    logger.info(f"  進階情緒特徵完成，shape={df.shape}")
 
     df = add_event_features(df)
     logger.info(f"  事件驅動特徵完成，shape={df.shape}")

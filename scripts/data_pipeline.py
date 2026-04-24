@@ -645,6 +645,99 @@ def load_us_stocks(
     return wide
 
 
+# ── Sponsor / Backer 進階資料 ────────────────────────────────
+
+def load_holding_shares(stock_id: str) -> pd.DataFrame:
+    sql = """
+        SELECT date, SUM(percent)::float AS large_holder_pct
+        FROM holding_shares_per
+        WHERE stock_id = %s AND CAST(level AS INTEGER) >= 15
+        GROUP BY date
+        ORDER BY date
+    """
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_eight_banks(stock_id: str) -> pd.DataFrame:
+    sql = """
+        SELECT date, buy AS eight_banks_buy, sell AS eight_banks_sell,
+               (buy - sell) AS eight_banks_net
+        FROM eight_banks
+        WHERE stock_id = %s
+        ORDER BY date
+    """
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_business_indicator() -> pd.DataFrame:
+    sql = """
+        SELECT date, monitoring::float AS macro_monitoring_score, 
+               monitoring_color AS macro_monitoring_color
+        FROM business_indicator
+        ORDER BY date
+    """
+    df = _query(sql)
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_market_value_weight(stock_id: str) -> pd.DataFrame:
+    sql = """
+        SELECT date, weight_per::float AS market_weight_pct
+        FROM market_value_weight
+        WHERE stock_id = %s
+        ORDER BY date
+    """
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_fear_greed_index() -> pd.DataFrame:
+    sql = """
+        SELECT date, fear_greed::float AS fear_greed_score,
+               fear_greed_emotion
+        FROM fear_greed_index
+        ORDER BY date
+    """
+    df = _query(sql)
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_options_large_oi() -> pd.DataFrame:
+    sql = """
+        SELECT date, 
+               SUM(CASE WHEN put_call = 'Call' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS call_top10_oi,
+               SUM(CASE WHEN put_call = 'Put' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS put_top10_oi
+        FROM options_large_oi
+        WHERE option_id = 'TXO' AND contract_type = 'All'
+        GROUP BY date
+        ORDER BY date
+    """
+    df = _query(sql)
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_block_trading(stock_id: str) -> pd.DataFrame:
+    sql = """
+        SELECT date, SUM(buy)::float AS block_buy, SUM(sell)::float AS block_sell, SUM(buy - sell)::float AS block_net
+        FROM block_trading
+        WHERE stock_id = %s
+        GROUP BY date
+        ORDER BY date
+    """
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+
 # ─────────────────────────────────────────────
 # 主合併函式
 # ─────────────────────────────────────────────
@@ -701,6 +794,14 @@ def build_daily_frame(
         )),
         # ── 大宗商品（新增）────────────────────────────────
         ("commodities",    load_commodities()),
+        # ── Sponsor 進階特徵（新增）────────────────────────
+        ("holding",        load_holding_shares(stock_id)),
+        ("eight_banks",    load_eight_banks(stock_id)),
+        ("business_ind",   load_business_indicator()),
+        ("market_weight",  load_market_value_weight(stock_id)),
+        ("fear_greed",     load_fear_greed_index()),
+        ("options_large",  load_options_large_oi()),
+        ("block_trade",    load_block_trading(stock_id)),
     ]
     for name, df in daily_sources:
         if df.empty:
