@@ -512,7 +512,7 @@ conn_ref = [None]
 # ──────────────────────────────────────────────
 def fetch_both_per_stock(
     start_date: str, end_date: str, delay: float, force: bool,
-    tables: list,
+    tables: list, stock_id: str = None,
 ):
     """
     逐支股票模式（--per-stock）。
@@ -524,7 +524,12 @@ def fetch_both_per_stock(
 
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-        stock_ids = get_all_stock_ids(conn)
+        
+        if stock_id:
+            stock_ids = [s.strip() for s in stock_id.split(",")]
+        else:
+            stock_ids = get_all_stock_ids(conn)
+            
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         # ③ 預載兩張表的最新日期（各一條 SQL）
@@ -590,7 +595,7 @@ def fetch_both_per_stock(
 # ──────────────────────────────────────────────
 def fetch_both_batch(
     start_date: str, end_date: str, delay: float, force: bool,
-    tables: list, chunk_days: int, batch_threshold: int,
+    tables: list, chunk_days: int, batch_threshold: int, stock_id: str = None,
 ):
     """
     批次模式（預設）。
@@ -601,9 +606,14 @@ def fetch_both_batch(
 
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-        stock_ids = get_all_stock_ids(conn)
+        
+        if stock_id:
+            stock_ids = [s.strip() for s in stock_id.split(",")]
+        else:
+            stock_ids = get_all_stock_ids(conn)
+            
         valid_set = set(stock_ids)
-        logger.info(f"stock_info 共 {len(valid_set)} 支有效股票")
+        logger.info(f"目標清單共 {len(valid_set)} 支有效股票")
 
         if "stock_price" in tables:
             logger.info("=== [stock_price] 批次模式 ===")
@@ -698,12 +708,12 @@ def main():
     try:
         if args.per_stock:
             # ② 合併迴圈逐支模式
-            fetch_both_per_stock(args.start, args.end, args.delay, args.force, tables)
+            fetch_both_per_stock(args.start, args.end, args.delay, args.force, tables, args.stock_id)
         else:
             # ① 批次模式
             fetch_both_batch(
                 args.start, args.end, args.delay, args.force,
-                tables, args.chunk_days, args.batch_threshold,
+                tables, args.chunk_days, args.batch_threshold, args.stock_id,
             )
     except psycopg2.OperationalError as e:
         logger.error(f"PostgreSQL 連線失敗：{e}")

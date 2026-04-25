@@ -133,12 +133,41 @@ def ensure_ddl(conn):
         """)
     conn.commit()
 
-def fetch_interest_rate(conn, start_date, end_date):
+def get_latest_date(conn, table: str, id_col: str, data_id: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT MAX(date) FROM {table} WHERE {id_col} = %s",
+            (data_id,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].strftime("%Y-%m-%d")
+        return None
+
+def resolve_start(conn, table: str, id_col: str, data_id: str, global_start: str, force: bool):
+    if force:
+        return global_start
+    
+    latest = get_latest_date(conn, table, id_col, data_id)
+    if latest is None:
+        return global_start
+    
+    next_day = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    if next_day > date.today().strftime("%Y-%m-%d"):
+        return None
+    return max(next_day, global_start)
+
+def fetch_interest_rate(conn, start_date, end_date, force=False):
     logger.info("=== 抓取 InterestRate ===")
     countries = ["FED", "BOJ", "ECB", "PBOC"]
     total = 0
     for country in countries:
-        data = finmind_get("InterestRate", {"data_id": country, "start_date": start_date, "end_date": end_date})
+        actual_start = resolve_start(conn, "interest_rate", "country", country, start_date, force)
+        if not actual_start:
+            logger.info(f"  [{country}] 已是最新，跳過")
+            continue
+            
+        data = finmind_get("InterestRate", {"data_id": country, "start_date": actual_start, "end_date": end_date})
         if data:
             rows = [(r["date"], r["country"], r.get("full_country_name"), r["interest_rate"]) for r in data]
             with conn.cursor() as cur:
@@ -148,15 +177,20 @@ def fetch_interest_rate(conn, start_date, end_date):
                 """, rows)
             conn.commit()
             total += len(rows)
-            logger.info(f"  [{country}] 寫入 {len(rows)} 筆")
+            logger.info(f"  [{country}] {actual_start} ~ {end_date} 寫入 {len(rows)} 筆")
     return total
 
-def fetch_exchange_rate(conn, start_date, end_date):
+def fetch_exchange_rate(conn, start_date, end_date, force=False):
     logger.info("=== 抓取 ExchangeRate ===")
     currencies = ["USD", "JPY", "EUR"]
     total = 0
     for curr in currencies:
-        data = finmind_get("ExchangeRate", {"data_id": curr, "start_date": start_date, "end_date": end_date})
+        actual_start = resolve_start(conn, "exchange_rate", "currency", curr, start_date, force)
+        if not actual_start:
+            logger.info(f"  [{curr}] 已是最新，跳過")
+            continue
+
+        data = finmind_get("ExchangeRate", {"data_id": curr, "start_date": actual_start, "end_date": end_date})
         if data:
             rows = [(r["date"], r["currency"], r.get("cash_buy"), r.get("cash_sell"), r.get("spot_buy"), r.get("spot_sell")) for r in data]
             with conn.cursor() as cur:
@@ -168,19 +202,23 @@ def fetch_exchange_rate(conn, start_date, end_date):
                 """, rows)
             conn.commit()
             total += len(rows)
-            logger.info(f"  [{curr}] 寫入 {len(rows)} 筆")
+            logger.info(f"  [{curr}] {actual_start} ~ {end_date} 寫入 {len(rows)} 筆")
     return total
 
-def fetch_bond_yield(conn, start_date, end_date):
+def fetch_bond_yield(conn, start_date, end_date, force=False):
     logger.info("=== 抓取 GovernmentBondsYield ===")
     # US 10Y, US 2Y
     bonds = ["United States 10-Year", "United States 2-Year"]
     total = 0
     for bid in bonds:
-        data = finmind_get("GovernmentBondsYield", {"data_id": bid, "start_date": start_date, "end_date": end_date})
+        short_id = "US10Y" if "10-Year" in bid else "US2Y"
+        actual_start = resolve_start(conn, "bond_yield", "bond_id", short_id, start_date, force)
+        if not actual_start:
+            logger.info(f"  [{short_id}] 已是最新，跳過")
+            continue
+
+        data = finmind_get("GovernmentBondsYield", {"data_id": bid, "start_date": actual_start, "end_date": end_date})
         if data:
-            # Map "United States 10-Year" -> "US10Y" for easier usage
-            short_id = "US10Y" if "10-Year" in bid else "US2Y"
             rows = [(r["date"], short_id, r["value"]) for r in data]
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(cur, """
@@ -189,21 +227,22 @@ def fetch_bond_yield(conn, start_date, end_date):
                 """, rows)
             conn.commit()
             total += len(rows)
-            logger.info(f"  [{short_id}] 寫入 {len(rows)} 筆")
+            logger.info(f"  [{short_id}] {actual_start} ~ {end_date} 寫入 {len(rows)} 筆")
     return total
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2010-01-01")
     parser.add_argument("--end", default=date.today().strftime("%Y-%m-%d"))
+    parser.add_argument("--force", action="store_true", help="強制重抓")
     args = parser.parse_args()
 
     conn = get_db_conn()
     ensure_ddl(conn)
     
-    fetch_interest_rate(conn, args.start, args.end)
-    fetch_exchange_rate(conn, args.start, args.end)
-    fetch_bond_yield(conn, args.start, args.end)
+    fetch_interest_rate(conn, args.start, args.end, args.force)
+    fetch_exchange_rate(conn, args.start, args.end, args.force)
+    fetch_bond_yield(conn, args.start, args.end, args.force)
     
     conn.close()
     logger.info("Macro data 抓取完成")

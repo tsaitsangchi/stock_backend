@@ -328,8 +328,10 @@ def map_us_stock_row(r: dict) -> tuple:
     USStockPrice API 欄位（大寫）→ DB 欄位（小寫）
     API: date, stock_id, Adj_Close, Close, High, Low, Open, Volume
     """
+    # 標準化日期為 YYYY-MM-DD
+    std_date = datetime.strptime(str(r["date"]), "%Y-%m-%d %H:%M:%S" if " " in str(r["date"]) else "%Y-%m-%d").strftime("%Y-%m-%d")
     return (
-        r["date"],
+        std_date,
         r["stock_id"],
         safe_float(r.get("Adj_Close")),
         safe_float(r.get("Close")),
@@ -345,8 +347,10 @@ def map_crude_oil_row(r: dict) -> tuple:
     CrudeOilPrices API 欄位 → DB
     API: date, name, price
     """
+    # 標準化日期為 YYYY-MM-DD
+    std_date = datetime.strptime(str(r["date"]), "%Y-%m-%d %H:%M:%S" if " " in str(r["date"]) else "%Y-%m-%d").strftime("%Y-%m-%d")
     return (
-        r["date"],
+        std_date,
         r["name"],
         safe_float(r.get("price")),
     )
@@ -357,8 +361,10 @@ def map_gold_price_row(r: dict) -> tuple:
     GoldPrice API 欄位 → DB
     API: date, Price（注意大寫 P）
     """
+    # 標準化日期為 YYYY-MM-DD
+    std_date = datetime.strptime(str(r["date"]), "%Y-%m-%d %H:%M:%S" if " " in str(r["date"]) else "%Y-%m-%d").strftime("%Y-%m-%d")
     return (
-        r["date"],
+        std_date,
         safe_float(r.get("Price")),
     )
 
@@ -419,10 +425,13 @@ def fetch_us_stock_price(
             delay,
         )
         if data:
-            rows = [map_us_stock_row(r) for r in data]
             # 依 (date, stock_id) 去重
-            df_dedup = pd.DataFrame(rows).drop_duplicates(subset=[0, 1], keep="last")
-            rows = [tuple(x) for x in df_dedup.values]
+            seen = {}
+            for r in data:
+                row = map_us_stock_row(r)
+                key = (row[0], row[1])
+                seen[key] = row
+            rows = list(seen.values())
             
             bulk_upsert(conn, UPSERT_US_STOCK_PRICE, rows, template)
             total_rows += len(rows)
@@ -462,7 +471,14 @@ def fetch_crude_oil_prices(
             delay,
         )
         if data:
-            rows = [map_crude_oil_row(r) for r in data]
+            # 依 (date, name) 去重
+            seen = {}
+            for r in data:
+                row = map_crude_oil_row(r)
+                key = (row[0], row[1])
+                seen[key] = row
+            rows = list(seen.values())
+
             bulk_upsert(conn, UPSERT_CRUDE_OIL_PRICES, rows, template)
             total_rows += len(rows)
             logger.info(f"  [{oil_id}] 寫入 {len(rows)} 筆")
@@ -492,10 +508,13 @@ def fetch_gold_price(
         delay,
     )
     if data:
-        rows = [map_gold_price_row(r) for r in data]
         # 依 date 去重
-        df_dedup = pd.DataFrame(rows).drop_duplicates(subset=[0], keep="last")
-        rows = [tuple(x) for x in df_dedup.values]
+        seen = {}
+        for r in data:
+            row = map_gold_price_row(r)
+            key = row[0]
+            seen[key] = row
+        rows = list(seen.values())
         
         template = "(%s::date,%s::numeric)"
         bulk_upsert(conn, UPSERT_GOLD_PRICE, rows, template)

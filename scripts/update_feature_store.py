@@ -85,7 +85,7 @@ def main():
                 continue
 
             try:
-                df = build_features_with_medium_term(df, stock_id=stock_id)
+                df = build_features_with_medium_term(df, stock_id=stock_id, for_inference=True)
             except Exception as e:
                 logger.error(f"Failed to calculate features for {stock_id}: {e}")
                 continue

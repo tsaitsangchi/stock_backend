@@ -465,13 +465,17 @@ def get_instrument_ids(delay: float, instrument_type: str) -> list:
 # ──────────────────────────────────────────────
 # futures_daily（期貨日成交）
 # ──────────────────────────────────────────────
-def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: bool):
+def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: bool, target_ids: list = None):
     logger.info("=== [futures_daily] 開始抓取 ===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_FUTURES_DAILY)
 
-        futures_ids = get_instrument_ids(delay, "futures")
+        if target_ids:
+            futures_ids = target_ids
+        else:
+            futures_ids = get_instrument_ids(delay, "futures")
+
         if not futures_ids:
             logger.error("[futures_daily] 商品代碼清單為空，無法繼續")
             return
@@ -541,13 +545,17 @@ def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: boo
 # ──────────────────────────────────────────────
 # option_daily（選擇權日成交）
 # ──────────────────────────────────────────────
-def fetch_option_daily(start_date: str, end_date: str, delay: float, force: bool):
+def fetch_option_daily(start_date: str, end_date: str, delay: float, force: bool, target_ids: list = None):
     logger.info("=== [option_daily] 開始抓取 ===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_OPTION_DAILY)
 
-        option_ids = get_instrument_ids(delay, "options")
+        if target_ids:
+            option_ids = target_ids
+        else:
+            option_ids = get_instrument_ids(delay, "options")
+
         if not option_ids:
             logger.error("[option_daily] 商品代碼清單為空，無法繼續")
             return
@@ -644,6 +652,10 @@ def parse_args():
         "--force", action="store_true",
         help="強制重抓：忽略 DB 已有資料",
     )
+    parser.add_argument(
+        "--ids", nargs="+",
+        help="指定要抓取的商品代碼（例如 TX TFO CDF），若不指定則抓取全部",
+    )
     return parser.parse_args()
 
 
@@ -653,13 +665,16 @@ def main():
 
     mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"
     logger.info(f"抓取資料表：{tables}")
+    if args.ids:
+        logger.info(f"指定商品代碼：{args.ids}")
     logger.info(f"日期區間：{args.start} ~ {args.end}")
     logger.info(f"請求間隔：{args.delay} 秒")
     logger.info(f"執行模式：{mode}")
 
     for table in tables:
         try:
-            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force)
+            # 修改：傳遞 args.ids 給抓取函式
+            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force, args.ids)
         except psycopg2.OperationalError as e:
             logger.error(f"PostgreSQL 連線失敗：{e}")
             sys.exit(1)

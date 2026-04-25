@@ -1151,9 +1151,18 @@ def save_forecast_daily(report: dict) -> None:
             created_at        = CURRENT_TIMESTAMP;
     """
 
+    def to_native(obj):
+        if hasattr(obj, "item"):
+            return obj.item()
+        return obj
+
+    clean_trajectory = []
+    for row in trajectory:
+        clean_trajectory.append({k: to_native(v) for k, v in row.items()})
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.executemany(sql, trajectory)
+            cur.executemany(sql, clean_trajectory)
         conn.commit()
 
     logger.info(
