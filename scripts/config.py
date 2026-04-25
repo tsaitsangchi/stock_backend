@@ -836,7 +836,6 @@ FEATURE_GROUPS = {
         "tfo_pcr_volume",  # Put/Call 成交量比（恐慌指標）
         "tfo_pcr_oi",      # Put/Call 未平倉比（機構避險）
         # ★ 新增（中期信號）
-        "tx_oi_chg_5d",      # 台指期 OI 5日累計變化
         "tx_oi_direction_5d",# 台指期 OI 方向（+1=多方進場/-1=空方進場）
     ],
     # ⑨ 中期信號（Medium-term Signals）─────────────────────────

@@ -29,6 +29,10 @@ from datetime import date, datetime, timedelta
 import psycopg2
 import psycopg2.extras
 import requests
+import urllib3
+
+# 隱藏 InsecureRequestWarning (當 verify=False 時)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -321,24 +325,34 @@ def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
         while chunk_s <= end_d:
             chunk_e = min(chunk_s + timedelta(days=CHUNK - 1), end_d)
             rows = finmind_get(
-                "TaiwanStockShareholdingByBroker",
+                "TaiwanStockTradingDailyReport",
                 {"data_id": sid,
                  "start_date": chunk_s.strftime("%Y-%m-%d"),
                  "end_date":   chunk_e.strftime("%Y-%m-%d")},
                 delay,
             )
             if rows:
+                # 彙總：同日、同股票、同券商的資料合併（去除價格分維度）
+                agg = {}
+                for r in rows:
+                    key = (r.get("date"), sid, str(r.get("securities_trader_id", "")))
+                    buy = safe_int(r.get("buy") or 0)
+                    sell = safe_int(r.get("sell") or 0)
+                    name = r.get("securities_trader", "")
+                    if key not in agg:
+                        agg[key] = {"buy": 0, "sell": 0, "name": name}
+                    agg[key]["buy"] += buy
+                    agg[key]["sell"] += sell
+                
                 records = [
-                    (r.get("date"), sid, str(r.get("broker_id", "")),
-                     r.get("broker_name", ""),
-                     safe_int(r.get("buy")), safe_int(r.get("sell")))
-                    for r in rows
+                    (k[0], k[1], k[2], v["name"], v["buy"], v["sell"])
+                    for k, v in agg.items()
                 ]
                 with conn.cursor() as cur:
                     psycopg2.extras.execute_values(cur, UPSERT_BROKER, records)
                 conn.commit()
                 total += len(records)
-                logger.info(f"  [broker_trades] {sid} {chunk_s}~{chunk_e}: {len(records)} 筆")
+                logger.info(f"  [broker_trades] {sid} {chunk_s}~{chunk_e}: {len(records)} 筆 (彙總自 {len(rows)} 筆)")
 
             chunk_s = chunk_e + timedelta(days=1)
 

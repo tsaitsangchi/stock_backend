@@ -539,10 +539,9 @@ def bulk_upsert(conn, sql: str, rows: list, template: str, page_size: int = 2000
     return len(rows)
 
 
-def get_all_stock_ids(conn, config_only: bool = False) -> list:
-    if config_only:
-        from config import STOCK_CONFIGS
-        return list(STOCK_CONFIGS.keys())
+def get_target_stock_ids(conn, stock_id_arg: str = None) -> list:
+    if stock_id_arg:
+        return [s.strip() for s in stock_id_arg.split(",")]
     from config import STOCK_CONFIGS
     return list(STOCK_CONFIGS.keys())
 

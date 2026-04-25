@@ -386,6 +386,9 @@ def get_feature_matrix(
     df: pd.DataFrame,
     stock_id: str,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
+    # 過濾掉目標變數為 NaN 的行（最後 30 天），因為 XGBoost 不能處理 NaN Label
+    df = df.dropna(subset=["target_30d"])
+    
     all_features = get_all_features(stock_id)
     feat_cols = [c for c in all_features if c in df.columns]
     X = df[feat_cols].copy()
@@ -394,7 +397,7 @@ def get_feature_matrix(
     y_reg = df["target_30d"]
     y_ret = df.get("target_return", df["target_30d"]) # Fallback to % if missing
     # pandas 2.x：y_reg 若含 NaN 不能直接 astype(int)，用 Int64 或先 dropna
-    y_cls = (y_reg > 0).astype("Int64").fillna(0).astype(int)
+    y_cls = (y_reg > 0).astype(int)
     return X, y_reg, y_ret, y_cls
 
 
@@ -458,6 +461,12 @@ def run_walk_forward(
 
     for fold in folds:
         ti, vi, sti = fold.train_idx, fold.val_idx, fold.test_idx
+        
+        # 邊界防護：確保 sti 不會超出 X 的範圍
+        sti = [i for i in sti if i < len(X)]
+        if len(sti) == 0:
+            logger.warning(f"Fold {fold.fold_id} 的測試索引超出範圍，跳過此 Fold")
+            continue
 
         X_tr, y_tr, y_tr_reg, y_tr_ret = X.iloc[ti], y_cls.iloc[ti], y_reg.iloc[ti], y_ret.iloc[ti]
         X_va, y_va, y_va_reg, y_va_ret = X.iloc[vi], y_cls.iloc[vi], y_reg.iloc[vi], y_ret.iloc[vi]
