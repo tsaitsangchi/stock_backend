@@ -28,7 +28,8 @@ import pandas as pd
 
 from config import (
     ALL_FEATURES, HORIZON, MODEL_DIR, OUTPUT_DIR,
-    TFT_PARAMS, EVAL_TARGETS, STOCK_CONFIGS, get_all_features
+    TFT_PARAMS, EVAL_TARGETS, STOCK_CONFIGS, get_all_features,
+    CONFIDENCE_THRESHOLD
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
@@ -88,6 +89,12 @@ def classify_confidence(prob_up: float,
     """
     if macro_shock:
         return "🔴 高不確定（宏觀衝擊）"
+
+    # 八二法則：極端高信心區間
+    if prob_up >= CONFIDENCE_THRESHOLD:
+        return "🔥 強烈買進 (STRONG_BUY)"
+    elif prob_up <= (1 - CONFIDENCE_THRESHOLD):
+        return "❄️ 強烈賣出 (STRONG_SELL)"
 
     abs_signal = abs(prob_up - 0.5) * 2   # 轉換為 0~1 的確定性
     if abs_signal >= 0.4 and model_agreement >= 0.8:

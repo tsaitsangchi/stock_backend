@@ -44,7 +44,7 @@ from sklearn.metrics import roc_auc_score
 from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
     MODEL_DIR, OUTPUT_DIR, REGIME_CONFIG, TFT_PARAMS, WF_CONFIG,
-    STOCK_CONFIGS, get_all_features
+    STOCK_CONFIGS, get_all_features, PARETO_RATIO
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
@@ -385,12 +385,17 @@ def regime_analysis(
 def get_feature_matrix(
     df: pd.DataFrame,
     stock_id: str,
+    feature_list: Optional[list[str]] = None,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
-    # 過濾掉目標變數為 NaN 的行（最後 30 天），因為 XGBoost 不能處理 NaN Label
+    # 過濾掉目標變數為 NaN 的行
     df = df.dropna(subset=["target_30d"])
     
-    all_features = get_all_features(stock_id)
-    feat_cols = [c for c in all_features if c in df.columns]
+    if feature_list is not None:
+        feat_cols = [c for c in feature_list if c in df.columns]
+    else:
+        all_features = get_all_features(stock_id)
+        feat_cols = [c for c in all_features if c in df.columns]
+        
     X = df[feat_cols].copy()
     # inf → NaN → 0（雙重保險：feature_engineering 已清一次，這裡再補一次）
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
@@ -410,6 +415,7 @@ def run_walk_forward(
     stock_id:        str,
     use_tft:         bool = False,
     calibrate_probs: bool = True,
+    feature_list:    Optional[list[str]] = None,
 ) -> dict:
     """
     【第一性原理優化版】完整 Walk-Forward 訓練 + OOF 評估。
@@ -433,7 +439,7 @@ def run_walk_forward(
         "meta_ensemble":  RegimeEnsemble, # 帶有訓練好 Meta 的 ensemble（供最終模型使用）
     }
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id)
+    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
     n = len(df)
 
     _test_window = WF_CONFIG.get("test_window", WF_CONFIG["step_days"])
@@ -680,6 +686,7 @@ def train_final_model(
     stock_id:              str,
     use_tft:               bool = False,
     meta_ensemble_from_cv: Optional[RegimeEnsemble] = None,
+    feature_list:          Optional[list[str]] = None,
 ) -> RegimeEnsemble:
     """
     使用全部資料訓練最終部署模型。
@@ -691,7 +698,7 @@ def train_final_model(
       移植至最終模型，避免在有限的 Hold-Out 上重訓 Meta 導致過擬合。
       CV OOF 的樣本量遠大於 Hold-Out，Meta 在此訓練更穩健。
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id)
+    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
     oos_window = REGIME_CONFIG["oos_window"]   # 預設 504（2 年）
     # 若資料不足 5 年 + 2 年，退回 1 年 Hold-Out
     min_train = 252 * 5
@@ -798,6 +805,25 @@ def train_final_model(
 
 
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# 80/20 Pareto 精煉邏輯
+# ─────────────────────────────────────────────
+
+def select_top_features(importance_df: pd.DataFrame, ratio: float = PARETO_RATIO) -> list[str]:
+    """
+    依據特徵重要性，篩選出貢獻度前 ratio % 的黃金特徵。
+    """
+    n_top = max(10, int(len(importance_df) * ratio))
+    top_features = importance_df.head(n_top).index.tolist()
+    
+    # 強制保留關鍵基礎特徵 (Regime, ADR 等)
+    essential = ["realized_vol_20d", "trend_regime", "adr_premium"]
+    for e in essential:
+        if e not in top_features and e in importance_df.index:
+            top_features.append(e)
+            
+    return top_features
+
 # CLI 入口
 # ─────────────────────────────────────────────
 
@@ -810,6 +836,7 @@ def _parse_args():
     p.add_argument("--wf-only",         action="store_true",        help="只做 Walk-Forward，不訓練最終模型")
     p.add_argument("--no-calibration",  action="store_true",        help="停用 Isotonic Calibration")
     p.add_argument("--step-days",       type=int,                   help="Walk-Forward 步進天數（覆蓋 config.RETRAIN_FREQ）")
+    p.add_argument("--fast-mode",       action="store_true",        help="快速模式：減少 Fold 數並強制 80/20 篩選")
     return p.parse_args()
 
 
@@ -824,6 +851,11 @@ def main():
     )
 
     args             = _parse_args()
+    # ── 資源傾斜設定 (80/20) ────────────────────────────────
+    if args.fast_mode:
+        logger.info("⚡ 啟動快速模式：將步進天數加倍以減少 Fold 數...")
+        WF_CONFIG["step_days"] *= 2  # 例如 21 -> 42，Fold 數減半
+        
     use_tft          = not args.no_tft
     calibrate_probs  = not args.no_calibration
 
@@ -875,17 +907,41 @@ def main():
                 logger.info(f"    target_{h}d_binary 上漲率：{rate:.2%}")
 
 
-    # ── Step 3：Walk-Forward CV（含 Meta-Learner 訓練）─────────
-    logger.info("\n[Step 3] Purged Walk-Forward CV + Meta-Learner 訓練…")
-    wf_result = run_walk_forward(df, stock_id=stock_id, use_tft=use_tft, calibrate_probs=calibrate_probs)
+    # ── Step 3：Walk-Forward CV（八二法則兩階段精煉）─────────
+    logger.info("\n[Step 3] Purged Walk-Forward CV（八二法則兩階段精煉）")
+    
+    # --- Phase 1: 快速探索 (不啟動 TFT) ---
+    logger.info("\n>>> Phase 1: 核心特徵掃描 (Tree-only Exploration)...")
+    # 強制不使用 TFT 進行初步特徵重要性掃描
+    scan_result = run_walk_forward(df, stock_id=stock_id, use_tft=False, calibrate_probs=False)
+    
+    # --- Pareto 篩選 ---
+    golden_features = select_top_features(scan_result["importance"])
+    logger.info(f"\n✅ 篩選完成：從 {df.shape[1]} 個特徵中精選出 {len(golden_features)} 個黃金特徵")
+    logger.info(f"   黃金特徵範例：{golden_features[:10]}...")
+    
+    # --- Phase 2: 精確打擊 (啟動完整訓練) ---
+    logger.info(f"\n>>> Phase 2: 精確打擊 (Refined Full Training with {len(golden_features)} features)...")
+    wf_result = run_walk_forward(
+        df, stock_id=stock_id, 
+        use_tft=use_tft, 
+        calibrate_probs=calibrate_probs,
+        feature_list=golden_features
+    )
+    
     wf_result["oof_metrics"].to_csv(OUTPUT_DIR / "wf_fold_metrics.csv")
-    wf_result["importance"].to_csv(OUTPUT_DIR / "feature_importance.csv")
+    wf_result["importance"].to_csv(OUTPUT_DIR / "feature_importance_refined.csv")
+    
+    # 儲存 OOF 預測序列 (用於回測)
+    oof_df = pd.DataFrame({"prob_up": wf_result["oof_preds"]})
+    oof_df.to_csv(OUTPUT_DIR / "oof_predictions.csv")
+    logger.info(f"  OOF 預測序列已儲存：{OUTPUT_DIR / 'oof_predictions.csv'}")
 
     # 同時儲存 Meta 重算後的 OOF 指標（比 fold-level 平均更準確）
     meta_metrics_df = pd.DataFrame([wf_result["meta_metrics"]])
     meta_metrics_df.to_csv(OUTPUT_DIR / "meta_oof_metrics.csv", index=False)
 
-    # 儲存 Regime 分析結果（排除 scalar 指標 _da_decay_high_vs_low）
+    # 儲存 Regime 分析結果
     regime_rows = [
         {"regime": k, **v}
         for k, v in wf_result["regime_results"].items()
@@ -897,7 +953,7 @@ def main():
         )
         logger.info("  Regime 指標已儲存：outputs/regime_metrics.csv")
 
-    logger.info("\n=== Walk-Forward 最終摘要（Level-1 Baseline）===")
+    logger.info("\n=== Walk-Forward 最終摘要 (Refined) ===")
     for k, v in wf_result["summary"].items():
         logger.info(f"  {k}: {v:.4f}")
 
@@ -909,12 +965,47 @@ def main():
             stock_id              = stock_id,
             use_tft               = use_tft,
             meta_ensemble_from_cv = wf_result["meta_ensemble"],  # 移植 Meta
+            feature_list          = golden_features             # 使用精煉特徵
         )
+        # 紀錄特徵清單至模型物件，方便預測時讀取
+        final_model.refined_features = golden_features
+        
         out_path = MODEL_DIR / f"ensemble_{stock_id}.pkl"
         joblib.dump(final_model, out_path)
         logger.info(f"  最終模型已儲存：{out_path}")
+        
+        # ── 更新效能註冊表 ──────────────────────────────────
+        update_metrics_registry(stock_id, wf_result["meta_metrics"])
 
     logger.info("\n=== 訓練完成 ===")
+
+
+def update_metrics_registry(stock_id: str, metrics: dict):
+    """ 將訓練結果寫入統一註冊表，供管理員調度使用 """
+    import json
+    registry_path = "scripts/outputs/metrics_registry.json"
+    registry = {}
+    
+    if os.path.exists(registry_path):
+        try:
+            with open(registry_path, "r") as f:
+                registry = json.load(f)
+        except Exception:
+            pass
+            
+    # 只存儲核心指標
+    registry[stock_id] = {
+        "directional_accuracy": float(metrics.get("directional_accuracy", 0.5)),
+        "sharpe": float(metrics.get("sharpe", 0.0)),
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    try:
+        with open(registry_path, "w") as f:
+            json.dump(registry, f, indent=4)
+        logger.info(f"  效能註冊表已更新：{registry_path}")
+    except Exception as e:
+        logger.error(f"  寫入註冊表失敗: {e}")
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from config import CONFIDENCE_THRESHOLD
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
@@ -178,11 +180,19 @@ class SignalFilter:
         passed       = prob_passed and agree_passed
 
         # 評分：線性映射 [threshold, 1.0] → [0.5, 1.0]
-        prob_score  = min(1.0, max(0.0, (prob_up - 0.5) / 0.5))
+        # 八二法則優化：如果進入擊球區 (prob_up >= CONFIDENCE_THRESHOLD)，直接給予滿分
+        if prob_up >= CONFIDENCE_THRESHOLD:
+            prob_score = 1.0
+        else:
+            prob_score = min(1.0, max(0.0, (prob_up - 0.5) / 0.5))
+            
         agree_score = min(1.0, max(0.0, agreement))
         score       = (prob_score * 0.7 + agree_score * 0.3)
 
         detail = f"prob={prob_up:.2f} (>{threshold})  agreement={agreement:.0%} (>{min_agree:.0%})"
+        if prob_up >= CONFIDENCE_THRESHOLD:
+            detail += " 🔥核心擊球區"
+            
         return FilterDimension("①模型機率", passed, score, detail, prob_up)
 
     def _eval_regime(self, report: dict, df_feat: pd.DataFrame) -> FilterDimension:
@@ -386,9 +396,11 @@ class SignalFilter:
             blocking_reasons.append(f"大戶籌碼顯著流失 ({large_holder_change_3m:+.1%}) — 建議觀望")
 
         # 強化條件（加分項）
-        foreign_weekly = float(latest.get("foreign_net_weekly", 0))
         if foreign_weekly > 5e8:
             boosting_reasons.append(f"外資大量買超 ({foreign_weekly/1e8:.0f}億/週)")
+        if prob_up >= CONFIDENCE_THRESHOLD:
+            boosting_reasons.append(f"⭐ 核心擊球區：高勝率機會 (prob={prob_up:.1%})")
+            
         if trend_regime == "bull" and vol_20d < 0.20:
             boosting_reasons.append("低波動牛市 — 最佳進場環境")
         eps_accel = float(latest.get("eps_accel_proxy", np.nan))

@@ -190,7 +190,7 @@ def fetch_exchange_rate(conn, start_date, end_date, force=False):
             logger.info(f"  [{curr}] 已是最新，跳過")
             continue
 
-        data = finmind_get("ExchangeRate", {"data_id": curr, "start_date": actual_start, "end_date": end_date})
+        data = finmind_get("TaiwanExchangeRate", {"data_id": curr, "start_date": actual_start, "end_date": end_date})
         if data:
             rows = [(r["date"], r["currency"], r.get("cash_buy"), r.get("cash_sell"), r.get("spot_buy"), r.get("spot_sell")) for r in data]
             with conn.cursor() as cur:

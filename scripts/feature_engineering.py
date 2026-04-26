@@ -16,7 +16,10 @@ import logging
 import numpy as np
 import pandas as pd
 
-from config import FEATURE_GROUPS, HORIZON, STOCK_CONFIGS, DEFAULT_STOCK_ID
+try:
+    from config import FEATURE_GROUPS, HORIZON, STOCK_CONFIGS, DEFAULT_STOCK_ID
+except ImportError:
+    from scripts.config import FEATURE_GROUPS, HORIZON, STOCK_CONFIGS, DEFAULT_STOCK_ID
 
 logger = logging.getLogger(__name__)
 
@@ -784,6 +787,72 @@ def add_sentiment_macro_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_expectation_residuals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    第一性原則：預期基準模型 (Expectation Baseline)
+    核心邏輯：計算「實際觀測值」與「市場基準預期」的殘差 (Surprise)。
+    只有殘差（驚奇值）才是推動價格不對稱波動的真正動力。
+    """
+    # 1. 籌碼驚奇 (Flow Surprise)
+    # 計算外資買超相對於其 20 日平均絕對波動的倍數 (Z-Score 近似)
+    if "foreign_net" in df.columns:
+        flow_ma = df["foreign_net"].rolling(20).mean()
+        flow_std = df["foreign_net"].rolling(20).std().replace(0, np.nan)
+        df["foreign_flow_surprise"] = (df["foreign_net"] - flow_ma) / flow_std
+    
+    # 2. 宏觀驚奇 (Macro Surprise)
+    # 匯率偏離度：當前匯率相對於 20 日均線的偏離 (反映短期避險或套利資金的突發性)
+    if "usd_twd_spot" in df.columns:
+        usd_ma = df["usd_twd_spot"].rolling(20, min_periods=1).mean()
+        df["usd_twd_surprise"] = df["usd_twd_spot"] / usd_ma - 1
+    
+    # 3. 估值驚奇 (Valuation Residual)
+    # PER 偏離度：相對於一年 (252天) 均值的偏離，捕捉「估值修復」或「超漲」
+    if "per" in df.columns:
+        per_ma = df["per"].rolling(252, min_periods=60).mean().replace(0, np.nan)
+        df["per_valuation_surprise"] = df["per"] / per_ma - 1
+        
+    # 4. 營收驚奇 (Fundamental Surprise)
+    # 營收加速器：當前 YoY 相對於過去一年平均 YoY 的增量
+    if "revenue_yoy" in df.columns:
+        rev_yoy_ma = df["revenue_yoy"].rolling(252).mean().replace(0, np.nan)
+        df["revenue_growth_surprise"] = df["revenue_yoy"] - rev_yoy_ma
+
+    # 5. 跨市場驚奇 (Cross-Market Surprise)
+    # ADR 溢價偏離：相對於 ma5 的突發性偏離 (通常是美股盤後大變動的先行反映)
+    if "tsm_premium" in df.columns:
+        premium_ma = df["tsm_premium"].rolling(5).mean()
+        df["adr_surprise"] = df["tsm_premium"] - premium_ma
+
+    return df
+
+
+def add_kwave_regime_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    康波週期 (Kondratiev Wave) 長波特徵
+    核心邏輯：利用「金油比」、「利率長波」與「大宗商品動能」來模擬經濟長週期的相位。
+    """
+    # 1. 資源與避險對比 (生產 vs 儲存)
+    if "gold_price" in df.columns and "oil_brent" in df.columns:
+        # 金油比上升通常代表長波衰退/蕭條 (Winter)；下降代表繁榮 (Autumn)
+        df["gold_oil_ratio"] = df["gold_price"] / df["oil_brent"].replace(0, np.nan)
+        df["gold_oil_ratio_z"] = (df["gold_oil_ratio"] - df["gold_oil_ratio"].rolling(252*2).mean()) / df["gold_oil_ratio"].rolling(252*2).std()
+    
+    # 2. 利率長波 (Capital Cost Wave)
+    if "US10Y" in df.columns:
+        # 10年債殖利率的超長均線偏離 (反映長波生產力的資本回報率)
+        long_ma = df["US10Y"].rolling(252*5, min_periods=252).mean() # 5年均線
+        df["yield_cycle_pos"] = df["US10Y"] - long_ma
+        
+    # 3. 康波相位分數 (K-Wave Score)
+    # 邏輯：利率穩定上升且商品強勢 = 回升/繁榮；利率下行且金價強勢 = 衰退/蕭條
+    if "gold_oil_ratio_z" in df.columns and "yield_cycle_pos" in df.columns:
+        # 分數越高代表長波越趨於「秋季/冬初」(風險上升)；越低趨於「春季/回升」(擴張期)
+        df["kwave_score"] = df["gold_oil_ratio_z"] * 0.6 + df["yield_cycle_pos"].rolling(20).mean() * (-0.4)
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -833,6 +902,14 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
 
     df = add_volatility_clustering_features(df)
     logger.info(f"  波動率聚類特徵完成，shape={df.shape}")
+
+    # ── 第一性原則：預期基準與驚奇值 (Expectation Residuals) ─────
+    df = add_expectation_residuals(df)
+    logger.info(f"  預期殘差 (Surprise) 注入完成，shape={df.shape}")
+
+    # ── 宏觀長波：康波週期特徵 (K-Wave) ────────────────────────
+    df = add_kwave_regime_features(df)
+    logger.info(f"  康波長波特徵 (K-Wave) 注入完成，shape={df.shape}")
 
     # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
     df = add_trend_regime_features(df)

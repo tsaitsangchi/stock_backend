@@ -1,120 +1,137 @@
+import os
 import time
 import subprocess
 import logging
 import sys
-import psycopg2
-from datetime import datetime, timedelta
-from config import STOCK_CONFIGS, OUTPUT_DIR
+import json
+from datetime import datetime
 
-# Logging Setup
+# 修正路徑以確保能讀取到 config
+sys.path.append(os.getcwd())
+from scripts.config import STOCK_CONFIGS, TIER_1_STOCKS
+
+# 設定
+VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
+MAX_PARALLEL_TRAINS = 2  # 深層訓練耗能高，降低並行數
+CHECK_INTERVAL = 60      # 每分鐘檢查一次
+METRICS_REGISTRY = "scripts/outputs/metrics_registry.json"
+
+# 脊椎標的 (Deep Mode Targets)
+ANCHOR_STOCKS = ["2330", "2317", "2454"]
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(OUTPUT_DIR / "logs" / "auto_train.log"),
-    ],
+    handlers=[logging.FileHandler("scripts/outputs/manager.log"), logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
-
-# Tables to check for completion
-CHECK_TABLES = [
-    "stock_price",
-    "stock_per",
-    "institutional_investors_buy_sell",
-    "financial_statements",
-    "eight_banks"
-]
-
-# We expect data to be up to at least 1 day ago (or today if after 16:00)
-def get_target_date():
-    now = datetime.now()
-    # If today is Monday-Friday and after 16:00, we might expect today's data.
-    # For safety, let's say we want data up to yesterday (or last Friday if today is Monday).
-    if now.hour >= 17:
-        return now.date()
-    else:
-        return (now - timedelta(days=1)).date()
-
-def is_data_complete(stock_id, target_date):
+def get_running_trains():
+    """ 檢查目前正在執行的訓練進程及其 stock_id """
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        with conn.cursor() as cur:
-            for table in CHECK_TABLES:
-                cur.execute(f"SELECT MAX(date) FROM {table} WHERE stock_id = %s", (stock_id,))
-                max_date = cur.fetchone()[0]
-                if not max_date or max_date < target_date:
-                    # Special handling for financial_statements which are quarterly
-                    if table == "financial_statements":
-                        if not max_date or (datetime.now().date() - max_date).days > 120:
-                            return False, f"{table} outdated ({max_date})"
-                        continue
-                    return False, f"{table} outdated ({max_date})"
-        conn.close()
-        return True, "Complete"
+        output = subprocess.check_output(["ps", "aux"]).decode()
+        lines = [l for l in output.splitlines() if "train_evaluate.py" in l and "grep" not in l]
+        running_ids = []
+        for l in lines:
+            parts = l.split()
+            for i, p in enumerate(parts):
+                if p == "--stock-id" and i + 1 < len(parts):
+                    running_ids.append(parts[i+1])
+                elif "train_evaluate.py" in p and "--stock-id" not in l:
+                    running_ids.append("2330")
+        return list(set(running_ids))
     except Exception as e:
-        logger.error(f"Error checking {stock_id}: {e}")
-        return False, str(e)
+        logger.error(f"檢查進程失敗: {e}")
+        return []
 
-def run_task(cmd):
-    logger.info(f"Running: {' '.join(cmd)}")
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    for line in process.stdout:
-        print(line, end="")
-    process.wait()
-    return process.returncode
+def get_performance_scores():
+    """ 從註冊表讀取歷史 DA """
+    scores = {}
+    if os.path.exists(METRICS_REGISTRY):
+        try:
+            with open(METRICS_REGISTRY, "r") as f:
+                data = json.load(f)
+                for sid, metrics in data.items():
+                    scores[sid] = metrics.get("directional_accuracy", 0.5)
+        except Exception as e:
+            logger.warning(f"讀取註冊表失敗: {e}")
+    return scores
+
+def calculate_priority(sid, perf_scores):
+    """ 計算優先權評分 (0~100) """
+    # 1. 權值分 (70%)
+    if sid in ANCHOR_STOCKS:
+        weight_score = 100
+    elif sid in TIER_1_STOCKS:
+        weight_score = 80
+    else:
+        weight_score = 30
+        
+    # 2. 勝率分 (30%)
+    da = perf_scores.get(sid, 0.5)
+    da_score = min(100, max(0, (da - 0.45) / 0.15 * 100)) # 0.45->0, 0.6->100
+    
+    return (weight_score * 0.7) + (da_score * 0.3)
 
 def main():
-    stock_ids = list(STOCK_CONFIGS.keys())
-    trained_today = set()
-    
-    logger.info(f"Auto Train Manager started for {len(stock_ids)} stocks.")
+    logger.info("=== 自動訓練管理員啟動 (第一性 80/20 動態權重版) ===")
     
     while True:
-        target_date = get_target_date()
-        logger.info(f"Looping through stocks (Target Date: {target_date})...")
-        
-        for stock_id in stock_ids:
-            if stock_id in trained_today:
-                continue
-                
-            complete, reason = is_data_complete(stock_id, target_date)
-            if complete:
-                logger.info(f"🚀 Stock {stock_id} data is READY. Starting pipeline...")
-                
-                # 1. Update Feature Store
-                ret = run_task(["./venv/bin/python", "scripts/update_feature_store.py", "--stock-id", stock_id])
-                if ret != 0:
-                    logger.error(f"Feature Store update failed for {stock_id}")
-                    continue
-                
-                # 2. Train Model
-                ret = run_task(["./venv/bin/python", "scripts/train_evaluate.py", "--stock-id", stock_id])
-                if ret == 0:
-                    logger.info(f"✅ Stock {stock_id} training COMPLETED.")
-                    trained_today.add(stock_id)
-                    # Broadcast status
-                    subprocess.run(["wall", f"✅ [系統通知] 個股 {stock_id} 模型訓練完成！"])
-                else:
-                    logger.error(f"Training failed for {stock_id}")
-            else:
-                # logger.debug(f"Stock {stock_id} not ready: {reason}")
-                pass
-        
-        if len(trained_today) == len(stock_ids):
-            logger.info("All stocks trained for today. Manager exiting Phase 1.")
-            break
+        try:
+            running_ids = get_running_trains()
+            perf_scores = get_performance_scores()
             
-        logger.info(f"Progress: {len(trained_today)}/{len(stock_ids)}. Sleeping 60s...")
-        time.sleep(60)
+            # 排序標的：基於 Priority Score
+            all_sids = list(STOCK_CONFIGS.keys())
+            sid_priorities = {sid: calculate_priority(sid, perf_scores) for sid in all_sids}
+            sorted_targets = sorted(all_sids, key=lambda x: sid_priorities[x], reverse=True)
+            
+            # 更新有效模型清單 (Tier 1 每週重訓, 其他每月)
+            finished_ids = []
+            now = time.time()
+            model_dir = "scripts/outputs/models"
+            if os.path.exists(model_dir):
+                for f in os.listdir(model_dir):
+                    if f.endswith(".pkl") and "ensemble_" in f:
+                        sid = f.replace("ensemble_", "").replace(".pkl", "")
+                        mtime = os.path.getmtime(os.path.join(model_dir, f))
+                        days_old = (now - mtime) / (24 * 3600)
+                        limit = 7 if (sid in TIER_1_STOCKS) else 30
+                        if days_old < limit:
+                            finished_ids.append(sid)
+
+            logger.info(f"執行中: {running_ids} | 有效模型: {len(finished_ids)} | 剩餘: {len(sorted_targets) - len(finished_ids)}")
+            
+            if len(running_ids) < MAX_PARALLEL_TRAINS:
+                for sid in sorted_targets:
+                    if sid not in finished_ids and sid not in running_ids:
+                        # 決定模式
+                        is_anchor = sid in ANCHOR_STOCKS
+                        mode_str = "DEEP (141-Fold)" if is_anchor else "PARETO (60-Fold)"
+                        logger.info(f">>> 啟動 {sid} ({STOCK_CONFIGS[sid]['name']}) | 模式: {mode_str} | 權重: {sid_priorities[sid]:.1f}")
+                        
+                        # 1. 更新特徵庫
+                        logger.info(f"[{sid}] 正在更新特徵庫...")
+                        subprocess.run([VENV_PYTHON, "scripts/update_feature_store.py", "--stock-id", sid])
+                        
+                        # 2. 啟動背景訓練
+                        log_file = f"scripts/outputs/train_{sid}.log"
+                        cmd = [VENV_PYTHON, "scripts/train_evaluate.py", "--stock-id", sid]
+                        
+                        # 如果是 Pareto 模式，傳入參數限制 Fold 數與特徵精煉
+                        if not is_anchor:
+                            cmd += ["--fast-mode"] 
+                        
+                        with open(log_file, "w") as f:
+                            subprocess.Popen(cmd, stdout=f, stderr=f, start_new_session=True)
+                        
+                        logger.info(f"[{sid}] 任務已分發。")
+                        time.sleep(10) # 深層任務啟動較慢
+                        break 
+        except Exception as e:
+            logger.error(f"管理員循環發生錯誤: {e}")
+            
+        time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
     main()
