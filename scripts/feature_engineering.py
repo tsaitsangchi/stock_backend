@@ -928,6 +928,30 @@ def add_order_flow_proxy_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_gravity_well_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    重力井模型 (Gravity Well Model)：
+    將內在價值視為重力中心，衡量價格位移與引力強度。
+    """
+    if "pbr" in df.columns:
+        # 1. 重力中心 (Gravity Center)：252日估值中值
+        df["gravity_center"] = df["pbr"].rolling(252, min_periods=60).median()
+        
+        # 2. 價格位移 (Displacement)：偏離中心的程度
+        df["gravity_displacement"] = df["pbr"] / df["gravity_center"].replace(0, np.nan) - 1
+        
+        # 3. 引力強度 (Gravity Pull)：位移越大，回歸引力呈非線性增長 (平方反比邏輯的變體)
+        df["gravity_pull"] = np.sign(df["gravity_displacement"]) * (df["gravity_displacement"]**2)
+        
+    # 4. 資訊力 (Information Force)
+    # 將所有驚奇值 (Surprise) 彙整為一個複合力指標
+    surprise_cols = [c for c in df.columns if "surprise" in c]
+    if surprise_cols:
+        df["total_info_force"] = df[surprise_cols].mean(axis=1)
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -997,6 +1021,10 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     # ── 訂單流：虛擬訂單流代理 (Order Flow Proxy) ──────────────
     df = add_order_flow_proxy_features(df)
     logger.info(f"  虛擬訂單流特徵 (Order Flow) 注入完成，shape={df.shape}")
+
+    # ── 物理學：重力井模型 (Gravity Well) ─────────────────────
+    df = add_gravity_well_features(df)
+    logger.info(f"  重力井物理特徵 (Gravity Well) 注入完成，shape={df.shape}")
 
     # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
     df = add_trend_regime_features(df)
