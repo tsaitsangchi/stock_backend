@@ -731,6 +731,38 @@ STOCK_CONFIGS = {
         "vol_high": 0.35,
         "use_adr_premium": False,
     },
+    "4147": {
+        "name": "中裕",
+        "industry": "BioTech",
+        "us_chain_tickers": ["XLV", "IBB", "PFE"],
+        "vol_low": 0.30,
+        "vol_high": 0.70,
+        "use_adr_premium": False,
+    },
+    "4174": {
+        "name": "浩鼎",
+        "industry": "BioTech",
+        "us_chain_tickers": ["XLV", "IBB", "MRK"],
+        "vol_low": 0.35,
+        "vol_high": 0.75,
+        "use_adr_premium": False,
+    },
+    "2399": {
+        "name": "映泰",
+        "industry": "Web3_Hardware",
+        "us_chain_tickers": ["NVDA", "AMD", "BTC"],
+        "vol_low": 0.40,
+        "vol_high": 0.90,
+        "use_adr_premium": False,
+    },
+    "6150": {
+        "name": "撼訊",
+        "industry": "Web3_Hardware",
+        "us_chain_tickers": ["AMD", "NVDA", "BTC"],
+        "vol_low": 0.45,
+        "vol_high": 1.00,
+        "use_adr_premium": False,
+    },
 }
 
 HORIZON        = 30        # 預測天數
