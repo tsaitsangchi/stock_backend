@@ -536,6 +536,13 @@ def run_walk_forward(
         # 特徵重要性
         all_importances.append(ens.combined_importance()["mean"])
 
+        # ── 實時存檔 (每 10 Fold 存一次，以便觀察回測進度) ─────────────
+        if fold.fold_id % 10 == 0:
+            partial_oof = pd.DataFrame({"prob_up": oof_lgb.fillna(oof_xgb)}) # 暫用 L1 平均
+            partial_path = OUTPUT_DIR / f"oof_predictions_partial_{stock_id}.csv"
+            partial_oof.to_csv(partial_path)
+            logger.info(f"  [實時存檔] 已儲存中間回測序列至 {partial_path}")
+
     # ── 彙整 Level-1 OOF 指標 ────────────────────────────────────
     metrics_df = pd.DataFrame(fold_metrics).set_index("fold")
     # 用 nanmean 排除 single-class fold 導致的 NaN AUC

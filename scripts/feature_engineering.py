@@ -853,6 +853,41 @@ def add_kwave_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_k2026_resonance_features(df: pd.DataFrame, stock_id: str) -> pd.DataFrame:
+    """
+    《2026 量子金融藍圖》核心宏觀特徵：
+    1. 雙週期共振：K-Wave (60y) + Kuznets (20y)
+    2. 第六波奇點溢價：MBNRIC 文明交棒
+    """
+    # 1. 庫茲涅茨週期 (Kuznets) 代理：房地產與信貸週期 (利用 10Y 真實利率長波代理)
+    if "US10Y" in df.columns and "cpi_yoy" in df.columns:
+        real_yield = df["US10Y"] - df["cpi_yoy"]
+        df["kuznets_proxy"] = real_yield.rolling(252*5).mean()
+    else:
+        df["kuznets_proxy"] = 0.0
+
+    # 2. 2026 奇點距離與共振
+    current_year = df.index.year + (df.index.month - 1) / 12.0
+    df["singularity_dist"] = 2026.0 - current_year
+    
+    # 雙週期向下共振 (泡沫出清風險)
+    if "kwave_score" in df.columns:
+        # 當兩大週期同步走弱，且接近 2026，壓力值指數級上升
+        df["resonance_pressure"] = (df["kwave_score"] + df["kuznets_proxy"]).rolling(126).mean()
+        df["bubble_crash_risk"] = np.exp(-np.abs(df["singularity_dist"])) * (df["resonance_pressure"] > 0).astype(float)
+    
+    # 3. 第六波 (MBNRIC) 標的識別與溢價
+    # 第六波驅動者：半導體奇點、AI、機器人、生物運算
+    mbnric_leaders = ["2330", "2454", "3661", "6669", "NVDA", "ASML", "TSM"]
+    if stock_id in mbnric_leaders:
+        # 越接近 2026，第六波領導者的「奇點溢價」越高 (反映資產重新定價)
+        df["singularity_premium"] = np.exp(-np.abs(df["singularity_dist"]))
+    else:
+        df["singularity_premium"] = 0.0
+        
+    return df
+
+
 def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     量子金融特徵：將價格運動視為物理力學過程。
@@ -1015,6 +1050,10 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     # ── 宏觀長波：康波週期特徵 (K-Wave) ────────────────────────
     df = add_kwave_regime_features(df)
     logger.info(f"  康波長波特徵 (K-Wave) 注入完成，shape={df.shape}")
+
+    # ── 2026 大共振：雙週期與奇點溢價 (2026 Resonance) ──────────
+    df = add_k2026_resonance_features(df, stock_id)
+    logger.info(f"  2026 大共振特徵注入完成，shape={df.shape}")
 
     # ── 量子力學：量子物理特徵 (Quantum Physics) ────────────────
     df = add_quantum_physics_features(df)
