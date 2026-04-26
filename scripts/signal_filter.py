@@ -165,13 +165,14 @@ class SignalFilter:
         self.cfg = {**FILTER_CONFIG, **(config or {})}
         self.physics_registry = {} # 快取個股物理參數
 
+
     def _load_physics_registry(self, stock_id: str):
         """ 從資料庫讀取個股物理 DNA """
         import psycopg2
         try:
             conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
             cur = conn.cursor()
-            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
+            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score, wave_track, innovation_velocity FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
             res = cur.fetchone()
             cur.close()
             conn.close()
@@ -181,7 +182,9 @@ class SignalFilter:
                     "elasticity": res[1] or 0.05,
                     "tail": res[2] or 3.0,
                     "convexity": res[3] or 0.0,
-                    "tail_risk": res[4] or 0.0
+                    "tail_risk": res[4] or 0.0,
+                    "wave_track": res[5] or "LEGACY_IT",
+                    "innovation_velocity": res[6] or 1.0
                 }
         except Exception:
             pass
@@ -455,13 +458,16 @@ class SignalFilter:
         # 🚀 量子物理能量釋放 (Impulse/Energy Boost)
         quantum_momentum = float(latest.get("quantum_momentum", 0))
         if quantum_momentum > 0:
-            boosting_reasons.append(f"⚛️ 量子動量正向 (Mass x Disp) — 物理動能釋放")
-            overall += 3
+            # 根據創新速度加乘
+            velocity_multiplier = physics.get("innovation_velocity", 1.0) if physics else 1.0
+            boosting_reasons.append(f"⚛️ 量子動量正向 (Mass x Disp) — 物理動能釋放 (Velocity={velocity_multiplier:.2f})")
+            overall += (3 * velocity_multiplier)
             
         # 🧪 第六波文明 (MBNRIC) 奇點溢價
         singularity_premium = float(latest.get("singularity_premium", 0))
-        if singularity_premium > 0.5:
-            boosting_reasons.append(f"✨ 2026 奇點共振：第六波文明 (MBNRIC) 領導者溢價")
+        if singularity_premium > 0.5 or (physics and physics.get("wave_track") != "LEGACY_IT"):
+            track_name = physics.get("wave_track", "MBNRIC") if physics else "MBNRIC"
+            boosting_reasons.append(f"✨ 2026 奇點共振：第六波賽道 ({track_name}) 領導者溢價")
             overall += 7
             
         # 🌌 重力井套利偵測 (Gravity Well Arbitrage)

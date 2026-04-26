@@ -993,6 +993,33 @@ def add_gravity_well_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_liquidity_quality_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    降噪歸真：流動性品質 (Liquidity Quality)
+    核心邏輯：區分「有效物理動量」與「隨機雜訊」。
+    """
+    if "volume" in df.columns and "returns_1d" in df.columns:
+        # 1. 流動性效率 (Liquidity Efficiency)：單位成交量產生的回報
+        # 數值越穩定，代表機構支撐力越強，噪音越低
+        vol_std = df["returns_1d"].rolling(20).std().replace(0, np.nan)
+        df["liquidity_quality"] = df["volume"].rolling(20).mean() / vol_std
+        
+    return df
+
+
+def add_blueprint_entry_signals(df: pd.DataFrame, stock_id: str) -> pd.DataFrame:
+    """
+    佈局 2026：戰略性重力井建倉信號
+    """
+    if "gravity_pull" in df.columns and "info_force_per_mass" in df.columns:
+        # 偵測「重力井底部」：當價格極端負偏離 + 資訊力注入
+        pull_std = df["gravity_pull"].rolling(252).std()
+        df["gravity_bottom_signal"] = ((df["gravity_pull"] < -1.5 * pull_std) & 
+                                       (df["info_force_per_mass"] > 0)).astype(int)
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -1070,6 +1097,15 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     # ── 物理學：重力井模型 (Gravity Well) ─────────────────────
     df = add_gravity_well_features(df)
     logger.info(f"  重力井物理特徵 (Gravity Well) 注入完成，shape={df.shape}")
+
+    # ── 降噪歸真：流動性品質 (Liquidity Quality) ───────────────
+    df = add_liquidity_quality_features(df)
+    logger.info(f"  流動性品質特徵注入完成，shape={df.shape}")
+
+    # ── 戰略佈局：2026 建倉信號 (Singularity Entry) ───────────
+    df = add_blueprint_entry_signals(df, stock_id)
+    logger.info(f"  戰略建倉信號注入完成，shape={df.shape}")
+
 
     # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
     df = add_trend_regime_features(df)
