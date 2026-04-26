@@ -57,6 +57,9 @@ def get_performance_scores():
             logger.warning(f"讀取註冊表失敗: {e}")
     return scores
 
+# --- 第六波賽道標的 (6th Wave Driver Stocks) ---
+SIXTH_WAVE_DRIVERS = ["2330", "2454", "3661", "2376", "2382", "6669"]
+
 def calculate_priority(sid, perf_scores):
     """ 計算優先權評分 (0~100) """
     # 1. 權值分 (70%)
@@ -71,7 +74,18 @@ def calculate_priority(sid, perf_scores):
     da = perf_scores.get(sid, 0.5)
     da_score = min(100, max(0, (da - 0.45) / 0.15 * 100)) # 0.45->0, 0.6->100
     
-    return (weight_score * 0.7) + (da_score * 0.3)
+    priority = (weight_score * 0.7) + (da_score * 0.3)
+    
+    # ── 2026 量子金融藍圖：康波導航加成 ───────────────────
+    # 如果是第六波驅動標的，優先級提升 20%
+    if sid in SIXTH_WAVE_DRIVERS:
+        priority *= 1.2
+        
+    # 接近 2026 年時，對半導體賽道強制置頂
+    if datetime.now().year >= 2025 and sid in SIXTH_WAVE_DRIVERS:
+        priority += 20.0
+        
+    return min(100, priority)
 
 def main():
     logger.info("=== 自動訓練管理員啟動 (第一性 80/20 動態權重版) ===")
