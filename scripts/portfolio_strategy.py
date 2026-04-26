@@ -30,41 +30,40 @@ class BarbellAllocator:
         self.total_budget = total_budget
         self.sf = SignalFilter()
         
-    def allocate(self, results: pd.DataFrame, market_entropy: float = 0.0):
-        """
-        執行槓鈴分配邏輯
-        market_entropy: 0~1 (越混亂代表風險越大)
-        """
-        # 1. 決定槓鈴比例
-        core_ratio = 0.8 + (market_entropy * 0.1) # 熵值越高，越偏向核心
-        quantum_ratio = 1.0 - core_ratio
+        # 1. 執行戰略槓鈴分配 (Strategic Barbell)
+        # 核心原則：80-90% 安全端 (Safety), 10-20% 凸性端 (Quantum)
+        safety_ratio = 0.85 if market_entropy > 0.05 else 0.80
+        quantum_total_ratio = 1.0 - safety_ratio
         
-        core_budget = self.total_budget * core_ratio
-        quantum_budget = self.total_budget * quantum_ratio
+        safety_budget = self.total_budget * safety_ratio
+        quantum_total_budget = self.total_budget * quantum_total_ratio
         
-        logger.info(f">>> 執行槓鈴分配 | 市場熵值: {market_entropy:.2f}")
-        logger.info(f"    - 核心防禦 (Core): {core_ratio:.0%} | 預算: {core_budget:,.0f}")
-        logger.info(f"    - 量子進取 (Quantum): {quantum_ratio:.0%} | 預算: {quantum_budget:,.0f}")
+        logger.info(f">>> 執行戰略槓鈴 | 市場熵值: {market_entropy:.2f}")
+        logger.info(f"    - 🛡️ 安全防禦端 (Safety): {safety_ratio:.0%} | 預算: {safety_budget:,.0f}")
+        logger.info(f"    - 🚀 凸性量子端 (Quantum): {quantum_total_ratio:.0%} | 預算: {quantum_total_budget:,.0f}")
         
         final_allocation = []
         
-        # 2. 核心端分配 (平分給通過過濾的高信心標的)
-        core_picks = results[results['stock_id'].isin(CORE_STOCKS) & (results['prob_up'] >= 0.6)]
+        # 2. 核心端分配 (從安全預算中撥出少量進行權值股配置，其餘保留現金)
+        # 核心端僅限於重力井極度穩定的標的
+        core_picks = results[results['stock_id'].isin(CORE_STOCKS) & (results['prob_up'] >= 0.7)]
         if not core_picks.empty:
-            per_stock_budget = core_budget / len(core_picks)
+            # 即使是核心，也只動用安全預算的 30% (即總資產的 24%)，其餘 56% 必須是現金
+            core_invest_budget = safety_budget * 0.3
+            per_stock_budget = core_invest_budget / len(core_picks)
             for _, row in core_picks.iterrows():
                 shares = int(per_stock_budget / row['price'])
-                final_allocation.append({**row.to_dict(), "type": "CORE", "shares": shares, "allocation": shares * row['price']})
+                final_allocation.append({**row.to_dict(), "type": "CORE_STABLE", "shares": shares, "allocation": shares * row['price']})
         
-        # 3. 量子端分配 (尋找驚奇值與衝量最強的標的)
+        # 3. 量子凸性端分配 (10-20% 預算)
+        # 嚴格篩選：必須具備高上漲機率 + 高凸性得分
         quantum_picks = results[results['stock_id'].isin(QUANTUM_STOCKS) & (results['prob_up'] >= 0.65)]
         if not quantum_picks.empty:
-            # 量子端採「集中火力」模式，只取最強的 2 支
-            quantum_picks = quantum_picks.head(2)
-            per_stock_budget = quantum_budget / len(quantum_picks)
-            for _, row in quantum_picks.iterrows():
+            # 尋找最具備「右側 20%」特質的標的
+            per_stock_budget = quantum_total_budget / min(2, len(quantum_picks))
+            for _, row in quantum_picks.head(2).iterrows():
                 shares = int(per_stock_budget / row['price'])
-                final_allocation.append({**row.to_dict(), "type": "QUANTUM", "shares": shares, "allocation": shares * row['price']})
+                final_allocation.append({**row.to_dict(), "type": "QUANTUM_ALPHA", "shares": shares, "allocation": shares * row['price']})
                 
         return pd.DataFrame(final_allocation)
 
