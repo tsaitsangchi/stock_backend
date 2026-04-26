@@ -989,3 +989,18 @@ REGIME_CONFIG = {
     # Hold-Out 長度（交易日）：2 年
     "oos_window": 252 * 2,
 }
+
+# ─────────────────────────────────────────────
+# 國際標的清單 (由各個股配置自動彙整)
+# ─────────────────────────────────────────────
+def _get_international_watchlist():
+    tickers = set()
+    # 這裡 STOCK_CONFIGS 已經在上方定義好了
+    for cfg in STOCK_CONFIGS.values():
+        if "us_chain_tickers" in cfg:
+            tickers.update(cfg["us_chain_tickers"])
+    # 額外加入一些全局總經連動標的 (Index ETFs)
+    tickers.update(["SPY", "QQQ", "SOXX", "DIA", "VTI", "TLT", "UUP", "TSM", "NVDA", "AAPL"])
+    return sorted(list(tickers))
+
+INTERNATIONAL_WATCHLIST = _get_international_watchlist()
