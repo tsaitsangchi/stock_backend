@@ -856,26 +856,28 @@ def add_kwave_regime_features(df: pd.DataFrame) -> pd.DataFrame:
 def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     量子金融特徵：將價格運動視為物理力學過程。
-    核心指標：衝量 (Impulse)、動能 (Kinetic Energy)、熵值 (Entropy)。
+    對齊公式：動量 (Momentum) = 質量 (Mass) x 位移 (Displacement)
     """
-    # 1. 量子衝量 (Price Impulse) = 質量 (Volume) * 速度 (Price Change)
-    if "volume" in df.columns:
-        df["price_impulse"] = df["volume"] * (df["close"] - df["open"])
-        # 標準化以消除絕對數值影響
-        df["price_impulse_z"] = (df["price_impulse"] - df["price_impulse"].rolling(60).mean()) / df["price_impulse"].rolling(60).std()
+    # 1. 質量 (Mass) = 資本流動性 (以市值對數與成交量組合建模)
+    # 市值決定了改變價格的「慣性」
+    if "market_cap" in df.columns:
+        df["inertial_mass"] = np.log1p(df["market_cap"])
+    else:
+        # 若無市值數據，以 252 日均量作為質量的代理變數
+        df["inertial_mass"] = np.log1p(df["volume"].rolling(252).mean())
 
-    # 2. 趨勢動能 (Kinetic Energy) = 0.5 * m * v^2
-    if "returns_5d" in df.columns and "volume" in df.columns:
-        df["price_energy"] = 0.5 * df["volume"] * (df["returns_5d"]**2)
-        df["price_energy_log"] = np.log1p(df["price_energy"])
+    # 2. 位移 (Displacement) = 價格變動
+    df["displacement"] = df["close"] - df["open"]
+    df["displacement_pct"] = df["close"] / df["open"] - 1
 
-    # 3. 市場熵值 (Market Entropy) - 衡量混亂程度
-    # 使用回報率的滾動標準差作為「資訊熵」的代理變數
+    # 3. 動量 (Momentum) = 質量 * 位移
+    # 這是物理體系中的真實動能，而非單純的價格漲跌
+    df["quantum_momentum"] = df["inertial_mass"] * df["displacement"]
+    
+    # 4. 能量 (Energy) = 0.5 * m * v^2 (回報率作為速度)
     if "returns_1d" in df.columns:
-        df["market_entropy"] = df["returns_1d"].rolling(20).std()
-        # 熵值突增通常代表 Regime Change
-        df["entropy_delta"] = df["market_entropy"].diff()
-        
+        df["kinetic_energy"] = 0.5 * df["inertial_mass"] * (df["returns_1d"]**2)
+
     return df
 
 
@@ -931,23 +933,27 @@ def add_order_flow_proxy_features(df: pd.DataFrame) -> pd.DataFrame:
 def add_gravity_well_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     重力井模型 (Gravity Well Model)：
-    將內在價值視為重力中心，衡量價格位移與引力強度。
+    絕對重力中心 = 內在價值 (以長期估值中樞 PBR/PER 模擬)
+    引力強度 = 偏離度的非線性回歸力
     """
     if "pbr" in df.columns:
-        # 1. 重力中心 (Gravity Center)：252日估值中值
-        df["gravity_center"] = df["pbr"].rolling(252, min_periods=60).median()
+        # 1. 絕對重力中心 (Gravity Center)：低熵狀態
+        # 使用 5 年 (1260日) 超長週期中值，代表系統的穩定平衡點
+        df["gravity_center"] = df["pbr"].rolling(1260, min_periods=252).median()
         
-        # 2. 價格位移 (Displacement)：偏離中心的程度
-        df["gravity_displacement"] = df["pbr"] / df["gravity_center"].replace(0, np.nan) - 1
+        # 2. 位移 (Displacement)：市場價格受情緒 (高熵) 驅動繞行
+        df["valuation_displacement"] = df["pbr"] - df["gravity_center"]
         
-        # 3. 引力強度 (Gravity Pull)：位移越大，回歸引力呈非線性增長 (平方反比邏輯的變體)
-        df["gravity_pull"] = np.sign(df["gravity_displacement"]) * (df["gravity_displacement"]**2)
+        # 3. 物理引力 (Gravity Pull)：當偏離邊緣時，引力最強
+        # 模擬 F = G * (m1*m2) / r^2，但在交易中，r 越大引力越強 (類似彈簧力/恢復力)
+        df["gravity_pull"] = df["valuation_displacement"] * df["inertial_mass"]
         
-    # 4. 資訊力 (Information Force)
-    # 將所有驚奇值 (Surprise) 彙整為一個複合力指標
+    # 4. 力 (Force) = 資訊衝擊 (Information Shock)
+    # 盈餘、籌碼、宏觀等驚奇值的加權整合
     surprise_cols = [c for c in df.columns if "surprise" in c]
     if surprise_cols:
-        df["total_info_force"] = df[surprise_cols].mean(axis=1)
+        # 力 = 資訊能量 / 質量 (單位質量所受的資訊衝擊)
+        df["info_force_per_mass"] = df[surprise_cols].mean(axis=1) / df["inertial_mass"]
         
     return df
 

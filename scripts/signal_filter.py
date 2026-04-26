@@ -425,15 +425,26 @@ class SignalFilter:
         if smart_money_sync:
             boosting_reasons.append("聰明錢護航 (外資與八大行庫同步買超)")
             
-        macro_color = str(latest.get("macro_monitoring_color", "N/A"))
-        if macro_color == 'blue':
-            boosting_reasons.append("景氣藍燈 — 週期底部")
-            
         # 🚀 量子物理能量釋放 (Impulse/Energy Boost)
-        price_impulse_z = float(latest.get("price_impulse_z", 0))
-        if price_impulse_z > 2.0:
-            boosting_reasons.append(f"⚛️ 量子衝量爆發 (Impulse={price_impulse_z:.1f}σ) — 能量釋放")
-            overall += 5 # 給予額外信心加分
+        quantum_momentum = float(latest.get("quantum_momentum", 0))
+        if quantum_momentum > 0:
+            boosting_reasons.append(f"⚛️ 量子動量正向 (Mass x Disp) — 物理動能釋放")
+            overall += 3
+            
+        # 🌌 重力井套利偵測 (Gravity Well Arbitrage)
+        # 核心原則：偏離邊緣時，引力最強，套利空間最大
+        gravity_pull = float(latest.get("gravity_pull", 0))
+        info_force = float(latest.get("info_force_per_mass", 0))
+        
+        # 情況 A：超跌引力反彈 (極端負偏離 + 正向資訊力注入)
+        if gravity_pull < -0.1 and info_force > 0:
+            boosting_reasons.append(f"🌌 重力井共振：價格處於邊緣且資訊力注入 — 強引力回歸預期")
+            overall += 10 # 提供重大加分
+            
+        # 情況 B：超漲重力警告 (極端正偏離 + 資訊力衰竭)
+        if gravity_pull > 0.1 and info_force < 0:
+            blocking_reasons.append(f"⚠️ 重力井預警：價格偏離重力中心過遠且動能衰竭 — 存在回歸壓力")
+            overall -= 10
 
         # ── 最終決策 ─────────────────────────────────────────────
         # 必要條件：模型機率 + 波動率/趨勢 Regime 都必須通過
