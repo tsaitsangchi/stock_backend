@@ -191,6 +191,7 @@ class SignalFilter:
     # 維度評估函式
     # ─────────────────────────────────────────────
 
+    def _eval_prob(self, report: dict) -> FilterDimension:
         prob_up     = report.get("prob_up", 0.5)
         agreement   = report.get("model_agreement", 0.0)
         
@@ -206,6 +207,7 @@ class SignalFilter:
         if kwave_score > 0.5: dynamic_threshold += 0.05
         if entropy_delta > 0.01: dynamic_threshold += 0.03
         
+        min_agree    = self.cfg["min_model_agreement"]
         prob_passed  = prob_up >= dynamic_threshold
         agree_passed = agreement >= min_agree
         passed       = prob_passed and agree_passed
@@ -430,6 +432,7 @@ class SignalFilter:
             blocking_reasons.append(f"大戶籌碼顯著流失 ({large_holder_change_3m:+.1%}) — 建議觀望")
 
         # 強化條件（加分項）
+        foreign_weekly = float(latest.get("foreign_net_weekly", 0))
         if foreign_weekly > 5e8:
             boosting_reasons.append(f"外資大量買超 ({foreign_weekly/1e8:.0f}億/週)")
         if prob_up >= CONFIDENCE_THRESHOLD:
@@ -454,6 +457,12 @@ class SignalFilter:
         if quantum_momentum > 0:
             boosting_reasons.append(f"⚛️ 量子動量正向 (Mass x Disp) — 物理動能釋放")
             overall += 3
+            
+        # 🧪 第六波文明 (MBNRIC) 奇點溢價
+        singularity_premium = float(latest.get("singularity_premium", 0))
+        if singularity_premium > 0.5:
+            boosting_reasons.append(f"✨ 2026 奇點共振：第六波文明 (MBNRIC) 領導者溢價")
+            overall += 7
             
         # 🌌 重力井套利偵測 (Gravity Well Arbitrage)
         # 核心原則：偏離邊緣時，引力最強，套利空間最大
@@ -495,6 +504,12 @@ class SignalFilter:
         if info_force < -1.5:
             blocking_reasons.append(f"🔴 風險掃描：資訊力崩潰 ({info_force:.2f})，市場正遭受負向衝擊")
             is_risk_zone = True
+            
+        # 4. 2026 泡沫清算共振 (2026 Resonance Risk)
+        bubble_risk = float(latest.get("bubble_crash_risk", 0))
+        if bubble_risk > 0.7:
+             blocking_reasons.append(f"💀 2026 共振預警：信用泡沫出清風險極大 (Risk={bubble_risk:.2f})")
+             is_risk_zone = True
 
         # 如果處於風險紅區，即便機率高也強制轉為 WATCH 或 HOLD_CASH
         if is_risk_zone:
