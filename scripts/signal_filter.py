@@ -168,14 +168,22 @@ class SignalFilter:
     # 維度評估函式
     # ─────────────────────────────────────────────
 
-    def _eval_prob(self, report: dict) -> FilterDimension:
-        """① 模型機率維度"""
         prob_up     = report.get("prob_up", 0.5)
         agreement   = report.get("model_agreement", 0.0)
-        threshold   = self.cfg["prob_up_threshold"]
-        min_agree   = self.cfg["min_model_agreement"]
-
-        prob_passed  = prob_up >= threshold
+        
+        # ── 2026 量子金融藍圖：動態門檻調整 ───────────────────
+        # 根據康波分數調整基準門檻
+        kwave_score = report.get("kwave_score", 0.0)
+        entropy_delta = report.get("entropy_delta", 0.0)
+        
+        base_threshold = self.cfg["prob_up_threshold"]
+        
+        # 如果康波分數過高 (風險大) 或 熵值劇變 (不穩定)，門檻自動提高
+        dynamic_threshold = base_threshold
+        if kwave_score > 0.5: dynamic_threshold += 0.05
+        if entropy_delta > 0.01: dynamic_threshold += 0.03
+        
+        prob_passed  = prob_up >= dynamic_threshold
         agree_passed = agreement >= min_agree
         passed       = prob_passed and agree_passed
 
@@ -189,11 +197,13 @@ class SignalFilter:
         agree_score = min(1.0, max(0.0, agreement))
         score       = (prob_score * 0.7 + agree_score * 0.3)
 
-        detail = f"prob={prob_up:.2f} (>{threshold})  agreement={agreement:.0%} (>{min_agree:.0%})"
+        detail = f"prob={prob_up:.2f} (動態門檻={dynamic_threshold:.2f})  agreement={agreement:.0%}"
         if prob_up >= CONFIDENCE_THRESHOLD:
             detail += " 🔥核心擊球區"
+        if kwave_score < -0.5:
+            detail += " 🚀康波順風"
             
-        return FilterDimension("①模型機率", passed, score, detail, prob_up)
+        return FilterDimension("①量子模型機率", passed, score, detail, prob_up)
 
     def _eval_regime(self, report: dict, df_feat: pd.DataFrame) -> FilterDimension:
         """② 波動率 + 趨勢 Regime 維度"""
@@ -418,6 +428,12 @@ class SignalFilter:
         macro_color = str(latest.get("macro_monitoring_color", "N/A"))
         if macro_color == 'blue':
             boosting_reasons.append("景氣藍燈 — 週期底部")
+            
+        # 🚀 量子物理能量釋放 (Impulse/Energy Boost)
+        price_impulse_z = float(latest.get("price_impulse_z", 0))
+        if price_impulse_z > 2.0:
+            boosting_reasons.append(f"⚛️ 量子衝量爆發 (Impulse={price_impulse_z:.1f}σ) — 能量釋放")
+            overall += 5 # 給予額外信心加分
 
         # ── 最終決策 ─────────────────────────────────────────────
         # 必要條件：模型機率 + 波動率/趨勢 Regime 都必須通過

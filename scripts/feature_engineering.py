@@ -853,6 +853,32 @@ def add_kwave_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    量子金融特徵：將價格運動視為物理力學過程。
+    核心指標：衝量 (Impulse)、動能 (Kinetic Energy)、熵值 (Entropy)。
+    """
+    # 1. 量子衝量 (Price Impulse) = 質量 (Volume) * 速度 (Price Change)
+    if "volume" in df.columns:
+        df["price_impulse"] = df["volume"] * (df["close"] - df["open"])
+        # 標準化以消除絕對數值影響
+        df["price_impulse_z"] = (df["price_impulse"] - df["price_impulse"].rolling(60).mean()) / df["price_impulse"].rolling(60).std()
+
+    # 2. 趨勢動能 (Kinetic Energy) = 0.5 * m * v^2
+    if "returns_5d" in df.columns and "volume" in df.columns:
+        df["price_energy"] = 0.5 * df["volume"] * (df["returns_5d"]**2)
+        df["price_energy_log"] = np.log1p(df["price_energy"])
+
+    # 3. 市場熵值 (Market Entropy) - 衡量混亂程度
+    # 使用回報率的滾動標準差作為「資訊熵」的代理變數
+    if "returns_1d" in df.columns:
+        df["market_entropy"] = df["returns_1d"].rolling(20).std()
+        # 熵值突增通常代表 Regime Change
+        df["entropy_delta"] = df["market_entropy"].diff()
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -910,6 +936,10 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     # ── 宏觀長波：康波週期特徵 (K-Wave) ────────────────────────
     df = add_kwave_regime_features(df)
     logger.info(f"  康波長波特徵 (K-Wave) 注入完成，shape={df.shape}")
+
+    # ── 量子力學：量子物理特徵 (Quantum Physics) ────────────────
+    df = add_quantum_physics_features(df)
+    logger.info(f"  量子物理特徵 (Quantum) 注入完成，shape={df.shape}")
 
     # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
     df = add_trend_regime_features(df)
