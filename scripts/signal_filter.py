@@ -438,6 +438,32 @@ class SignalFilter:
         # ── 最終決策 ─────────────────────────────────────────────
         # 必要條件：模型機率 + 波動率/趨勢 Regime 都必須通過
         must_pass = dim_prob.passed and dim_regime.passed
+        
+        # ── 80/20 風險掃描儀 (Risk Scanner) ────────────────────
+        # 針對可能引發 80% 虧損的 20% 關鍵因子
+        is_risk_zone = False
+        
+        # 1. 熵值激增 (Entropy Spike) -> 市場進入極度混亂
+        entropy_delta = float(latest.get("entropy_delta", 0))
+        if entropy_delta > 0.02:
+            blocking_reasons.append(f"🔴 風險掃描：市場熵值激增 ({entropy_delta:+.3f})，系統進入不確定性紅區")
+            is_risk_zone = True
+            
+        # 2. 康波風險 (K-Wave Risk)
+        kwave_score = float(latest.get("kwave_score", 0))
+        if kwave_score > 1.5:
+            blocking_reasons.append(f"🔴 風險掃描：康波分數極高 ({kwave_score:.2f})，長波修正風險極大")
+            is_risk_zone = True
+            
+        # 3. 資訊力崩潰 (Force Collapse)
+        info_force = float(latest.get("total_info_force", 0))
+        if info_force < -1.5:
+            blocking_reasons.append(f"🔴 風險掃描：資訊力崩潰 ({info_force:.2f})，市場正遭受負向衝擊")
+            is_risk_zone = True
+
+        # 如果處於風險紅區，即便機率高也強制轉為 WATCH 或 HOLD_CASH
+        if is_risk_zone:
+            must_pass = False
 
         # 大戶流失視為強制阻斷
         if large_holder_change_3m < -0.05:

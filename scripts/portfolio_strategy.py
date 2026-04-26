@@ -1,5 +1,6 @@
 """
-portfolio_strategy.py — 針對 30,000 TWD 的最佳投資建議
+portfolio_strategy.py — 《2026 量子金融藍圖》槓鈴資產分配器
+核心邏輯：80% 核心防禦 (Core) + 20% 量子進取 (Quantum)
 """
 
 import logging
@@ -10,89 +11,120 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
-from config import MODEL_DIR, STOCK_CONFIGS, get_all_features, ALL_FEATURES
-from data_pipeline import build_daily_frame, _query
-from feature_engineering import build_features
+# 導入專案路徑
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from scripts.config import MODEL_DIR, STOCK_CONFIGS, get_all_features, ALL_FEATURES
+from scripts.data_pipeline import build_daily_frame, _query
+from scripts.feature_engineering import build_features
+from scripts.signal_filter import SignalFilter
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def load_model(stock_id: str):
-    path = MODEL_DIR / f"ensemble_{stock_id}.pkl"
-    if not path.exists():
-        return None
-    return joblib.load(path)
+# --- 標的分類 (DNA Classification) ---
+CORE_STOCKS = ["2330", "2317", "2881", "2882", "0050"] # 權值、高流動性、重力中心
+QUANTUM_STOCKS = ["2454", "2376", "3661", "2382", "6669"] # 高驚奇值、高衝量、AI/技術驅動
 
-def get_latest_price(stock_id: str):
-    query_str = f"SELECT close FROM stock_price WHERE stock_id='{stock_id}' ORDER BY date DESC LIMIT 1"
-    df = _query(query_str)
-    if df.empty:
-        return None
-    return float(df['close'].iloc[0])
+class BarbellAllocator:
+    def __init__(self, total_budget=1000000.0):
+        self.total_budget = total_budget
+        self.sf = SignalFilter()
+        
+    def allocate(self, results: pd.DataFrame, market_entropy: float = 0.0):
+        """
+        執行槓鈴分配邏輯
+        market_entropy: 0~1 (越混亂代表風險越大)
+        """
+        # 1. 決定槓鈴比例
+        core_ratio = 0.8 + (market_entropy * 0.1) # 熵值越高，越偏向核心
+        quantum_ratio = 1.0 - core_ratio
+        
+        core_budget = self.total_budget * core_ratio
+        quantum_budget = self.total_budget * quantum_ratio
+        
+        logger.info(f">>> 執行槓鈴分配 | 市場熵值: {market_entropy:.2f}")
+        logger.info(f"    - 核心防禦 (Core): {core_ratio:.0%} | 預算: {core_budget:,.0f}")
+        logger.info(f"    - 量子進取 (Quantum): {quantum_ratio:.0%} | 預算: {quantum_budget:,.0f}")
+        
+        final_allocation = []
+        
+        # 2. 核心端分配 (平分給通過過濾的高信心標的)
+        core_picks = results[results['stock_id'].isin(CORE_STOCKS) & (results['prob_up'] >= 0.6)]
+        if not core_picks.empty:
+            per_stock_budget = core_budget / len(core_picks)
+            for _, row in core_picks.iterrows():
+                shares = int(per_stock_budget / row['price'])
+                final_allocation.append({**row.to_dict(), "type": "CORE", "shares": shares, "allocation": shares * row['price']})
+        
+        # 3. 量子端分配 (尋找驚奇值與衝量最強的標的)
+        quantum_picks = results[results['stock_id'].isin(QUANTUM_STOCKS) & (results['prob_up'] >= 0.65)]
+        if not quantum_picks.empty:
+            # 量子端採「集中火力」模式，只取最強的 2 支
+            quantum_picks = quantum_picks.head(2)
+            per_stock_budget = quantum_budget / len(quantum_picks)
+            for _, row in quantum_picks.iterrows():
+                shares = int(per_stock_budget / row['price'])
+                final_allocation.append({**row.to_dict(), "type": "QUANTUM", "shares": shares, "allocation": shares * row['price']})
+                
+        return pd.DataFrame(final_allocation)
 
 def main():
-    logging.basicConfig(level=logging.INFO)
-    budget = 30000
+    budget = 1000000.0 # 預設一百萬
     results = []
     
-    # 預計涵蓋的股票 (已有模型的)
-    stock_ids = ["2330", "2317", "2454", "2881", "2382", "2603", "2002", "3037", "2308", "6669", "9958"]
+    # 合併所有核心與量子標的
+    target_stocks = CORE_STOCKS + QUANTUM_STOCKS
     
-    logger.info(f"正在為 {len(stock_ids)} 支股票生成預測...")
-    
-    for sid in stock_ids:
-        model = load_model(sid)
-        if model is None:
-            continue
-            
+    for sid in target_stocks:
+        model_path = MODEL_DIR / f"ensemble_{sid}.pkl"
+        if not model_path.exists(): continue
+        
         try:
-            # 取得特徵 (限制回測長度以加速)
-            raw = build_daily_frame(stock_id=sid, start_date="2023-01-01")
+            model = joblib.load(model_path)
+            raw = build_daily_frame(stock_id=sid, start_date="2024-01-01")
             df_feat = build_features(raw, stock_id=sid, for_inference=True)
             
-            all_feats_sid = get_all_features(sid)
-            feat_cols = [c for c in all_feats_sid if c in df_feat.columns]
-            X_latest = df_feat[feat_cols].fillna(0).iloc[[-1]]
-            
-            # 預測
-            pred_dict = model.predict(X_latest)
+            latest = df_feat.iloc[[-1]]
+            pred_dict = model.predict(latest)
             prob_up = float(pred_dict["ensemble"][0])
             
-            current_price = float(df_feat["close"].iloc[-1])
+            # 取得市場熵值 (作為風險度量)
+            market_entropy = float(df_feat["market_entropy"].iloc[-1]) if "market_entropy" in df_feat.columns else 0.05
             
             results.append({
                 "stock_id": sid,
                 "name": STOCK_CONFIGS.get(sid, {}).get("name", sid),
-                "price": current_price,
+                "price": float(df_feat["close"].iloc[-1]),
                 "prob_up": prob_up,
+                "entropy": market_entropy
             })
         except Exception as e:
-            logger.error(f"股票 {sid} 預測失敗: {e}")
+            logger.error(f"標的 {sid} 預測失敗: {e}")
 
-    # 排序：按上漲機率
     if not results:
-        logger.error("沒有任何股票成功生成預測。請檢查模型文件是否存在且特徵工程是否正常。")
+        logger.error("無可用預測。")
         return
 
     df_res = pd.DataFrame(results).sort_values("prob_up", ascending=False)
     
-    print("\n" + "="*70)
-    print(f"  30,000 TWD 投資策略建議 (基準日: {datetime.now().strftime('%Y-%m-%d')})")
-    print("="*70)
-    print(f"{'代號':<6} {'名稱':<10} {'現價':>8} {'上漲機率':>10} {'建議股數(零股)':>15}")
-    print("-"*70)
+    # 執行分配
+    allocator = BarbellAllocator(total_budget=budget)
+    # 取平均熵值作為市場環境參考
+    avg_entropy = df_res['entropy'].mean()
+    final_df = allocator.allocate(df_res, market_entropy=avg_entropy)
     
-    for _, row in df_res.head(5).iterrows():
-        # 簡單策略：如果是高信心股票，分配約 1/3 資金
-        # 由於資金只有 3 萬，建議分散在 2-3 支股票，或集中在最強的一支
-        shares = int(budget / 3 / row['price']) if row['prob_up'] > 0.55 else 0
-        if shares == 0 and row['prob_up'] > 0.55:
-            shares = int(budget / row['price']) # 集中投資
-            
-        print(f"{row['stock_id']:<6} {row['name']:<10} {row['price']:>8.2f} {row['prob_up']:>10.2%} {shares:>15d}")
-
-    print("\n* 註：由於資金為 3 萬元，建議透過「盤中零股」交易。")
-    print("  推薦優先關注上漲機率 > 55% 且信心度高的個股。")
-    print("="*70)
+    print("\n" + "="*80)
+    print(f" 《2026 量子金融藍圖》槓鈴投資策略建議 (基準日: {datetime.now().strftime('%Y-%m-%d')})")
+    print("="*80)
+    print(f"{'類別':<8} {'代號':<6} {'名稱':<10} {'現價':>8} {'上漲機率':>10} {'建議股數':>10} {'配置金額':>12}")
+    print("-" * 80)
+    
+    for _, row in final_df.iterrows():
+        print(f"{row['type']:<8} {row['stock_id']:<6} {row['name']:<10} {row['price']:>8.2f} {row['prob_up']:>10.2%} {row['shares']:>10d} {row['allocation']:>12,.0f}")
+    
+    print("="*80)
+    print(f"  總配置金額: {final_df['allocation'].sum():,.0f} / 現金保留: {budget - final_df['allocation'].sum():,.0f}")
+    print("="*80)
 
 if __name__ == "__main__":
     main()
