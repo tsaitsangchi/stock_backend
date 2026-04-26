@@ -171,7 +171,7 @@ class SignalFilter:
         try:
             conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
             cur = conn.cursor()
-            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
+            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
             res = cur.fetchone()
             cur.close()
             conn.close()
@@ -179,7 +179,9 @@ class SignalFilter:
                 return {
                     "sensitivity": res[0] or 0.5,
                     "elasticity": res[1] or 0.05,
-                    "tail": res[2] or 3.0
+                    "tail": res[2] or 3.0,
+                    "convexity": res[3] or 0.0,
+                    "tail_risk": res[4] or 0.0
                 }
         except Exception:
             pass
@@ -498,16 +500,26 @@ class SignalFilter:
         if is_risk_zone:
             must_pass = False
 
-        # 大戶流失視為強制阻斷
-        if large_holder_change_3m < -0.05:
-            must_pass = False
-
-        if must_pass and overall >= 60:
-            decision = "LONG"
-        elif must_pass and overall >= 45:
-            decision = "WATCH"
+        # ── 80/20 戰略決策：淘汰平庸 ──────────────────────────
+        # 核心原則：0% 隱藏危險區 (捨棄中等風險/報酬標的)
+        if must_pass and overall >= 65:
+            # 右側 20%：極端正向尾部
+            if physics and physics.get("convexity", 0) > 1.0:
+                boosting_reasons.append(f"💎 右側 20%：高凸性資產 (Convexity={physics['convexity']:.2f})")
+                decision = "LONG"
+            else:
+                decision = "LONG"
+        elif must_pass and overall >= 50:
+            # 中間 60%：穩定核心但缺乏超額報酬 -> 徹底捨棄
+            decision = "HOLD_CASH"
+            blocking_reasons.append("⚠️ 0% 隱藏危險區：標的處於平庸中間帶，缺乏獲利凸性，拒絕交易")
         else:
             decision = "HOLD_CASH"
+            
+        # 左側 20%：尾部風險熔斷
+        if physics and physics.get("tail_risk", 0) < -5.0:
+             blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={physics['tail_risk']:.2f})")
+             decision = "HOLD_CASH"
 
         return FilterResult(
             decision         = decision,
