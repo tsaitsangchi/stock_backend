@@ -23,7 +23,10 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 
-from config import STOCK_ID, STOCK_CONFIGS, DEFAULT_STOCK_ID
+try:
+    from config import STOCK_ID, STOCK_CONFIGS, DEFAULT_STOCK_ID
+except ImportError:
+    from scripts.config import STOCK_ID, STOCK_CONFIGS, DEFAULT_STOCK_ID
 
 logger = logging.getLogger(__name__)
 

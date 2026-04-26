@@ -1004,3 +1004,10 @@ def _get_international_watchlist():
     return sorted(list(tickers))
 
 INTERNATIONAL_WATCHLIST = _get_international_watchlist()
+
+# ─────────────────────────────────────────────
+# 八二法則 (Pareto Principle) 設定
+# ─────────────────────────────────────────────
+PARETO_RATIO = 0.2  # 特徵層面：只保留前 20% 黃金特徵
+CONFIDENCE_THRESHOLD = 0.75  # 訊號層面：極端高信心門檻
+TIER_1_STOCKS = ["2330", "2317", "2454", "2382", "2881", "2412", "2308", "2882"] # 標的層面：核心權值股
