@@ -38,6 +38,7 @@ import psycopg2
 import psycopg2.extras
 import requests
 import pandas as pd
+from config import INTERNATIONAL_WATCHLIST
 
 # ======================
 # 設定 logging
@@ -312,11 +313,19 @@ def resolve_start_by_key(latest_dict: dict, key: str, global_start: str, dataset
     latest = latest_dict.get(key)
     if latest is None:
         return effective_start
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
+    next_day_dt = datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
+    next_day = next_day_dt.strftime("%Y-%m-%d")
+
     if next_day > DEFAULT_END:
         return None  # 已是最新
+        
+    # 週末防護：如果 latest 是週五 (weekday 4)，且今天是週六或週日，則視為已最新
+    latest_dt = datetime.strptime(latest, "%Y-%m-%d")
+    today_dt = datetime.today()
+    if latest_dt.weekday() == 4: # 週五
+        if (today_dt - latest_dt).days <= 2:
+            return None
+            
     return max(next_day, earliest)
 
 
@@ -402,9 +411,9 @@ def fetch_us_stock_price(
         stock_ids = tickers
         logger.info(f"  指定抓取 {len(stock_ids)} 支股票：{stock_ids}")
     else:
-        stock_ids = get_us_stock_ids(delay)
-        if not stock_ids:
-            return
+        # 預設改用 config.py 的白名單，避免全市場抓取耗盡額度
+        stock_ids = INTERNATIONAL_WATCHLIST
+        logger.info(f"  使用預設白名單抓取 {len(stock_ids)} 支關鍵標的")
 
     # 批次載入 DB 最新日期
     latest_dates = get_latest_date(conn, "us_stock_price", key_col="stock_id")
