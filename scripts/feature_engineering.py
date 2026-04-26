@@ -879,6 +879,55 @@ def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_power_law_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    冪律分佈與肥尾偵測：捕捉非正態分佈的極端動能。
+    """
+    # 1. 肥尾強度 (Tail Intensity)
+    # 利用對數縮放捕捉極端回報 (Outliers)
+    if "returns_1d" in df.columns:
+        std = df["returns_1d"].rolling(252).std()
+        z_score = df["returns_1d"] / std.replace(0, np.nan)
+        # 對數化極值：當 Z > 3 時，強度會非線性增長
+        df["tail_intensity"] = np.sign(z_score) * np.log1p(np.abs(z_score))
+        
+    # 2. 力學失衡比 (Force Imbalance)
+    # 物理衝量 (Impulse) 的買賣能量對比
+    if "price_impulse" in df.columns:
+        # 正衝量總和 / 負衝量總和 (20日視窗)
+        pos_imp = df["price_impulse"].clip(lower=0).rolling(20).sum()
+        neg_imp = df["price_impulse"].clip(upper=0).abs().rolling(20).sum()
+        df["force_imbalance"] = pos_imp / neg_imp.replace(0, np.nan)
+        
+    return df
+
+
+def add_order_flow_proxy_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    虛擬訂單流代理 (Virtual Order Flow Proxy)：從 OHLCV 中提取多空博弈力量。
+    """
+    if "high" in df.columns and "low" in df.columns and "close" in df.columns and "volume" in df.columns:
+        range_hl = (df["high"] - df["low"]).replace(0, np.nan)
+        
+        # 1. 內生買賣壓力 (Intraday Pressure)
+        # 利用 Close 在當日區間的位置來判斷買賣方誰主導了最後的決策
+        # (Close - Low) = 買方推進, (High - Close) = 賣方壓制
+        df["buy_pressure"] = df["volume"] * (df["close"] - df["low"]) / range_hl
+        df["sell_pressure"] = df["volume"] * (df["high"] - df["close"]) / range_hl
+        
+        # 2. 訂單流失衡比 (Order Flow Imbalance Proxy)
+        df["ofi_proxy"] = (df["buy_pressure"] - df["sell_pressure"]) / df["volume"].replace(0, np.nan)
+        df["ofi_proxy_ma5"] = df["ofi_proxy"].rolling(5).mean()
+        
+        # 3. 訂單吸收/衰竭偵測 (Absorption/Exhaustion)
+        # 當量很大但 Price Range 很小時，代表有隱藏的大量掛單在「吸收」動能
+        df["price_efficiency"] = (df["close"] - df["open"]).abs() / (df["volume"] * range_hl).replace(0, np.nan)
+        # 效率極低通常代表轉折點
+        df["absorption_signal"] = (df["price_efficiency"] < df["price_efficiency"].rolling(20).quantile(0.1)).astype(int)
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -940,6 +989,14 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     # ── 量子力學：量子物理特徵 (Quantum Physics) ────────────────
     df = add_quantum_physics_features(df)
     logger.info(f"  量子物理特徵 (Quantum) 注入完成，shape={df.shape}")
+
+    # ── 冪律分佈：肥尾偵測 (Power Law) ──────────────────────────
+    df = add_power_law_features(df)
+    logger.info(f"  冪律肥尾特徵 (Power Law) 注入完成，shape={df.shape}")
+
+    # ── 訂單流：虛擬訂單流代理 (Order Flow Proxy) ──────────────
+    df = add_order_flow_proxy_features(df)
+    logger.info(f"  虛擬訂單流特徵 (Order Flow) 注入完成，shape={df.shape}")
 
     # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
     df = add_trend_regime_features(df)
