@@ -163,6 +163,27 @@ class SignalFilter:
 
     def __init__(self, config: dict | None = None):
         self.cfg = {**FILTER_CONFIG, **(config or {})}
+        self.physics_registry = {} # 快取個股物理參數
+
+    def _load_physics_registry(self, stock_id: str):
+        """ 從資料庫讀取個股物理 DNA """
+        import psycopg2
+        try:
+            conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
+            cur = conn.cursor()
+            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
+            res = cur.fetchone()
+            cur.close()
+            conn.close()
+            if res:
+                return {
+                    "sensitivity": res[0] or 0.5,
+                    "elasticity": res[1] or 0.05,
+                    "tail": res[2] or 3.0
+                }
+        except Exception:
+            pass
+        return None
 
     # ─────────────────────────────────────────────
     # 維度評估函式
@@ -325,19 +346,20 @@ class SignalFilter:
     ) -> FilterResult:
         """
         執行完整的多維度訊號過濾。
-
-        參數
-        ----
-        report   : run_prediction() 的輸出 dict
-        df_feat  : build_features() 的輸出 DataFrame（含最新特徵）
-
-        回傳
-        ----
-        FilterResult（含 decision / score / dimensions / 停損停利建議）
         """
+        stock_id = report.get("stock_id", "2330")
+        physics = self._load_physics_registry(stock_id)
+        
         blocking_reasons = []
         boosting_reasons = []
         dimensions       = []
+        
+        # ── 物理 DNA 注入 ───────────────────────────────────────
+        if physics:
+            # 根據敏感度調整門檻：敏感度越低，門檻越高
+            sensitivity_bias = (0.5 - physics["sensitivity"]) * 0.1
+            self.cfg["prob_up_threshold"] += max(-0.05, min(0.05, sensitivity_bias))
+            boosting_reasons.append(f"🧬 已載入個股物理 DNA (Sensitivity={physics['sensitivity']:.2f})")
 
         # ── Hard Block 1：宏觀衝擊 ──────────────────────────────
         macro_shock = report.get("warnings", {}).get("macro_shock", False)
