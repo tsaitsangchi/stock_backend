@@ -126,8 +126,9 @@ def check_prediction_drift_df(stock_ids: List[str]) -> pd.DataFrame:
             
         current_dist = df["prob_up"].values
         # 參考分佈 (Reference)：理想狀態下應為 0.4~0.6 的均勻或常態分佈
-        # 實務上應從模型 metadata 讀取訓練時的 OOF 分佈，此處以 0.5 均值常態作為 Proxy
-        ref_dist = np.random.normal(0.5, 0.1, 1000).clip(0, 1)
+        # [P0 修復] 使用固定種子確保參考分佈一致，不再隨機變動
+        rng = np.random.default_rng(42)
+        ref_dist = rng.normal(0.5, 0.1, 1000).clip(0, 1)
         
         psi = calculate_psi(ref_dist, current_dist)
         

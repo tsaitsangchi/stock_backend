@@ -43,20 +43,13 @@ import psycopg2.extras
 
 # 確保 scripts/ 在 path
 sys.path.insert(0, str(Path(__file__).parent))
-from config import OUTPUT_DIR
+from config import OUTPUT_DIR, DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    "dbname":   "stock",
-    "user":     "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port":     "5432",
-}
-
 
 def get_conn():
+    # [P1 修復] 統一引用 config.DB_CONFIG，不再在此模組重複定義
     return psycopg2.connect(**DB_CONFIG)
 
 
@@ -90,13 +83,20 @@ def load_oof_predictions(since: str = "2020-01-01") -> pd.DataFrame:
     return df
 
 
-def load_live_forecasts(since: str = "2025-01-01") -> pd.DataFrame:
+def load_live_forecasts(since: str = "2025-01-01",
+                        exclude_backfill: bool = True) -> pd.DataFrame:
     """
     從 stock_forecast_daily 取「已有實際收盤可驗證」的預測。
     JOIN stock_price 取得 forecast_date 的實際收盤。
+
+    [P0 修復 2.2] 加入 exclude_backfill 參數：
+      預設 True，排除 historical_backfill.py 回填的資料，
+      避免 look-ahead bias 污染 Signal Filtering 績效分析。
     """
     conn = get_conn()
-    sql = """
+    # [P0] is_backfill 過濾子句（若欄位不存在則降級為不過濾並記錄警告）
+    backfill_clause = "AND f.is_backfill = FALSE" if exclude_backfill else ""
+    sql = f"""
         SELECT
             f.predict_date,
             f.forecast_date,
@@ -122,9 +122,16 @@ def load_live_forecasts(since: str = "2025-01-01") -> pd.DataFrame:
          AND p.date     = f.forecast_date
         WHERE f.stock_id   = '2330'
           AND f.predict_date >= %s
+          {backfill_clause}
         ORDER BY f.predict_date, f.day_offset
     """
-    df = pd.read_sql(sql, conn, params=(since,), parse_dates=["predict_date", "forecast_date"])
+    try:
+        df = pd.read_sql(sql, conn, params=(since,), parse_dates=["predict_date", "forecast_date"])
+    except Exception as e:
+        # is_backfill 欄位可能尚未遷移，降級為不過濾
+        logger.warning(f"is_backfill 過濾失敗（{e}），降級為不過濾（請執行 DB 遷移加入此欄位）")
+        sql_fallback = sql.replace(backfill_clause, "")
+        df = pd.read_sql(sql_fallback, conn, params=(since,), parse_dates=["predict_date", "forecast_date"])
     conn.close()
     return df
 

@@ -1,5 +1,11 @@
 """
-calibrate_stock_physics.py — 物理常數與 MBNRIC 賽道校準儀 (v4.0 Matrix)
+calibrate_stock_physics.py — 物理常數與 MBNRIC 賽道校準小區 (v4.0 Matrix)
+
+修改摘要（第三輪審查修復）：
+  [P1 2.6] 移除硬編碼 DB 憑證（psycopg2.connect 績效 hardcode）
+           改由 config.DB_CONFIG 統一引用
+  [P2 3.2] 修正資料表名稱： stock_physics_registry → stock_dynamics_registry
+           以對齊 signal_filter.py 的 _load_dynamics_registry() 讀取逻輯
 """
 
 import os
@@ -9,9 +15,10 @@ import pandas as pd
 import numpy as np
 import psycopg2
 
-sys.path.append(os.getcwd())
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.data_pipeline import build_daily_frame
 from scripts.feature_engineering import build_features
+from scripts.config import DB_CONFIG  # [P1 修復] 統一來源
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,22 +46,25 @@ def calibrate_stock(stock_id: str):
         innovation_velocity = 1.0
 
     # 3. 寫入資料庫
+    # [P2 3.2] 資料表改為 stock_dynamics_registry，對齊 signal_filter.py 的 _load_dynamics_registry()
     try:
-        conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
+        conn = psycopg2.connect(**DB_CONFIG)  # [P1] 統一引用 config.DB_CONFIG
         cur = conn.cursor()
         upsert_query = """
-        UPDATE stock_physics_registry SET 
-            avg_mass = %s,
-            gravity_elasticity = %s,
-            innovation_velocity = %s,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE stock_id = %s;
+        INSERT INTO stock_dynamics_registry
+            (stock_id, avg_mass, gravity_elasticity, innovation_velocity, updated_at)
+        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (stock_id) DO UPDATE SET
+            avg_mass            = EXCLUDED.avg_mass,
+            gravity_elasticity  = EXCLUDED.gravity_elasticity,
+            innovation_velocity = EXCLUDED.innovation_velocity,
+            updated_at          = CURRENT_TIMESTAMP;
         """
-        cur.execute(upsert_query, (float(avg_mass), float(gravity_elasticity), float(innovation_velocity), stock_id))
+        cur.execute(upsert_query, (stock_id, float(avg_mass), float(gravity_elasticity), float(innovation_velocity)))
         conn.commit()
         cur.close()
         conn.close()
-        logger.info(f"  [OK] {stock_id} | Innovation Velocity: {innovation_velocity:.2f}")
+        logger.info(f"  [OK] {stock_id} | avg_mass={avg_mass:.2f} | innovation_velocity={innovation_velocity:.2f}")
     except Exception as e:
         logger.error(f"  資料庫更新失敗: {e}")
 

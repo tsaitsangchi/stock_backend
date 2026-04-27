@@ -93,6 +93,15 @@ def main():
         subprocess.run([VENV_PYTHON, "scripts/portfolio_optimizer.py", "--budget", "100000"], check=True)
     except Exception as e:
         logger.error(f"❌ 投資組合優化失敗: {e}")
+
+    # 4. 刷新資料庫物化視圖 (Materialized Views)
+    # [P1 修復 2.8] 確保每日抓取與推論後，視圖能反映最新數據
+    logger.info("[Step 4] 刷新資料庫物化視圖 (PostgreSQL Optimization)")
+    try:
+        subprocess.run([VENV_PYTHON, "scripts/db_optimize.py", "--refresh-only"], check=True)
+        logger.info("✅ 物化視圖刷新完成。")
+    except Exception as e:
+        logger.warning(f"⚠️ 物化視圖刷新失敗（不影響主要管線）: {e}")
         
     duration = time.time() - start_time
     logger.info(f"=== ✅ 管線執行完畢 (總耗時: {duration/60:.1f} 分鐘) ===")
