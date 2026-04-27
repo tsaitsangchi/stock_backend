@@ -743,12 +743,23 @@ def run_walk_forward(
     # ── Regime 分析（OOF Meta 預測在不同波動環境下的表現）────────
     regime_results = regime_analysis(df, oof_prob_up)
 
+    # [P2 修復 2.10] 組裝完整 OOF 預測序列（含日期 + 真實標籤）
+    # 供 backtest_audit.py 的 calibration_analysis() 與 model_health_check.py
+    # 的 PSI 參考分佈使用。
+    oof_full_df = pd.DataFrame({
+        "date":     df.index,
+        "prob_up":  oof_prob_up.values,
+        "y_true":   y_cls.values,         # 二元標籤（漲/跌）
+        "y_return": y_ret.values,         # 連續報酬率
+    }).dropna(subset=["prob_up"])
+
     return {
         "oof_metrics":    metrics_df,
         "meta_metrics":   meta_metrics,
         "summary":        summary,
         "importance":     importance_df,
         "oof_preds":      oof_prob_up,
+        "oof_full":       oof_full_df,    # [P2] 含日期/標籤的完整 OOF 序列
         "meta_ensemble":  meta_ensemble,   # 帶有訓練好 Meta（+ 可選 Calibrator）
         "regime_results": regime_results,  # 各 regime 的 OOF 指標
     }
@@ -1034,6 +1045,14 @@ def main():
     oof_df = pd.DataFrame({"prob_up": wf_result["oof_preds"]})
     oof_df.to_csv(OUTPUT_DIR / "oof_predictions.csv")
     logger.info(f"  OOF 預測序列已儲存：{OUTPUT_DIR / 'oof_predictions.csv'}")
+
+    # [P2 修復 2.10] 同步輸出含日期/標籤的完整 OOF 預測序列
+    # 供 backtest_audit.py 做完整 calibration_analysis（不只 scalar metrics）
+    oof_full = wf_result.get("oof_full")
+    if oof_full is not None and not oof_full.empty:
+        oof_full_path = OUTPUT_DIR / "oof_predictions_with_dates.csv"
+        oof_full.to_csv(oof_full_path, index=False)
+        logger.info(f"  完整 OOF 序列（date/prob_up/y_true）已儲存：{oof_full_path}")
 
     # 同時儲存 Meta 重算後的 OOF 指標（比 fold-level 平均更準確）
     meta_metrics_df = pd.DataFrame([wf_result["meta_metrics"]])

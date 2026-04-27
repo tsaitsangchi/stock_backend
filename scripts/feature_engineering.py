@@ -846,25 +846,59 @@ def add_kwave_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     康波週期 (Kondratiev Wave) 長波特徵
     核心邏輯：利用「金油比」、「利率長波」與「大宗商品動能」來模擬經濟長週期的相位。
+
+    修改摘要（第三輪審查修復 P1 全系統 kwave_score 幽靈特徵）：
+      原版 kwave_score 僅在 gold_price + oil_brent + US10Y 都存在時才計算，
+      其他標的則是「全系統使用、無人定義」的幽靈特徵。
+      本版本明確提供三層 fallback，確保 kwave_score 在任何資料條件下
+      都有確定值，並補充 NaN 防護以利下游 (signal_filter / backtest_engine) 使用。
     """
     # 1. 資源與避險對比 (生產 vs 儲存)
     if "gold_price" in df.columns and "oil_brent" in df.columns:
         # 金油比上升通常代表長波衰退/蕭條 (Winter)；下降代表繁榮 (Autumn)
         df["gold_oil_ratio"] = df["gold_price"] / df["oil_brent"].replace(0, np.nan)
-        df["gold_oil_ratio_z"] = (df["gold_oil_ratio"] - df["gold_oil_ratio"].rolling(252*2).mean()) / df["gold_oil_ratio"].rolling(252*2).std()
-    
+        rolling_mean = df["gold_oil_ratio"].rolling(252 * 2, min_periods=60).mean()
+        rolling_std  = df["gold_oil_ratio"].rolling(252 * 2, min_periods=60).std()
+        df["gold_oil_ratio_z"] = (df["gold_oil_ratio"] - rolling_mean) / rolling_std.replace(0, np.nan)
+
     # 2. 利率長波 (Capital Cost Wave)
     if "US10Y" in df.columns:
         # 10年債殖利率的超長均線偏離 (反映長波生產力的資本回報率)
-        long_ma = df["US10Y"].rolling(252*5, min_periods=252).mean() # 5年均線
+        long_ma = df["US10Y"].rolling(252 * 5, min_periods=252).mean()  # 5年均線
         df["yield_cycle_pos"] = df["US10Y"] - long_ma
-        
+
     # 3. 康波相位分數 (K-Wave Score)
-    # 邏輯：利率穩定上升且商品強勢 = 回升/繁榮；利率下行且金價強勢 = 衰退/蕭條
+    # 邏輯：分數越高代表長波越趨於「秋季/冬初」(風險上升)；
+    #       越低趨於「春季/回升」(擴張期)。取值區間 ≈ -2.0 ~ +2.0
+    kwave_components: list[pd.Series] = []
     if "gold_oil_ratio_z" in df.columns and "yield_cycle_pos" in df.columns:
-        # 分數越高代表長波越趨於「秋季/冬初」(風險上升)；越低趨於「春季/回升」(擴張期)
-        df["kwave_score"] = df["gold_oil_ratio_z"] * 0.6 + df["yield_cycle_pos"].rolling(20).mean() * (-0.4)
-        
+        # 主要訊號：金油比 + 利率長波（原始邏輯保留）
+        kwave_components.append(
+            df["gold_oil_ratio_z"].fillna(0.0) * 0.6
+            + df["yield_cycle_pos"].rolling(20, min_periods=5).mean().fillna(0.0) * (-0.4)
+        )
+
+    # Fallback A：使用美 10/2Y 利差 + Fed 升息速率（適用於缺商品價格資料的標的）
+    if "us_yield_spread" in df.columns and "fed_rate_chg_30d" in df.columns:
+        spread_rank = df["us_yield_spread"].rolling(252, min_periods=60).rank(pct=True)
+        rate_rank   = df["fed_rate_chg_30d"].rolling(252, min_periods=60).rank(pct=True)
+        # 殖利率倒掛（rank 趨近 0）+ 升息加速（rank 趨近 1）→ 高 kwave 風險
+        kwave_components.append(((1 - spread_rank) * 2 - 1).fillna(0.0))   # ~ -1 ~ +1
+        kwave_components.append((rate_rank * 2 - 1).fillna(0.0))            # ~ -1 ~ +1
+
+    # Fallback B：使用 TAIEX 相對強度反向作為粗糙代理
+    if not kwave_components and "taiex_rel_strength" in df.columns:
+        rs_rank = df["taiex_rel_strength"].rolling(252, min_periods=60).rank(pct=True)
+        kwave_components.append(((1 - rs_rank) * 2 - 1).fillna(0.0))
+
+    if kwave_components:
+        # 多個訊號平均後 clip 至合理範圍
+        df["kwave_score"] = sum(kwave_components) / len(kwave_components)
+        df["kwave_score"] = df["kwave_score"].clip(-2.0, 2.0).fillna(0.0)
+    else:
+        # 最終 fallback：常數 0（中性），確保特徵存在以利下游 join
+        df["kwave_score"] = 0.0
+
     return df
 
 

@@ -136,30 +136,66 @@ def load_live_forecasts(since: str = "2025-01-01",
     return df
 
 
-def load_wf_oof_with_actual() -> pd.DataFrame:
+def load_wf_oof_with_actual() -> dict:
     """
-    讀取 walk-forward OOF 結果（wf_fold_metrics.csv），
-    並重新從 DB 取實際報酬以計算校準統計。
+    讀取 walk-forward OOF 結果。
 
-    流程：
-      1. 讀 meta_oof_metrics.csv（全局 OOF 指標）
-      2. 呼叫 build_daily_frame + build_features
-      3. 用當前模型對每個歷史日做推論（模擬校準）
+    [P2 修復 2.10] 同時載入逐筆 OOF 預測序列（含日期 + 真實標籤），
+    以便 calibration_analysis() 在 WF 模式下也能執行（不只 Live 模式）。
+
+    回傳 dict（key 對應檔案）：
+      meta    : meta_oof_metrics.csv     全局 OOF 指標
+      folds   : wf_fold_metrics.csv      每 fold 評估
+      regime  : regime_metrics.csv       不同 regime 的 OOF 指標
+      oof_seq : oof_predictions_with_dates.csv  逐筆 prob_up + y_true（新）
     """
     logger.info("載入 Walk-Forward OOF 指標…")
-    meta_path   = OUTPUT_DIR / "meta_oof_metrics.csv"
-    fold_path   = OUTPUT_DIR / "wf_fold_metrics.csv"
-    regime_path = OUTPUT_DIR / "regime_metrics.csv"
+    meta_path    = OUTPUT_DIR / "meta_oof_metrics.csv"
+    fold_path    = OUTPUT_DIR / "wf_fold_metrics.csv"
+    regime_path  = OUTPUT_DIR / "regime_metrics.csv"
+    oof_seq_path = OUTPUT_DIR / "oof_predictions_with_dates.csv"
 
-    results = {}
+    results: dict = {}
     if meta_path.exists():
         results["meta"]   = pd.read_csv(meta_path)
     if fold_path.exists():
         results["folds"]  = pd.read_csv(fold_path)
     if regime_path.exists():
         results["regime"] = pd.read_csv(regime_path)
+    if oof_seq_path.exists():
+        try:
+            results["oof_seq"] = pd.read_csv(oof_seq_path, parse_dates=["date"])
+            logger.info(
+                f"  逐筆 OOF 序列：{len(results['oof_seq'])} 筆"
+                f"（{results['oof_seq']['date'].min().date()}"
+                f" ~ {results['oof_seq']['date'].max().date()}）"
+            )
+        except Exception as e:
+            logger.warning(f"讀取 oof_predictions_with_dates.csv 失敗：{e}")
 
     return results
+
+
+def oof_calibration_analysis(oof_seq: pd.DataFrame) -> tuple[pd.DataFrame, float]:
+    """
+    [P2 新增 2.10] 對 Walk-Forward OOF 預測做完整校準分析（ECE）。
+    輸入 oof_seq 需含 prob_up + y_true 欄。
+    """
+    df = oof_seq.dropna(subset=["prob_up", "y_true"]).copy()
+    df["prob_bucket"] = (df["prob_up"] * 10).round() / 10  # 0.1 為單位
+    cal = (
+        df.groupby("prob_bucket")
+          .agg(
+              predicted_prob = ("prob_up",  "mean"),
+              actual_up_rate = ("y_true",   "mean"),
+              count          = ("y_true",   "count"),
+          )
+          .reset_index()
+    )
+    cal["calibration_error"] = (cal["predicted_prob"] - cal["actual_up_rate"]).abs()
+    total = cal["count"].sum()
+    ece   = float((cal["calibration_error"] * cal["count"] / max(total, 1)).sum())
+    return cal, ece
 
 
 # ─────────────────────────────────────────────
@@ -434,6 +470,27 @@ def main():
     wf_data = load_wf_oof_with_actual()
     if not args.live:
         print_wf_summary(wf_data)
+
+        # [P2 修復 2.10] 若有逐筆 OOF 序列，補充印出 OOF 校準分析
+        oof_seq = wf_data.get("oof_seq")
+        if oof_seq is not None and len(oof_seq) >= 50:
+            try:
+                cal_df, ece = oof_calibration_analysis(oof_seq)
+                print("\n" + "─" * 65)
+                print(f"  【Walk-Forward OOF 校準誤差 (ECE)】：{ece:.4f}  "
+                      f"{'✅ 良好（< 5%）' if ece < 0.05 else '⚠️ 需校準（≥ 5%）'}")
+                print(f"  N={len(oof_seq):,} 筆 OOF 預測")
+                print(f"  {'區間':>6}  {'預測':>6}  {'實際':>6}  {'樣本':>6}  {'誤差':>6}")
+                print("  " + "-" * 38)
+                for _, row in cal_df.iterrows():
+                    flag = "✅" if row["calibration_error"] < 0.1 else "⚠️"
+                    print(f"  {row['prob_bucket']:>6.1f}  "
+                          f"{row['predicted_prob']:>6.1%}  "
+                          f"{row['actual_up_rate']:>6.1%}  "
+                          f"{int(row['count']):>6d}  "
+                          f"{row['calibration_error']:>6.1%}  {flag}")
+            except Exception as e:
+                logger.warning(f"OOF 校準分析失敗：{e}")
 
     # ── ② Live 部署紀錄（stock_forecast_daily × stock_price）────
     logger.info(f"載入 live 預測紀錄（since={args.since}）…")

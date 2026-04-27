@@ -31,15 +31,23 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
-# PostgreSQL 連線設定（與 fetch_technical_data.py 相同）
+# PostgreSQL 連線設定（[P1 修復] 統一從 config.py 引入，避免硬編碼）
+# config.py 自 .env 載入 DB_PASSWORD/DB_HOST/DB_PORT，本模組不再重複定義。
+# 為保持向後兼容（其他 module 可能 from data_pipeline import DB_CONFIG），
+# 仍將 DB_CONFIG re-export。
 # ─────────────────────────────────────────────
-DB_CONFIG: dict = {
-    "dbname":   "stock",
-    "user":     "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port":     "5432",
-}
+try:
+    from config import DB_CONFIG  # noqa: E402  (top-of-file import after sys.path setup)
+except Exception:
+    # 退化：若 config 載入失敗（例如在獨立 unit-test 環境），保留 fallback
+    import os as _os
+    DB_CONFIG: dict = {
+        "dbname":   _os.environ.get("DB_NAME",     "stock"),
+        "user":     _os.environ.get("DB_USER",     "stock"),
+        "password": _os.environ.get("DB_PASSWORD", "stock"),
+        "host":     _os.environ.get("DB_HOST",     "localhost"),
+        "port":     _os.environ.get("DB_PORT",     "5432"),
+    }
 
 
 @contextmanager

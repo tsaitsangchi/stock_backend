@@ -45,7 +45,7 @@ import psycopg2.extras
 # ── scripts/ 目錄加入 path ──────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import ALL_FEATURES, HORIZON, MODEL_DIR, TFT_PARAMS
+from config import ALL_FEATURES, DB_CONFIG, HORIZON, MODEL_DIR, TFT_PARAMS
 from data_pipeline import build_daily_frame, get_conn
 from feature_engineering import build_features
 from predict import (
@@ -55,13 +55,8 @@ from predict import (
 
 logger = logging.getLogger(__name__)
 
-DB_CONFIG = {
-    "dbname":   "stock",
-    "user":     "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port":     "5432",
-}
+# [P1 修復 2.6] 移除硬編碼 DB 憑證，統一引用 config.DB_CONFIG
+# 保留 DB_CONFIG 在 module 層級暴露，向後兼容外部 import
 
 
 # ─────────────────────────────────────────────
