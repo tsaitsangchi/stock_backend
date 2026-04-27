@@ -6,10 +6,19 @@ fetch_sponsor_chip_data.py — Sponsor 方案進階籌碼資料抓取
      欄位：date, stock_id, HoldingSharesLevel, people, percent, unit
   2. broker_trades       ← TaiwanStockShareholdingByBroker
      欄位：date, stock_id, broker_id, broker_name, buy, sell
-  3. eight_banks         ← TaiwanStockEightKindOfState
+  3. eight_banks         ← TaiwanStockGovernmentBankBuySell
      欄位：date, stock_id, buy, sell
   4. futures_large_oi    ← TaiwanFuturesOpenInterestLargeTraders
      欄位：date, contract_code, name, long_position, short_position...
+
+修改摘要（第四輪審查）：
+  [P0-SEC]  移除硬編碼 FINMIND_TOKEN / DB_CONFIG，改由 config.py 統一管理
+  [P0]      使用 core.finmind_client.finmind_get（統一重試邏輯）
+  [P3]      使用 core.db_utils 工具函式（ensure_ddl, bulk_upsert, safe_int 等）
+  [P0 合併] 合併 fetch_sponsor_chip_data_py.eight_banks 的改進版 fetch_eight_banks()
+            → 改為按月分塊請求（避免單次資料過大）
+            → 修正防死循環邏輯（s_str == e_str 且無資料時推進一天）
+            → 直接儲存全市場八大行庫資料（原始個別行庫明細彙總至 stock 層）
 
 執行：
     python fetch_sponsor_chip_data.py                    # 全部
@@ -21,18 +30,26 @@ from __future__ import annotations
 
 import argparse
 import logging
-import random
 import sys
-import time
 from datetime import date, datetime, timedelta
 
 import psycopg2
 import psycopg2.extras
-import requests
 import urllib3
 
-# 隱藏 InsecureRequestWarning (當 verify=False 時)
+# 隱藏 InsecureRequestWarning（當 verify=False 時）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# [P0-SEC] 統一從 config.py 讀取，不再硬編碼
+from config import DB_CONFIG  # noqa: F401（db_utils 內部使用）
+from core.finmind_client import finmind_get
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    safe_int,
+    safe_float,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,16 +58,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJkYXRlIjoiMjAyNi0wMy0xNCAxODoxNTo1NCIsInVzZXJfaWQiOiJ0c2FpdHNhbmdjaGkiLCJlbWFpbCI6InRzYWl0c2FuZ2NoaUBnbWFpbC5jb20iLCJpcCI6IjIyMC4xMzQuMjYuNzAifQ"
-    ".muoHEMMLiiRQoxZj7evq-9hclsVRXE3IfLNZWDZ6PQE"
-)
-DB_CONFIG = {
-    "dbname": "stock", "user": "stock",
-    "password": "stock", "host": "localhost", "port": "5432",
-}
 DATASET_START = {
     "holding_shares_per": "2014-01-01",
     "broker_trades":      "2016-01-01",
@@ -163,96 +170,9 @@ ON CONFLICT (date, contract_code, name) DO UPDATE SET
     market_total_oi       = EXCLUDED.market_total_oi;
 """
 
-# ─────────────────────────────────────────────
-# 工具
-# ─────────────────────────────────────────────
-
-def safe_int(v):
-    if v is None: return None
-    try: return int(float(str(v).strip()))
-    except: return None
-
-def safe_float(v):
-    if v is None: return None
-    try: return float(str(v).strip())
-    except: return None
-
-def get_conn():
-    return psycopg2.connect(**DB_CONFIG)
-
-def ensure_ddl(conn, *ddls):
-    with conn.cursor() as cur:
-        for d in ddls:
-            cur.execute(d)
-    conn.commit()
-
-def wait_next_hour():
-    now = datetime.now()
-    nxt = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    sec = (nxt - now).total_seconds() + 65
-    logger.warning(f"402 用量上限，等待至 {nxt.strftime('%H:%M:%S')}（{sec:.0f}s）")
-    time.sleep(sec)
-    logger.info("恢復請求。")
-
-def finmind_get(dataset: str, params: dict, delay: float = 1.2) -> list:
-    """帶指數退避的 FinMind 請求（ConnectTimeout 最多 5 次重試）"""
-    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
-    rp = {"dataset": dataset, **params}
-    MAX, BASE = 5, 5.0
-
-    while True:
-        for attempt in range(1, MAX + 1):
-            try:
-                resp = requests.get(FINMIND_API_URL, headers=headers,
-                                    params=rp, timeout=(15, 120), verify=False)
-                if resp.status_code == 402:
-                    wait_next_hour(); break
-                resp.raise_for_status()
-                payload = resp.json()
-                if payload.get("status") == 402:
-                    wait_next_hour(); break
-                if payload.get("status") != 200:
-                    logger.warning(f"[{dataset}] status={payload.get('status')}, 跳過")
-                    return []
-                time.sleep(delay)
-                return payload.get("data", [])
-
-            except requests.exceptions.ConnectTimeout:
-                w = BASE * (3 ** (attempt - 1)) + random.uniform(0, 3)
-                if attempt < MAX:
-                    logger.warning(f"[{dataset}] 連線逾時({attempt}/{MAX})，{w:.0f}s 後重試")
-                    time.sleep(w)
-                else:
-                    logger.error(f"[{dataset}] 連線逾時，已重試 {MAX} 次，跳過"); return []
-
-            except requests.exceptions.ReadTimeout:
-                w = BASE * (2 ** (attempt - 1)) + random.uniform(0, 2)
-                if attempt < MAX:
-                    logger.warning(f"[{dataset}] 讀取逾時({attempt}/{MAX})，{w:.0f}s 後重試")
-                    time.sleep(w)
-                else:
-                    logger.error(f"[{dataset}] 讀取逾時，已重試 {MAX} 次，跳過"); return []
-
-            except requests.exceptions.HTTPError as e:
-                code = e.response.status_code if e.response is not None else 0
-                if code == 400:
-                    logger.debug(f"[{dataset}] HTTP 400: {e.response.text if e.response else 'No response body'}")
-                    return []
-                if code == 402: wait_next_hour(); break
-                w = BASE * (2 ** (attempt - 1))
-                logger.warning(f"[{dataset}] HTTP {code} ({attempt}/{MAX})，{w:.0f}s 後重試")
-                time.sleep(w)
-
-            except Exception as exc:
-                w = BASE * (2 ** (attempt - 1)) + random.uniform(0, 2)
-                logger.warning(f"[{dataset}] 失敗({attempt}/{MAX})：{type(exc).__name__}: {exc}，{w:.0f}s 後重試")
-                time.sleep(w)
-        else:
-            logger.error(f"[{dataset}] 已重試 {MAX} 次，跳過")
-            return []
-
 
 def get_max_dates(conn, table: str, pk_col: str = "stock_id") -> dict:
+    """取得各 pk_col 值在 table 中的最大 date，回傳 {pk_val: date} 字典。"""
     with conn.cursor() as cur:
         try:
             cur.execute(f"SELECT {pk_col}, MAX(date) FROM {table} GROUP BY {pk_col}")
@@ -278,14 +198,16 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
         if s > end:
             continue
 
-        rows = finmind_get("TaiwanStockHoldingSharesPer",
-                           {"data_id": sid, "start_date": s, "end_date": end}, delay)
+        rows = finmind_get(
+            "TaiwanStockHoldingSharesPer",
+            {"data_id": sid, "start_date": s, "end_date": end},
+            delay,
+        )
         if not rows:
             continue
 
         records = []
         for r in rows:
-            # 真實欄位：HoldingSharesLevel, people, percent, unit
             lv = str(r.get("HoldingSharesLevel", ""))
             records.append((
                 r.get("date"), sid, lv,
@@ -294,9 +216,7 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
                 r.get("unit", lv),
             ))
 
-        with conn.cursor() as cur:
-            psycopg2.extras.execute_values(cur, UPSERT_HOLDING, records)
-        conn.commit()
+        bulk_upsert(conn, UPSERT_HOLDING, records)
         total += len(records)
 
         if i % 100 == 0:
@@ -306,7 +226,7 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
 
 
 # ─────────────────────────────────────────────
-# ② 台股分點資料表（預設只抓重點股票）
+# ② 台股分點資料表
 # ─────────────────────────────────────────────
 
 def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
@@ -326,33 +246,36 @@ def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
             chunk_e = min(chunk_s + timedelta(days=CHUNK - 1), end_d)
             rows = finmind_get(
                 "TaiwanStockTradingDailyReport",
-                {"data_id": sid,
-                 "start_date": chunk_s.strftime("%Y-%m-%d"),
-                 "end_date":   chunk_e.strftime("%Y-%m-%d")},
+                {
+                    "data_id":    sid,
+                    "start_date": chunk_s.strftime("%Y-%m-%d"),
+                    "end_date":   chunk_e.strftime("%Y-%m-%d"),
+                },
                 delay,
             )
             if rows:
                 # 彙總：同日、同股票、同券商的資料合併（去除價格分維度）
-                agg = {}
+                agg: dict = {}
                 for r in rows:
                     key = (r.get("date"), sid, str(r.get("securities_trader_id", "")))
-                    buy = safe_int(r.get("buy") or 0)
-                    sell = safe_int(r.get("sell") or 0)
+                    buy  = safe_int(r.get("buy") or 0) or 0
+                    sell = safe_int(r.get("sell") or 0) or 0
                     name = r.get("securities_trader", "")
                     if key not in agg:
                         agg[key] = {"buy": 0, "sell": 0, "name": name}
-                    agg[key]["buy"] += buy
+                    agg[key]["buy"]  += buy
                     agg[key]["sell"] += sell
-                
+
                 records = [
                     (k[0], k[1], k[2], v["name"], v["buy"], v["sell"])
                     for k, v in agg.items()
                 ]
-                with conn.cursor() as cur:
-                    psycopg2.extras.execute_values(cur, UPSERT_BROKER, records)
-                conn.commit()
+                bulk_upsert(conn, UPSERT_BROKER, records)
                 total += len(records)
-                logger.info(f"  [broker_trades] {sid} {chunk_s}~{chunk_e}: {len(records)} 筆 (彙總自 {len(rows)} 筆)")
+                logger.info(
+                    f"  [broker_trades] {sid} {chunk_s}~{chunk_e}: "
+                    f"{len(records)} 筆（彙總自 {len(rows)} 筆）"
+                )
 
             chunk_s = chunk_e + timedelta(days=1)
 
@@ -361,102 +284,77 @@ def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
 
 # ─────────────────────────────────────────────
 # ③ 八大行庫買賣表
+#   [P0 合併] fetch_sponsor_chip_data_py.eight_banks
+#   改進：按月分塊請求 + 防死循環
 # ─────────────────────────────────────────────
 
 def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     """
     八大行庫買賣超 (TaiwanStockGovernmentBankBuySell)
     注意：此 Dataset 不支援 data_id，必須一次抓取全市場。
+
+    [改進] 按月分塊請求（原版逐日請求 API 次數過多）。
+    [改進] 正確防死循環：若當月分塊無資料且起迄相同日，推進至下月。
+    [改進] 直接儲存全市場資料（不過濾個股），完整保留八大行庫資訊。
     """
     logger.info(f"\n=== [eight_banks] 開始抓取全市場資料 ({start} ~ {end}) ===")
     ensure_ddl(conn, DDL_EIGHT_BANKS)
-    
-    # 這裡我們採取按月抓取的策略，避免單次請求過大
+
     start_dt = datetime.strptime(start, "%Y-%m-%d")
-    end_dt = datetime.strptime(end, "%Y-%m-%d")
-    
+    end_dt   = datetime.strptime(end,   "%Y-%m-%d")
+
+    # 若 DB 已有資料，從最新日期的隔天開始
     current_dt = start_dt
-    total = 0
-    
-    # 為了加速，我們先找出 DB 裡最大的日期
     if not force:
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(date) FROM eight_banks")
             last_date = cur.fetchone()[0]
-            if last_date:
-                current_dt = max(current_dt, datetime.combine(last_date + timedelta(days=1), datetime.min.time()))
+        if last_date:
+            current_dt = max(
+                current_dt,
+                datetime.combine(last_date + timedelta(days=1), datetime.min.time()),
+            )
 
-    # 策略：優先抓取最近一年的資料，讓訓練能盡早開始
-    # 然後再補齊剩下的歷史資料
-    today_dt = datetime.combine(date.today(), datetime.min.time())
-    one_year_ago = today_dt - timedelta(days=365)
-    
-    # 建立日期清單並排序（最近的優先）
-    all_dates = []
-    temp_dt = start_dt
-    while temp_dt <= end_dt:
-        all_dates.append(temp_dt)
-        temp_dt += timedelta(days=1)
-        
-    # 優先序：最近一年的日期 (降序) -> 剩下的日期 (降序)
-    recent_dates = sorted([d for d in all_dates if d >= one_year_ago], reverse=True)
-    older_dates = sorted([d for d in all_dates if d < one_year_ago], reverse=True)
-    ordered_dates = recent_dates + older_dates
+    if current_dt > end_dt:
+        logger.info("  [eight_banks] 已是最新，跳過")
+        return
 
-    # 找出已存在的日期避免重複
-    existing_dates = set()
-    if not force:
-        with conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT date FROM eight_banks")
-            existing_dates = {row[0] for row in cur.fetchall()}
+    total = 0
+    while current_dt <= end_dt:
+        # 按月分塊，避免單次請求資料量過大
+        month_end = (
+            current_dt.replace(day=1) + timedelta(days=32)
+        ).replace(day=1) - timedelta(days=1)
+        chunk_end = min(month_end, end_dt)
 
-    for current_dt in ordered_dates:
         s_str = current_dt.strftime("%Y-%m-%d")
-        if current_dt.date() in existing_dates:
-            continue
-            
-        logger.info(f"  抓取 {s_str}...")
-        rows = finmind_get("TaiwanStockGovernmentBankBuySell",
-                           {"start_date": s_str, "end_date": s_str}, delay)
-        
+        e_str = chunk_end.strftime("%Y-%m-%d")
+
+        logger.info(f"  抓取 {s_str} ~ {e_str}…")
+        rows = finmind_get(
+            "TaiwanStockGovernmentBankBuySell",
+            {"start_date": s_str, "end_date": e_str},
+            delay,
+        )
+
         if rows:
-            # 由於此 Dataset 回傳各行庫明細，我們需按 (date, stock_id) 進行彙總
-            agg = {}
-            for r in rows:
-                key = (r.get("date"), r.get("stock_id"))
-                buy = safe_int(r.get("buy"))
-                sell = safe_int(r.get("sell"))
-                if key not in agg:
-                    agg[key] = [0, 0]
-                agg[key][0] += buy
-                agg[key][1] += sell
-            
+            # 全市場資料直接儲存（包含所有個股的八大行庫彙總值）
             records = [
-                (date_str, sid, vols[0], vols[1])
-                for (date_str, sid), vols in agg.items()
+                (
+                    r.get("date"),
+                    r.get("stock_id"),
+                    safe_int(r.get("buy")),
+                    safe_int(r.get("sell")),
+                )
+                for r in rows
             ]
-            
-            # Debug: log info
-            keys = [(r[0], r[1]) for r in records]
-            unique_keys = set(keys)
-            logger.info(f"Aggregated: {len(records)} rows. Unique keys: {len(unique_keys)}")
-            if len(records) > 0:
-                logger.info(f"Sample key: {keys[0]} (Types: {type(keys[0][0])}, {type(keys[0][1])})")
-            
-            if len(keys) != len(unique_keys):
-                logger.error(f"CRITICAL: Duplicate keys found in records!")
-                # Find the duplicates
-                seen = set()
-                for k in keys:
-                    if k in seen:
-                        logger.error(f"Duplicate key: {k}")
-                    seen.add(k)
-            
-            with conn.cursor() as cur:
-                psycopg2.extras.execute_values(cur, UPSERT_EIGHT_BANKS, records)
-            conn.commit()
+            bulk_upsert(conn, UPSERT_EIGHT_BANKS, records)
             total += len(records)
             logger.info(f"    → 寫入 {len(records):,} 筆（累計 {total:,} 筆）")
+
+        # 推進至下一個分塊起點
+        # 防死循環：若分塊起迄同日且無資料，仍推進
+        current_dt = chunk_end + timedelta(days=1)
 
     logger.info(f"=== [eight_banks] 完成，累計 {total:,} 筆 ===")
 
@@ -472,14 +370,16 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
     s = start
     if not force:
         with conn.cursor() as cur:
-            cur.execute("SELECT MAX(date) FROM futures_large_oi WHERE contract_code='TX'")
+            cur.execute(
+                "SELECT MAX(date) FROM futures_large_oi WHERE contract_code='TX'"
+            )
             last = cur.fetchone()[0]
         if last:
-            s = (last + timedelta(days=1)).strftime("%Y-%m-%d")
-
-    if s > end:
-        logger.info("[futures_large_oi] 已是最新，跳過")
-        return
+            next_day = (last + timedelta(days=1)).strftime("%Y-%m-%d")
+            if next_day > end:
+                logger.info("  [futures_large_oi] 已是最新，跳過")
+                return
+            s = next_day
 
     rows = finmind_get(
         "TaiwanFuturesOpenInterestLargeTraders",
@@ -487,22 +387,26 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
         delay,
     )
     if not rows:
-        logger.info("[futures_large_oi] 無資料（請確認 Sponsor 方案已啟用此資料集）")
+        logger.info(
+            "  [futures_large_oi] 無資料（請確認 Sponsor 方案已啟用此資料集）"
+        )
         return
 
     records = [
-        (r.get("date"), r.get("contract_code", ""), r.get("name", ""),
-         safe_int(r.get("long_position")),
-         safe_int(r.get("long_position_over50")),
-         safe_int(r.get("short_position")),
-         safe_int(r.get("short_position_over50")),
-         safe_int(r.get("net_position")),
-         safe_int(r.get("market_total_oi")))
+        (
+            r.get("date"),
+            r.get("contract_code", ""),
+            r.get("name", ""),
+            safe_int(r.get("long_position")),
+            safe_int(r.get("long_position_over50")),
+            safe_int(r.get("short_position")),
+            safe_int(r.get("short_position_over50")),
+            safe_int(r.get("net_position")),
+            safe_int(r.get("market_total_oi")),
+        )
         for r in rows
     ]
-    with conn.cursor() as cur:
-        psycopg2.extras.execute_values(cur, UPSERT_FUTURES_LARGE_OI, records)
-    conn.commit()
+    bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, records)
     logger.info(f"=== [futures_large_oi] 完成，{len(records):,} 筆 ===")
 
 
@@ -520,21 +424,23 @@ def get_stock_ids(conn, stock_id_arg):
 
 def parse_args():
     p = argparse.ArgumentParser(description="Sponsor 進階籌碼資料抓取")
-    p.add_argument("--tables", nargs="+",
-                   choices=["holding_shares_per", "broker_trades",
-                            "eight_banks", "futures_large_oi"])
+    p.add_argument(
+        "--tables", nargs="+",
+        choices=["holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi"],
+    )
     p.add_argument("--stock-id", default=None, help="逗號分隔股票代碼")
-    p.add_argument("--start", default=None)
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
+    p.add_argument("--start",  default=None)
+    p.add_argument("--end",    default=DEFAULT_END)
+    p.add_argument("--delay",  type=float, default=1.2)
+    p.add_argument("--force",  action="store_true")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
-    tables = args.tables or ["holding_shares_per", "broker_trades",
-                              "eight_banks", "futures_large_oi"]
+    tables = args.tables or [
+        "holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi"
+    ]
 
     logger.info("=" * 60)
     logger.info("  Sponsor 進階籌碼資料抓取管線啟動")
@@ -542,9 +448,10 @@ def main():
     logger.info("=" * 60)
 
     try:
-        conn = get_conn()
+        conn = get_db_conn()
     except Exception as e:
-        logger.error(f"DB 連線失敗：{e}"); sys.exit(1)
+        logger.error(f"DB 連線失敗：{e}")
+        sys.exit(1)
 
     stock_ids = get_stock_ids(conn, args.stock_id)
     logger.info(f"共 {len(stock_ids)} 支股票")

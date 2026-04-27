@@ -10,3 +10,14 @@
 !/Dockerfile
 !/create_table.sql
 !/check_db.py
+
+# 安全性：絕對不能上傳的檔案
+scripts/.env
+*.env
+scripts/_patch_backup/
+scripts/outputs/
+scripts/__pycache__/
+**/__pycache__/
+*.pkl
+*.npy
+*.log

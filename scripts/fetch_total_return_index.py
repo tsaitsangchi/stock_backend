@@ -5,6 +5,8 @@ import time
 from datetime import date, timedelta, datetime
 
 import psycopg2
+
+from config import FINMIND_TOKEN, DB_CONFIG
 import psycopg2.extras
 import requests
 import pandas as pd
@@ -23,23 +25,10 @@ logger = logging.getLogger(__name__)
 # FinMind API 設定
 # ======================
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJkYXRlIjoiMjAyNi0wMy0xNCAxODoxNTo1NCIsInVzZXJfaWQiOiJ0c2FpdHNhbmdjaGkiLCJlbWFpbCI6InRzYWl0c2FuZ2NoaUBnbWFpbC5jb20iLCJpcCI6IjIyMC4xMzQuMjYuNzAifQ"
-    ".muoHEMMLiiRQoxZj7evq-9hclsVRXE3IfLNZWDZ6PQE"
-)
 
 # ======================
 # PostgreSQL 連線設定
 # ======================
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
-
 # ======================
 # DDL
 # ======================
@@ -55,7 +44,6 @@ CREATE TABLE IF NOT EXISTS total_return_index (
 def finmind_get(dataset: str, data_id: str = None, start: str = None, end: str = None):
     params = {
         "dataset": dataset,
-        "token": FINMIND_TOKEN,
     }
     if data_id:
         params["data_id"] = data_id
@@ -64,8 +52,9 @@ def finmind_get(dataset: str, data_id: str = None, start: str = None, end: str =
     if end:
         params["end_date"] = end
 
+    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     try:
-        res = requests.get(FINMIND_API_URL, params=params, timeout=30)
+        res = requests.get(FINMIND_API_URL, headers=headers, params=params, timeout=30)
         res.raise_for_status()
         data = res.json().get("data", [])
         return pd.DataFrame(data)

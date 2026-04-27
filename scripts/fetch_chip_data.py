@@ -49,23 +49,10 @@ logger = logging.getLogger(__name__)
 # FinMind API 設定
 # ======================
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJkYXRlIjoiMjAyNi0wMy0xNCAxODoxNTo1NCIsInVzZXJfaWQiOiJ0c2FpdHNhbmdjaGkiLCJlbWFpbCI6InRzYWl0c2FuZ2NoaUBnbWFpbC5jb20iLCJpcCI6IjIyMC4xMzQuMjYuNzAifQ"
-    ".muoHEMMLiiRQoxZj7evq-9hclsVRXE3IfLNZWDZ6PQE"
-)
 
 # ======================
 # PostgreSQL 連線設定
 # ======================
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
-
 # ======================
 # 各資料集最早可用日期
 # ======================
@@ -337,7 +324,7 @@ def get_target_stock_ids(conn, stock_id_arg=None):
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
     
-    from config import STOCK_CONFIGS
+    from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
     return list(STOCK_CONFIGS.keys())
 
 def get_db_stock_info(conn):
@@ -606,7 +593,7 @@ def main():
         target_stocks = [s.strip() for s in args.stock_id.split(",")]
     else:
         # 如果沒指定，預設先抓 87 支重點股
-        from config import STOCK_CONFIGS
+        from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
         target_stocks = list(STOCK_CONFIGS.keys())
         
     mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"

@@ -38,7 +38,7 @@ import psycopg2
 import psycopg2.extras
 import requests
 import pandas as pd
-from config import INTERNATIONAL_WATCHLIST
+from config import INTERNATIONAL_WATCHLIST, FINMIND_TOKEN, DB_CONFIG
 
 # ======================
 # 設定 logging
@@ -54,23 +54,10 @@ logger = logging.getLogger(__name__)
 # FinMind API 設定
 # ======================
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJkYXRlIjoiMjAyNi0wMy0xNCAxODoxNTo1NCIsInVzZXJfaWQiOiJ0c2FpdHNhbmdjaGkiLCJlbWFpbCI6InRzYWl0c2FuZ2NoaUBnbWFpbC5jb20iLCJpcCI6IjIyMC4xMzQuMjYuNzAifQ"
-    ".muoHEMMLiiRQoxZj7evq-9hclsVRXE3IfLNZWDZ6PQE"
-)
 
 # ======================
 # PostgreSQL 連線設定
 # ======================
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
-
 # ======================
 # 各資料集最早可用日期
 # ======================

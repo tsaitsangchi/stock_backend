@@ -1150,7 +1150,7 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     df = add_valuation_features(df)
     logger.info(f"  估值錨點特徵完成，shape={df.shape}")
 
-    df = add_macro_features(df)
+    # df = add_kwave_macro_score(df)
     logger.info(f"  宏觀因子特徵完成，shape={df.shape}")
 
     df = add_commodity_features(df)

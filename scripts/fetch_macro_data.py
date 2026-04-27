@@ -12,6 +12,8 @@ import sys
 import time
 from datetime import date, timedelta, datetime
 import psycopg2
+
+from config import FINMIND_TOKEN, DB_CONFIG
 import psycopg2.extras
 import requests
 
@@ -23,19 +25,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".eyJkYXRlIjoiMjAyNi0wMy0xNCAxODoxNTo1NCIsInVzZXJfaWQiOiJ0c2FpdHNhbmdjaGkiLCJlbWFpbCI6InRzYWl0c2FuZ2NoaUBnbWFpbC5jb20iLCJpcCI6IjIyMC4xMzQuMjYuNzAifQ"
-    ".muoHEMMLiiRQoxZj7evq-9hclsVRXE3IfLNZWDZ6PQE"
-)
-
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
 
 def get_db_conn():
     return psycopg2.connect(**DB_CONFIG)
