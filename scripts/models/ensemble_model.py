@@ -141,6 +141,7 @@ class XGBPredictor:
         oof_probs: np.ndarray,
         y_true: np.ndarray,
         method: str = "isotonic",
+        sample_weight: np.ndarray = None,
     ) -> None:
         """
         用 Walk-Forward 全量 OOF 訓練個別 Calibrator。
@@ -157,6 +158,7 @@ class XGBPredictor:
             oof_probs: OOF 各行的原始預測機率（shape: [N]）
             y_true:    真實方向標籤 0/1（shape: [N]）
             method:    'isotonic'（預設）或 'sigmoid'
+            sample_weight: 樣本權重（用於處理時間漂移）
         """
         if method == "sigmoid":
             from sklearn.linear_model import LogisticRegression
@@ -164,14 +166,14 @@ class XGBPredictor:
                 C=1.0, max_iter=500, solver="lbfgs"
             )
             # 直接以 raw_prob 為張量，括號內有完整的 1D Platt S-curve
-            cal.fit(oof_probs.reshape(-1, 1), y_true)
+            cal.fit(oof_probs.reshape(-1, 1), y_true, sample_weight=sample_weight)
             self._calibrator = cal
             self._cal_type   = "sigmoid"
             cal_mean = float(cal.predict_proba(oof_probs.reshape(-1, 1))[:, 1].mean())
         else:
             from sklearn.isotonic import IsotonicRegression
             cal = IsotonicRegression(out_of_bounds="clip")
-            cal.fit(oof_probs, y_true)
+            cal.fit(oof_probs, y_true, sample_weight=sample_weight)
             self._calibrator = cal
             self._cal_type   = "isotonic"
             cal_mean = float(cal.predict(oof_probs).mean())
@@ -278,19 +280,20 @@ class LGBPredictor:
         oof_probs: np.ndarray,
         y_true: np.ndarray,
         method: str = "isotonic",
+        sample_weight: np.ndarray = None,
     ) -> None:
         """用 Walk-Forward 全量 OOF 訓練個別 Calibrator（同 XGBPredictor）。"""
         if method == "sigmoid":
             from sklearn.linear_model import LogisticRegression
             cal = LogisticRegression(C=1.0, max_iter=500, solver="lbfgs")
-            cal.fit(oof_probs.reshape(-1, 1), y_true)
+            cal.fit(oof_probs.reshape(-1, 1), y_true, sample_weight=sample_weight)
             self._calibrator = cal
             self._cal_type   = "sigmoid"
             cal_mean = float(cal.predict_proba(oof_probs.reshape(-1, 1))[:, 1].mean())
         else:
             from sklearn.isotonic import IsotonicRegression
             cal = IsotonicRegression(out_of_bounds="clip")
-            cal.fit(oof_probs, y_true)
+            cal.fit(oof_probs, y_true, sample_weight=sample_weight)
             self._calibrator = cal
             self._cal_type   = "isotonic"
             cal_mean = float(cal.predict(oof_probs).mean())
@@ -441,7 +444,7 @@ class StackingEnsemble:
                 else:
                     model.fit(X_train, (y_train > 0).astype(int))
 
-    def fit_meta(self, meta_features: pd.DataFrame, y_true: pd.Series):
+    def fit_meta(self, meta_features: pd.DataFrame, y_true: pd.Series, sample_weight: np.ndarray = None):
         """訓練 Level-2 Meta-Learner"""
         logger.info(f"  [L2] 訓練 Meta-Learner (Stacking)... 樣本數: {len(meta_features)}")
         # 確保目標變數是二元標籤 [0, 1]
@@ -453,7 +456,8 @@ class StackingEnsemble:
             return
             
         X_meta = self.scaler.fit_transform(meta_features[mask])
-        self.meta_learner.fit(X_meta, y_bin[mask])
+        sw = sample_weight[mask] if sample_weight is not None else None
+        self.meta_learner.fit(X_meta, y_bin[mask], sample_weight=sw)
         
     def predict_meta(self, meta_features: pd.DataFrame) -> np.ndarray:
         """使用 Meta-Learner 產出最終機率"""
@@ -596,29 +600,27 @@ class RegimeEnsemble:
             self.high_vol_model = self.mid_vol_model
 
     def fit_meta(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
+        # [P0 Fix] 生成時間權重，防止 Meta-Learner 過度擬合舊市場環境
+        # 假設 oof 序列是時間有序的，最近的樣本權重較高 (Exponential Decay)
+        n_total = len(oof_df)
+        decay = 0.999
+        global_weights = np.power(decay, np.arange(n_total)[::-1])
+
         if X_oof is None:
-            logger.warning("[RegimeEnsemble.fit_meta] X_oof 為空，無法切分 oof，使用 mid_model 訓練 meta")
-            self.low_vol_model.fit_meta(oof_df, y_meta)
-            self.mid_vol_model.fit_meta(oof_df, y_meta)
-            self.high_vol_model.fit_meta(oof_df, y_meta)
+            logger.warning("[RegimeEnsemble.fit_meta] X_oof 為空，無法切分 oof，使用全局 oof 訓練 meta")
+            self.low_vol_model.fit_meta(oof_df, y_meta, sample_weight=global_weights)
+            self.mid_vol_model.fit_meta(oof_df, y_meta, sample_weight=global_weights)
+            self.high_vol_model.fit_meta(oof_df, y_meta, sample_weight=global_weights)
             return
 
         m_low, m_mid, m_high = self._split_mask(X_oof)
         
-        if m_low.sum() > 10:
-            self.low_vol_model.fit_meta(oof_df[m_low], y_meta[m_low])
-        else:
-            self.low_vol_model.meta = self.mid_vol_model.meta
-            
-        if m_mid.sum() > 10:
-            self.mid_vol_model.fit_meta(oof_df[m_mid], y_meta[m_mid])
-        else:
-            self.mid_vol_model.meta = self.low_vol_model.meta if m_low.sum() > 10 else self.high_vol_model.meta
-            
-        if m_high.sum() > 10:
-            self.high_vol_model.fit_meta(oof_df[m_high], y_meta[m_high])
-        else:
-            self.high_vol_model.meta = self.mid_vol_model.meta
+        for mask, model in [(m_low, self.low_vol_model), (m_mid, self.mid_vol_model), (m_high, self.high_vol_model)]:
+            if mask.sum() > 10:
+                weights = global_weights[mask] if isinstance(mask, np.ndarray) else global_weights[mask.values]
+                model.fit_meta(oof_df[mask], y_meta[mask], sample_weight=weights)
+            else:
+                model.meta = self.mid_vol_model.meta
 
     def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
         if X_oof is None:
@@ -631,12 +633,27 @@ class RegimeEnsemble:
             
         m_low, m_mid, m_high = self._split_mask(X_oof)
         
+        # [P0 Fix] 生成時間權重，防止校準器過度擬合舊市場環境
+        # 假設 oof 序列是時間有序的，最近的樣本權重較高 (Exponential Decay)
+        n_total = len(oof_df)
+        decay = 0.999  # 緩慢衰減，保留大部分資訊但重視近期
+        global_weights = np.power(decay, np.arange(n_total)[::-1])
+        
         for mask, model in [(m_low, self.low_vol_model), (m_mid, self.mid_vol_model), (m_high, self.high_vol_model)]:
             if mask.sum() >= 50:
+                weights = global_weights[mask] if isinstance(mask, np.ndarray) else global_weights[mask.values]
                 if "xgb" in model.models:
-                    model.models["xgb"].calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
+                    model.models["xgb"].calibrate(
+                        oof_df.loc[mask, "xgb_pred"].values, 
+                        y_meta[mask].values,
+                        sample_weight=weights
+                    )
                 if "lgb" in model.models:
-                    model.models["lgb"].calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
+                    model.models["lgb"].calibrate(
+                        oof_df.loc[mask, "lgb_pred"].values, 
+                        y_meta[mask].values,
+                        sample_weight=weights
+                    )
 
     def predict(self, X: pd.DataFrame, tft_pred: Optional[Union[np.ndarray, float]] = None) -> dict:
         if isinstance(tft_pred, (float, int)):

@@ -146,10 +146,8 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     df["volume_ratio_20"] = v / df["volume_ma_20"]
 
     # 量價相關
-    df["price_volume_corr_20"] = (
-        pd.concat([log_r, v.pct_change()], axis=1)
-        .rolling(20).corr().unstack().iloc[:, 1]
-    )
+    temp = pd.concat([log_r.rename("ret"), v.pct_change().rename("vol_chg")], axis=1)
+    df["price_volume_corr_20"] = temp["ret"].rolling(20).corr(temp["vol_chg"])
 
     # 動量
     for n in [10, 20]:

@@ -141,18 +141,30 @@ def calculate_psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -
 _OOF_REF_CACHE: Optional[np.ndarray] = None
 
 
-def _load_oof_reference() -> Optional[np.ndarray]:
+def _load_oof_reference(stock_id: str) -> Optional[np.ndarray]:
     """
     優先順序：
-      1. outputs/oof_predictions_with_dates.csv（含 date / prob_up 欄）
-      2. outputs/oof_predictions.csv（向後兼容，含 prob_up 欄）
+      1. models/oof_ref_dist_{stock_id}.npy（最快且精確）
+      2. outputs/oof_predictions_with_dates_{stock_id}.csv
+      3. outputs/oof_predictions_{stock_id}.csv
+      4. 向後兼容的全局文件
       回傳 numpy array；找不到則回 None。
     """
-    global _OOF_REF_CACHE
-    if _OOF_REF_CACHE is not None:
-        return _OOF_REF_CACHE
+    # 1. 嘗試載入 .npy
+    npy_path = MODEL_DIR / f"oof_ref_dist_{stock_id}.npy"
+    if npy_path.exists():
+        try:
+            arr = np.load(npy_path)
+            if len(arr) >= 50:
+                logger.info(f"[PSI] 採用 OOF 參考分佈 (.npy)：{stock_id}，N={len(arr)}")
+                return arr
+        except Exception as e:
+            logger.warning(f"[PSI] 讀取 {npy_path.name} 失敗：{e}")
 
+    # 2. 嘗試載入 CSVs
     candidates = [
+        OUTPUT_DIR / f"oof_predictions_with_dates_{stock_id}.csv",
+        OUTPUT_DIR / f"oof_predictions_{stock_id}.csv",
         OUTPUT_DIR / "oof_predictions_with_dates.csv",
         OUTPUT_DIR / "oof_predictions.csv",
     ]
@@ -163,13 +175,10 @@ def _load_oof_reference() -> Optional[np.ndarray]:
                 if "prob_up" in df.columns:
                     arr = pd.to_numeric(df["prob_up"], errors="coerce").dropna().values
                     if len(arr) >= 50:
-                        _OOF_REF_CACHE = arr
-                        logger.info(
-                            f"[PSI] 採用 OOF 參考分佈：{path.name}，N={len(arr)}"
-                        )
-                        return _OOF_REF_CACHE
+                        logger.info(f"[PSI] 採用 OOF 參考分佈 (CSV)：{path.name}，N={len(arr)}")
+                        return arr
             except Exception as e:
-                logger.warning(f"[PSI] 讀取 {path.name} 失敗：{e}")
+                logger.debug(f"[PSI] 讀取 {path.name} 失敗：{e}")
 
     return None
 
@@ -218,7 +227,7 @@ def _get_reference_distribution(stock_id: str) -> tuple[np.ndarray, str]:
     """
     依優先順序取得參考分佈，並回傳 (array, source_label)。
     """
-    oof_ref = _load_oof_reference()
+    oof_ref = _load_oof_reference(stock_id)
     if oof_ref is not None:
         return oof_ref, "oof"
 

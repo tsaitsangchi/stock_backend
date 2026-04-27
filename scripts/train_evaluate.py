@@ -133,319 +133,8 @@ def purged_walk_forward_folds(
 # 評估指標
 # ─────────────────────────────────────────────
 
-def directional_accuracy(y_true: pd.Series, y_pred_signal: pd.Series) -> float:
-    """方向正確率（符號一致的比例）。"""
-    # 用 .values 消除 index 差異（pandas 2.x 不允許比較不同 index 的 Series）
-    return float((np.sign(y_true.values) == np.sign(np.asarray(y_pred_signal))).mean())
-
-
-def information_coefficient(y_true: pd.Series, y_pred: pd.Series) -> float:
-    """Rank IC：Spearman 相關。"""
-    # reset_index 確保兩個 Series index 一致再做相關計算
-    t = pd.Series(y_true.values)
-    p = pd.Series(np.asarray(y_pred))
-    return float(t.rank().corr(p.rank(), method="spearman"))
-
-
-def lasso_feature_selection(X: pd.DataFrame, y: pd.Series, max_features: int = 30) -> list[str]:
-    """
-    方向 ③：特徵降維 + 正則化
-    使用 LASSO (L1 正則化) 將有效特徵數壓到 20-30 個，與樣本量匹配 (n/p > 100)。
-    """
-    logger.info(f"  [LASSO] 開始特徵降維 (目標數: {max_features})...")
-    # 1. 預處理：填充缺失值與標準化 (LASSO 對量綱敏感)
-    X_tmp = X.fillna(X.median()).replace([np.inf, -np.inf], 0)
-    scaler = StandardScaler()
-    X_std = scaler.fit_transform(X_tmp)
-    
-    # 2. 訓練 LASSO (預測連續目標 target_30d 效果較佳)
-    # 使用交叉驗證尋找最佳 alpha
-    lasso = LassoCV(cv=5, max_iter=3000, n_jobs=-1).fit(X_std, y)
-    
-    # 3. 依據 L1 懲罰後的係數選取
-    # 限制最大特徵數以保證樣本/特徵比
-    selector = SelectFromModel(lasso, prefit=True, max_features=max_features)
-    mask = selector.get_support()
-    selected_cols = X.columns[mask].tolist()
-    
-    logger.info(f"  [LASSO] 篩選完成：{len(X.columns)} -> {len(selected_cols)} 特徵")
-    return selected_cols
-
-
-def simulate_sharpe(
-    y_true:    pd.Series,
-    signal:    pd.Series,
-    threshold: float = 0.5,
-    hold_days: int   = HORIZON,
-    ticker:    str   = "2330",
-) -> dict:
-    """
-    30 天持有策略模擬交易（含交易成本）：
-      signal > threshold        → 做多
-      signal < (1 - threshold)  → 做空
-      其餘                      → 空倉
-
-    【修正說明】
-    原版 bug：strat_ret（30 日報酬）÷ hold_days 再 × sqrt(252)
-      → 分子分母同除以常數，Sharpe 等效 × sqrt(252) 而非 × sqrt(252/30)
-      → 相當於 sqrt(30)≈5.5x 的虛假放大（Sharpe 1.5 → 8.2）
-
-    正確做法：每個觀測值代表一個 30 日持有期
-      → Sharpe = mean(30d_ret) / std(30d_ret) × sqrt(252 / hold_days)
-      → sqrt(252/30) ≈ 2.9（合理年化因子）
-
-    交易成本：position 改變時扣除 tc_pct（單邊，買或賣各一次）
-      → 0.2% ≒ 證交稅 0.3% × 賣方 + 手續費 0.1425% × 折扣 + 滑價
-    """
-    y_arr = np.asarray(y_true, dtype=float)
-    s_arr = np.asarray(signal, dtype=float)
-
-    # ── 計算實際交易摩擦 ────────────────────────────────────
-    is_large_cap = ticker in LARGE_CAP_TICKERS
-    slippage = FRICTION_CONFIG["slippage_large_cap"] if is_large_cap else FRICTION_CONFIG["slippage_small_cap"]
-    
-    # 雙邊總成本 (Round Trip) = commission*2 + tax + slippage*2
-    round_trip_cost = (FRICTION_CONFIG["commission"] * 2 + 
-                       FRICTION_CONFIG["securities_tax"] + 
-                       slippage * 2)
-    tc_per_action = round_trip_cost / 2.0
-
-    long_pos  = (s_arr > threshold).astype(float)
-    short_pos = (s_arr < 1 - threshold).astype(float)
-    position  = long_pos - short_pos          # +1 / 0 / -1
-
-    # ── 交易成本：持倉改變時扣除 2 × tc_pct（買 + 賣） ──────────────
-    prev_pos    = np.concatenate([[0.0], position[:-1]])
-    pos_change  = np.abs(position - prev_pos)  # 0 or 1 or 2
-    tc          = pos_change * tc_per_action           # 每次換倉扣單邊成本
-
-    # strat_ret：30 日原始報酬，直接減去交易成本
-    strat_ret_gross = position * y_arr
-    strat_ret       = strat_ret_gross - tc      # 稅後淨報酬
-
-    # ── 正確 Sharpe 年化：√(252 / hold_days) ────────────────────────
-    # 每個觀測值代表 hold_days 天的一個完整持有期
-    # 年週期數 = 252 / hold_days，年化因子 = sqrt(252 / hold_days)
-    periods_per_year = 252.0 / hold_days
-    std    = float(np.std(strat_ret))
-    sharpe = (
-        float(np.mean(strat_ret) / std * np.sqrt(periods_per_year))
-        if std > 0 else 0.0
-    )
-
-    # ── 累積報酬與最大回撤（用原始 30 日報酬，不再 ÷ hold_days） ────
-    cumret = np.cumprod(1 + np.clip(strat_ret, -0.99, None))
-    peak   = np.maximum.accumulate(cumret)
-    max_dd = float(np.min((cumret - peak) / peak))
-
-    # ── 損益比與期望值 (Payoff Ratio & Expected Value) ──
-    # 僅對有開倉的樣本進行統計
-    trades_idx = np.where(position != 0)[0]
-    if len(trades_idx) > 0:
-        pos_rets = strat_ret_gross[trades_idx]
-        gains = pos_rets[pos_rets > 0]
-        losses = pos_rets[pos_rets < 0]
-        
-        avg_gain = float(np.mean(gains)) if len(gains) > 0 else 0.0
-        avg_loss = float(np.abs(np.mean(losses))) if len(losses) > 0 else 1e-7
-        payoff_ratio = avg_gain / avg_loss
-        
-        # 實戰期望值 (Expected Value per Trade)
-        win_rate_trade = len(gains) / len(trades_idx)
-        expected_value = win_rate_trade * avg_gain - (1 - win_rate_trade) * avg_loss
-    else:
-        payoff_ratio = 0.0
-        expected_value = 0.0
-
-    n_trades = int(np.sum(position != 0))
-    win_rate = (
-        float(np.mean(strat_ret_gross[position != 0] > 0))
-        if n_trades > 0 else 0.0
-    )
-    total_tc = float(np.sum(tc))
-
-    return {
-        "sharpe":         sharpe,
-        "sharpe_gross":   float(np.mean(strat_ret_gross) / max(np.std(strat_ret_gross), 1e-9)
-                                * np.sqrt(periods_per_year)),
-        "max_drawdown":   max_dd,
-        "win_rate":       win_rate,
-        "payoff_ratio":   payoff_ratio,
-        "expected_value": expected_value,
-        "n_trades":       n_trades,
-        "total_tc_pct":   round(total_tc * 100, 3),
-    }
-
-
-def evaluate_fold(y_true: pd.Series, prob_up: pd.Series, stock_id: str = "2330") -> dict:
-    """彙整單一 Fold 的全套指標（含 single-class 保護）。"""
-    # 統一轉為值陣列，消除 index 不一致問題（pandas 2.x 嚴格要求 index 一致）
-    y_arr = np.asarray(y_true, dtype=float)
-    p_arr = np.asarray(prob_up, dtype=float)
-    y_s   = pd.Series(y_arr)
-    p_s   = pd.Series(p_arr)
-
-    da  = directional_accuracy(y_s, p_s - 0.5)
-
-    # ── 淨報酬計算 (以 OOF 機率作為訊號，計算預期淨報酬) ────────────
-    # 假設訊號 > 0.5 時做多，計算該筆交易扣除成本後的淨報酬
-    gross_returns = y_s[p_s > 0.5]
-    if len(gross_returns) > 0:
-        avg_gross = float(gross_returns.mean())
-        avg_net = calculate_net_return(avg_gross, stock_id)
-    else:
-        avg_net = 0.0
-
-    # ── AUC：single-class 保護 ─────────────────────────────────
-    # 當驗證窗只有單一類別（全漲或全跌），roc_auc_score 會拋出 ValueError
-    # 並回傳 NaN，導致 fold 統計失真。改為安全計算。
-    y_binary = (y_arr > 0).astype(int)
-    n_classes = len(np.unique(y_binary))
-    if n_classes < 2:
-        auc = float("nan")
-        logger.debug(
-            f"  [evaluate_fold] single-class fold（只有 {'上漲' if y_binary.mean()>0.5 else '下跌'}），"
-            "AUC 設為 NaN，不計入彙整平均"
-        )
-    else:
-        auc = roc_auc_score(y_binary, p_arr)
-
-    ic  = information_coefficient(y_s, p_s)
-    sim = simulate_sharpe(y_s, p_s, ticker=stock_id)
-    return {"directional_accuracy": da, "auc": auc, "ic": ic, "avg_net_return": avg_net, **sim}
-
-# ─────────────────────────────────────────────
-# Regime Detection 分析
-# ─────────────────────────────────────────────
-
-def regime_analysis(
-    df:       pd.DataFrame,
-    oof_pred: pd.Series,
-) -> dict:
-    """
-    依市場波動 regime（低波動 / 中波動 / 高波動）+ 趨勢 regime（牛/熊/整理）分組評估 OOF 預測表現。
-
-    原理：realized_vol_20d（年化）是代理「市場不確定性」最即時的指標。
-      低波動 regime → 趨勢穩定，模型通常較準
-      高波動 regime → 震盪/危機，模型最容易衰退（重點監控）
-
-    v2 新增：同時評估趨勢 Regime（bull/bear/sideways）
-      bull  regime → 看漲訊號準確率通常更高
-      bear  regime → 看跌訊號準確率通常更高，但假突破噪音也大
-      sideways     → 訊號品質最低，建議避免操作
-
-    回傳 dict：{regime_label: metric_dict}
-    """
-    vol_col = "realized_vol_20d"
-    if vol_col not in df.columns:
-        logger.warning("  [Regime] realized_vol_20d 欄位不存在，跳過 regime 分析")
-        return {}
-
-    vol_low  = REGIME_CONFIG["vol_low"]
-    vol_high = REGIME_CONFIG["vol_high"]
-
-    valid_idx = oof_pred.dropna().index
-    if len(valid_idx) == 0:
-        return {}
-
-    vol   = df.loc[valid_idx, vol_col].fillna(df[vol_col].median())
-    y_reg = df.loc[valid_idx, "target_30d"]
-    pred  = oof_pred.loc[valid_idx]
-
-    # ── 波動率 Regime ─────────────────────────────────────────────
-    vol_regimes = {
-        f"低波動（vol < {vol_low:.0%}）": vol < vol_low,
-        f"中波動（{vol_low:.0%} ≤ vol < {vol_high:.0%})":
-            (vol >= vol_low) & (vol < vol_high),
-        f"高波動（vol ≥ {vol_high:.0%}）": vol >= vol_high,
-    }
-
-    results = {}
-    logger.info("\n=== Regime 分析（波動率分群）===")
-    for label, mask in vol_regimes.items():
-        n = mask.sum()
-        if n < 20:
-            logger.info(f"  {label}：樣本不足（{n} 筆），略過")
-            continue
-        try:
-            m = evaluate_fold(y_reg[mask], pred[mask])
-            results[label] = m
-            _auc_str = f"{m['auc']:.3f}" if not np.isnan(m['auc']) else " NaN"
-            _ic_str  = f"{m['ic']:.3f}"  if not np.isnan(m['ic'])  else " NaN"
-            logger.info(
-                f"  {label}（n={n:4d}）｜"
-                f"DA={m['directional_accuracy']:.3f}  "
-                f"AUC={_auc_str}  "
-                f"IC={_ic_str}  Sharpe={m['sharpe']:.2f}  "
-                f"Sharpe_gross={m.get('sharpe_gross', m['sharpe']):.2f}  "
-                f"TC={m.get('total_tc_pct', 0):.2f}%"
-            )
-        except Exception as e:
-            logger.warning(f"  {label} 評估失敗：{e}")
-
-    # ── 趨勢 Regime（新增）───────────────────────────────────────
-    if "trend_regime" in df.columns:
-        trend_col = df.loc[valid_idx, "trend_regime"]
-        trend_regimes = {
-            "牛市（bull）": trend_col == "bull",
-            "熊市（bear）": trend_col == "bear",
-            "整理期（sideways）": trend_col == "sideways",
-        }
-        logger.info("\n=== Regime 分析（趨勢分群）===")
-        for label, mask in trend_regimes.items():
-            n = mask.sum()
-            if n < 20:
-                logger.info(f"  {label}：樣本不足（{n} 筆），略過")
-                continue
-            try:
-                m = evaluate_fold(y_reg[mask], pred[mask])
-                results[f"trend_{label}"] = m
-                _auc_str = f"{m['auc']:.3f}" if not np.isnan(m['auc']) else " NaN"
-                logger.info(
-                    f"  {label}（n={n:4d}）｜"
-                    f"DA={m['directional_accuracy']:.3f}  "
-                    f"AUC={_auc_str}  Sharpe={m['sharpe']:.2f}"
-                )
-            except Exception as e:
-                logger.warning(f"  {label} 評估失敗：{e}")
-
-    # ── 多時程共識評估（新增）────────────────────────────────────
-    if "target_consensus_binary" in df.columns:
-        consensus = df.loc[valid_idx, "target_consensus_binary"].astype(float)
-        # 只在三者完全一致（consensus=0.0 或 1.0）時評估：訊號最純淨的子集
-        full_consensus_mask = (consensus == 0.0) | (consensus == 1.0)
-        n_full = full_consensus_mask.sum()
-        if n_full >= 20:
-            try:
-                m_consensus = evaluate_fold(
-                    y_reg[full_consensus_mask],
-                    pred[full_consensus_mask]
-                )
-                results["三時程完全共識"] = m_consensus
-                logger.info(
-                    f"\n=== 多時程共識評估 ==="
-                    f"\n  三者完全一致子集（n={n_full}）｜"
-                    f"DA={m_consensus['directional_accuracy']:.3f}  "
-                    f"Sharpe={m_consensus['sharpe']:.2f}  "
-                    f"（對比全樣本 DA={evaluate_fold(y_reg, pred)['directional_accuracy']:.3f}）"
-                )
-            except Exception as e:
-                logger.warning(f"  多時程共識評估失敗：{e}")
-
-    # 高波動 vs 低波動衰退量（最重要的穩定性指標）
-    low_key  = [k for k in results if "低波動" in k]
-    high_key = [k for k in results if "高波動" in k]
-    if low_key and high_key:
-        low_da  = results[low_key[0]]["directional_accuracy"]
-        high_da = results[high_key[0]]["directional_accuracy"]
-        decay   = low_da - high_da
-        flag    = "⚠️ 衰退顯著（> 10%）" if decay > 0.10 else "✅ 穩定"
-        logger.info(
-            f"\n  【關鍵】高波動 vs 低波動 DA 衰退：{decay:+.3f}  {flag}"
-        )
-        results["_da_decay_high_vs_low"] = decay
-
-    return results
+from utils.metrics import directional_accuracy, information_coefficient, calculate_net_return, simulate_sharpe, evaluate_fold, regime_analysis
+from utils.feature_selection import lasso_feature_selection
 
 
 # ─────────────────────────────────────────────
@@ -741,7 +430,7 @@ def run_walk_forward(
             logger.info(f"  {k:28s}: {sign}{delta:.4f}")
 
     # ── Regime 分析（OOF Meta 預測在不同波動環境下的表現）────────
-    regime_results = regime_analysis(df, oof_prob_up)
+    regime_results = regime_analysis(df, oof_prob_up, REGIME_CONFIG)
 
     # [P2 修復 2.10] 組裝完整 OOF 預測序列（含日期 + 真實標籤）
     # 供 backtest_audit.py 的 calibration_analysis() 與 model_health_check.py
@@ -1043,16 +732,25 @@ def main():
     
     # 儲存 OOF 預測序列 (用於回測)
     oof_df = pd.DataFrame({"prob_up": wf_result["oof_preds"]})
-    oof_df.to_csv(OUTPUT_DIR / "oof_predictions.csv")
-    logger.info(f"  OOF 預測序列已儲存：{OUTPUT_DIR / 'oof_predictions.csv'}")
+    oof_path = OUTPUT_DIR / f"oof_predictions_{stock_id}.csv"
+    oof_df.to_csv(oof_path)
+    logger.info(f"  OOF 預測序列已儲存：{oof_path}")
 
     # [P2 修復 2.10] 同步輸出含日期/標籤的完整 OOF 預測序列
     # 供 backtest_audit.py 做完整 calibration_analysis（不只 scalar metrics）
     oof_full = wf_result.get("oof_full")
     if oof_full is not None and not oof_full.empty:
-        oof_full_path = OUTPUT_DIR / "oof_predictions_with_dates.csv"
+        oof_full_path = OUTPUT_DIR / f"oof_predictions_with_dates_{stock_id}.csv"
         oof_full.to_csv(oof_full_path, index=False)
         logger.info(f"  完整 OOF 序列（date/prob_up/y_true）已儲存：{oof_full_path}")
+        
+        # [P0] 儲存 OOF 分佈為 .npy 供 model_health_check.py 使用
+        try:
+            arr = oof_full["prob_up"].dropna().values
+            np.save(MODEL_DIR / f"oof_ref_dist_{stock_id}.npy", arr)
+            logger.info(f"  OOF 參考分佈 (.npy) 已儲存：{MODEL_DIR / f'oof_ref_dist_{stock_id}.npy'}")
+        except Exception as e:
+            logger.warning(f"  儲存 OOF .npy 失敗：{e}")
 
     # 同時儲存 Meta 重算後的 OOF 指標（比 fold-level 平均更準確）
     meta_metrics_df = pd.DataFrame([wf_result["meta_metrics"]])

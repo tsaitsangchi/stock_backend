@@ -399,6 +399,15 @@ FEATURE_GROUPS: dict = {
         "adr_premium", "adr_premium_5d_chg", "adr_premium_ma5",
     ],
     "us_chain": [],
+    "physics_signals": [
+        "gravity_pull",
+        "info_force_per_mass", 
+        "singularity_dist",
+        "market_entropy",
+        "liquidity_quality",
+        "smart_money_sync_buy",
+        "kwave_score"
+    ],
 }
 
 def get_all_features(stock_id: str = DEFAULT_STOCK_ID) -> list[str]:
