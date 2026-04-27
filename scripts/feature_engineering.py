@@ -321,7 +321,7 @@ def add_valuation_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def add_event_features(df: pd.DataFrame, stock_id: str = "2330") -> pd.DataFrame:
+def add_event_features(df: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID) -> pd.DataFrame:
     """
     事件驅動特徵：捕捉台股結構性斷點（春節、除息、ADR 跳空）。
     """
@@ -333,12 +333,16 @@ def add_event_features(df: pd.DataFrame, stock_id: str = "2330") -> pd.DataFrame
         # 除息前 5 日 (拉抬/棄息) 與 除息後 3 日 (填息力道)
         df["is_pre_dividend"] = ((df["days_to_next_ex_dividend"] > 0) & (df["days_to_next_ex_dividend"] <= 5)).astype(float)
         df["is_post_dividend"] = ((df["days_to_next_ex_dividend"] <= 0) & (df["days_to_next_ex_dividend"] >= -3)).astype(float)
+        
+        # 除息前後 5 日 dummy (原有 add_event_features 2 的邏輯)
+        df["dividend_ex_dummy"] = (df["days_to_next_ex_dividend"].abs() <= 5).astype(int)
     else:
         df["is_pre_dividend"] = 0.0
         df["is_post_dividend"] = 0.0
+        df["days_to_next_ex_dividend"] = 365
+        df["dividend_ex_dummy"] = 0
 
     # 2. 農曆春節封關效應 (Lunar New Year)
-    # 台股特有長假，封關前通常有流動性收縮或紅包行情
     lunar_new_year_dates = [
         "2018-02-15", "2019-02-04", "2020-01-24", "2021-02-11", 
         "2022-01-31", "2023-01-21", "2024-02-09", "2025-01-28", "2026-02-16"
@@ -349,109 +353,29 @@ def add_event_features(df: pd.DataFrame, stock_id: str = "2330") -> pd.DataFrame
         diff = (lny - df.index).days
         mask = (diff >= 0) & (diff <= 20)
         days_to_lny[mask] = diff[mask]
-    
-    df["is_pre_lunar_new_year"] = (days_to_lny <= 7).astype(float) # 封關前一週
+    df["is_pre_lunar_new_year"] = (days_to_lny <= 7).astype(float)
 
     # 3. ADR 隔夜跳空 (TSM/UMC/HON/ASX 專屬)
-    # 捕捉美股 ADR 領先反映的資訊
     adr_config = {
         "2330": {"ticker": "TSM", "ratio": 5},
         "2303": {"ticker": "UMC", "ratio": 5},
-        "2317": {"ticker": "HNHPF", "ratio": 2}, # 鴻海 (非 ADR 而是 OTC，參考用)
-        "2308": {"ticker": "TWDAY", "ratio": 5}, # 台達電
+        "2317": {"ticker": "HNHPF", "ratio": 2},
+        "2308": {"ticker": "TWDAY", "ratio": 5},
     }
-    
     if stock_id in adr_config:
         cfg = adr_config[stock_id]
         adr_col = f"us_{cfg['ticker']}_close"
         if adr_col in df.columns and "exchange_rate" in df.columns:
-            # 隱含台股價 = ADR 收盤 * 匯率 / 換股比例
             implied_tw_price = (df[adr_col].shift(1) * df["exchange_rate"].shift(1)) / cfg["ratio"]
             df["adr_overnight_gap"] = implied_tw_price / df["close"].shift(1) - 1.0
-    
-    return df
 
-
-# ─────────────────────────────────────────────
-# 宏觀因子特徵
-# ─────────────────────────────────────────────
-
-def add_macro_features(df: pd.DataFrame) -> pd.DataFrame:
-    # FED 利率
-    fed_col = "FED"
-    if fed_col in df.columns:
-        df["fed_rate"]      = df[fed_col]
-        df["fed_rate_chg_30d"] = df[fed_col].diff(21)
-    else:
-        df["fed_rate"] = df["fed_rate_chg_30d"] = np.nan
-
-    for country, col in [("BOJ", "boj_rate"), ("ECB", "ecb_rate")]:
-        df[col] = df[country] if country in df.columns else np.nan
-
-    # 匯率（USD/TWD, JPY/TWD, EUR/TWD）
-    for curr in ["usd", "jpy", "eur"]:
-        col = f"{curr}_twd_mid"
-        if col in df.columns:
-            df[f"{curr}_twd_spot"] = df[col]
-            df[f"{curr}_twd_chg_10d"] = df[col].pct_change(10)
-        else:
-            df[f"{curr}_twd_spot"] = df[f"{curr}_twd_chg_10d"] = np.nan
-
-    # 公債殖利率與利差
-    for bid in ["US10Y", "US2Y", "us_yield_spread"]:
-        if bid not in df.columns:
-            df[bid] = np.nan
-
-    # 大盤指數報酬
-    for idx_name, prefix in [("TAIEX", "taiex"), ("TPEx", "tpex")]:
-        if idx_name in df.columns:
-            df[f"{prefix}_ret_5d"]  = np.log(df[idx_name] / df[idx_name].shift(5))
-            df[f"{prefix}_ret_20d"] = np.log(df[idx_name] / df[idx_name].shift(20))
-        else:
-            for suf in ["ret_5d", "ret_20d"]:
-                df[f"{prefix}_{suf}"] = np.nan
-
-    # 相對強弱（個股 vs 大盤）
-    if "TAIEX" in df.columns:
-        stock_ret  = df["log_return_20d"] if "log_return_20d" in df.columns else 0
-        market_ret = df["taiex_ret_20d"]  if "taiex_ret_20d"  in df.columns else 0
-        df["taiex_rel_strength"] = stock_ret - market_ret
-    else:
-        df["taiex_rel_strength"] = np.nan
-
-    return df
-
-
-# ─────────────────────────────────────────────
-# 事件驅動特徵
-# ─────────────────────────────────────────────
-
-def add_event_features(df: pd.DataFrame) -> pd.DataFrame:
-    # 距下次除息日天數
-    if "cash_ex_dividend_trading_date" in df.columns:
-        ex_dates = pd.to_datetime(
-            df["cash_ex_dividend_trading_date"], errors="coerce"
-        )
-        df["days_to_next_ex_dividend"] = (
-            ex_dates - df.index
-        ).dt.days.clip(lower=-5, upper=365)
-        # 除息前後 5 日 dummy
-        df["dividend_ex_dummy"] = (
-            df["days_to_next_ex_dividend"].abs() <= 5
-        ).astype(int)
-    else:
-        df["days_to_next_ex_dividend"] = 365
-        df["dividend_ex_dummy"]        = 0
-
-    # TTM 現金股利
+    # 4. TTM 現金股利 (原有 add_event_features 2 的邏輯)
     if "cash_earnings_distribution" in df.columns:
-        df["cash_dividend_ttm"] = (
-            df["cash_earnings_distribution"].rolling(252).sum()
-        )
+        df["cash_dividend_ttm"] = df["cash_earnings_distribution"].rolling(252).sum()
     else:
         df["cash_dividend_ttm"] = np.nan
 
-    # 距上次財報天數（以季報為準，每 63 天一次近似）
+    # 5. 距上次財報天數
     df["days_since_last_earnings"] = np.arange(len(df)) % 63
 
     return df
