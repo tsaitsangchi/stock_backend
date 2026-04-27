@@ -1142,3 +1142,14 @@ INTERNATIONAL_WATCHLIST = _get_international_watchlist()
 PARETO_RATIO = 0.2  # 特徵層面：只保留前 20% 黃金特徵
 CONFIDENCE_THRESHOLD = 0.75  # 訊號層面：極端高信心門檻
 TIER_1_STOCKS = ["2330", "2317", "2454", "2382", "2881", "2412", "2308", "2882"] # 標的層面：核心權值股
+
+# ─────────────────────────────────────────────
+# 生產系統穩定性設定 (System Stability)
+# ─────────────────────────────────────────────
+SYSTEM_STABILITY_CONFIG = {
+    "inference_timeout": 45,        # 單一標的推論超時限制 (秒)
+    "max_prob_threshold": 0.99,      # 異常機率門檻 (超過則視為數據錯誤)
+    "min_prob_threshold": 0.01,
+    "max_staleness_days": 3,         # 數據過時降級門檻 (天)
+    "fallback_prob": 0.5,            # 失敗時的預設中性機率
+}
