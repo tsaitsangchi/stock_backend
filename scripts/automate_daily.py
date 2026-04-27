@@ -15,7 +15,7 @@ import sys
 import logging
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from config import STOCK_CONFIGS
+from config import STOCK_CONFIGS, SYSTEM_STABILITY_CONFIG
 
 # 環境路徑設定
 VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
@@ -28,47 +28,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def run_predict(stock_id: str) -> bool:
-    """執行單一標的推論"""
+def run_predict(stock_id: str) -> dict:
+    """
+    執行單一標的推論，包含異常處理與降級機制。
+    回傳：{'success': bool, 'stock_id': str, 'error': str}
+    """
+    timeout = SYSTEM_STABILITY_CONFIG.get("inference_timeout", 45)
     cmd = [VENV_PYTHON, "scripts/predict.py", "--stock-id", stock_id]
+    
     try:
-        # 使用 subprocess 執行，並捕獲輸出
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return True
+        # 使用 subprocess 執行，並設定超時限制
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=timeout)
+        return {"success": True, "stock_id": stock_id}
+    except subprocess.TimeoutExpired:
+        logger.error(f"⌛ {stock_id} 推論超時 (>{timeout}s)，啟動降級機制...")
+        # 降級方案：嘗試不帶 TFT 執行快速推論
+        try:
+            cmd_fast = cmd + ["--no-tft"]
+            subprocess.run(cmd_fast, capture_output=True, text=True, check=True, timeout=15)
+            return {"success": True, "stock_id": stock_id, "warning": "TFT_TIMEOUT_FALLBACK"}
+        except Exception as e:
+            logger.error(f"❌ {stock_id} 快速降級推論亦失敗: {e}")
+            return {"success": False, "stock_id": stock_id, "error": "Inference Timeout"}
     except Exception as e:
-        logger.error(f"❌ {stock_id} 推論失敗: {e}")
-        return False
+        logger.error(f"❌ {stock_id} 推論發生未知錯誤: {e}")
+        return {"success": False, "stock_id": stock_id, "error": str(e)}
 
 def main():
     start_time = time.time()
-    logger.info("=== 🚀 啟動 Antigravity 每日全自動管線 ===")
+    logger.info("=== 🚀 啟動 Antigravity 每日全自動管線 (穩定性強化版) ===")
     
     # 1. 並行批次推論
     stock_ids = list(STOCK_CONFIGS.keys())
     logger.info(f"[Step 1] 執行批次推論 (個股數: {len(stock_ids)}, 並行數: {MAX_WORKERS})")
     
-    success_count = 0
+    results = []
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_sid = {executor.submit(run_predict, sid): sid for sid in stock_ids}
         for future in as_completed(future_to_sid):
-            sid = future_to_sid[future]
-            if future.result():
-                success_count += 1
-                if success_count % 5 == 0:
-                    logger.info(f"已完成 {success_count}/{len(stock_ids)} 支個股推論")
+            results.append(future.result())
+            success_so_far = sum(1 for r in results if r["success"])
+            if len(results) % 10 == 0:
+                logger.info(f"進度：{len(results)}/{len(stock_ids)} (成功: {success_so_far})")
+    
+    success_count = sum(1 for r in results if r["success"])
+    failed_stocks = [r["stock_id"] for r in results if not r["success"]]
     
     logger.info(f"✅ 批次推論完成。成功: {success_count}, 失敗: {len(stock_ids) - success_count}")
+    
+    if failed_stocks:
+        logger.warning(f"⚠️ 以下標的推論失敗，將在組合優化階段標記為 neutral (0.5)：{failed_stocks}")
     
     # 2. 健康檢查
     logger.info("[Step 2] 執行核心模型健康診斷")
     try:
         subprocess.run([VENV_PYTHON, "scripts/model_health_check.py"], check=True)
     except Exception as e:
-        logger.error(f"❌ 健康檢查執行失敗: {e}")
+        logger.error(f"❌ 健康檢查執行失敗（可能資料庫連線異常）: {e}")
         
     # 3. 投資組合優化
     logger.info("[Step 3] 執行投資組合優化與生成決策報告")
     try:
+        # 優化器會讀取 predict_date 當日預測，缺失標的將自動降級處理
         subprocess.run([VENV_PYTHON, "scripts/portfolio_optimizer.py", "--budget", "100000"], check=True)
     except Exception as e:
         logger.error(f"❌ 投資組合優化失敗: {e}")
