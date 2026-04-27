@@ -99,12 +99,26 @@ FRICTION_CONFIG = {
     "commission": 0.001425,       # 雙邊手續費 (買進與賣出各一次)
     "securities_tax": 0.003,      # 證交稅 (僅賣出時收取)
     "slippage_large_cap": 0.001,  # 大型股滑點估計 (如 2330, 市值 > 5000 億)
-    "slippage_small_cap": 0.005,  # 中小型股滑點估計 (流動性較低)
+    "slippage_small_cap": 0.005,  # 中小型股滑點估計 (流動性較較低)
 }
 
 # 輔助：判定大型股標的
 LARGE_CAP_TICKERS = ["2330", "2317", "2454", "2308", "2881", "2882", "2303"]
 DEFAULT_STOCK_ID = "2330"
+
+def calculate_net_return(gross_return: float, ticker: str) -> float:
+    """
+    計算扣除交易成本與滑點後的淨報酬。
+    台股雙邊成本：手續費*2 + 證交稅 + 滑點
+    """
+    is_large_cap = ticker in LARGE_CAP_TICKERS
+    slippage = FRICTION_CONFIG["slippage_large_cap"] if is_large_cap else FRICTION_CONFIG["slippage_small_cap"]
+    
+    # 雙邊總成本 (Round Trip) = commission*2 + tax + slippage (買入滑點 + 賣出滑點)
+    total_cost = (FRICTION_CONFIG["commission"] * 2 + 
+                  FRICTION_CONFIG["securities_tax"] + 
+                  slippage * 2)
+    return gross_return - total_cost
 
 # ─────────────────────────────────────────────
 # 個股客製化配置 (Multi-Stock Framework)

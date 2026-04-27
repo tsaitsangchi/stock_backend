@@ -48,7 +48,7 @@ from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
     MODEL_DIR, OUTPUT_DIR, REGIME_CONFIG, TFT_PARAMS, WF_CONFIG,
     STOCK_CONFIGS, get_all_features, PARETO_RATIO, TRAINING_STRATEGY, SECTOR_POOLS,
-    FRICTION_CONFIG, LARGE_CAP_TICKERS
+    FRICTION_CONFIG, LARGE_CAP_TICKERS, calculate_net_return
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
@@ -287,6 +287,15 @@ def evaluate_fold(y_true: pd.Series, prob_up: pd.Series) -> dict:
 
     da  = directional_accuracy(y_s, p_s - 0.5)
 
+    # ── 淨報酬計算 (以 OOF 機率作為訊號，計算預期淨報酬) ────────────
+    # 假設訊號 > 0.5 時做多，計算該筆交易扣除成本後的淨報酬
+    gross_returns = y_s[p_s > 0.5]
+    if len(gross_returns) > 0:
+        avg_gross = float(gross_returns.mean())
+        avg_net = calculate_net_return(avg_gross, ticker)
+    else:
+        avg_net = 0.0
+
     # ── AUC：single-class 保護 ─────────────────────────────────
     # 當驗證窗只有單一類別（全漲或全跌），roc_auc_score 會拋出 ValueError
     # 並回傳 NaN，導致 fold 統計失真。改為安全計算。
@@ -303,7 +312,7 @@ def evaluate_fold(y_true: pd.Series, prob_up: pd.Series) -> dict:
 
     ic  = information_coefficient(y_s, p_s)
     sim = simulate_sharpe(y_s, p_s, ticker=ticker)
-    return {"directional_accuracy": da, "auc": auc, "ic": ic, **sim}
+    return {"directional_accuracy": da, "auc": auc, "ic": ic, "avg_net_return": avg_net, **sim}
 
 # ─────────────────────────────────────────────
 # Regime Detection 分析
