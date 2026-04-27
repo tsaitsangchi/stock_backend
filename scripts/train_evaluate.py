@@ -277,7 +277,7 @@ def simulate_sharpe(
     }
 
 
-def evaluate_fold(y_true: pd.Series, prob_up: pd.Series) -> dict:
+def evaluate_fold(y_true: pd.Series, prob_up: pd.Series, stock_id: str = "2330") -> dict:
     """彙整單一 Fold 的全套指標（含 single-class 保護）。"""
     # 統一轉為值陣列，消除 index 不一致問題（pandas 2.x 嚴格要求 index 一致）
     y_arr = np.asarray(y_true, dtype=float)
@@ -292,7 +292,7 @@ def evaluate_fold(y_true: pd.Series, prob_up: pd.Series) -> dict:
     gross_returns = y_s[p_s > 0.5]
     if len(gross_returns) > 0:
         avg_gross = float(gross_returns.mean())
-        avg_net = calculate_net_return(avg_gross, ticker)
+        avg_net = calculate_net_return(avg_gross, stock_id)
     else:
         avg_net = 0.0
 
@@ -588,7 +588,7 @@ def run_walk_forward(
 
         # fold 內評估仍用簡單平均（此時 meta 尚未訓練，屬合理 baseline）
         prob_up_arr = raw_pred["ensemble"]
-        m = evaluate_fold(y_reg.iloc[sti], pd.Series(prob_up_arr))
+        m = evaluate_fold(y_reg.iloc[sti], pd.Series(prob_up_arr), stock_id=stock_id)
         m["fold"] = fold.fold_id
         fold_metrics.append(m)
 
@@ -724,7 +724,7 @@ def run_walk_forward(
 
     # Meta 重算後的全局 OOF 指標
     y_meta_reg  = y_reg.loc[valid_mask]
-    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid))
+    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid), stock_id=stock_id)
 
     logger.info("\n=== Meta-Learner OOF 指標（真實部署準確度）===")
     for k, v in meta_metrics.items():
