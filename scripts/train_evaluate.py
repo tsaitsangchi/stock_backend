@@ -311,7 +311,7 @@ def evaluate_fold(y_true: pd.Series, prob_up: pd.Series, stock_id: str = "2330")
         auc = roc_auc_score(y_binary, p_arr)
 
     ic  = information_coefficient(y_s, p_s)
-    sim = simulate_sharpe(y_s, p_s, ticker=ticker)
+    sim = simulate_sharpe(y_s, p_s, ticker=stock_id)
     return {"directional_accuracy": da, "auc": auc, "ic": ic, "avg_net_return": avg_net, **sim}
 
 # ─────────────────────────────────────────────
