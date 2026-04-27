@@ -6,17 +6,17 @@ import os
 import time
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from config import STOCK_CONFIGS, MODEL_DIR
+from config import STOCK_CONFIGS, MODEL_DIR, LOG_DIR, BASE_DIR
 
 # ── 設定區域 ───────────────────────────────────────────────────
 MAX_WORKERS = 3  # 同時訓練 3 支股票 (已清理背景程序，可提升至 3)
 VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
-TRAIN_SCRIPT = "scripts/train_evaluate.py"
+TRAIN_SCRIPT = str(BASE_DIR / "train_evaluate.py")
 # ──────────────────────────────────────────────────────────────
 
 def train_one_stock(stock_id):
     stock_name = STOCK_CONFIGS[stock_id]['name']
-    log_file = f"scripts/outputs/logs/train_{stock_id}.log"
+    log_file = str(LOG_DIR / f"train_{stock_id}.log")
     
     print(f"開始訓練 (含 TFT): {stock_id} ({stock_name})...")
     
