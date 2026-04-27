@@ -83,15 +83,18 @@ class XGBPredictor:
         es = p.pop("early_stopping_rounds", 50)
 
         if self.task == "classification":
+            # 確保 y_train, y_val 是二元整數 [0, 1]
+            y_tr_bin = (y_train > 0).astype(int)
+            y_va_bin = (y_val > 0).astype(int)
             self.model = xgb.XGBClassifier(
                 **p,
-                early_stopping_rounds=es,   # ← 放在建構子
+                early_stopping_rounds=es,
                 objective="binary:logistic",
                 eval_metric="auc",
             )
             self.model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train, y_tr_bin,
+                eval_set=[(X_val, y_va_bin)],
                 verbose=100,
             )
         else:
@@ -224,10 +227,13 @@ class LGBPredictor:
         ]
 
         if self.task == "classification":
+            # 確保 y_train, y_val 是二元整數 [0, 1]
+            y_tr_bin = (y_train > 0).astype(int)
+            y_va_bin = (y_val > 0).astype(int)
             self.model = lgb.LGBMClassifier(**p, objective="binary", metric="auc")
             self.model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
+                X_train, y_tr_bin,
+                eval_set=[(X_val, y_va_bin)],
                 callbacks=callbacks,
             )
         elif self.task == "ranking":
@@ -433,7 +439,26 @@ class StackingEnsemble:
                 if name in ["xgb", "lgb"]:
                     model.fit(X_train, y_train, X_val, y_val)
                 else:
-                    model.fit(X_train, y_train)
+                    model.fit(X_train, (y_train > 0).astype(int))
+
+    def fit_meta(self, meta_features: pd.DataFrame, y_true: pd.Series):
+        """訓練 Level-2 Meta-Learner"""
+        logger.info(f"  [L2] 訓練 Meta-Learner (Stacking)... 樣本數: {len(meta_features)}")
+        # 確保目標變數是二元標籤 [0, 1]
+        y_bin = (y_true > 0).astype(int)
+        # 移除含有 NaN 的 meta-features
+        mask = meta_features.notna().all(axis=1)
+        if mask.sum() < 10:
+            logger.warning("  [L2] Meta-features 樣本不足，跳過訓練")
+            return
+            
+        X_meta = self.scaler.fit_transform(meta_features[mask])
+        self.meta_learner.fit(X_meta, y_bin[mask])
+        
+    def predict_meta(self, meta_features: pd.DataFrame) -> np.ndarray:
+        """使用 Meta-Learner 產出最終機率"""
+        X_meta = self.scaler.transform(meta_features.fillna(0.5))
+        return self.meta_learner.predict_proba(X_meta)[:, 1]
 
     def predict(self, X: pd.DataFrame, recent_performance: dict = None) -> dict:
         """
