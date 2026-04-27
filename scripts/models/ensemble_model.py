@@ -623,16 +623,20 @@ class RegimeEnsemble:
     def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
         if X_oof is None:
             for model in [self.low_vol_model, self.mid_vol_model, self.high_vol_model]:
-                model.xgb_clf.calibrate(oof_df["xgb_pred"].values, y_meta.values)
-                model.lgb_clf.calibrate(oof_df["lgb_pred"].values, y_meta.values)
+                if "xgb" in model.models:
+                    model.models["xgb"].calibrate(oof_df["xgb_pred"].values, y_meta.values)
+                if "lgb" in model.models:
+                    model.models["lgb"].calibrate(oof_df["lgb_pred"].values, y_meta.values)
             return
             
         m_low, m_mid, m_high = self._split_mask(X_oof)
         
         for mask, model in [(m_low, self.low_vol_model), (m_mid, self.mid_vol_model), (m_high, self.high_vol_model)]:
             if mask.sum() >= 50:
-                model.xgb_clf.calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
-                model.lgb_clf.calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
+                if "xgb" in model.models:
+                    model.models["xgb"].calibrate(oof_df.loc[mask, "xgb_pred"].values, y_meta[mask].values)
+                if "lgb" in model.models:
+                    model.models["lgb"].calibrate(oof_df.loc[mask, "lgb_pred"].values, y_meta[mask].values)
 
     def predict(self, X: pd.DataFrame, tft_pred: Optional[Union[np.ndarray, float]] = None) -> dict:
         if isinstance(tft_pred, (float, int)):
