@@ -935,6 +935,7 @@ def main():
         
     use_tft          = not args.no_tft
     calibrate_probs  = not args.no_calibration
+    stock_id         = args.stock_id
 
     # 更新 WF 設定
     if args.step_days:
