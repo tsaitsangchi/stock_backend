@@ -294,12 +294,11 @@ def bulk_upsert(conn, upsert_sql: str, rows: list, template: str, page_size=2000
     conn.commit()
 
 
-def get_all_stock_ids(conn) -> list:
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT stock_id FROM stock_info WHERE type IN ('twse', 'otc') ORDER BY stock_id"
-        )
-        return [row[0] for row in cur.fetchall()]
+def get_all_stock_ids(conn, stock_id_arg=None):
+    if stock_id_arg:
+        return [s.strip() for s in stock_id_arg.split(",")]
+    from config import STOCK_CONFIGS
+    return list(STOCK_CONFIGS.keys())
 
 
 # ③ DB 最新日期批次預載（一次 SQL 取代 N 次逐筆查詢）
