@@ -255,6 +255,8 @@ WF_CONFIG = {
     "test_window":  126,
 }
 
+TRAIN_START_DATE = "2010-01-01"
+
 EVAL_TARGETS = {
     "directional_accuracy": 0.65,
     "ic":                   0.05,
@@ -409,6 +411,8 @@ def get_all_features(stock_id: str = DEFAULT_STOCK_ID) -> list[str]:
     for ticker in us_tickers:
         us_chain_features += [f"{ticker}_ret_1d", f"{ticker}_ret_5d", f"{ticker}_ret_20d"]
     groups["us_chain"] = us_chain_features
-    return [f for grp in groups.values() for f in grp]
+    all_f = [f for grp in groups.values() for f in grp]
+    # 使用 dict.fromkeys 移除重複項並保留順序
+    return list(dict.fromkeys(all_f))
 
 ALL_FEATURES = get_all_features(DEFAULT_STOCK_ID)
