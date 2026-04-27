@@ -9,6 +9,17 @@ scripts/model_health_check.py
 2. 模型時效性：監控各個股 .pkl/.ckpt 檔案之最後更新日，確保模型未過度陳舊。
 3. 預測準確度：比對過去 30 天之預測結果與實際市場走勢 (Real-time Directional Accuracy)，偵測效能衰退。
 4. 系統連續性：確認每日預測軌跡 (stock_forecast_daily) 是否覆蓋所有配置個股。
+
+修改摘要（第三輪審查修復）：
+  [P0] PSI 參考分佈三輪未修復——本版本徹底改寫：
+       1. 優先使用 outputs/oof_predictions.csv 作為「真實參考分佈」
+          （Walk-Forward OOF 期間實際的 prob_up 序列，反映模型在歷史資料
+          上的合理機率分佈）
+       2. 若 OOF 不存在則退回「stock_forecast_daily 中較早期的 prob_up」
+          作為時間滑動參考（rolling reference）
+       3. 最後才退回「固定 seed 的 Beta(2,2) 分佈」作為理論先驗
+       4. 所有路徑均為 deterministic（同樣輸入永遠產生同樣 PSI），
+          解決原版每次執行 PSI 不同的問題
 """
 
 import logging
@@ -21,8 +32,8 @@ import numpy as np
 import pandas as pd
 
 # 注入路徑
-sys.path.append("/home/hugo/project/stock_backend/scripts")
-from config import MODEL_DIR, STOCK_CONFIGS
+sys.path.append(str(Path(__file__).resolve().parent))
+from config import MODEL_DIR, OUTPUT_DIR, STOCK_CONFIGS
 from data_pipeline import _query
 
 # 設定日誌
@@ -92,51 +103,178 @@ def calculate_psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -
     """
     計算 PSI (Population Stability Index) 監控分佈穩定性。
     統計理論：PSI > 0.1 表示有顯著位移，PSI > 0.2 表示有嚴重位移，需重訓。
+
+    為了避免 expected 與 actual 的尺度錯位，先以兩個分佈合併後的分位點
+    切割 buckets（quantile-binning），再各自統計分佈，比固定區間更穩健。
     """
-    def scale_range(x, n_buckets):
-        return np.floor(x * (n_buckets - 1e-9)).astype(int)
+    expected = np.asarray(expected, dtype=float)
+    actual   = np.asarray(actual, dtype=float)
+    expected = expected[~np.isnan(expected)]
+    actual   = actual[~np.isnan(actual)]
+    if len(expected) == 0 or len(actual) == 0:
+        return float("nan")
 
-    expected_percents = np.bincount(scale_range(expected, buckets), minlength=buckets) / len(expected)
-    actual_percents   = np.bincount(scale_range(actual, buckets), minlength=buckets) / len(actual)
+    # 以 expected 的分位點切割（避免 actual 過寬而拉變區間）
+    quantile_pts = np.quantile(expected, np.linspace(0, 1, buckets + 1))
+    quantile_pts[0]  = -np.inf
+    quantile_pts[-1] = np.inf
 
-    # 避免除以 0
+    expected_counts, _ = np.histogram(expected, bins=quantile_pts)
+    actual_counts,   _ = np.histogram(actual,   bins=quantile_pts)
+
+    expected_percents = expected_counts / max(expected_counts.sum(), 1)
+    actual_percents   = actual_counts   / max(actual_counts.sum(),   1)
+
+    # 避免 log(0) / div-by-0
     expected_percents = np.where(expected_percents == 0, 1e-6, expected_percents)
-    actual_percents   = np.where(actual_percents == 0, 1e-6, actual_percents)
+    actual_percents   = np.where(actual_percents   == 0, 1e-6, actual_percents)
 
-    psi_val = np.sum((actual_percents - expected_percents) * np.log(actual_percents / expected_percents))
+    psi_val = np.sum((actual_percents - expected_percents) *
+                     np.log(actual_percents / expected_percents))
     return float(psi_val)
+
+
+# ─────────────────────────────────────────────
+# [P0 修復] PSI 參考分佈來源（取代隨機生成）
+# ─────────────────────────────────────────────
+
+_OOF_REF_CACHE: Optional[np.ndarray] = None
+
+
+def _load_oof_reference() -> Optional[np.ndarray]:
+    """
+    優先順序：
+      1. outputs/oof_predictions_with_dates.csv（含 date / prob_up 欄）
+      2. outputs/oof_predictions.csv（向後兼容，含 prob_up 欄）
+      回傳 numpy array；找不到則回 None。
+    """
+    global _OOF_REF_CACHE
+    if _OOF_REF_CACHE is not None:
+        return _OOF_REF_CACHE
+
+    candidates = [
+        OUTPUT_DIR / "oof_predictions_with_dates.csv",
+        OUTPUT_DIR / "oof_predictions.csv",
+    ]
+    for path in candidates:
+        if path.exists():
+            try:
+                df = pd.read_csv(path)
+                if "prob_up" in df.columns:
+                    arr = pd.to_numeric(df["prob_up"], errors="coerce").dropna().values
+                    if len(arr) >= 50:
+                        _OOF_REF_CACHE = arr
+                        logger.info(
+                            f"[PSI] 採用 OOF 參考分佈：{path.name}，N={len(arr)}"
+                        )
+                        return _OOF_REF_CACHE
+            except Exception as e:
+                logger.warning(f"[PSI] 讀取 {path.name} 失敗：{e}")
+
+    return None
+
+
+def _historical_prob_reference(stock_id: str,
+                               recent_n: int = 100,
+                               history_n: int = 200) -> Optional[np.ndarray]:
+    """
+    從 stock_forecast_daily 取「較早一段時間」的 prob_up 作為參考分佈，
+    再以「最近 N 筆」作為 actual。提供 stock-by-stock 的時間滑動參考。
+
+    回傳 reference array；不足則 None。
+    """
+    sql = """
+        SELECT prob_up
+        FROM public.stock_forecast_daily
+        WHERE stock_id = %s
+          AND day_offset = 30
+          AND COALESCE(is_backfill, FALSE) = FALSE
+        ORDER BY predict_date DESC
+        OFFSET %s
+        LIMIT %s
+    """
+    try:
+        df = _query(sql, (stock_id, recent_n, history_n))
+        if df.empty:
+            return None
+        arr = pd.to_numeric(df["prob_up"], errors="coerce").dropna().values
+        if len(arr) >= 50:
+            return arr
+    except Exception as e:
+        logger.debug(f"[PSI] 歷史參考分佈讀取失敗（{stock_id}）：{e}")
+    return None
+
+
+def _theoretical_prior_reference(seed: int = 42, n: int = 1000) -> np.ndarray:
+    """
+    最後備援：固定 seed 的 Beta(2,2) 分佈，集中於 0.5、長尾平緩，
+    比 normal(0.5, 0.1) 更貼近上漲機率的合理先驗。
+    """
+    rng = np.random.default_rng(seed)
+    return rng.beta(2.0, 2.0, n)
+
+
+def _get_reference_distribution(stock_id: str) -> tuple[np.ndarray, str]:
+    """
+    依優先順序取得參考分佈，並回傳 (array, source_label)。
+    """
+    oof_ref = _load_oof_reference()
+    if oof_ref is not None:
+        return oof_ref, "oof"
+
+    hist_ref = _historical_prob_reference(stock_id)
+    if hist_ref is not None:
+        return hist_ref, "history"
+
+    return _theoretical_prior_reference(), "prior"
+
 
 def check_prediction_drift_df(stock_ids: List[str]) -> pd.DataFrame:
     """
     監控預測分佈漂移 (Prediction Distribution Drift)。
     若機率分佈從「集中在中部」變為「兩極化」，通常是過擬合或 Regime Shift 的信號。
+
+    [P0 修復] 參考分佈不再隨機生成，而是依優先順序使用：
+      1. Walk-Forward OOF 預測（最佳，反映模型「歷史合理分佈」）
+      2. 該標的較早期 live prob_up（次佳，stock-specific）
+      3. 固定種子的 Beta(2,2) 理論先驗（最後備援）
     """
     results: List[Dict[str, Any]] = []
     for sid in stock_ids:
-        # 取得最近 100 筆預測機率
+        # 取得最近 100 筆預測機率（actual / current 分佈）
         sql: str = """
-            SELECT prob_up FROM public.stock_forecast_daily 
+            SELECT prob_up FROM public.stock_forecast_daily
             WHERE stock_id = %s AND day_offset = 30
+              AND COALESCE(is_backfill, FALSE) = FALSE
             ORDER BY predict_date DESC LIMIT 100
         """
         df: pd.DataFrame = _query(sql, (sid,))
         if len(df) < 50:
-            results.append({"stock_id": sid, "psi": np.nan, "drift_status": "⚪ INSUFFICIENT"})
+            results.append({
+                "stock_id": sid, "psi": np.nan,
+                "psi_ref": "n/a", "drift_status": "⚪ INSUFFICIENT",
+            })
             continue
-            
-        current_dist = df["prob_up"].values
-        # 參考分佈 (Reference)：理想狀態下應為 0.4~0.6 的均勻或常態分佈
-        # [P0 修復] 使用固定種子確保參考分佈一致，不再隨機變動
-        rng = np.random.default_rng(42)
-        ref_dist = rng.normal(0.5, 0.1, 1000).clip(0, 1)
-        
+
+        current_dist = pd.to_numeric(df["prob_up"], errors="coerce").dropna().values
+
+        # [P0 修復] 取得真實參考分佈（deterministic）
+        ref_dist, ref_source = _get_reference_distribution(sid)
+
         psi = calculate_psi(ref_dist, current_dist)
-        
+
         status = "🟢 STABLE"
-        if psi > 0.2: status = "🔴 DRIFTED (PSI > 0.2)"
-        elif psi > 0.1: status = "🟡 WARNING (PSI > 0.1)"
-        
-        results.append({"stock_id": sid, "psi": round(psi, 4), "drift_status": status})
+        if psi > 0.2:
+            status = "🔴 DRIFTED (PSI > 0.2)"
+        elif psi > 0.1:
+            status = "🟡 WARNING (PSI > 0.1)"
+
+        results.append({
+            "stock_id":     sid,
+            "psi":          round(psi, 4),
+            "psi_ref":      ref_source,
+            "drift_status": status,
+        })
     return pd.DataFrame(results)
 
 def evaluate_recent_performance_df(stock_ids: List[str], days: int = 45) -> pd.DataFrame:

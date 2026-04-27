@@ -365,6 +365,9 @@ FEATURE_GROUPS: dict = {
         "taiex_ret_5d", "taiex_ret_20d",
         "tpex_ret_5d",
         "taiex_rel_strength",
+        # [P1 修復] kwave_score 不再是「全系統使用、無人定義」的幽靈特徵
+        # 在 feature_engineering.add_kwave_regime_features 中明確計算（含 fallback）
+        "kwave_score",
     ],
     "event": [
         "cash_dividend_ttm",
