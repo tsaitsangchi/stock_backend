@@ -88,6 +88,56 @@ def check_model_files_df(stock_ids: List[str]) -> pd.DataFrame:
         })
     return pd.DataFrame(results)
 
+def calculate_psi(expected: np.ndarray, actual: np.ndarray, buckets: int = 10) -> float:
+    """
+    計算 PSI (Population Stability Index) 監控分佈穩定性。
+    統計理論：PSI > 0.1 表示有顯著位移，PSI > 0.2 表示有嚴重位移，需重訓。
+    """
+    def scale_range(x, n_buckets):
+        return np.floor(x * (n_buckets - 1e-9)).astype(int)
+
+    expected_percents = np.bincount(scale_range(expected, buckets), minlength=buckets) / len(expected)
+    actual_percents   = np.bincount(scale_range(actual, buckets), minlength=buckets) / len(actual)
+
+    # 避免除以 0
+    expected_percents = np.where(expected_percents == 0, 1e-6, expected_percents)
+    actual_percents   = np.where(actual_percents == 0, 1e-6, actual_percents)
+
+    psi_val = np.sum((actual_percents - expected_percents) * np.log(actual_percents / expected_percents))
+    return float(psi_val)
+
+def check_prediction_drift_df(stock_ids: List[str]) -> pd.DataFrame:
+    """
+    監控預測分佈漂移 (Prediction Distribution Drift)。
+    若機率分佈從「集中在中部」變為「兩極化」，通常是過擬合或 Regime Shift 的信號。
+    """
+    results: List[Dict[str, Any]] = []
+    for sid in stock_ids:
+        # 取得最近 100 筆預測機率
+        sql: str = """
+            SELECT prob_up FROM public.stock_forecast_daily 
+            WHERE stock_id = %s AND day_offset = 30
+            ORDER BY predict_date DESC LIMIT 100
+        """
+        df: pd.DataFrame = _query(sql, (sid,))
+        if len(df) < 50:
+            results.append({"stock_id": sid, "psi": np.nan, "drift_status": "⚪ INSUFFICIENT"})
+            continue
+            
+        current_dist = df["prob_up"].values
+        # 參考分佈 (Reference)：理想狀態下應為 0.4~0.6 的均勻或常態分佈
+        # 實務上應從模型 metadata 讀取訓練時的 OOF 分佈，此處以 0.5 均值常態作為 Proxy
+        ref_dist = np.random.normal(0.5, 0.1, 1000).clip(0, 1)
+        
+        psi = calculate_psi(ref_dist, current_dist)
+        
+        status = "🟢 STABLE"
+        if psi > 0.2: status = "🔴 DRIFTED (PSI > 0.2)"
+        elif psi > 0.1: status = "🟡 WARNING (PSI > 0.1)"
+        
+        results.append({"stock_id": sid, "psi": round(psi, 4), "drift_status": status})
+    return pd.DataFrame(results)
+
 def evaluate_recent_performance_df(stock_ids: List[str], days: int = 45) -> pd.DataFrame:
     """
     實時計算過去一段時間的預測準確度 (DA)。
@@ -160,33 +210,44 @@ def run_health_check() -> None:
     df_models_df = check_model_files_df(stock_ids)
     print("\n[2] 模型檔案時效性 (Model Expiry Check)")
     print("-" * 60)
-    # 只顯示異常個股或前 10 筆
     anomalies_df = df_models_df[df_models_df["status"] != "🟢 OK"]
     if not anomalies_df.empty:
         print(anomalies_df.to_string(index=False))
     else:
-        print("✅ 所有配置個股模型皆已就緒且在有效期限內。")
+        print("✅ 所有配置個股模型皆已就緒。")
     
-    # 3. 最近實戰表現
-    df_perf_df = evaluate_recent_performance_df(stock_ids)
-    print("\n[3] 實戰準確度評估 (Real-time Directional Accuracy - 30D)")
+    # 3. 預測分佈漂移監控 (PSI)
+    df_drift = check_prediction_drift_df(stock_ids)
+    print("\n[3] 預測分佈漂移監控 (PSI Prediction Drift)")
     print("-" * 60)
-    # 排序：優先顯示警告項
+    drift_warn = df_drift[df_drift["drift_status"] != "🟢 STABLE"]
+    if not drift_warn.empty:
+        print(drift_warn.to_string(index=False))
+    else:
+        print("✅ 所有模型預測分佈穩定 (PSI < 0.1)。")
+
+    # 4. 最近實戰表現
+    df_perf_df = evaluate_recent_performance_df(stock_ids)
+    print("\n[4] 實戰準確度評估 (Real-time Directional Accuracy - 30D)")
+    print("-" * 60)
     df_perf_df = df_perf_df.sort_values("da", ascending=True)
     print(df_perf_df.head(15).to_string(index=False))
     
     # 總結警示
     stale_stocks = df_models_df[df_models_df["age_days"] > 30]["stock_id"].tolist()
     degraded_stocks = df_perf_df[df_perf_df["perf_status"] == "⚠️ DEGRADED"]["stock_id"].tolist()
+    drifted_stocks = df_drift[df_drift["psi"] > 0.2]["stock_id"].tolist()
     
     print("\n" + "═"*80)
-    if not stale_stocks and not degraded_stocks:
+    if not stale_stocks and not degraded_stocks and not drifted_stocks:
         print(" 🎉 系統健康度：優良。所有模型與數據流運作正常。")
     else:
         if stale_stocks:
-            print(f" ⏳ 模型過期警告：{stale_stocks} (建議執行 parallel_train.py)")
+            print(f" ⏳ 模型過期警告：{stale_stocks}")
+        if drifted_stocks:
+            print(f" 🌀 分佈漂移警報 (PSI > 0.2)：{drifted_stocks} (強烈建議立即重訓)")
         if degraded_stocks:
-            print(f" 📉 效能衰退警告：{degraded_stocks} (建議檢查特徵漂移或市場 Regime)")
+            print(f" 📉 效能衰退警告：{degraded_stocks}")
     print("═"*80 + "\n")
 
 if __name__ == "__main__":

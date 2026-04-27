@@ -159,6 +159,11 @@ def load_institutional(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df["date"] = pd.to_datetime(df["date"])
+    
+    # ── 防範未來資訊洩漏：籌碼資料延後一天 ──
+    # 法人買賣超於收盤後公告，次日交易才可用。
+    from config import DATA_LAG_CONFIG
+    df["date"] = df["date"] + pd.Timedelta(days=DATA_LAG_CONFIG.get("institutional_chip", 1))
 
     wide = df.pivot_table(
         index="date", columns="name",
@@ -202,8 +207,13 @@ def load_margin(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"])
+    
+    # ── 防範未來資訊洩漏：延後一天 ──
+    from config import DATA_LAG_CONFIG
+    df["date"] = df["date"] + pd.Timedelta(days=DATA_LAG_CONFIG.get("institutional_chip", 1))
+    
     df = df.set_index("date").sort_index()
-    logger.debug(f"[margin] {len(df):,} 筆")
+    logger.debug(f"[margin] {len(df):,} 筆 (已套用公告延遲)")
     return df
 
 
@@ -227,17 +237,23 @@ def load_shareholding(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"])
+    
+    # ── 防範未來資訊洩漏：延後一天 ──
+    from config import DATA_LAG_CONFIG
+    df["date"] = df["date"] + pd.Timedelta(days=DATA_LAG_CONFIG.get("institutional_chip", 1))
+    
     df = df.set_index("date").sort_index()
-    logger.debug(f"[shareholding] {len(df):,} 筆")
+    logger.debug(f"[shareholding] {len(df):,} 筆 (已套用公告延遲)")
     return df
 
 
 def load_financial_statements(stock_id: str = STOCK_ID) -> pd.DataFrame:
     """
-    financial_statements：損益表（季資料，long → wide）
-    DB schema: date, stock_id, type, value, origin_name
-    只保留預測最相關的 7 個科目。
+    financial_statements：損益表（季資料）
+    核心修正：依據公告期限（Q1-Q3 45天, Q4 90天）進行精確平移，防止未來洩漏。
     """
+    from config import DATA_LAG_CONFIG
+    
     KEEP = (
         "Revenue", "GrossProfit", "OperatingIncome",
         "IncomeAfterTax", "EPS", "TAX",
@@ -255,6 +271,16 @@ def load_financial_statements(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df["date"] = pd.to_datetime(df["date"])
+    
+    # ── 防範未來資訊洩漏：動態平移 ──
+    def _get_lag(dt):
+        # 如果是 12-31，視為 Q4/年報，延遲 90 天；其餘 45 天
+        if dt.month == 12:
+            return pd.Timedelta(days=DATA_LAG_CONFIG["annual_report"])
+        return pd.Timedelta(days=DATA_LAG_CONFIG["financial_statements"])
+
+    df["date"] = df.apply(lambda r: r["date"] + _get_lag(r["date"]), axis=1)
+    
     wide = df.pivot_table(
         index="date", columns="type", values="value", aggfunc="last"
     ).sort_index()
@@ -266,7 +292,8 @@ def load_financial_statements(stock_id: str = STOCK_ID) -> pd.DataFrame:
         "EPS":             "eps",
         "TAX":             "tax",
     })
-    logger.debug(f"[financial_statements] {len(wide):,} 季期")
+    wide["ann_date_stmt"] = wide.index
+    logger.debug(f"[financial_statements] {len(wide):,} 季期 (已套用公告延遲與日期標記)")
     return wide
 
 
@@ -339,8 +366,9 @@ def load_dividend(stock_id: str = STOCK_ID) -> pd.DataFrame:
 def load_month_revenue(stock_id: str = STOCK_ID) -> pd.DataFrame:
     """
     month_revenue：月營收
-    DB schema: date, stock_id, country, revenue, revenue_month, revenue_year
+    核心修正：依據 DATA_LAG_CONFIG 平移 40 天（從月初計），以對應次月 10 號公告。
     """
+    from config import DATA_LAG_CONFIG
     sql = """
         SELECT date,
                revenue::bigint,
@@ -354,8 +382,14 @@ def load_month_revenue(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"])
+    
+    # ── 防範未來資訊洩漏 (Data Leakage Protection) ──
+    # FinMind 日期通常為該月 1 號，平移 40 天確保在次月 10 號後才可用。
+    df["date"] = df["date"] + pd.Timedelta(days=DATA_LAG_CONFIG["month_revenue"])
+    
     df = df.set_index("date").sort_index()
-    logger.debug(f"[month_revenue] {len(df):,} 筆")
+    df["ann_date_rev"] = df.index
+    logger.debug(f"[month_revenue] {len(df):,} 筆 (已套用 40 天延遲與日期標記)")
     return df
 
 

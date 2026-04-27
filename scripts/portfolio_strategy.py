@@ -34,44 +34,60 @@ class BarbellAllocator:
 
     def allocate(self, results: pd.DataFrame, market_entropy: float = 0.05) -> pd.DataFrame:
         """
-        執行戰略槓鈴分配。
-        核心原則：80-90% 安全端 (Safety), 10-20% 凸性端 (Quantum)。
-        拒絕平庸：消除中間地帶，標的若不具備極端凸性，分配為 0。
+        執行戰略槓鈴分配（增強風險管理版）。
+        1. 槓鈴比例決定：80% Safety / 20% Kinetic
+        2. 流動性篩選：剔除日均量不足標的
+        3. 集中度限制：單一標的不超過總預算之 15% (Core) 或 5% (Aggressive)
         """
+        from scripts.config import RISK_CONFIG
+        
         # 1. 決定安全邊際比例
-        # 當市場熵值增加（混亂度上升），安全端比例自動提高
         safety_ratio = 0.85 if market_entropy > 0.02 else 0.80
-        quantum_total_ratio = 1.0 - safety_ratio
+        kinetic_total_ratio = 1.0 - safety_ratio
         
         safety_budget = self.total_budget * safety_ratio
-        quantum_total_budget = self.total_budget * quantum_total_ratio
+        kinetic_total_budget = self.total_budget * kinetic_total_ratio
         
         logger.info(f">>> 執行戰略槓鈴 | 市場熵值: {market_entropy:.4f}")
         logger.info(f"    - 🛡️ 安全防禦端 (Safety): {safety_ratio:.0%} | 預算: {safety_budget:,.0f}")
-        logger.info(f"    - 🚀 凸性量子端 (Quantum): {quantum_total_ratio:.0%} | 預算: {quantum_total_budget:,.0f}")
+        logger.info(f"    - 🚀 動力學凸性端 (Kinetic Alpha): {kinetic_total_ratio:.0%} | 預算: {kinetic_total_budget:,.0f}")
         
         final_allocation = []
         
-        # 2. 核心端分配 (Safety Base)
+        # 2. 流動性篩選 (Liquidity Screening)
+        min_vol = RISK_CONFIG["min_avg_vol_twd"]
+        valid_results = results[results['avg_vol_twd'] >= min_vol].copy()
+        
+        if len(valid_results) < len(results):
+            excluded = set(results['stock_id']) - set(valid_results['stock_id'])
+            logger.warning(f"  [流動性警告] 剔除日均量不足 {min_vol/1e6:.0f}M 的標的: {excluded}")
+
+        # 3. 核心端分配 (Safety Base)
         # 核心端僅限於重力井極度穩定的標的
-        core_picks = results[results['stock_id'].isin(CORE_STOCKS) & (results['prob_up'] >= 0.65)]
+        core_picks = valid_results[valid_results['stock_id'].isin(CORE_STOCKS) & (valid_results['prob_up'] >= 0.65)]
         if not core_picks.empty:
-            # 核心端投資限制：不超過安全預算的 30%，其餘保留現金 (Safety Base)
-            core_invest_limit = safety_budget * 0.3
-            per_stock_budget = core_invest_limit / len(core_picks)
+            # 集中度限制：單一標的上值
+            max_single_core = self.total_budget * RISK_CONFIG["max_pos_core"]
+            
+            # 安全端內部分配 (取前 3 名)
+            core_picks = core_picks.sort_values("prob_up", ascending=False).head(3)
+            per_stock_budget = min(safety_budget / len(core_picks), max_single_core)
+            
             for _, row in core_picks.iterrows():
                 shares = int(per_stock_budget / row['price'])
                 if shares > 0:
                     final_allocation.append({**row.to_dict(), "type": "CORE_SAFE", "shares": shares, "allocation": shares * row['price']})
         
-        # 3. 量子凸性端分配 (Quantum Alpha)
-        # 嚴格篩選：必須具備高上漲機率 + 高創新速度 (Innovation Velocity)
-        quantum_candidates = results[results['stock_id'].isin(QUANTUM_STOCKS) & (results['prob_up'] >= 0.60)]
+        # 4. 凸性端分配 (Kinetic Alpha)
+        quantum_candidates = valid_results[valid_results['stock_id'].isin(QUANTUM_STOCKS) & (valid_results['prob_up'] >= 0.60)]
         
         if not quantum_candidates.empty:
-            # 💡 拒絕平庸邏輯：只選擇機率最高且具備「奇點溢價」的前 2 名
+            # 集中度限制：單一進取型標的上值 5% (防止單一 AI 股暴雷)
+            max_single_agg = self.total_budget * RISK_CONFIG["max_pos_agg"]
+            
+            # 只選擇機率最高的前 2 名
             quantum_picks = quantum_candidates.sort_values("prob_up", ascending=False).head(2)
-            per_stock_budget = quantum_total_budget / len(quantum_picks)
+            per_stock_budget = min(kinetic_total_budget / len(quantum_picks), max_single_agg)
             
             for _, row in quantum_picks.iterrows():
                 shares = int(per_stock_budget / row['price'])
@@ -102,12 +118,16 @@ def main():
             
             entropy = float(latest["market_entropy"].iloc[0]) if "market_entropy" in latest.columns else 0.05
             
+            # 收集 20 日均成交量 (用於流動性篩選)
+            avg_vol = (df_feat["volume"] * df_feat["close"]).rolling(20).mean().iloc[-1]
+            
             results.append({
                 "stock_id": sid,
                 "name": STOCK_CONFIGS.get(sid, {}).get("name", sid),
                 "price": float(latest["close"].iloc[0]),
                 "prob_up": prob_up,
-                "entropy": entropy
+                "entropy": entropy,
+                "avg_vol_twd": avg_vol
             })
         except Exception as e:
             logger.error(f"標的 {sid} 處理失敗: {e}")

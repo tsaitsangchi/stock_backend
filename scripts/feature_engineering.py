@@ -321,6 +321,57 @@ def add_valuation_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_event_features(df: pd.DataFrame, stock_id: str = "2330") -> pd.DataFrame:
+    """
+    事件驅動特徵：捕捉台股結構性斷點（春節、除息、ADR 跳空）。
+    """
+    # 1. 股利與除息日效應
+    if "cash_ex_dividend_trading_date" in df.columns:
+        ex_dates = pd.to_datetime(df["cash_ex_dividend_trading_date"], errors="coerce")
+        df["days_to_next_ex_dividend"] = (ex_dates - df.index).dt.days.clip(lower=-10, upper=365)
+        
+        # 除息前 5 日 (拉抬/棄息) 與 除息後 3 日 (填息力道)
+        df["is_pre_dividend"] = ((df["days_to_next_ex_dividend"] > 0) & (df["days_to_next_ex_dividend"] <= 5)).astype(float)
+        df["is_post_dividend"] = ((df["days_to_next_ex_dividend"] <= 0) & (df["days_to_next_ex_dividend"] >= -3)).astype(float)
+    else:
+        df["is_pre_dividend"] = 0.0
+        df["is_post_dividend"] = 0.0
+
+    # 2. 農曆春節封關效應 (Lunar New Year)
+    # 台股特有長假，封關前通常有流動性收縮或紅包行情
+    lunar_new_year_dates = [
+        "2018-02-15", "2019-02-04", "2020-01-24", "2021-02-11", 
+        "2022-01-31", "2023-01-21", "2024-02-09", "2025-01-28", "2026-02-16"
+    ]
+    lny_dt = pd.to_datetime(lunar_new_year_dates)
+    days_to_lny = pd.Series(np.nan, index=df.index)
+    for lny in lny_dt:
+        diff = (lny - df.index).days
+        mask = (diff >= 0) & (diff <= 20)
+        days_to_lny[mask] = diff[mask]
+    
+    df["is_pre_lunar_new_year"] = (days_to_lny <= 7).astype(float) # 封關前一週
+
+    # 3. ADR 隔夜跳空 (TSM/UMC/HON/ASX 專屬)
+    # 捕捉美股 ADR 領先反映的資訊
+    adr_config = {
+        "2330": {"ticker": "TSM", "ratio": 5},
+        "2303": {"ticker": "UMC", "ratio": 5},
+        "2317": {"ticker": "HNHPF", "ratio": 2}, # 鴻海 (非 ADR 而是 OTC，參考用)
+        "2308": {"ticker": "TWDAY", "ratio": 5}, # 台達電
+    }
+    
+    if stock_id in adr_config:
+        cfg = adr_config[stock_id]
+        adr_col = f"us_{cfg['ticker']}_close"
+        if adr_col in df.columns and "exchange_rate" in df.columns:
+            # 隱含台股價 = ADR 收盤 * 匯率 / 換股比例
+            implied_tw_price = (df[adr_col].shift(1) * df["exchange_rate"].shift(1)) / cfg["ratio"]
+            df["adr_overnight_gap"] = implied_tw_price / df["close"].shift(1) - 1.0
+    
+    return df
+
+
 # ─────────────────────────────────────────────
 # 宏觀因子特徵
 # ─────────────────────────────────────────────
@@ -697,29 +748,69 @@ def add_multi_horizon_targets(
 # 目標變數（原有）
 # ─────────────────────────────────────────────
 
+def apply_triple_barrier(close: pd.Series, horizon: int, pt: float, sl: float) -> pd.Series:
+    """
+    三重障礙標籤法 (Triple-Barrier Method)：
+    1. 上軌 (Profit Take)：價格漲幅超過 pt
+    2. 下軌 (Stop Loss)：價格跌幅超過 sl
+    3. 時間軌 (Vertical)：到達 horizon 日
+    回傳：1 (上軌先觸發), -1 (下軌先觸發), 0 (時間軌觸發)
+    """
+    labels = pd.Series(index=close.index, data=0, dtype="Int64")
+    
+    # 為了向量化效率，我們使用滾動窗口的累計最大/最小回報
+    # 注意：這是一個簡化版的向量化實現
+    returns = close.pct_change()
+    
+    # 對於每一天，檢查未來 horizon 天內的情況
+    # 這裡使用一個較為直接的迴圈，針對單一標的效能尚可
+    # 若要全市場大規模運算，建議使用更高階的向量化技巧或並行
+    close_val = close.values
+    n = len(close_val)
+    
+    for i in range(n - horizon):
+        window = close_val[i+1 : i+horizon+1]
+        price_i = close_val[i]
+        
+        # 計算窗口內相對 i 日的最高與最低漲跌幅
+        max_ret = (window.max() / price_i) - 1
+        min_ret = (window.min() / price_i) - 1
+        
+        if max_ret >= pt and (min_ret > -sl or np.where(window/price_i - 1 >= pt)[0][0] < np.where(window/price_i - 1 <= -sl)[0][0]):
+            labels.iloc[i] = 1
+        elif min_ret <= -sl:
+            labels.iloc[i] = -1
+        else:
+            labels.iloc[i] = 0
+            
+    # 最後 horizon 筆設為 NaN
+    labels.iloc[-horizon:] = pd.NA
+    return labels
+
 def add_targets(df: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
     """
-    target_30d   ：未來 horizon 日收盤報酬率（回歸目標，float，最後 horizon 筆為 NaN）
-    direction_30d：漲跌方向 +1 / -1 / 0（Int64 nullable integer，保留 NaN）
-    target_binary：上漲為 1，其餘為 0（Int64 nullable integer）
-
-    注意：最後 horizon 筆 target_30d 為 NaN（無未來收盤價）。
-    pandas 2.x 禁止帶 NaN 的浮點欄直接 .astype(int)，
-    改用 pandas nullable integer 型態（Int64）保留 NaN。
-    build_features() 後續以 df.iloc[:-HORIZON] 移除這些 NaN 列。
+    新增三種目標：
+    1. 傳統 30d 報酬率
+    2. 傳統 30d 漲跌方向
+    3. 三重障礙標籤 (Triple-Barrier) - 考慮路徑風險
     """
     future_close = df["close"].shift(-horizon)
     df["target_30d"] = (future_close / df["close"] - 1)
     df["target_return"] = future_close - df["close"]
 
-    # np.sign 對 NaN 仍回傳 NaN（float）；用 Int64 保留 NaN，不強制轉 int
     df["direction_30d"] = (
         np.sign(df["target_30d"])
-        .astype("Int64")          # pandas nullable integer，支援 NaN
+        .astype("Int64")
     )
 
-    # target_binary：上漲(direction==1) → 1，其餘 → 0，NaN 保留
-    df["target_binary"] = (df["direction_30d"] == 1).astype("Int64")
+    # ── 三重障礙法標籤 ──────────────────────────────────────────
+    # 使用 8% 停利 / 5% 停損 / 30天 結算的標準配置
+    # 這是為了徹底解決「路徑風險」問題，讓模型學習避開深蹲後的反彈。
+    df["target_triple_barrier"] = apply_triple_barrier(df["close"], horizon, pt=0.08, sl=0.05)
+    
+    # target_binary：全面切換為三重障礙標籤
+    # 只有先觸發「停利軌 (pt)」的才標記為 1，其餘（觸發停損或時間到）均為 0。
+    df["target_binary"] = (df["target_triple_barrier"] == 1).astype("Int64")
 
     return df
 
@@ -888,9 +979,9 @@ def add_k2026_resonance_features(df: pd.DataFrame, stock_id: str) -> pd.DataFram
     return df
 
 
-def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_kinetic_dynamics_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    量子金融特徵：將價格運動視為物理力學過程。
+    動力學特徵：將價格運動視為物理力學過程。
     對齊公式：動量 (Momentum) = 質量 (Mass) x 位移 (Displacement)
     """
     # 1. 質量 (Mass) = 資本流動性 (以市值對數與成交量組合建模)
@@ -907,7 +998,7 @@ def add_quantum_physics_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # 3. 動量 (Momentum) = 質量 * 位移
     # 這是物理體系中的真實動能，而非單純的價格漲跌
-    df["quantum_momentum"] = df["inertial_mass"] * df["displacement"]
+    df["kinetic_momentum"] = df["inertial_mass"] * df["displacement"]
     
     # 4. 能量 (Energy) = 0.5 * m * v^2 (回報率作為速度)
     if "returns_1d" in df.columns:
@@ -958,9 +1049,78 @@ def add_order_flow_proxy_features(df: pd.DataFrame) -> pd.DataFrame:
         
         # 3. 訂單吸收/衰竭偵測 (Absorption/Exhaustion)
         # 當量很大但 Price Range 很小時，代表有隱藏的大量掛單在「吸收」動能
-        df["price_efficiency"] = (df["close"] - df["open"]).abs() / (df["volume"] * range_hl).replace(0, np.nan)
-        # 效率極低通常代表轉折點
-        df["absorption_signal"] = (df["price_efficiency"] < df["price_efficiency"].rolling(20).quantile(0.1)).astype(int)
+        df["absorption_ratio"] = df["volume"] / range_hl
+        
+    return df
+
+
+def add_microstructure_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    微觀結構代理特徵 (Microstructure Proxies)：從日線資料估算訂單流與流動性衝擊。
+    """
+    # 1. Amihud Illiquidity (非流動性)
+    # 捕捉「單位成交金額產生的價格衝擊」: |Return| / Turnover
+    if "returns_1d" in df.columns and "volume" in df.columns and "close" in df.columns:
+        turnover_twd = (df["volume"] * df["close"]).replace(0, np.nan)
+        df["amihud_illiquidity"] = df["returns_1d"].abs() / turnover_twd
+        df["amihud_illiquidity"] = df["amihud_illiquidity"].rolling(20).mean()
+    
+    # 2. Kyle's Lambda Proxy (資訊交易衝擊)
+    # 估算成交量對價格的敏感度：Cov(Return, SignedVol) / Var(SignedVol)
+    if "returns_1d" in df.columns and "volume" in df.columns:
+        signed_vol = np.sign(df["returns_1d"]) * df["volume"]
+        roll_cov = df["returns_1d"].rolling(60).cov(signed_vol)
+        roll_var = signed_vol.rolling(60).var()
+        df["kyle_lambda_proxy"] = roll_cov / roll_var.replace(0, np.nan)
+
+    # 3. 收盤位置比率 (Close-to-High Ratio)
+    # 衡量買方在收盤前的控制力 (威廉指標變體)
+    if "high" in df.columns and "low" in df.columns and "close" in df.columns:
+        range_hl = (df["high"] - df["low"]).replace(0, np.nan)
+        df["close_pos_ratio"] = (df["close"] - df["low"]) / range_hl
+
+    return df
+
+
+def add_cross_asset_correlation_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    跨資產關聯特徵：計算與美股連結標的/產業指標的動態 Beta 偏離。
+    """
+    us_cols = [c for c in df.columns if c.startswith("us_") and c.endswith("_close")]
+    if not us_cols or "returns_1d" not in df.columns:
+        return df
+        
+    # 選取主要連結標的 (如 SOXX, NVDA)
+    primary_us = us_cols[0]
+    us_ret = np.log(df[primary_us] / df[primary_us].shift(1))
+    tw_ret = df["returns_1d"]
+    
+    # 計算短期 (60d) vs 長期 (252d) Beta
+    beta_60 = tw_ret.rolling(60).cov(us_ret) / us_ret.rolling(60).var()
+    beta_252 = tw_ret.rolling(252).cov(us_ret) / us_ret.rolling(252).var()
+    
+    df["cross_beta_60"] = beta_60
+    df["cross_beta_dev"] = beta_60 - beta_252 # Beta 偏離度 (過熱或脫鉤訊號)
+    
+    return df
+
+
+def add_interaction_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    信號交叉特徵 (Cross-Signal Interactions)：捕捉多因子共振效應。
+    """
+    # 1. 外資買超 x RSI 超賣 (強力支撐共振)
+    if "foreign_net" in df.columns and "rsi_14" in df.columns:
+        # 過去 5 日外資合計買超 + RSI 低於 40
+        foreign_buy = (df["foreign_net"].rolling(5).sum() > 0).astype(float)
+        rsi_oversold = (df["rsi_14"] < 40).astype(float)
+        df["foreign_buy_x_oversold"] = foreign_buy * rsi_oversold
+        
+    # 2. 波動率 x 融資擴張 (融資斷頭/過熱風險)
+    if "realized_vol_20d" in df.columns and "margin_balance" in df.columns:
+        vol_high = (df["realized_vol_20d"] > df["realized_vol_20d"].rolling(60).quantile(0.8)).astype(float)
+        margin_increase = (df["margin_balance"] > df["margin_balance"].shift(5)).astype(float)
+        df["high_vol_margin_risk"] = vol_high * margin_increase
         
     return df
 
@@ -1020,6 +1180,26 @@ def add_blueprint_entry_signals(df: pd.DataFrame, stock_id: str) -> pd.DataFrame
     return df
 
 
+def add_staleness_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    計算資料陳舊度 (Data Staleness)。
+    利用 data_pipeline 中標記的 ann_date 欄位計算距離最近一次公告的天數。
+    """
+    # 1. 財報陳舊度 (以 EPS 為例)
+    if "ann_date_stmt" in df.columns:
+        # ann_date_stmt 已經被 ffill，代表每個交易日看到的都是最近一次公告的日期
+        df["eps_staleness_days"] = (df.index - pd.to_datetime(df["ann_date_stmt"])).dt.days
+        # 清除輔助欄位以防干擾模型
+        df = df.drop(columns=["ann_date_stmt"])
+        
+    # 2. 營收陳舊度
+    if "ann_date_rev" in df.columns:
+        df["rev_staleness_days"] = (df.index - pd.to_datetime(df["ann_date_rev"])).dt.days
+        df = df.drop(columns=["ann_date_rev"])
+        
+    return df
+
+
 def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_inference: bool = False) -> pd.DataFrame:
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
@@ -1061,7 +1241,7 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     df = add_sentiment_macro_features(df)
     logger.info(f"  進階情緒特徵完成，shape={df.shape}")
 
-    df = add_event_features(df)
+    df = add_event_features(df, stock_id)
     logger.info(f"  事件驅動特徵完成，shape={df.shape}")
 
     df = add_rolling_stats(df)
@@ -1082,17 +1262,20 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     df = add_k2026_resonance_features(df, stock_id)
     logger.info(f"  2026 大共振特徵注入完成，shape={df.shape}")
 
-    # ── 量子力學：量子物理特徵 (Quantum Physics) ────────────────
-    df = add_quantum_physics_features(df)
-    logger.info(f"  量子物理特徵 (Quantum) 注入完成，shape={df.shape}")
+    # ── 動力學：動力學特徵 (Kinetic Dynamics) ────────────────
+    df = add_kinetic_dynamics_features(df)
+    logger.info(f"  動力學特徵 (Kinetic) 注入完成，shape={df.shape}")
 
     # ── 冪律分佈：肥尾偵測 (Power Law) ──────────────────────────
     df = add_power_law_features(df)
     logger.info(f"  冪律肥尾特徵 (Power Law) 注入完成，shape={df.shape}")
 
-    # ── 訂單流：虛擬訂單流代理 (Order Flow Proxy) ──────────────
     df = add_order_flow_proxy_features(df)
-    logger.info(f"  虛擬訂單流特徵 (Order Flow) 注入完成，shape={df.shape}")
+    df = add_microstructure_features(df)
+    df = add_cross_asset_correlation_features(df)
+    df = add_interaction_features(df)
+    df = add_staleness_features(df)
+    logger.info(f"  複合進階特徵 (Microstructure/Cross-Asset/Interaction) 注入完成，shape={df.shape}")
 
     # ── 物理學：重力井模型 (Gravity Well) ─────────────────────
     df = add_gravity_well_features(df)

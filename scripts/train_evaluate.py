@@ -40,15 +40,20 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import roc_auc_score
+from sklearn.linear_model import LassoCV
+from sklearn.feature_selection import SelectFromModel
+from sklearn.preprocessing import StandardScaler
 
 from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
     MODEL_DIR, OUTPUT_DIR, REGIME_CONFIG, TFT_PARAMS, WF_CONFIG,
-    STOCK_CONFIGS, get_all_features, PARETO_RATIO
+    STOCK_CONFIGS, get_all_features, PARETO_RATIO, TRAINING_STRATEGY, SECTOR_POOLS,
+    FRICTION_CONFIG, LARGE_CAP_TICKERS
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
 from models.ensemble_model import RegimeEnsemble
+from feature_analysis import FactorAnalyzer, print_factor_report
 
 # ── 全域 Warning 過濾（第三方套件雜訊）────────────────────────────────────
 import warnings as _warnings
@@ -142,12 +147,37 @@ def information_coefficient(y_true: pd.Series, y_pred: pd.Series) -> float:
     return float(t.rank().corr(p.rank(), method="spearman"))
 
 
+def lasso_feature_selection(X: pd.DataFrame, y: pd.Series, max_features: int = 30) -> list[str]:
+    """
+    方向 ③：特徵降維 + 正則化
+    使用 LASSO (L1 正則化) 將有效特徵數壓到 20-30 個，與樣本量匹配 (n/p > 100)。
+    """
+    logger.info(f"  [LASSO] 開始特徵降維 (目標數: {max_features})...")
+    # 1. 預處理：填充缺失值與標準化 (LASSO 對量綱敏感)
+    X_tmp = X.fillna(X.median()).replace([np.inf, -np.inf], 0)
+    scaler = StandardScaler()
+    X_std = scaler.fit_transform(X_tmp)
+    
+    # 2. 訓練 LASSO (預測連續目標 target_30d 效果較佳)
+    # 使用交叉驗證尋找最佳 alpha
+    lasso = LassoCV(cv=5, max_iter=3000, n_jobs=-1).fit(X_std, y)
+    
+    # 3. 依據 L1 懲罰後的係數選取
+    # 限制最大特徵數以保證樣本/特徵比
+    selector = SelectFromModel(lasso, prefit=True, max_features=max_features)
+    mask = selector.get_support()
+    selected_cols = X.columns[mask].tolist()
+    
+    logger.info(f"  [LASSO] 篩選完成：{len(X.columns)} -> {len(selected_cols)} 特徵")
+    return selected_cols
+
+
 def simulate_sharpe(
     y_true:    pd.Series,
     signal:    pd.Series,
     threshold: float = 0.5,
     hold_days: int   = HORIZON,
-    tc_pct:    float = 0.002,   # 單邊交易成本（0.2%：含稅 + 手續費 + 滑價）
+    ticker:    str   = "2330",
 ) -> dict:
     """
     30 天持有策略模擬交易（含交易成本）：
@@ -170,6 +200,16 @@ def simulate_sharpe(
     y_arr = np.asarray(y_true, dtype=float)
     s_arr = np.asarray(signal, dtype=float)
 
+    # ── 計算實際交易摩擦 ────────────────────────────────────
+    is_large_cap = ticker in LARGE_CAP_TICKERS
+    slippage = FRICTION_CONFIG["slippage_large_cap"] if is_large_cap else FRICTION_CONFIG["slippage_small_cap"]
+    
+    # 雙邊總成本 (Round Trip) = commission*2 + tax + slippage*2
+    round_trip_cost = (FRICTION_CONFIG["commission"] * 2 + 
+                       FRICTION_CONFIG["securities_tax"] + 
+                       slippage * 2)
+    tc_per_action = round_trip_cost / 2.0
+
     long_pos  = (s_arr > threshold).astype(float)
     short_pos = (s_arr < 1 - threshold).astype(float)
     position  = long_pos - short_pos          # +1 / 0 / -1
@@ -177,7 +217,7 @@ def simulate_sharpe(
     # ── 交易成本：持倉改變時扣除 2 × tc_pct（買 + 賣） ──────────────
     prev_pos    = np.concatenate([[0.0], position[:-1]])
     pos_change  = np.abs(position - prev_pos)  # 0 or 1 or 2
-    tc          = pos_change * tc_pct           # 每次換倉扣 tc_pct
+    tc          = pos_change * tc_per_action           # 每次換倉扣單邊成本
 
     # strat_ret：30 日原始報酬，直接減去交易成本
     strat_ret_gross = position * y_arr
@@ -198,6 +238,25 @@ def simulate_sharpe(
     peak   = np.maximum.accumulate(cumret)
     max_dd = float(np.min((cumret - peak) / peak))
 
+    # ── 損益比與期望值 (Payoff Ratio & Expected Value) ──
+    # 僅對有開倉的樣本進行統計
+    trades_idx = np.where(position != 0)[0]
+    if len(trades_idx) > 0:
+        pos_rets = strat_ret_gross[trades_idx]
+        gains = pos_rets[pos_rets > 0]
+        losses = pos_rets[pos_rets < 0]
+        
+        avg_gain = float(np.mean(gains)) if len(gains) > 0 else 0.0
+        avg_loss = float(np.abs(np.mean(losses))) if len(losses) > 0 else 1e-7
+        payoff_ratio = avg_gain / avg_loss
+        
+        # 實戰期望值 (Expected Value per Trade)
+        win_rate_trade = len(gains) / len(trades_idx)
+        expected_value = win_rate_trade * avg_gain - (1 - win_rate_trade) * avg_loss
+    else:
+        payoff_ratio = 0.0
+        expected_value = 0.0
+
     n_trades = int(np.sum(position != 0))
     win_rate = (
         float(np.mean(strat_ret_gross[position != 0] > 0))
@@ -206,13 +265,15 @@ def simulate_sharpe(
     total_tc = float(np.sum(tc))
 
     return {
-        "sharpe":       sharpe,
-        "sharpe_gross": float(np.mean(strat_ret_gross) / max(np.std(strat_ret_gross), 1e-9)
-                              * np.sqrt(periods_per_year)),
-        "max_drawdown": max_dd,
-        "win_rate":     win_rate,
-        "n_trades":     n_trades,
-        "total_tc_pct": round(total_tc * 100, 3),   # 累積交易成本（%）
+        "sharpe":         sharpe,
+        "sharpe_gross":   float(np.mean(strat_ret_gross) / max(np.std(strat_ret_gross), 1e-9)
+                                * np.sqrt(periods_per_year)),
+        "max_drawdown":   max_dd,
+        "win_rate":       win_rate,
+        "payoff_ratio":   payoff_ratio,
+        "expected_value": expected_value,
+        "n_trades":       n_trades,
+        "total_tc_pct":   round(total_tc * 100, 3),
     }
 
 
@@ -241,7 +302,7 @@ def evaluate_fold(y_true: pd.Series, prob_up: pd.Series) -> dict:
         auc = roc_auc_score(y_binary, p_arr)
 
     ic  = information_coefficient(y_s, p_s)
-    sim = simulate_sharpe(y_s, p_s)
+    sim = simulate_sharpe(y_s, p_s, ticker=ticker)
     return {"directional_accuracy": da, "auc": auc, "ic": ic, **sim}
 
 # ─────────────────────────────────────────────
@@ -882,26 +943,32 @@ def main():
                 f"val={WF_CONFIG['val_window']}d  "
                 f"step={WF_CONFIG['step_days']}d  "
                 f"embargo={WF_CONFIG['embargo_days']}d")
-    # ── Step 1 & 2：從 PostgreSQL Feature Store 載入預先算好的特徵 ─────────────────────────
-    logger.info("\n[Step 1 & 2] 從 PostgreSQL Feature Store 載入預先算好的特徵…")
-    stock_id = args.stock_id
-    config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS["2330"])
-    
-    # 動態獲取特徵清單
-    all_features = get_all_features(stock_id)
-
-    # 更新 Regime 閾值
     REGIME_CONFIG["vol_low"] = config["vol_low"]
     REGIME_CONFIG["vol_high"] = config["vol_high"]
     
+    # ── 1. 資料載入與池化 (Data Pooling) ─────────────────────
+    training_pool = [stock_id]
+    if TRAINING_STRATEGY["use_global_backbone"]:
+        for sector, members in SECTOR_POOLS.items():
+            if stock_id in members:
+                training_pool = members
+                logger.info(f"  [Global Backbone] 啟用分區池化訓練: {sector} (n={len(members)})")
+                break
+                
     from data_pipeline import load_features_from_store
-    df = load_features_from_store(stock_id, start_date=args.start, end_date=args.end)
-    
-    if df.empty:
-        logger.error(f"  {stock_id} 的特徵庫沒有資料，請先執行 python scripts/update_feature_store.py")
+    all_dfs = []
+    for sid in training_pool:
+        df_sid = load_features_from_store(sid, start_date=args.start, end_date=args.end)
+        if not df_sid.empty:
+            all_dfs.append(df_sid)
+            
+    if not all_dfs:
+        logger.error(f"  查無資料，請先執行 python scripts/update_feature_store.py")
         sys.exit(1)
         
-    logger.info(f"  特徵框架：{len(df):,} 天 × {df.shape[1]} 欄")
+    df = pd.concat(all_dfs).sort_index()
+    logger.info(f"  資料載入完成，總樣本數: {len(df):,} (標的數: {len(training_pool)})")
+    logger.info(f"  特徵框架：{df.shape[1]} 欄")
 
     # ── 多時程共識統計 ────────────────────────────────────
     if "target_consensus_binary" in df.columns:
@@ -917,14 +984,30 @@ def main():
     # ── Step 3：Walk-Forward CV（八二法則兩階段精煉）─────────
     logger.info("\n[Step 3] Purged Walk-Forward CV（八二法則兩階段精煉）")
     
-    # --- Phase 1: 快速探索 (不啟動 TFT) ---
-    logger.info("\n>>> Phase 1: 核心特徵掃描 (Tree-only Exploration)...")
-    # 強制不使用 TFT 進行初步特徵重要性掃描
+    # --- Phase 1: 快速探索與降維 (Universal Model Approach) ---
+    logger.info("\n>>> Phase 1: 核心特徵掃描與 LASSO 降維...")
     scan_result = run_walk_forward(df, stock_id=stock_id, use_tft=False, calibrate_probs=False)
     
-    # --- Pareto 篩選 ---
-    golden_features = select_top_features(scan_result["importance"])
+    # 結合策略 ② 與 ③：特徵降維 + 正則化
+    if TRAINING_STRATEGY["feature_selection"] == "robust_ic":
+        # 混合篩選：IC IR + LASSO
+        logger.info("執行混合特徵篩選 (IC IR + LASSO)...")
+        # 首先用 LASSO 將空間壓縮到 30 個最具解釋力的維度
+        lasso_cols = lasso_feature_selection(df[all_cols], df["target_30d"], max_features=30)
+        
+        # 再用 IC IR 驗證其穩定性
+        analyzer = FactorAnalyzer(df, target_col="target_30d")
+        ic_report = analyzer.analyze_robustness(lasso_cols)
+        golden_features = ic_report[ic_report["is_robust"]]["feature"].tolist()
+        
+        if len(golden_features) < 10:
+            logger.info("  ⚠️ LASSO 與 IC IR 交集過少，保留所有 LASSO 選項...")
+            golden_features = lasso_cols
+    else:
+        golden_features = select_top_features(scan_result["importance"])
+
     logger.info(f"\n✅ 篩選完成：從 {df.shape[1]} 個特徵中精選出 {len(golden_features)} 個黃金特徵")
+    logger.info(f"   黃金特徵 (Top 20)：{golden_features[:20]}")
     logger.info(f"   黃金特徵範例：{golden_features[:10]}...")
     
     # --- Phase 2: 精確打擊 (啟動完整訓練) ---

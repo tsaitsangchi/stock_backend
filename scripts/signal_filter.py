@@ -163,16 +163,16 @@ class SignalFilter:
 
     def __init__(self, config: dict | None = None):
         self.cfg = {**FILTER_CONFIG, **(config or {})}
-        self.physics_registry = {} # 快取個股物理參數
+        self.dynamics_registry = {} # 快取個股動力學參數
 
 
-    def _load_physics_registry(self, stock_id: str):
-        """ 從資料庫讀取個股物理 DNA """
+    def _load_dynamics_registry(self, stock_id: str):
+        """ 從資料庫讀取個股動力學 DNA """
         import psycopg2
         try:
             conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
             cur = conn.cursor()
-            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score, wave_track, innovation_velocity FROM stock_physics_registry WHERE stock_id = %s", (stock_id,))
+            cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score, wave_track, innovation_velocity FROM stock_dynamics_registry WHERE stock_id = %s", (stock_id,))
             res = cur.fetchone()
             cur.close()
             conn.close()
@@ -231,7 +231,7 @@ class SignalFilter:
         if kwave_score < -0.5:
             detail += " 🚀康波順風"
             
-        return FilterDimension("①量子模型機率", passed, score, detail, prob_up)
+        return FilterDimension("①動力學模型機率", passed, score, detail, prob_up)
 
     def _eval_regime(self, report: dict, df_feat: pd.DataFrame) -> FilterDimension:
         """② 波動率 + 趨勢 Regime 維度"""
@@ -355,18 +355,18 @@ class SignalFilter:
         執行完整的多維度訊號過濾。
         """
         stock_id = report.get("stock_id", "2330")
-        physics = self._load_physics_registry(stock_id)
+        dynamics = self._load_dynamics_registry(stock_id)
         
         blocking_reasons = []
         boosting_reasons = []
         dimensions       = []
         
-        # ── 物理 DNA 注入 ───────────────────────────────────────
-        if physics:
+        # ── 動力學 DNA 注入 ───────────────────────────────────────
+        if dynamics:
             # 根據敏感度調整門檻：敏感度越低，門檻越高
-            sensitivity_bias = (0.5 - physics["sensitivity"]) * 0.1
+            sensitivity_bias = (0.5 - dynamics["sensitivity"]) * 0.1
             self.cfg["prob_up_threshold"] += max(-0.05, min(0.05, sensitivity_bias))
-            boosting_reasons.append(f"🧬 已載入個股物理 DNA (Sensitivity={physics['sensitivity']:.2f})")
+            boosting_reasons.append(f"🧬 已載入個股動態 DNA (Sensitivity={dynamics['sensitivity']:.2f})")
 
         # ── Hard Block 1：宏觀衝擊 ──────────────────────────────
         macro_shock = report.get("warnings", {}).get("macro_shock", False)
@@ -455,29 +455,29 @@ class SignalFilter:
         if smart_money_sync:
             boosting_reasons.append("聰明錢護航 (外資與八大行庫同步買超)")
             
-        # 🚀 量子物理能量釋放 (Impulse/Energy Boost)
-        quantum_momentum = float(latest.get("quantum_momentum", 0))
-        if quantum_momentum > 0:
+        # 🚀 動力學能量釋放 (Impulse/Energy Boost)
+        kinetic_momentum = float(latest.get("kinetic_momentum", 0))
+        if kinetic_momentum > 0:
             # 根據創新速度加乘
-            velocity_multiplier = physics.get("innovation_velocity", 1.0) if physics else 1.0
-            boosting_reasons.append(f"⚛️ 量子動量正向 (Mass x Disp) — 物理動能釋放 (Velocity={velocity_multiplier:.2f})")
+            velocity_multiplier = dynamics.get("innovation_velocity", 1.0) if dynamics else 1.0
+            boosting_reasons.append(f"🌀 動力學動量正向 (Mass x Disp) — 動能釋放 (Velocity={velocity_multiplier:.2f})")
             overall += (3 * velocity_multiplier)
             
-        # 🧪 第六波文明 (MBNRIC) 奇點溢價
-        singularity_premium = float(latest.get("singularity_premium", 0))
-        if singularity_premium > 0.5 or (physics and physics.get("wave_track") != "LEGACY_IT"):
-            track_name = physics.get("wave_track", "MBNRIC") if physics else "MBNRIC"
-            boosting_reasons.append(f"✨ 2026 奇點共振：第六波賽道 ({track_name}) 領導者溢價")
+        # 🧪 技術奇點與結構性溢價 (Structural Premium)
+        structural_premium = float(latest.get("structural_premium", 0))
+        if structural_premium > 0.5 or (dynamics and dynamics.get("wave_track") != "LEGACY_IT"):
+            track_name = dynamics.get("wave_track", "STRAT_SECTOR") if dynamics else "STRAT_SECTOR"
+            boosting_reasons.append(f"✨ 結構性溢價：新興賽道 ({track_name}) 領導者效應")
             overall += 7
             
         # 🌌 重力井套利偵測 (Gravity Well Arbitrage)
-        # 核心原則：偏離邊緣時，引力最強，套利空間最大
+        # 核心原則：偏離邊端時，引力最強，套利空間最大
         gravity_pull = float(latest.get("gravity_pull", 0))
         info_force = float(latest.get("info_force_per_mass", 0))
         
         # 情況 A：超跌引力反彈 (極端負偏離 + 正向資訊力注入)
         if gravity_pull < -0.1 and info_force > 0:
-            boosting_reasons.append(f"🌌 重力井共振：價格處於邊緣且資訊力注入 — 強引力回歸預期")
+            boosting_reasons.append(f"🌌 重力井共振：價格處於超跌邊緣且資訊力注入 — 強引力回歸預期")
             overall += 10 # 提供重大加分
             
         # 情況 B：超漲重力警告 (極端正偏離 + 資訊力衰竭)
@@ -525,8 +525,8 @@ class SignalFilter:
         # 核心原則：0% 隱藏危險區 (捨棄中等風險/報酬標的)
         if must_pass and overall >= 65:
             # 右側 20%：極端正向尾部
-            if physics and physics.get("convexity", 0) > 1.0:
-                boosting_reasons.append(f"💎 右側 20%：高凸性資產 (Convexity={physics['convexity']:.2f})")
+            if dynamics and dynamics.get("convexity", 0) > 1.0:
+                boosting_reasons.append(f"💎 右側 20%：高凸性資產 (Convexity={dynamics['convexity']:.2f})")
                 decision = "LONG"
             else:
                 decision = "LONG"
@@ -538,8 +538,8 @@ class SignalFilter:
             decision = "HOLD_CASH"
             
         # 左側 20%：尾部風險熔斷
-        if physics and physics.get("tail_risk", 0) < -5.0:
-             blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={physics['tail_risk']:.2f})")
+        if dynamics and dynamics.get("tail_risk", 0) < -5.0:
+             blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={dynamics['tail_risk']:.2f})")
              decision = "HOLD_CASH"
 
         return FilterResult(

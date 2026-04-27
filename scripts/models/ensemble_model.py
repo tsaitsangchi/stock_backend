@@ -15,9 +15,10 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.linear_model import LogisticRegression, Ridge, ElasticNet
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, accuracy_score
+from scipy.special import softmax
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,72 @@ class LGBPredictor:
         return explainer.shap_values(X)
 
 
+        return self.model.feature_importances_
+
+
+# ─────────────────────────────────────────────
+# Level-1：異質性模型 (ElasticNet & Momentum)
+# ─────────────────────────────────────────────
+
+class ElasticNetPredictor:
+    """
+    線性因子模型：高可解釋性，在低波動/線性 Regime 下穩定。
+    """
+    def __init__(self, task: str = "classification"):
+        self.task = task
+        # 使用 ElasticNet 正則化處理高維共線性
+        if task == "classification":
+            self.model = LogisticRegression(
+                penalty="elasticnet", solver="saga", l1_ratio=0.5, max_iter=3000
+            )
+        else:
+            self.model = Ridge(alpha=1.0)
+        self.scaler = StandardScaler()
+        self.feature_names = []
+
+    def fit(self, X_train: pd.DataFrame, y_train: pd.Series, *args, **kwargs):
+        self.feature_names = X_train.columns.tolist()
+        X_tmp = X_train.fillna(X_train.median()).replace([np.inf, -np.inf], 0)
+        X_scaled = self.scaler.fit_transform(X_tmp)
+        self.model.fit(X_scaled, y_train)
+        return self
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        X_tmp = X.fillna(X.median()).replace([np.inf, -np.inf], 0)
+        X_scaled = self.scaler.transform(X_tmp)
+        if self.task == "classification":
+            return self.model.predict_proba(X_scaled)[:, 1]
+        return self.model.predict(X_scaled)
+
+    def feature_importance(self) -> pd.Series:
+        if hasattr(self.model, "coef_"):
+            coefs = np.abs(self.model.coef_.flatten())
+            return pd.Series(coefs, index=self.feature_names).sort_values(ascending=False)
+        return pd.Series(dtype=float)
+
+
+class SimpleMomentumModel:
+    """
+    基於規則的動量模型：不受樣本量限制，提供與 ML 完全異質的信號。
+    """
+    def __init__(self, lookback: int = 20):
+        self.lookback = lookback
+
+    def fit(self, *args, **kwargs):
+        return self # 規則模型無需訓練
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        # 核心邏輯：捕捉價格慣性
+        if "returns_1d" in X.columns:
+            mom = X["returns_1d"].rolling(self.lookback).sum().fillna(0)
+            # 映射至 [0, 1] 機率空間 (Sigmoid 近似)
+            return 1 / (1 + np.exp(-mom * 5))
+        return np.full(len(X), 0.5)
+
+    def feature_importance(self) -> pd.Series:
+        return pd.Series({"returns_1d": 1.0})
+
+
 # ─────────────────────────────────────────────
 # Level-2：Stacking Meta-Learner
 # ─────────────────────────────────────────────
@@ -325,18 +392,24 @@ class StackingEnsemble:
       3. 推論時：先過三個 L1 模型 → 拼接 → 過 L2
     """
 
-    def __init__(self, task: str = "classification"):
+    def __init__(
+        self,
+        use_xgb: bool = True,
+        use_lgb: bool = True,
+        use_elastic: bool = True,
+        use_mom: bool = True,
+        task: str = "classification"
+    ):
         self.task = task
-        if task == "hybrid":
-            self.xgb_clf    = XGBPredictor(task="regression")
-            self.lgb_clf    = LGBPredictor(task="ranking")
-        else:
-            self.xgb_clf    = XGBPredictor(task=task)
-            self.lgb_clf    = LGBPredictor(task=task)
-        self.meta: Optional[LogisticRegression | Ridge] = None
+        self.models = {}
+        if use_xgb:     self.models["xgb"] = XGBPredictor(task=task)
+        if use_lgb:     self.models["lgb"] = LGBPredictor(task=task)
+        if use_elastic: self.models["elastic"] = ElasticNetPredictor()
+        if use_mom:     self.models["mom"] = SimpleMomentumModel()
+        
+        self.meta_learner = LogisticRegression() # Level-2 Stacking
+        self.weights = {} # 動態加權
         self.scaler     = StandardScaler()
-        self.tft_col    = "tft_pred"    # TFT 預測欄位名稱
-        self._calibrator = None         # Isotonic Calibrator（joblib 必須初始化才會序列化）
         self.feature_names: Optional[list[str]] = None
 
     def _get_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -352,125 +425,58 @@ class StackingEnsemble:
     def fit_level1(self,
                    X_train: pd.DataFrame, y_train: pd.Series,
                    X_val:   pd.DataFrame, y_val:   pd.Series):
-        """分別訓練 XGB 和 LGB。"""
+        """分別訓練各子模型。"""
         self.feature_names = X_train.columns.tolist()
-        logger.info("  [L1] 訓練 XGBoost…")
-        self.xgb_clf.fit(X_train, y_train, X_val, y_val)
-
-        logger.info("  [L1] 訓練 LightGBM…")
-        self.lgb_clf.fit(X_train, y_train, X_val, y_val)
-
-    # ── Level-2 訓練 ──
-    def fit_meta(self,
-                 oof_df: pd.DataFrame,
-                 y_meta: pd.Series):
-        """
-        oof_df：包含 'xgb_pred', 'lgb_pred', 'tft_pred' 三欄（OOF 預測）
-        """
-        # 用 numpy array 訓練 scaler，避免後續 transform 時的 feature name 警告
-        self._meta_columns = list(oof_df.columns)
-        meta_X = self.scaler.fit_transform(oof_df.fillna(0).values)
-
-        if self.task == "classification" or self.task == "hybrid":
-            self.meta = LogisticRegression(C=1.0, max_iter=1000)
-        else:
-            self.meta = Ridge(alpha=1.0)
-
-        self.meta.fit(meta_X, y_meta)
-        logger.info(f"  [L2 Meta] 係數：{dict(zip(oof_df.columns, self.meta.coef_.flatten()))}")
-
-    # ── 推論 ──
-    def predict(self, X: pd.DataFrame, tft_pred: Optional[float] = None) -> dict:
-        """
-        X         ：特徵 DataFrame（單行或多行）
-        tft_pred  ：TFT 的點預測或機率（可為 None，此時以 tree 平均替代）
-
-        回傳 dict 包含：
-          ensemble  : 校準後的整體機率（主要輸出）
-          xgb/lgb/tft : 各子模型原始機率（僅供參考）
-          xgb_cal/lgb_cal/tft_cal : 各子模型「隔離貢獻校準機率」
-            → 透過 scaler.mean_ 固定其餘模型於 OOF 均值，隔離單一模型貢獻
-            → 語意等同「若只用這個模型，校準後的上漲機率是多少」
-            → 可直接用於方向一致性比較（相互間語意對齊）
-        """
-        feat_X = self._get_features(X)
-
-        xgb_p = self.xgb_clf.predict_score(feat_X)
-        lgb_p = self.lgb_clf.predict_score(feat_X)
-
-        tft_p = np.full(len(feat_X), tft_pred if tft_pred is not None
-                        else (xgb_p + lgb_p) / 2)
-
-        oof = pd.DataFrame({
-            "xgb_pred": xgb_p,
-            "lgb_pred": lgb_p,
-            "tft_pred": tft_p,
-        })
-
-        if self.meta is not None:
-            meta_X = self.scaler.transform(oof.fillna(0).values)
-            if self.task in ["classification", "hybrid"]:
-                # 優先使用 Isotonic Calibrator（機率語意更準確）
-                if self._calibrator is not None:
-                    ensemble_prob = self._calibrator.predict_proba(meta_X)[:, 1]
+        for name, model in self.models.items():
+            logger.info(f"  [L1] 訓練 {name}…")
+            if hasattr(model, "fit"):
+                if name in ["xgb", "lgb"]:
+                    model.fit(X_train, y_train, X_val, y_val)
                 else:
-                    ensemble_prob = self.meta.predict_proba(meta_X)[:, 1]
-            else:
-                ensemble_prob = self.meta.predict(meta_X)
-        else:
-            ensemble_prob = oof.mean(axis=1).values    # 等權平均 fallback
+                    model.fit(X_train, y_train)
 
-        # ── 個別校準機率（直接使用各子模型的 Isotonic Calibrator）──────
-        # 原理：各子模型經 OOF 全量資料擬合包序回歸，
-        #       raw_prob → calibrated_prob 使 0.5 = 真實 50% 上漲機率。
-        # 比「雔離貢獻校準」更精準：直接擬合而非透過 meta 指 chain 近似。
-        xgb_cal = self.xgb_clf.predict_score_cal(feat_X)
-        lgb_cal = self.lgb_clf.predict_score_cal(feat_X)
-        tft_cal = tft_p.copy()    # TFT 已有內部分位校準，不需另外校準
-
-        return {
-            "ensemble": ensemble_prob,
-            "xgb":      xgb_p,
-            "lgb":      lgb_p,
-            "tft":      tft_p,
-            "xgb_cal":  xgb_cal,   # 個別 Isotonic 校準後機率
-            "lgb_cal":  lgb_cal,
-            "tft_cal":  tft_cal,
-        }
-
-    def predict_meta(self, oof_df: pd.DataFrame) -> np.ndarray:
-        """直接使用 OOF 預測矩陣過 Meta Learner（不跑 Level-1）"""
-        if self.meta is None:
-            return oof_df.mean(axis=1).values
-        meta_X = self.scaler.transform(oof_df.fillna(0).values)
-        if self.task in ["classification", "hybrid"]:
-            if self._calibrator is not None:
-                return self._calibrator.predict_proba(meta_X)[:, 1]
-            else:
-                return self.meta.predict_proba(meta_X)[:, 1]
-        else:
-            return self.meta.predict(meta_X)
-
-    # ── SHAP 解釋 ──
-    def shap_analysis(self, X: pd.DataFrame) -> dict:
+    def predict(self, X: pd.DataFrame, recent_performance: dict = None) -> dict:
+        """
+        產出各模型預測，並根據最近表現進行動態加權。
+        """
         feat_X = self._get_features(X)
-        return {
-            "xgb_shap": self.xgb_clf.shap_values(feat_X),
-            "lgb_shap": self.lgb_clf.shap_values(feat_X),
-        }
+        preds = {}
+        for name, model in self.models.items():
+            preds[name] = model.predict(feat_X)
+        
+        # ── 動態加權 (Softmax weighting) ──────────────────────
+        if recent_performance:
+            # 依據各模型最近 60 天的 DA/IC 評分
+            scores = np.array([recent_performance.get(name, 0.5) for name in self.models.keys()])
+            # Simple softmax implementation
+            exp_scores = np.exp(scores / 0.05)
+            w = exp_scores / np.sum(exp_scores)
+            self.weights = dict(zip(self.models.keys(), w))
+            
+            ensemble_prob = np.zeros(len(X))
+            for i, name in enumerate(self.models.keys()):
+                ensemble_prob += preds[name] * w[i]
+            preds["ensemble"] = ensemble_prob
+        else:
+            # 預設等權重
+            preds["ensemble"] = np.mean(list(preds.values()), axis=0)
+            
+        return preds
 
-    # ── Feature Importance 彙整 ──
     def combined_importance(self) -> pd.DataFrame:
-        xgb_imp = self.xgb_clf.feature_importance().rename("xgb")
-        lgb_imp = self.lgb_clf.feature_importance().rename("lgb")
-        df = pd.concat([xgb_imp, lgb_imp], axis=1).fillna(0)
+        importances = []
+        for name, model in self.models.items():
+            if hasattr(model, "feature_importance"):
+                importances.append(model.feature_importance().rename(name))
+        
+        df = pd.concat(importances, axis=1).fillna(0)
         df["mean"] = df.mean(axis=1)
         return df.sort_values("mean", ascending=False)
 
     # ── 評估 ──
     def evaluate(self, X: pd.DataFrame, y: pd.Series,
-                 tft_pred: Optional[np.ndarray] = None) -> dict:
-        pred_dict = self.predict(X, tft_pred)
+                 recent_performance: dict = None) -> dict:
+        pred_dict = self.predict(X, recent_performance)
         ensemble  = pred_dict["ensemble"]
 
         if self.task == "classification":

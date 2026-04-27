@@ -337,7 +337,6 @@ def get_target_stock_ids(conn, stock_id_arg=None):
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
     
-    # 預設先抓 87 支重點股
     from config import STOCK_CONFIGS
     return list(STOCK_CONFIGS.keys())
 
