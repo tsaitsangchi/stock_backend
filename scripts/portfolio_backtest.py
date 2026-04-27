@@ -119,12 +119,16 @@ class PortfolioBacktester:
         port_ret_net = port_ret_gross - tc_series
         
         # 5. 指標計算
+        if port_ret_net.empty:
+            logger.error("組合回測結果為空，請確認是否已有 OOF 預測檔案且日期對齊。")
+            return
+            
         cum_ret = (1 + port_ret_net).cumprod()
         total_ret = cum_ret.iloc[-1] - 1
         
         # 年化報酬 (複利)
         days = (cum_ret.index[-1] - cum_ret.index[0]).days
-        ann_ret = (1 + total_ret) ** (365.25 / days) - 1
+        ann_ret = (1 + total_ret) ** (365.25 / max(days, 1)) - 1
         
         ann_vol = port_ret_net.std() * np.sqrt(252)
         sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
@@ -136,8 +140,8 @@ class PortfolioBacktester:
         
         calmar = ann_ret / abs(mdd) if mdd < 0 else 0
         
-        # 最差單月
-        monthly_ret = port_ret_net.resample('M').apply(lambda x: (1 + x).prod() - 1)
+        # 最差單月 (修正 Pandas 2.2+ 'M' -> 'ME' 的報錯)
+        monthly_ret = port_ret_net.resample('ME').apply(lambda x: (1 + x).prod() - 1)
         worst_month = monthly_ret.min()
         
         # Beta to TAIEX
