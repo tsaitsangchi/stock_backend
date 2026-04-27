@@ -1099,6 +1099,16 @@ EVAL_TARGETS = {
     "sharpe":               1.0,
 }
 
+# 組合層回測目標 (Portfolio Level)
+PORTFOLIO_EVAL_TARGETS = {
+    "portfolio_sharpe":   1.2,      # 考慮多元分散後的目標夏普
+    "max_drawdown":      -0.15,     # 最大回撤限制 (15% 以內)
+    "calmar_ratio":       2.0,      # 年化報酬 / 最大回撤
+    "beta_to_taiex":      0.5,      # 對大盤的 Beta 暴露 (希望低於 0.5)
+    "turnover_rate":      2.0,      # 年化換手率限制
+    "worst_month_ret":   -0.08,     # 最差單月跌幅限制
+}
+
 # ─────────────────────────────────────────────
 # Regime Detection 設定
 # ─────────────────────────────────────────────

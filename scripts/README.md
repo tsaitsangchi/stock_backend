@@ -31,6 +31,7 @@ tsmc_predictor/
 ├── predict.py              # 推論核心：每日執行，輸出趨勢報告
 ├── model_health_check.py   # 健康檢查：監控資料鮮度與實戰 DA
 ├── automate_daily.py       # 自動化流水線：一鍵完成推論、檢查與組合優化
+├── portfolio_backtest.py   # 組合層回測：分析 Beta 暴露、換手率與壓力測試
 ├── models/
 ```
 
@@ -224,6 +225,12 @@ python scripts/model_health_check.py
 | 損益比 (Payoff) | ≥ 2.0 | 平均獲利 / 平均虧損（確保期望值為正） |
 | 期望值 (EV) | > 1.0% | 每筆交易預期淨回報 (含交易成本) |
 | 平均淨報酬 (Net) | > 2.0% | 扣除 0.5%~0.8% 摩擦成本後的每筆交易淨回報 |
+| --- | --- | --- |
+| **組合層指標 (Portfolio)** | | |
+| 組合夏普 (Sharpe) | ≥ 1.2 | 多元分散後的風險報酬比 |
+| 最大回撤 (MDD) | ≤ 15% | 組合層面控制系統性風險 |
+| 大盤相關性 (Beta) | ≤ 0.5 | 追求與 TAIEX 的低相關性 (Alpha) |
+| 年化換手率 | ≤ 2.0 | 控制交易摩擦對長線複利的侵蝕 |
 | IC（Rank IC） | ≥ 0.05 | Spearman 相關係數 |
 | Sharpe Ratio | ≥ 1.0 | 基於路徑風險優化後的風險回報比 |
 
