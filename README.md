@@ -68,6 +68,23 @@ python scripts/predict_15d.py
 ```
 這會載入最新模型與資料，通過 `SignalFilter` 產生 JSON 報告（包含 `LONG` / `HOLD_CASH` 決策以及 `Boosting` / `Blocking` 的理由）。
 
+## 📊 系統監控與視覺化 (Monitoring & Visualization)
+
+本系統內建基於 **Streamlit** 的輕量級監控儀表板，讓您無需翻閱日誌即可掌握全域狀態。
+
+### 核心功能：
+- **數據流鮮度**：即時監控 PostgreSQL 各資料表最新資料日期，防止抓取失效。
+- **模型健康度**：計算過去 30 天實戰準確率 (DA)，自動標記效能衰退的模型。
+- **今日訊號分析**：視覺化全市場機率分佈，偵測模型是否過擬合或產生偏見。
+- **特徵漂移 (PSI)**：自動監控特徵穩定性指數，提醒何時應進行重訓練。
+
+### 啟動方式：
+```bash
+# 在 venv 環境下執行
+streamlit run scripts/dashboard.py
+```
+啟動後，系統會自動在瀏覽器打開網頁（預設通訊埠 8501）。
+
 ---
 
 ## 🔍 架構改進與未來發展建議 (Architecture Review)

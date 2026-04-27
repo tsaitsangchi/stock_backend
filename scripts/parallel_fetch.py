@@ -20,18 +20,18 @@ VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
 # Phase 1 (並行): 各類數據抓取
 # ──────────────────────────────────────────────────────────────
 
-PHASE_0 = ["scripts/fetch_stock_info.py"]
+PHASE_0 = ["fetch_stock_info.py"]
 
 PHASE_1 = [
-    "scripts/fetch_technical_data.py",      # 股價、PER (Batch 模式)
-    "scripts/fetch_chip_data.py",           # 三大法人、融資融券
-    "scripts/fetch_international_data.py",  # 美股、ADR、匯率
-    "scripts/fetch_macro_data.py",          # 利率、大宗商品
-    "scripts/fetch_fundamental_data.py",    # 月營收、季報 (季報合併迴圈模式)
-    "scripts/fetch_derivative_data.py",     # 台指期、選擇權籌碼
-    "scripts/fetch_sponsor_chip_data.py",   # Sponsor: 持股分級、分點、八大行庫、期貨大額OI
-    "scripts/fetch_macro_fundamental_data.py", # Sponsor/Backer: 景氣對策信號、市值比重、產業鏈
-    "scripts/fetch_derivative_sentiment_data.py", # Sponsor/Backer: 選擇權大額OI、恐懼貪婪指數、鉅額交易
+    "fetch_technical_data.py",      # 股價、PER (Batch 模式)
+    "fetch_chip_data.py",           # 三大法人、融資融券
+    "fetch_international_data.py",  # 美股、ADR、匯率
+    "fetch_macro_data.py",          # 利率、大宗商品
+    "fetch_fundamental_data.py",    # 月營收、季報 (季報合併迴圈模式)
+    "fetch_derivative_data.py",     # 台指期、選擇權籌碼
+    "fetch_sponsor_chip_data.py",   # Sponsor: 持股分級、分點、八大行庫、期貨大額OI
+    "fetch_macro_fundamental_data.py", # Sponsor/Backer: 景氣對策信號、市值比重、產業鏈
+    "fetch_derivative_sentiment_data.py", # Sponsor/Backer: 選擇權大額OI、恐懼貪婪指數、鉅額交易
 ]
 
 # 建議並行數：3
@@ -40,12 +40,16 @@ MAX_WORKERS = 3
 
 # ──────────────────────────────────────────────────────────────
 
+# 確保日誌目錄存在
+LOG_FILE = "outputs/logs/parallel_fetch.log"
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("scripts/outputs/logs/parallel_fetch.log")
+        logging.FileHandler(LOG_FILE)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -77,9 +81,6 @@ def run_script(script_path: str) -> tuple[str, bool]:
         return script_path, False
 
 def main():
-    # 確保日誌目錄存在
-    os.makedirs("scripts/outputs/logs", exist_ok=True)
-    
     total_start = time.time()
     logger.info("="*60)
     logger.info("   Antigravity 並行資料抓取管線啟動")
