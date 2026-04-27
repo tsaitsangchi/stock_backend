@@ -173,6 +173,15 @@ python scripts/model_health_check.py
 - **預測分佈漂移 (PSI)**：計算最近預測與訓練分佈的 **Population Stability Index**。若 PSI > 0.2，判定為模型失效（Concept Drift），觸發緊急重訓。
 - **實戰準確度 (Real-time DA)**：對比歷史預測軌跡與實際價格，監控模型是否因市場 **Regime Shift**（如升息週期、AI 浪潮轉換）而產生效能衰退。
 
+#### 實驗追蹤與模型版本管理 (MLflow)
+系統已整合 **MLflow**，每次訓練都會自動紀錄參數、指標（DA, IC, Sharpe）與模型物件：
+```bash
+# 啟動 MLflow UI 檢視實驗對比與版本回溯
+mlflow ui --port 5000
+```
+- **版本回溯**：可隨時從 MLflow 下載歷史表現最佳的模型版本。
+- **A/B 測試**：對比不同特徵組合與窗口設定的性能差異。
+
 ---
 
 ## 預期輸出範例

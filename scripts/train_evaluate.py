@@ -1074,6 +1074,45 @@ def main():
         # ── 更新效能註冊表 ──────────────────────────────────
         update_metrics_registry(stock_id, wf_result["meta_metrics"])
 
+        # ── MLflow 實驗追蹤 (Model Versioning) ────────────────
+        try:
+            import mlflow
+            import mlflow.sklearn
+            from datetime import datetime
+            
+            # 設定實驗名稱 (依標的分類)
+            mlflow.set_experiment(f"Stock_Model_{stock_id}")
+            
+            run_name = f"train_{stock_id}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+            with mlflow.start_run(run_name=run_name):
+                # 紀錄參數
+                mlflow.log_params({
+                    "stock_id": stock_id,
+                    "train_start": args.start,
+                    "use_tft": use_tft,
+                    "feature_count": len(golden_features),
+                    "wf_train_window": WF_CONFIG["train_window"],
+                    "wf_step_days": WF_CONFIG["step_days"],
+                    "embargo_days": WF_CONFIG["embargo_days"]
+                })
+                
+                # 紀錄指標 (OOF 成果)
+                m = wf_result["meta_metrics"]
+                mlflow.log_metrics({
+                    "da": float(m.get("directional_accuracy", 0)),
+                    "ic": float(m.get("ic", 0)),
+                    "sharpe": float(m.get("sharpe", 0)),
+                    "avg_net_return": float(m.get("avg_net_return", 0)),
+                    "ev": float(m.get("expectancy", 0))
+                })
+                
+                # 紀錄模型物件 (Versioning)
+                mlflow.sklearn.log_model(final_model, f"ensemble_{stock_id}")
+                logger.info(f"  MLflow 追蹤完成：Run Name = {run_name}")
+                
+        except Exception as e:
+            logger.warning(f"  MLflow 紀錄失敗 (請檢查 mlflow 是否安裝): {e}")
+
     logger.info("\n=== 訓練完成 ===")
 
 
