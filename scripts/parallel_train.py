@@ -20,7 +20,7 @@ def train_one_stock(stock_id):
     
     print(f"開始訓練 (含 TFT): {stock_id} ({stock_name})...")
     
-    # 執行 train_evaluate.py，啟動 TFT
+    # 1. 執行訓練
     cmd = [
         VENV_PYTHON, 
         TRAIN_SCRIPT, 
@@ -31,6 +31,16 @@ def train_one_stock(stock_id):
     try:
         with open(log_file, "w") as f:
             subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, check=True)
+        
+        # 2. [P1] 自動健康檢查
+        # 只有訓練成功才執行，檢查 PSI 與 Drift
+        health_script = str(BASE_DIR / "model_health_check.py")
+        health_cmd = [VENV_PYTHON, health_script, "--stock-id", stock_id]
+        
+        with open(log_file, "a") as f:
+            f.write("\n\n=== 自動健康檢查 (Post-Training Health Check) ===\n")
+            subprocess.run(health_cmd, stdout=f, stderr=subprocess.STDOUT)
+            
         return stock_id, True, None
     except Exception as e:
         return stock_id, False, str(e)

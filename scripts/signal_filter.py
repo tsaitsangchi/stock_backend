@@ -29,7 +29,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from config import CONFIDENCE_THRESHOLD
+from config import CONFIDENCE_THRESHOLD, DB_CONFIG
+from utils.db import get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -168,9 +169,8 @@ class SignalFilter:
 
     def _load_dynamics_registry(self, stock_id: str):
         """ 從資料庫讀取個股動力學 DNA """
-        import psycopg2
         try:
-            conn = psycopg2.connect(dbname="stock", user="stock", password="stock", host="localhost")
+            conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("SELECT info_sensitivity, gravity_elasticity, fat_tail_index, convexity_score, tail_risk_score, wave_track, innovation_velocity FROM stock_dynamics_registry WHERE stock_id = %s", (stock_id,))
             res = cur.fetchone()
@@ -271,7 +271,8 @@ class SignalFilter:
 
         foreign_weekly = float(latest.get("foreign_net_weekly", 0))
         foreign_accel  = float(latest.get("foreign_net_accel", 0))
-        foreign_months = float(latest.get("rev_yoy_positive_months", 0))  # 借用連續月數概念
+        # 修正：移除錯誤的基本面代理指標，改用籌碼面指標
+        foreign_bullish_months = float(latest.get("foreign_bullish_months_proxy", 0)) 
 
         min_weekly = self.cfg["min_foreign_net_weekly"]
         weekly_ok  = foreign_weekly >= min_weekly
