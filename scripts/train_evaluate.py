@@ -952,8 +952,6 @@ def main():
                 f"val={WF_CONFIG['val_window']}d  "
                 f"step={WF_CONFIG['step_days']}d  "
                 f"embargo={WF_CONFIG['embargo_days']}d")
-    REGIME_CONFIG["vol_low"] = config["vol_low"]
-    REGIME_CONFIG["vol_high"] = config["vol_high"]
     
     # ── 1. 資料載入與池化 (Data Pooling) ─────────────────────
     training_pool = [stock_id]
