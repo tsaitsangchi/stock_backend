@@ -71,23 +71,10 @@ logger = logging.getLogger(__name__)
 # FinMind API 設定
 # ======================
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".***REMOVED***"
-    ".***REMOVED***"
-)
 
 # ======================
 # PostgreSQL 連線設定
 # ======================
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
-
 # ======================
 # 各資料集最早可用日期
 # ======================
@@ -297,7 +284,7 @@ def bulk_upsert(conn, upsert_sql: str, rows: list, template: str, page_size=2000
 def get_all_stock_ids(conn, stock_id_arg=None):
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
-    from config import STOCK_CONFIGS
+    from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
     return list(STOCK_CONFIGS.keys())
 
 

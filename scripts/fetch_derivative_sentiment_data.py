@@ -30,6 +30,8 @@ import time
 from datetime import date, datetime, timedelta
 
 import psycopg2
+
+from config import FINMIND_TOKEN, DB_CONFIG
 import psycopg2.extras
 import requests
 
@@ -41,15 +43,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".***REMOVED***"
-    ".***REMOVED***"
-)
-DB_CONFIG = {
-    "dbname": "stock", "user": "stock",
-    "password": "stock", "host": "localhost", "port": "5432",
-}
 DATASET_START = {
     "options_large_oi":  "2018-01-01",
     "fear_greed_index":  "2011-01-03",
