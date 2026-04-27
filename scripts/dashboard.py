@@ -165,7 +165,7 @@ with left_col:
         return f'color: {color}'
 
     st.dataframe(
-        health_report.style.applymap(color_status, subset=['status', 'perf_status', 'drift_status'])
+        health_report.style.map(color_status, subset=['status', 'perf_status', 'drift_status'])
                            .background_gradient(subset=['da'], cmap="RdYlGn", vmin=0.45, vmax=0.65),
         use_container_width=True,
         height=400

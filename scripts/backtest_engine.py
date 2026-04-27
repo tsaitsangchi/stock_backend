@@ -4,13 +4,19 @@ import numpy as np
 import logging
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# 導入專案路徑
-sys.path.append(os.getcwd())
-from scripts.config import OUTPUT_DIR, MODEL_DIR, CONFIDENCE_THRESHOLD
+sys.path.insert(0, str(Path(__file__).parent))
+from config import OUTPUT_DIR, MODEL_DIR, CONFIDENCE_THRESHOLD, FRICTION_CONFIG
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+# [P2 修復 2.7] 使用 config.py 已定義的完整成本結構
+# 買出成本: 手續費(0.1425%) + 撇點
+# 賣出成本: 手續費(0.1425%) + 證交稅(0.3%) + 撇點
+BUY_COST_RATE  = 1 + FRICTION_CONFIG["commission"]   # 1.001425
+SELL_COST_RATE = 1 - (FRICTION_CONFIG["commission"] + FRICTION_CONFIG["securities_tax"])  # 1 - 0.4425% = 0.995575
 
 class BacktestEngine:
     def __init__(self, stock_id="2330", initial_capital=1000000.0):
@@ -64,32 +70,39 @@ class BacktestEngine:
                 entry_date, entry_price = trades[-1]["entry_date"], trades[-1]["entry_price"]
                 days_held = (date - entry_date).days
                 if days_held >= 30 or prob < 0.4:
-                    capital = shares * price * (1 - 0.003) # 扣印花稅
+                    # [P2 修復 2.7] 賣出成本包含手續費 + 證交稅，原版漏扣手續費
+                    capital = shares * price * SELL_COST_RATE
+                    gross_ret = (price / entry_price) - 1
+                    net_ret = gross_ret - (FRICTION_CONFIG["commission"] * 2 + FRICTION_CONFIG["securities_tax"])
                     trades[-1].update({
                         "exit_date": date,
                         "exit_price": price,
                         "profit": capital - trades[-1]["entry_capital"],
-                        "return": (price / entry_price) - 1
+                        "return": gross_ret,
+                        "net_return": net_ret,
                     })
                     position = 0
-                    shares = 0
-                    logger.info(f"[{date.date()}] 出場 | 價格: {price:.1f} | 持有: {days_held}天 | 收益: {trades[-1]['return']:.2%}")
+                    shares   = 0
+                    logger.info(
+                        f"[{date.date()}] 出場 | 價格: {price:.1f} | 持有: {days_held}天 "
+                        f"| 毛利: {gross_ret:.2%} | 淨利: {net_ret:.2%}"
+                    )
 
             # 入場邏輯 (STRONG_BUY 且 康波不在冬天的極端區)
             if position == 0 and prob >= CONFIDENCE_THRESHOLD:
-                # 第一性：康波過濾器 (如果 kwave_score 太高代表系統性風險極大，略過)
                 if kwave > 1.5:
                     logger.warning(f"[{date.date()}] 訊號觸發但康波分數過高 ({kwave:.2f})，放棄入場。")
                     continue
-                    
-                shares = (capital * 0.95) / (price * 1.001425)
+
+                # [P2 修復 2.7] 買入成本一致使用 BUY_COST_RATE
+                shares = (capital * 0.95) / (price * BUY_COST_RATE)
                 entry_capital = capital
                 trades.append({
                     "entry_date": date,
                     "entry_price": price,
                     "entry_capital": entry_capital,
                     "prob": prob,
-                    "kwave": kwave
+                    "kwave": kwave,
                 })
                 position = 1
                 logger.info(f"[{date.date()}] 入場 | 價格: {price:.1f} | 機率: {prob:.2f} | 康波: {kwave:.2f}")

@@ -246,6 +246,7 @@ def predict_for_date(
             "tft_prob":          tft_prob_db,
             "extreme_valuation": is_extreme,
             "macro_shock":       is_macro,
+            "is_backfill":        True,  # [P0 修復 2.2] 標記為歷史回填
         })
 
     return trajectory
@@ -262,14 +263,14 @@ UPSERT_SQL = """
         ensemble_price,
         current_close, prob_up, confidence_level, model_agreement,
         xgb_prob, lgb_prob, tft_prob,
-        extreme_valuation, macro_shock
+        extreme_valuation, macro_shock, is_backfill
     ) VALUES (
         %(predict_date)s, %(stock_id)s, %(forecast_date)s, %(day_offset)s,
         %(price_q10)s, %(price_q25)s, %(price_q50)s, %(price_q75)s, %(price_q90)s,
         %(ensemble_price)s,
         %(current_close)s, %(prob_up)s, %(confidence_level)s, %(model_agreement)s,
         %(xgb_prob)s, %(lgb_prob)s, %(tft_prob)s,
-        %(extreme_valuation)s, %(macro_shock)s
+        %(extreme_valuation)s, %(macro_shock)s, %(is_backfill)s
     )
     ON CONFLICT (predict_date, stock_id, forecast_date) DO UPDATE SET
         day_offset        = EXCLUDED.day_offset,
@@ -288,6 +289,7 @@ UPSERT_SQL = """
         tft_prob          = EXCLUDED.tft_prob,
         extreme_valuation = EXCLUDED.extreme_valuation,
         macro_shock       = EXCLUDED.macro_shock,
+        is_backfill       = EXCLUDED.is_backfill,
         created_at        = CURRENT_TIMESTAMP
 """
 
