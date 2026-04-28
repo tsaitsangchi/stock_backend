@@ -192,7 +192,9 @@ class PhysicsStrategy:
             if position_shares > 0:
                 ctx["days_held"] = (date - ctx["entry_date"]).days
                 if exit_fn(row, ctx, self.params):
-                    capital = position_shares * price * self.sell_cost_rate
+                    # [BUG 修復] 出場應「加回」既有 capital（場外現金），
+                    # 不能覆寫成只剩 position 賣出所得，否則會憑空丟掉 80% 場外資金。
+                    capital += position_shares * price * self.sell_cost_rate
                     gross = price / ctx["entry_price"] - 1
                     net = gross - self.round_trip_cost
                     trades[-1].exit_date = date
