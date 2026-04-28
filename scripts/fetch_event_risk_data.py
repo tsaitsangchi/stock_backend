@@ -443,7 +443,7 @@ def main():
             ("split_price", "TaiwanStockSplitPrice", DDL_SPLIT_PRICE,
              UPSERT_SPLIT, "(%s, %s, %s, %s, %s, %s, %s, %s)", map_split, False),
             ("trading_date", "TaiwanStockTradingDate", DDL_TRADING_DATE,
-             UPSERT_TRADING_DATE, "(%s,)", map_trading_date, False),
+             UPSERT_TRADING_DATE, "(%s)", map_trading_date, False),
             ("disposition_securities", "TaiwanStockDispositionSecuritiesPeriod",
              DDL_DISPOSITION, UPSERT_DISPOSITION,
              "(%s, %s, %s, %s, %s, %s, %s, %s)", map_disposition, True),

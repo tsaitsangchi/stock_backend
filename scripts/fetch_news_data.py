@@ -92,12 +92,14 @@ def fetch_news_for_stock(conn, stock_id: str, dates: list[str], delay: float):
                            {"data_id": stock_id, "start_date": d}, delay)
         if not data:
             continue
-        # 依 PK (date, stock_id, title) 去重，確保批次內無重複行
+        # 依 PK (date, stock_id, title) 去重
+        # 注意：PostgreSQL 'date' 欄位不含時間，故 Python PK 亦須截斷日期
         seen = {}
         for r in data:
             row = map_news(r)
-            # PK = (date, stock_id, title) = row[0, 1, 2]
-            pk = (row[0], row[1], row[2])
+            # row[0] 是日期，可能包含時間字串，須截斷為 YYYY-MM-DD
+            d_str = str(row[0])[:10]
+            pk = (d_str, row[1], row[2])
             seen[pk] = row
         rows = list(seen.values())
         if rows:
