@@ -16,3 +16,7 @@ __pycache__/
 *.pyc
 outputs/
 lightning_logs/
+
+# [P0-SEC] 顯式排除 .env（含 FinMind Token 等敏感資訊），保留 .env.example
+.env
+!.env.example

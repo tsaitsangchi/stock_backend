@@ -1,23 +1,26 @@
-# 忽略根目錄下的所有檔案與目錄
-/*
+# 忽略所有 scripts 底下的檔案
+*
+# 允許進入子目錄
+!*/
 
-# 允許我們需要的特定項目
-!/scripts/
+# 只允許特定的檔案
 !/.gitignore
 !/README.md
 !/requirements.txt
-!/requirements_raw.txt
-!/Dockerfile
-!/create_table.sql
-!/check_db.py
+!*.py
+!*.txt
+!*.sh
 
-# 安全性：絕對不能上傳的檔案
-scripts/.env
-*.env
-scripts/_patch_backup/
-scripts/outputs/
-scripts/__pycache__/
-**/__pycache__/
-*.pkl
-*.npy
+# 排除快取與特定目錄 (避免意外加入)
+__pycache__/
+*.pyc
+outputs/
+lightning_logs/
+
+# [P0-SEC] 顯式排除 .env（含 FinMind Token 等敏感資訊），保留 .env.example
+.env
+!.env.example
+venv/
+.env
 *.log
+__pycache__/
