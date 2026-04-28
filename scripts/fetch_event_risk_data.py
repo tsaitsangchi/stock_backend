@@ -94,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_delisting_stock ON delisting (stock_id);
 """
 
 DDL_SUSPENDED = """
-CREATE TABLE IF NOT EXISTS stock_suspended (
+CREATE TABLE IF NOT EXISTS suspended (
     stock_id         VARCHAR(50),
     date             DATE,           -- 暫停日期
     suspension_time  VARCHAR(50),
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS stock_suspended (
     resumption_time  VARCHAR(50),
     PRIMARY KEY (stock_id, date, suspension_time)
 );
-CREATE INDEX IF NOT EXISTS idx_suspended_stock ON stock_suspended (stock_id, date);
+CREATE INDEX IF NOT EXISTS idx_suspended_stock ON suspended (stock_id, date);
 """
 
 DDL_CAPITAL_REDUCTION = """
@@ -177,7 +177,7 @@ ON CONFLICT (date, stock_id) DO UPDATE SET stock_name = EXCLUDED.stock_name;
 """
 
 UPSERT_SUSPENDED = """
-INSERT INTO stock_suspended (stock_id, date, suspension_time, resumption_date, resumption_time)
+INSERT INTO suspended (stock_id, date, suspension_time, resumption_date, resumption_time)
 VALUES %s
 ON CONFLICT (stock_id, date, suspension_time) DO UPDATE SET
     resumption_date = EXCLUDED.resumption_date,
