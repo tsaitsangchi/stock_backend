@@ -421,7 +421,7 @@ def get_all_features(stock_id: str = DEFAULT_STOCK_ID) -> list[str]:
         us_chain_features += [f"{ticker}_ret_1d", f"{ticker}_ret_5d", f"{ticker}_ret_20d"]
     groups["us_chain"] = us_chain_features
     all_f = [f for grp in groups.values() for f in grp]
-    # 使用 dict.fromkeys 移除重複項並保留順序
     return list(dict.fromkeys(all_f))
+
 
 ALL_FEATURES = get_all_features(DEFAULT_STOCK_ID)
