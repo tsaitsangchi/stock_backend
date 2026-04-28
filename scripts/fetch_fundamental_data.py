@@ -752,7 +752,7 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, st
     try:
         ensure_ddl(conn, DDL_DIVIDEND)
         migrate_dividend_columns(conn)
-        logger.info(f"共 {len(stock_ids)} 支股票待處理")
+        logger.info(f"Target stocks: {len(stock_ids)}")
 
         # ① 批次預載最新日期
         latest_dates = get_all_latest_dates(conn, "dividend")
