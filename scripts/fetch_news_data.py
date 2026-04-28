@@ -92,15 +92,14 @@ def fetch_news_for_stock(conn, stock_id: str, dates: list[str], delay: float):
                            {"data_id": stock_id, "start_date": d}, delay)
         if not data:
             continue
-        # 去重：同日同股同 title 視為同一則
-        seen = set()
-        rows = []
+        # 依 PK (date, stock_id, title) 去重，確保批次內無重複行
+        seen = {}
         for r in data:
-            key = (r.get("date"), r.get("stock_id"), r.get("title", "")[:1000])
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append(map_news(r))
+            row = map_news(r)
+            # PK = (date, stock_id, title) = row[0, 1, 2]
+            pk = (row[0], row[1], row[2])
+            seen[pk] = row
+        rows = list(seen.values())
         if rows:
             bulk_upsert(conn, UPSERT_NEWS, rows, "(%s, %s, %s, %s, %s, %s)")
             total_rows += len(rows)
