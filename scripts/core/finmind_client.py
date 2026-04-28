@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
+# 自訂例外
+# ─────────────────────────────────────────────
+class BatchNotSupportedError(Exception):
+    """
+    批次請求（不帶 data_id）被 FinMind 拒絕。
+    呼叫端可捕捉此例外，自動 fallback 為逐支請求模式。
+    僅在 finmind_get(..., raise_on_batch_400=True) 時拋出。
+    """
+
+
+# ─────────────────────────────────────────────
 # 402 配額限制等待
 # ─────────────────────────────────────────────
 def wait_until_next_hour() -> None:
@@ -54,16 +65,19 @@ def finmind_get(
     params: dict,
     delay: float = 1.2,
     max_retries: int = 3,
+    raise_on_batch_400: bool = False,
 ) -> list:
     """
     統一的 FinMind API 請求函式。
 
     Parameters
     ----------
-    dataset     : FinMind dataset 名稱（如 "TaiwanStockPrice"）
-    params      : 額外參數 dict（如 {"data_id": "2330", "start_date": "..."}）
-    delay       : 成功後的休眠秒數（避免過快耗盡配額）
-    max_retries : 非 402 錯誤的最大重試次數
+    dataset            : FinMind dataset 名稱（如 "TaiwanStockPrice"）
+    params             : 額外參數 dict（如 {"data_id": "2330", "start_date": "..."}）
+    delay              : 成功後的休眠秒數（避免過快耗盡配額）
+    max_retries        : 非 402 錯誤的最大重試次數
+    raise_on_batch_400 : True 時，若批次請求（params 不含 data_id）收到 400，
+                         拋出 BatchNotSupportedError 供呼叫端 fallback 為逐支模式。
 
     Returns
     -------
@@ -71,6 +85,7 @@ def finmind_get(
     """
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     req_params = {"dataset": dataset, **params}
+    is_batch = "data_id" not in params
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -89,6 +104,10 @@ def finmind_get(
 
             # ── 400：請求參數錯誤，直接跳過（不重試）──
             if resp.status_code == 400:
+                if raise_on_batch_400 and is_batch:
+                    raise BatchNotSupportedError(
+                        f"[{dataset}] 批次請求（HTTP 400）被拒絕，可能帳號等級不足"
+                    )
                 logger.debug(
                     f"[{dataset}] 400 Bad Request，跳過"
                     f"（data_id={params.get('data_id')}，"
@@ -106,6 +125,16 @@ def finmind_get(
                 continue
 
             if payload.get("status") != 200:
+                # 業務邏輯 400：批次模式 + 帳號等級不足
+                if (
+                    raise_on_batch_400
+                    and is_batch
+                    and payload.get("status") == 400
+                ):
+                    raise BatchNotSupportedError(
+                        f"[{dataset}] 批次請求被拒絕（status=400），"
+                        f"msg={payload.get('msg')}"
+                    )
                 logger.warning(
                     f"[{dataset}] status={payload.get('status')}, "
                     f"msg={payload.get('msg')}"
@@ -115,6 +144,9 @@ def finmind_get(
             time.sleep(delay)
             return payload.get("data", [])
 
+        except BatchNotSupportedError:
+            # 直接往上拋，呼叫端會 fallback 為逐支模式
+            raise
         except requests.exceptions.Timeout:
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次逾時")
         except requests.exceptions.ConnectionError:
