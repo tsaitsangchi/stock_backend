@@ -50,19 +50,18 @@ def audit_snapshot(stock_ids: list[str] | None = None):
             continue
 
         try:
-            # 1. 載入模型與原始資料
+            # 1. 載入模型與資料
             model = joblib.load(model_path)
-            df_raw = build_daily_frame(sid, start_date="2023-06-01")  # 多取半年做 Lag
-
-            # [P0 修復] build_features 只回傳單一 DataFrame，不是 tuple
-            df_feat = build_features(df_raw, stock_id=sid)
-
-            # 2. 取得 2024 之後的測試集
+            df_raw = build_daily_frame(sid, start_date="2023-01-01")
+            df_feat = build_features(df_raw, stock_id=sid) # 修正：build_features 只回傳一個 DF
+            
+            # 2. 切分盲測集 (2024+)
             test_df = df_feat.loc["2024-01-01":].copy()
-            if len(test_df) < 20:
+            if test_df.empty:
                 continue
-
-            # [P0 修復] 使用正確的二元目標欄位
+                
+            # 3. 執行預測與評估
+            # 修正：使用正確的二元目標欄位
             target_col = _get_target_col(test_df)
             if target_col is None:
                 print(f"{sid:<6} 找不到二元目標欄位，跳過")

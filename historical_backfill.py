@@ -308,6 +308,19 @@ def bulk_upsert(all_records: list[dict], dry_run: bool = False) -> int:
 # 主流程
 # ─────────────────────────────────────────────
 
+def parse_args():
+    p = argparse.ArgumentParser(description="歷史預測資料回填 (Look-ahead Benchmarking)")
+    p.add_argument("--stock-id", default="2330",
+                   help="股票代碼 (預設 2330)")
+    p.add_argument("--since",    default="2025-01-01",
+                   help="回填起始日 (預設 2025-01-01)")
+    p.add_argument("--until",     default=None,          help="回填結束日（預設最新交易日）")
+    p.add_argument("--with-tft",  action="store_true",   help="啟用 TFT（慢，每日~30s）")
+    p.add_argument("--dry-run",   action="store_true",   help="試跑，不寫入資料庫")
+    p.add_argument("--batch-log", default=10, type=int,  help="每 N 筆日期印一次進度")
+    return p.parse_args()
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -315,24 +328,17 @@ def main():
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    p = argparse.ArgumentParser(description="2330 歷史預測回填（stock_forecast_daily）")
-    p.add_argument("--since",     default="2025-01-01", help="回填起始日（預設 2025-01-01）")
-    p.add_argument("--until",     default=None,          help="回填結束日（預設最新交易日）")
-    p.add_argument("--with-tft",  action="store_true",   help="啟用 TFT（慢，每日~30s）")
-    p.add_argument("--dry-run",   action="store_true",   help="試跑，不寫入資料庫")
-    p.add_argument("--batch-log", default=10, type=int,  help="每 N 筆日期印一次進度")
-    args = p.parse_args()
+    args = parse_args()
+    stock_id = args.stock_id
+    t0   = time.time()
 
-    t0 = time.time()
-    logger.info("=" * 65)
-    logger.info(f"  台積電 2330 歷史預測回填")
-    logger.info(f"  期間：{args.since} ~ {args.until or '最新交易日'}")
-    logger.info(f"  TFT : {'啟用（慢）' if args.with_tft else '停用（快）'}")
-    logger.info(f"  模式：{'DRY-RUN（不寫入）' if args.dry_run else '正式寫入 stock_forecast_daily'}")
-    logger.info("=" * 65)
+    print(f"\n{'='*65}")
+    print(f"  Trinity v5.0 — 歷史預測軌跡回填 ({stock_id})")
+    print(f"  起始日期：{args.since}")
+    print(f"{'='*65}\n")
 
-    # ── Step 1：取得待回填交易日 ────────────────────────────────
-    predict_dates = get_predict_dates(args.since, args.until)
+    # ── Step 1：取得交易日清單 ────────────────────────────────────
+    predict_dates = get_predict_dates(args.since, stock_id=stock_id)
     total = len(predict_dates)
     logger.info(f"\n[Step 1] 待回填交易日：{total} 天"
                 f"（{predict_dates[0].date()} ~ {predict_dates[-1].date()}）"
@@ -340,14 +346,14 @@ def main():
 
     # ── Step 2：特徵工程（全量，只做一次）──────────────────────
     logger.info("\n[Step 2] 載入全量特徵框架（只做一次）…")
-    raw     = build_daily_frame(stock_id="2330")
+    raw     = build_daily_frame(stock_id=stock_id)
     df_feat = build_features(raw, for_inference=True)
     logger.info(f"  特徵框架：{len(df_feat):,} 天 × {df_feat.shape[1]} 欄")
 
     # ── Step 3：載入模型 ─────────────────────────────────────────
-    logger.info("\n[Step 3] 載入模型…")
-    ensemble = load_ensemble()
-    tft      = load_tft() if args.with_tft else None
+    logger.info("[Step 3] 載入 Meta-Ensemble 模型…")
+    ensemble = load_ensemble(stock_id)
+    tft      = load_tft(stock_id) if args.with_tft else None
     if tft is None and args.with_tft:
         logger.warning("  TFT 載入失敗，將以 tree 平均替代 TFT 訊號")
 
@@ -365,7 +371,7 @@ def main():
     for idx, predict_date in enumerate(predict_dates, 1):
         try:
             trajectory = predict_for_date(
-                predict_date, df_feat, ensemble, tft=tft
+                predict_date, df_feat, ensemble, tft=tft, stock_id=stock_id
             )
             if not trajectory:
                 logger.warning(f"  [{predict_date.date()}] 無預測結果，略過")

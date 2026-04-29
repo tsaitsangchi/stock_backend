@@ -35,6 +35,8 @@ from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
 from signal_filter import SignalFilter, FilterResult
 
+from utils.model_loader import safe_load
+
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────
@@ -42,7 +44,6 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────
 
 def load_ensemble(stock_id: str, path: Optional[Path] = None):
-    import joblib
     path = path or (MODEL_DIR / f"ensemble_{stock_id}.pkl")
     if not path.exists():
         # Fallback to general final model if specific one doesn't exist
@@ -52,8 +53,9 @@ def load_ensemble(stock_id: str, path: Optional[Path] = None):
         raise FileNotFoundError(
             f"找不到股票 {stock_id} 的模型，請先執行 train_evaluate.py --stock-id {stock_id}"
         )
-    model = joblib.load(path)
-    logger.info(f"模型載入：{path}")
+    # [P3 修復] 使用 safe_load (File Locking) 避免與訓練進程衝突
+    model = safe_load(path)
+    logger.info(f"模型載入 (Safe)：{path}")
     return model
 
 

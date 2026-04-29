@@ -120,6 +120,9 @@ TABLE_REGISTRY = {
 }
 
 DATA_LAG_CONFIG = {k: v["lag"] for k, v in TABLE_REGISTRY.items()}
+# [P0 修復 2.13] 補齊 data_pipeline.py 邏輯中所需的特定鍵值
+DATA_LAG_CONFIG["annual_report"]    = 90
+DATA_LAG_CONFIG["quarterly_report"] = 45
 
 # ─────────────────────────────────────────────
 # 訓練策略配置 (Training Strategy)
