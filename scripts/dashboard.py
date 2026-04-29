@@ -155,6 +155,7 @@ with col3:
 with col4:
     # 4. 系統綜合效能 (Accuracy/Drift)
     perf_df = load_performance_da()
+    drift_df = load_psi_drift() # 恢復漂移數據讀取
     avg_da = perf_df["da"].mean()
     st.metric("平均 30D 準確率 (DA)", f"{avg_da:.1%}", 
               delta=f"{avg_da-0.5:+.1%}" if avg_da else None)
