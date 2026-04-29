@@ -35,6 +35,7 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parent))
 from config import MODEL_DIR, OUTPUT_DIR, STOCK_CONFIGS
 from data_pipeline import _query
+from data_integrity_check import run_integrity_check
 
 # 設定日誌
 logging.basicConfig(
@@ -47,30 +48,10 @@ logger = logging.getLogger(__name__)
 
 def check_data_freshness_df() -> pd.DataFrame:
     """
-    檢查各主要資料表的最新更新日期。
-    統計理論：資料滯後會導致特徵工程計算出錯誤的 MA 或 RSI，造成預測偏差。
+    檢查主要資料表的整體健康度。
+    [v3] 委派給 data_integrity_check 執行個股級別深度掃描。
     """
-    tables: List[str] = [
-        "stock_price",
-        "stock_per",
-        "institutional_investors_buy_sell",
-        "margin_purchase_short_sale",
-        "shareholding",
-        "stock_forecast_daily",
-    ]
-    results: List[Dict[str, Any]] = []
-    for table in tables:
-        try:
-            sql: str = f"SELECT MAX(date) as last_date FROM {table}"
-            df: pd.DataFrame = _query(sql)
-            last_date = df["last_date"].iloc[0] if not df.empty else None
-            results.append({"table": table, "last_date": last_date})
-        except Exception as e:
-            logger.error(f"check table {table} failed: {e}")
-            results.append({"table": table, "last_date": None})
-
-    res_df: pd.DataFrame = pd.DataFrame(results)
-    return res_df
+    return run_integrity_check(summary=False)
 
 
 def check_model_files_df(stock_ids: List[str]) -> pd.DataFrame:
@@ -338,10 +319,10 @@ def run_health_check() -> None:
     print(f"  Antigravity Quant - Health Check ({datetime.now().strftime('%Y-%m-%d %H:%M')})")
     print("=" * 80)
 
-    df_fresh_df = check_data_freshness_df()
-    print("\n[1] Data Stream Freshness")
-    print("-" * 60)
-    print(df_fresh_df.to_string(index=False))
+    df_integrity = check_data_freshness_df()
+    print("\n[1] Data Integrity & Freshness Matrix (Score 0.0 ~ 1.0)")
+    print("-" * 80)
+    print(df_integrity.to_string(index=False))
 
     df_models_df = check_model_files_df(stock_ids)
     print("\n[2] Model Expiry Check")
