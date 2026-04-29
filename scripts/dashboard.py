@@ -126,28 +126,38 @@ st.sidebar.metric("市場資料日期", str(price_date) if price_date else "N/A"
 
 st.title("量子藍圖 — 系統監控儀表板")
 
-# 第一排：核心指標
+# 第一排：系統三位一體指標 (Trinity Integrity Metrics)
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    model_df = load_model_status()
-    ok_count = (model_df["status"] == "🟢 OK").sum()
-    st.metric("模型就緒率", f"{ok_count}/{len(model_df)}", delta=None)
+    # 1. 資料完整度 (Data Integrity)
+    avg_integrity = fresh_df.iloc[:, 1:].apply(lambda x: x.str.rstrip('%').astype(float)).mean().mean() / 100
+    st.metric("1. 資料完整度", f"{avg_integrity:.1%}", 
+              delta="核心資料庫" if avg_integrity > 0.9 else "需補件",
+              delta_color="normal" if avg_integrity > 0.9 else "inverse")
 
 with col2:
-    perf_df = load_performance_da()
-    avg_da = perf_df["da"].mean()
-    st.metric("平均 30D 準確率 (DA)", f"{avg_da:.1%}", delta=f"{avg_da-0.5:.1%}" if avg_da else None)
+    # 2. 模型訓練完整度 (Model Training)
+    model_df = load_model_status()
+    trained_ratio = (model_df["status"] == "🟢 OK").sum() / len(model_df)
+    st.metric("2. 模型訓練完整度", f"{trained_ratio:.1%}", 
+              delta=f"已就緒 {(model_df['status'] == '🟢 OK').sum()} 檔")
 
 with col3:
-    drift_df = load_psi_drift()
-    warning_drift = (drift_df["psi"] > 0.1).sum()
-    st.metric("分佈漂移警報", f"{warning_drift} 檔", delta=f"-{warning_drift}" if warning_drift > 0 else "0", delta_color="inverse")
+    # 3. 預測完整度 (Prediction)
+    pred_df = load_today_predictions()
+    pred_count = len(pred_df) if not pred_df.empty else 0
+    total_stocks = len(STOCK_CONFIGS)
+    pred_ratio = pred_count / total_stocks
+    st.metric("3. 預測完整度", f"{pred_ratio:.1%}", 
+              delta=f"今日生成 {pred_count} 檔")
 
 with col4:
-    pred_df = load_today_predictions()
-    bull_count = (pred_df["prob_up"] > 0.5).sum() if not pred_df.empty else 0
-    st.metric("今日多頭佔比", f"{bull_count}/{len(pred_df)}" if not pred_df.empty else "N/A")
+    # 4. 系統綜合效能 (Accuracy/Drift)
+    perf_df = load_performance_da()
+    avg_da = perf_df["da"].mean()
+    st.metric("平均 30D 準確率 (DA)", f"{avg_da:.1%}", 
+              delta=f"{avg_da-0.5:+.1%}" if avg_da else None)
 
 st.markdown("---")
 
