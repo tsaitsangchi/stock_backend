@@ -75,25 +75,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================
-# FinMind API 設定
+# [P0-SECURITY 第四輪修復] FinMind API & PostgreSQL 連線設定
+# 從統一的 config 模組載入，不再硬編碼於原始碼
+# Token 由 .env 檔案載入；DB 連線由 config.DB_CONFIG 提供
+# 注意：若需要保留批次模式效率（直接 psycopg2 連線），仍可使用 DB_CONFIG，
+# 但所有「DB 連線設定」必須透過 config.DB_CONFIG，不允許就地硬編碼。
 # ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-FINMIND_TOKEN = (
-    "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"
-    ".***REMOVED***"
-    ".***REMOVED***"
-)
+from config import DB_CONFIG, FINMIND_TOKEN  # noqa: E402
 
-# ======================
-# PostgreSQL 連線設定
-# ======================
-DB_CONFIG = {
-    "dbname": "stock",
-    "user": "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port": "5432",
-}
+FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 
 # ======================
 # 各資料集最早可用日期

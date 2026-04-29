@@ -40,9 +40,28 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import TimeSeriesSplit  # [P1 第五輪修復] 強制時間序列校準
 from sklearn.linear_model import LassoCV
 from sklearn.feature_selection import SelectFromModel
 from sklearn.preprocessing import StandardScaler
+
+
+# ─────────────────────────────────────────────
+# [P1 第五輪修復] CalibratedClassifierCV 防呆封裝
+# 為什麼需要：sklearn 的 CalibratedClassifierCV(cv=5) 預設使用隨機 KFold，
+#            在時間序列資料中等同於用未來資料校準歷史機率 → 破壞 Walk-Forward
+#            嚴格性。本系統的實際校準走 OOF 路徑（meta_ensemble.calibrate
+#            (oof_valid, y_meta)），因 OOF 預測本身就是時間有序的 out-of-fold
+#            機率，並無洩漏。但任何未來在 in-sample 上 wrap 模型的程式碼，
+#            應透過此封裝強制 TimeSeriesSplit。
+# ─────────────────────────────────────────────
+def make_time_series_calibrator(estimator, n_splits: int = 5, method: str = "isotonic"):
+    """建立使用 TimeSeriesSplit 的 CalibratedClassifierCV，避免時間序列洩漏。"""
+    return CalibratedClassifierCV(
+        estimator=estimator,
+        cv=TimeSeriesSplit(n_splits=n_splits),
+        method=method,
+    )
 
 from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
