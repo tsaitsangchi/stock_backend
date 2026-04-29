@@ -162,115 +162,44 @@ with col4:
 
 st.markdown("---")
 
-# 第二排：即時監控細節
-left_col, right_col = st.columns([2, 1])
+# 第二排：核心狀態矩陣 (Trinity Status Matrix)
+st.subheader("🛡️ 全系統健康度矩陣")
 
-with left_col:
-    st.subheader("📊 模型健康度報告 (Performance & Drift)")
-    # 合併效能與漂移數據
-    health_report = pd.merge(perf_df, drift_df, on="stock_id")
-    health_report = pd.merge(health_report, model_df[["stock_id", "status", "age_days"]], on="stock_id")
-    
-    # 重新排列欄位
-    health_report = health_report[["stock_id", "status", "da", "psi", "perf_status", "drift_status", "age_days"]]
-    
-    # 樣式處理
-    def color_status(val):
-        if "🟢" in str(val) or "STABLE" in str(val) or "EXCELLENT" in str(val): color = '#2ea043'
-        elif "🟡" in str(val) or "WARNING" in str(val): color = '#d29922'
-        elif "🔴" in str(val) or "DEGRADED" in str(val) or "DRIFTED" in str(val): color = '#f85149'
-        else: color = 'white'
-        return f'color: {color}'
+# 準備矩陣數據
+# 1. 資料狀態：從 fresh_df 計算平均，若 > 95% 為綠燈
+def get_data_status(row):
+    avg = row.iloc[1:].str.rstrip('%').astype(float).mean()
+    return "🟢 完整" if avg > 95 else "🟡 部分" if avg > 80 else "🔴 缺漏"
 
-    st.dataframe(
-        health_report.style.map(color_status, subset=['status', 'perf_status', 'drift_status'])
-                           .background_gradient(subset=['da'], cmap="RdYlGn", vmin=0.45, vmax=0.65),
-        use_container_width=True,
-        height=400
-    )
+matrix_df = pd.DataFrame({"stock_id": list(STOCK_CONFIGS.keys())})
+matrix_df["資料狀態"] = fresh_df.apply(get_data_status, axis=1)
 
-with right_col:
-    st.subheader("⏳ 數據完整性矩陣")
-    st.markdown("<small>評分範圍 0.0 ~ 1.0 (1.0 代表 30D 資料全滿)</small>", unsafe_allow_html=True)
-    st.dataframe(
-        fresh_df.head(10),
-        use_container_width=True,
-        height=300
-    )
-    
-    st.subheader("⚠️ 需注意清單")
-    critical = health_report[(health_report["da"] < 0.52) | (health_report["psi"] > 0.15) | (health_report["status"] != "🟢 OK")]
-    if not critical.empty:
-        for _, row in critical.iterrows():
-            st.warning(f"**{row['stock_id']}**: DA={row['da']:.1%}, PSI={row['psi']:.2f}, Status={row['status']}")
-    else:
-        st.success("目前無異常標的")
+# 2. 模型狀態
+matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id")
+matrix_df.rename(columns={"status": "模型狀態"}, inplace=True)
+
+# 3. 預測狀態
+if not pred_df.empty:
+    pred_ids = set(pred_df["stock_id"].tolist())
+    matrix_df["預測狀態"] = matrix_df["stock_id"].apply(lambda x: "🟢 已產出" if x in pred_ids else "⚪ 待處理")
+else:
+    matrix_df["預測狀態"] = "⚪ 待處理"
+
+# 樣式與顯示
+def style_trinity(val):
+    if "🟢" in str(val): color = '#2ea043'
+    elif "🟡" in str(val): color = '#d29922'
+    elif "🔴" in str(val): color = '#f85149'
+    else: color = '#8b949e'
+    return f'color: {color}'
+
+st.dataframe(
+    matrix_df.style.map(style_trinity),
+    use_container_width=True,
+    height=500
+)
 
 st.markdown("---")
-
-# 第三排：詳細分析與審計
-tab1, tab2, tab3 = st.tabs(["📊 預測分佈 (Distribution)", "🚨 異常與警示 (Anomalies)", "🛡️ 資料審計 (Integrity Audit)"])
-
-with tab1:
-    if not pred_df.empty:
-        dist_col1, dist_col2 = st.columns(2)
-        
-        with dist_col1:
-            fig = px.histogram(pred_df, x="prob_up", nbins=20, 
-                               title="上漲機率分佈 (Prob_up Distribution)",
-                               color_discrete_sequence=['#58a6ff'])
-            fig.add_vline(x=0.5, line_dash="dash", line_color="red")
-            fig.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        with dist_col2:
-            top_picks = pred_df.sort_values("prob_up", ascending=False).head(10)
-            top_picks["Name"] = top_picks["stock_id"].map(lambda x: STOCK_CONFIGS.get(x, {}).get("name", "Unknown"))
-            fig_bar = px.bar(top_picks, x="prob_up", y="Name", orientation='h',
-                             title="今日高信心標的 (Top Prob_up)",
-                             color="prob_up", color_continuous_scale="RdYlGn")
-            fig_bar.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("今日尚未生成推論數據。")
-
-with tab2:
-    st.subheader("🚩 偵測到異常的預測 (Outliers)")
-    if not pred_df.empty:
-        anomalies = pred_df[pred_df["warning_flag"].notna() & (pred_df["warning_flag"] != "")]
-        if not anomalies.empty:
-            st.warning(f"偵測到 {len(anomalies)} 筆預測異常！")
-            st.dataframe(anomalies[["stock_id", "prob_up", "Expected Return", "warning_flag"]], use_container_width=True)
-        else:
-            st.success("✅ 今日所有推論結果皆通過統計常理性檢查。")
-    
-with tab3:
-    st.header("Trinity 資料完整性深度審計 (v5.0)")
-    audit_col1, audit_col2 = st.columns([1, 1])
-    
-    auditor = IntegrityAuditor(days_window=60)
-    
-    with audit_col1:
-        st.subheader("📌 公告延遲監控 (Regulatory Lag)")
-        st.table(load_lag_report())
-        
-        st.subheader("🔄 2330 跨表一致性")
-        st.dataframe(auditor.audit_cross_table_consistency("2330"), use_container_width=True)
-        
-    with audit_col2:
-        st.subheader("📂 完整覆蓋率矩陣 (60D)")
-        st.dataframe(fresh_df, use_container_width=True, height=400)
-        
-    st.markdown("---")
-    st.subheader("🕵️‍♂️ 斷層診斷 (Gap Diagnostic)")
-    target_sid = st.selectbox("選擇要診斷的標的", list(STOCK_CONFIGS.keys()))
-    target_table = st.selectbox("選擇資料表", ["stock_price", "institutional_investors_buy_sell", "margin_purchase_short_sale", "securities_lending"])
-    
-    gaps = auditor.audit_date_gaps(target_sid, target_table)
-    if gaps.empty:
-        st.success(f"✅ {target_sid} 在 {target_table} 中日期完全連續。")
-    else:
-        st.error(f"🚩 偵測到 {len(gaps)} 個時間斷層！")
-        st.dataframe(gaps, use_container_width=True)
+st.caption("Quantum Blueprint Quant System Dashboard (Simplified) © 2026 Antigravity Research")
 
 st.caption("Quantum Blueprint Quant System Dashboard © 2026 Antigravity Research")
