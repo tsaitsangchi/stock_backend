@@ -65,80 +65,40 @@ DO UPDATE SET
 """
 
 
-# ======================
-# [P0 重構] wait_until_next_hour 改用共享模組
-# ======================
-from core.finmind_client import wait_until_next_hour  # noqa: E402,F401
+# ──────────────────────────────────────────────
+# [P0 重構] 工具函式統一改用 core 模組
+# ──────────────────────────────────────────────
+from core.finmind_client import finmind_get, wait_until_next_hour
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+)
 
 
 # ──────────────────────────────────────────────
-# 1. 從 FinMind 抓資料
+# 1. 抓取與轉換
 # ──────────────────────────────────────────────
-def fetch_stock_info() -> list[dict]:
+def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
     """
-    呼叫 FinMind TaiwanStockInfo API，回傳原始 data list。
-    包含自動處理 402 (Payment Required) 錯誤的重試機制。
+    抓取台股總覽並去重轉換。
     """
-    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
-    params = {"dataset": "TaiwanStockInfo"}
+    data = finmind_get("TaiwanStockInfo", {}, delay)
+    if not data:
+        return []
 
-    while True:
-        try:
-            logger.info("呼叫 FinMind API：TaiwanStockInfo ...")
-            resp = requests.get(FINMIND_API_URL, headers=headers, params=params, timeout=60)
-
-            # 檢查 HTTP 狀態碼
-            if resp.status_code == 402:
-                wait_until_next_hour()
-                continue
-
-            resp.raise_for_status()
-            payload = resp.json()
-
-            # 檢查 API 業務邏輯狀態碼
-            status = payload.get("status")
-            if status == 402:
-                wait_until_next_hour()
-                continue
-
-            if status != 200:
-                raise RuntimeError(
-                    f"FinMind API 回傳非成功狀態：status={status}, msg={payload.get('msg')}"
-                )
-
-            data = payload.get("data", [])
-            logger.info(f"共取得 {len(data)} 筆股票資料")
-            return data
-
-        except requests.exceptions.RequestException as e:
-            # 處理可能被 raise_for_status 拋出的 402
-            if isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code == 402:
-                wait_until_next_hour()
-                continue
-            logger.error(f"請求 FinMind API 時發生異常：{e}")
-            raise
-
-
-# ──────────────────────────────────────────────
-# 2. 轉換為 tuple list（對應 DB 欄位順序）
-# ──────────────────────────────────────────────
-def transform(records: list[dict]) -> list[tuple]:
-    """
-    將 API 回傳的 dict list 轉換成
-    (stock_id, stock_name, industry_category, type, date) tuple list。
-    date 欄位若為空字串則設為 None。
-    """
     seen = {}
-    for r in records:
-        stock_id = r.get("stock_id")
-        if not stock_id:
+    for r in data:
+        sid = r.get("stock_id")
+        if not sid:
             continue
-        # 同一 stock_id 保留日期最新的那筆
         _date = r.get("date", "")
         date_val = _date if (_date and _date.upper() != "NONE") else None
-        if stock_id not in seen or (date_val and date_val > (seen[stock_id][4] or "")):
-            seen[stock_id] = (
-                stock_id,
+        
+        # 同一 stock_id 保留日期最新的那筆
+        if sid not in seen or (date_val and date_val > (seen[sid][4] or "")):
+            seen[sid] = (
+                sid,
                 r.get("stock_name"),
                 r.get("industry_category"),
                 r.get("type"),
@@ -146,78 +106,41 @@ def transform(records: list[dict]) -> list[tuple]:
             )
 
     rows = list(seen.values())
-    logger.info(f"去重後剩 {len(rows)} 筆（原始 {len(records)} 筆）")
+    logger.info(f"去重後剩 {len(rows)} 筆（原始 {len(data)} 筆）")
     return rows
 
 
 # ──────────────────────────────────────────────
-# 3. 寫入 PostgreSQL
+# 2. 執行更新
 # ──────────────────────────────────────────────
-def upsert_to_db(rows: list[tuple]) -> None:
-    """
-    連線 PostgreSQL，確保 DDL 存在後，批次 upsert 所有資料。
-    """
+def run_update(delay: float = 1.0) -> None:
+    rows = fetch_and_transform(delay)
     if not rows:
-        logger.warning("沒有資料可寫入，程式結束。")
+        logger.warning("沒有資料可更新")
         return
 
-    logger.info(f"連線 PostgreSQL（{DB_CONFIG['host']}:{DB_CONFIG['port']} / {DB_CONFIG['dbname']}）...")
-    conn = psycopg2.connect(**DB_CONFIG)
-
+    conn = get_db_conn()
     try:
-        with conn:
-            with conn.cursor() as cur:
-                # 建立資料表 & 索引（冪等）
-                logger.info("確認 stock_info 資料表與索引是否存在 ...")
-                cur.execute(CREATE_TABLE_SQL)
-
-                # 批次 upsert（execute_values 效率遠優於逐筆 execute）
-                logger.info(f"開始 upsert {len(rows)} 筆資料 ...")
-                psycopg2.extras.execute_values(
-                    cur,
-                    UPSERT_SQL,
-                    rows,
-                    template="(%s, %s, %s, %s, %s::date)",
-                    page_size=1000,
-                )
-
-        logger.info("✅ 資料寫入完成（已 commit）。")
-
-    except Exception as exc:
-        logger.error(f"寫入 DB 時發生錯誤：{exc}")
-        raise
-
+        ensure_ddl(conn, CREATE_TABLE_SQL)
+        n = bulk_upsert(
+            conn, UPSERT_SQL, rows, 
+            template="(%s, %s, %s, %s, %s::date)"
+        )
+        logger.info(f"✅ 完成，upsert {n} 筆")
     finally:
         conn.close()
-        logger.info("PostgreSQL 連線已關閉。")
 
 
-# ──────────────────────────────────────────────
-# 主程式
-# ──────────────────────────────────────────────
 def main():
     try:
-        # Step 1：抓資料
-        raw_data = fetch_stock_info()
-
-        # Step 2：轉換
-        rows = transform(raw_data)
-
-        # Step 3：寫入 DB
-        upsert_to_db(rows)
-
-    except requests.HTTPError as e:
-        logger.error(f"HTTP 錯誤：{e}")
-        sys.exit(1)
-    except RuntimeError as e:
-        logger.error(str(e))
-        sys.exit(1)
-    except psycopg2.OperationalError as e:
-        logger.error(f"無法連線 PostgreSQL：{e}")
-        sys.exit(1)
+        run_update()
     except Exception as e:
-        logger.error(f"未預期的錯誤：{e}")
+        logger.error(f"執行失敗：{e}")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
