@@ -54,6 +54,7 @@ from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
 from models.ensemble_model import RegimeEnsemble
 from feature_analysis import FactorAnalyzer, print_factor_report
+from scripts.utils.model_loader import safe_dump
 
 # ── 全域 Warning 過濾（第三方套件雜訊）────────────────────────────────────
 import warnings as _warnings
@@ -786,8 +787,9 @@ def main():
         final_model.refined_features = golden_features
         
         out_path = MODEL_DIR / f"ensemble_{stock_id}.pkl"
-        joblib.dump(final_model, out_path)
-        logger.info(f"  最終模型已儲存：{out_path}")
+        # [P3 修復] 使用 safe_dump (File Locking) 避免與推論進程衝突
+        safe_dump(final_model, out_path)
+        logger.info(f"  最終模型已安全儲存：{out_path}")
         
         # ── 更新效能註冊表 ──────────────────────────────────
         update_metrics_registry(stock_id, wf_result["meta_metrics"])

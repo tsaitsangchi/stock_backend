@@ -41,26 +41,58 @@ def calibrate_stock(stock_id: str):
         # 使用滾動相關性與斜率作為速度代理
         sub = df.tail(252)
         velocity = sub["info_force_per_mass"].corr(sub["kinetic_energy"])
-        innovation_velocity = max(0.5, min(3.0, velocity * 5.0)) # 正規化至 0.5~3.0
+        innovation_velocity = max(0.5, min(3.0, float(velocity * 5.0) if not np.isnan(velocity) else 1.0)) # 正規化至 0.5~3.0
     else:
         innovation_velocity = 1.0
 
-    # 3. 寫入資料庫
+    # 3. [NEW] 擴展物理參數 (對齊 signal_filter.py)
+    # info_sensitivity: 價格對資訊流的敏感度 (使用 Force/Mass 的標準差作為代理)
+    info_sensitivity = df["info_force_per_mass"].std() if "info_force_per_mass" in df.columns else 0.5
+    info_sensitivity = max(0.1, min(1.0, float(info_sensitivity)))
+
+    # fat_tail_index: 肥尾效應 (使用超額峰度 Kurtosis)
+    kurt = df["target_return"].kurt() if "target_return" in df.columns else 3.0
+    fat_tail_index = max(2.0, min(10.0, float(kurt + 3.0) if not np.isnan(kurt) else 3.0))
+
+    # convexity_score: 凸性 (報酬率與波動率的相關性，正相關表示具備左側避險或右側爆發性)
+    if "target_return" in df.columns and "realized_vol_20d" in df.columns:
+        conv = df["target_return"].corr(df["realized_vol_20d"])
+        convexity_score = float(conv) if not np.isnan(conv) else 0.0
+    else:
+        convexity_score = 0.0
+
+    # wave_track: 賽道分類 (根據 stock_id 預設)
+    if stock_id in ["2330", "2454", "3661"]:
+        wave_track = "AI_SEMICON"
+    elif stock_id in ["2317", "2382", "6669"]:
+        wave_track = "AI_SERVER"
+    else:
+        wave_track = "LEGACY_IT"
+
+    # 4. 寫入資料庫
     # [P2 3.2] 資料表改為 stock_dynamics_registry，對齊 signal_filter.py 的 _load_dynamics_registry()
     try:
         conn = psycopg2.connect(**DB_CONFIG)  # [P1] 統一引用 config.DB_CONFIG
         cur = conn.cursor()
         upsert_query = """
         INSERT INTO stock_dynamics_registry
-            (stock_id, avg_mass, gravity_elasticity, innovation_velocity, updated_at)
-        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+            (stock_id, avg_mass, gravity_elasticity, innovation_velocity, 
+             info_sensitivity, fat_tail_index, convexity_score, wave_track, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
         ON CONFLICT (stock_id) DO UPDATE SET
             avg_mass            = EXCLUDED.avg_mass,
             gravity_elasticity  = EXCLUDED.gravity_elasticity,
             innovation_velocity = EXCLUDED.innovation_velocity,
+            info_sensitivity    = EXCLUDED.info_sensitivity,
+            fat_tail_index      = EXCLUDED.fat_tail_index,
+            convexity_score     = EXCLUDED.convexity_score,
+            wave_track          = EXCLUDED.wave_track,
             updated_at          = CURRENT_TIMESTAMP;
         """
-        cur.execute(upsert_query, (stock_id, float(avg_mass), float(gravity_elasticity), float(innovation_velocity)))
+        cur.execute(upsert_query, (
+            stock_id, float(avg_mass), float(gravity_elasticity), float(innovation_velocity),
+            float(info_sensitivity), float(fat_tail_index), float(convexity_score), wave_track
+        ))
         conn.commit()
         cur.close()
         conn.close()

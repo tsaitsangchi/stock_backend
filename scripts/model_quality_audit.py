@@ -24,6 +24,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from config import STOCK_CONFIGS, MODEL_DIR, ALL_FEATURES
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features
+from utils.model_loader import safe_load
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,7 +48,8 @@ def run_model_audit(stock_id: str) -> Dict[str, Any]:
 
     try:
         # 1. 載入模型與資料 (多抓半年避免 Lag 影響特徵)
-        model = joblib.load(model_path)
+        # [P3 修復] 使用 safe_load (File Locking)
+        model = safe_load(model_path)
         df_raw = build_daily_frame(stock_id, start_date="2023-06-01")
         df_feat = build_features(df_raw, stock_id=stock_id)
         

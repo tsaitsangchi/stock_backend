@@ -86,6 +86,34 @@ def ensure_columns(conn):
         "ALTER TABLE stock_forecast_daily ADD COLUMN IF NOT EXISTS is_backfill BOOLEAN DEFAULT FALSE;",
         "確保 is_backfill 欄位存在於 stock_forecast_daily",
     )
+    
+    # [P3 修復 3.1] 確保 stock_dynamics_registry 包含 signal_filter.py 所需的所有欄位
+    dynamics_sql = """
+    CREATE TABLE IF NOT EXISTS stock_dynamics_registry (
+        stock_id            VARCHAR(20) PRIMARY KEY,
+        avg_mass            FLOAT DEFAULT 12.0,
+        gravity_elasticity  FLOAT DEFAULT 0.05,
+        innovation_velocity FLOAT DEFAULT 1.0,
+        info_sensitivity    FLOAT DEFAULT 0.5,
+        fat_tail_index      FLOAT DEFAULT 3.0,
+        convexity_score     FLOAT DEFAULT 0.0,
+        tail_risk_score     FLOAT DEFAULT 0.0,
+        wave_track          VARCHAR(50) DEFAULT 'LEGACY_IT',
+        updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+    run_sql(conn, dynamics_sql, "確保 stock_dynamics_registry 資料表結構完整")
+    
+    # 若表已存在，補齊缺失欄位
+    extra_cols = [
+        ("info_sensitivity", "FLOAT DEFAULT 0.5"),
+        ("fat_tail_index", "FLOAT DEFAULT 3.0"),
+        ("convexity_score", "FLOAT DEFAULT 0.0"),
+        ("tail_risk_score", "FLOAT DEFAULT 0.0"),
+        ("wave_track", "VARCHAR(50) DEFAULT 'LEGACY_IT'"),
+    ]
+    for col, c_type in extra_cols:
+        run_sql(conn, f"ALTER TABLE stock_dynamics_registry ADD COLUMN IF NOT EXISTS {col} {c_type};")
 
 
 def refresh_views(conn, concurrently=True):

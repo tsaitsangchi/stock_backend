@@ -57,7 +57,7 @@ def get_conn():
 # 資料載入
 # ─────────────────────────────────────────────
 
-def load_oof_predictions(since: str = "2020-01-01") -> pd.DataFrame:
+def load_oof_predictions(stock_id: str = "2330", since: str = "2020-01-01") -> pd.DataFrame:
     """
     從 outputs/wf_fold_metrics.csv + feature_engineering OOF 重建評估資料。
     由於 OOF 預測本身已保存在 DB 中（target_30d 就是實際報酬），
@@ -73,17 +73,18 @@ def load_oof_predictions(since: str = "2020-01-01") -> pd.DataFrame:
     sql = f"""
         SELECT date, close::float
         FROM   stock_price
-        WHERE  stock_id = '2330'
+        WHERE  stock_id = %s
           AND  date >= %s
         ORDER  BY date
     """
-    df = pd.read_sql(sql, conn, params=(since,), parse_dates=["date"])
+    df = pd.read_sql(sql, conn, params=(stock_id, since), parse_dates=["date"])
     conn.close()
     df = df.set_index("date")
     return df
 
 
-def load_live_forecasts(since: str = "2025-01-01",
+def load_live_forecasts(stock_id: str = "2330",
+                        since: str = "2025-01-01",
                         exclude_backfill: bool = True) -> pd.DataFrame:
     """
     從 stock_forecast_daily 取「已有實際收盤可驗證」的預測。
@@ -120,23 +121,23 @@ def load_live_forecasts(since: str = "2025-01-01",
         JOIN stock_price p
           ON p.stock_id = f.stock_id
          AND p.date     = f.forecast_date
-        WHERE f.stock_id   = '2330'
+        WHERE f.stock_id   = %s
           AND f.predict_date >= %s
           {backfill_clause}
         ORDER BY f.predict_date, f.day_offset
     """
     try:
-        df = pd.read_sql(sql, conn, params=(since,), parse_dates=["predict_date", "forecast_date"])
+        df = pd.read_sql(sql, conn, params=(stock_id, since), parse_dates=["predict_date", "forecast_date"])
     except Exception as e:
         # is_backfill 欄位可能尚未遷移，降級為不過濾
         logger.warning(f"is_backfill 過濾失敗（{e}），降級為不過濾（請執行 DB 遷移加入此欄位）")
         sql_fallback = sql.replace(backfill_clause, "")
-        df = pd.read_sql(sql_fallback, conn, params=(since,), parse_dates=["predict_date", "forecast_date"])
+        df = pd.read_sql(sql_fallback, conn, params=(stock_id, since), parse_dates=["predict_date", "forecast_date"])
     conn.close()
     return df
 
 
-def load_wf_oof_with_actual() -> dict:
+def load_wf_oof_with_actual(stock_id: str = "2330") -> dict:
     """
     讀取 walk-forward OOF 結果。
 
@@ -147,13 +148,13 @@ def load_wf_oof_with_actual() -> dict:
       meta    : meta_oof_metrics.csv     全局 OOF 指標
       folds   : wf_fold_metrics.csv      每 fold 評估
       regime  : regime_metrics.csv       不同 regime 的 OOF 指標
-      oof_seq : oof_predictions_with_dates.csv  逐筆 prob_up + y_true（新）
+      oof_seq : oof_predictions_with_dates_{stock_id}.csv  逐筆 prob_up + y_true（新）
     """
-    logger.info("載入 Walk-Forward OOF 指標…")
+    logger.info(f"載入 Walk-Forward OOF 指標 ({stock_id})…")
     meta_path    = OUTPUT_DIR / "meta_oof_metrics.csv"
     fold_path    = OUTPUT_DIR / "wf_fold_metrics.csv"
     regime_path  = OUTPUT_DIR / "regime_metrics.csv"
-    oof_seq_path = OUTPUT_DIR / "oof_predictions_with_dates.csv"
+    oof_seq_path = OUTPUT_DIR / f"oof_predictions_with_dates_{stock_id}.csv"
 
     results: dict = {}
     if meta_path.exists():
@@ -442,7 +443,9 @@ def print_recommendation(wf_data, df_live):
 # ─────────────────────────────────────────────
 
 def parse_args():
-    p = argparse.ArgumentParser(description="2330 預測回測審計")
+    p = argparse.ArgumentParser(description="個股預測回測審計")
+    p.add_argument("--stock-id", default="2330",
+                   help="股票代碼（預設 2330）")
     p.add_argument("--since",    default="2025-01-01",
                    help="Live 驗證起始日（預設 2025-01-01）")
     p.add_argument("--live",     action="store_true",
@@ -460,14 +463,15 @@ def main():
     )
 
     args = parse_args()
+    stock_id = args.stock_id
 
     print("\n" + "═" * 65)
-    print("  台積電 (2330) 預測模型回測審計")
+    print(f"  個股 ({stock_id}) 預測模型回測審計")
     print("  Walk-Forward OOF + Live 部署雙軌驗證")
     print("═" * 65)
 
     # ── ① Walk-Forward OOF 指標（歷史訓練驗證）─────────────────
-    wf_data = load_wf_oof_with_actual()
+    wf_data = load_wf_oof_with_actual(stock_id=stock_id)
     if not args.live:
         print_wf_summary(wf_data)
 
@@ -493,8 +497,8 @@ def main():
                 logger.warning(f"OOF 校準分析失敗：{e}")
 
     # ── ② Live 部署紀錄（stock_forecast_daily × stock_price）────
-    logger.info(f"載入 live 預測紀錄（since={args.since}）…")
-    df_live = load_live_forecasts(since=args.since)
+    logger.info(f"載入 live 預測紀錄 ({stock_id}, since={args.since})…")
+    df_live = load_live_forecasts(stock_id=stock_id, since=args.since)
     logger.info(f"  live 紀錄：{len(df_live)} 筆（可驗證：已過期且有實際收盤）")
     print_live_summary(df_live)
 
@@ -535,7 +539,7 @@ def main():
 
     # ── 儲存 CSV ─────────────────────────────────────────────
     if args.save_csv and len(df_live) > 0:
-        out = OUTPUT_DIR / "live_backtest_audit.csv"
+        out = OUTPUT_DIR / f"live_backtest_audit_{stock_id}.csv"
         df_live.to_csv(out, index=False)
         logger.info(f"Live 審計資料已儲存：{out}")
 
