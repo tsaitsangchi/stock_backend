@@ -294,7 +294,14 @@ def fetch_market_dataset(
     if not data:
         logger.info(f"[{table}] 無新資料")
         return
-    rows = [mapper(r) for r in data]
+    rows_map = {}
+    for r in data:
+        mapped = mapper(r)
+        # 假設前 2 個欄位是 PK (date, name)
+        pk = mapped[:2]
+        rows_map[pk] = mapped
+    
+    rows = list(rows_map.values())
     n = bulk_upsert(conn, upsert_sql, rows, template)
     logger.info(f"[{table}] 寫入 {n} 筆")
 
@@ -364,7 +371,16 @@ def fetch_per_stock_dataset(
                 batch_disabled = True
                 chunk_rows = []
             if chunk_rows:
-                rows = [mapper(r) for r in chunk_rows]
+                # 批次去重：防止 ON CONFLICT DO UPDATE 同一 batch 內 PK 重複
+                rows_map = {}
+                for r in chunk_rows:
+                    mapped = mapper(r)
+                    # 判斷 PK 長度：securities_lending 是 3 (date, id, type)，其餘是 2 (date, id)
+                    pk_len = 3 if table == "securities_lending" else 2
+                    pk = mapped[:pk_len]
+                    rows_map[pk] = mapped
+                
+                rows = list(rows_map.values())
                 bulk_upsert(conn, upsert_sql, rows, template)
                 total_rows += len(rows)
 
@@ -377,9 +393,16 @@ def fetch_per_stock_dataset(
                 total_api += 1
                 if not data:
                     continue
-                rows = [mapper(r) for r in data]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+                # 逐支去重
+                rows_map = {}
+                for r in data:
+                    mapped = mapper(r)
+                    pk_len = 3 if table == "securities_lending" else 2
+                    pk = mapped[:pk_len]
+                    rows_map[pk] = mapped
+                
+                rows = list(rows_map.values())
+                total_rows += bulk_upsert(conn, upsert_sql, rows, template)
 
     logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows}")
 
