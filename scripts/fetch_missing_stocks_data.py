@@ -48,14 +48,14 @@ PER_STOCK_SCRIPTS_CONFIG = {
     "fetch_advanced_chip_data.py": "--stock-id",
     "fetch_sponsor_chip_data.py":  "--stock-id",
     "fetch_event_risk_data.py":    "--stock-id",
-    "fetch_extended_derivative_data.py": "--ids",
-    "fetch_derivative_sentiment_data.py": "--ids",
 }
 
 # 宏觀資料腳本
 MACRO_SCRIPTS = [
     "fetch_macro_data.py",
-    "fetch_fred_data.py"
+    "fetch_fred_data.py",
+    "fetch_extended_derivative_data.py",
+    "fetch_derivative_sentiment_data.py"
 ]
 
 def run_script(script_name: str, args: list[str] = []) -> bool:
