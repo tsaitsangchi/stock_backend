@@ -36,6 +36,15 @@ import psycopg2.extras
 import requests
 
 from config import DB_CONFIG
+from core.db_utils import (
+    ensure_ddl, 
+    bulk_upsert, 
+    get_all_safe_starts, 
+    resolve_start_cached,
+    safe_int,
+    safe_float
+)
+from core.finmind_client import finmind_get
 
 # ======================
 # 資料庫連線
