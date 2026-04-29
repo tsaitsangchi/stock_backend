@@ -267,9 +267,9 @@ def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay
                 (
                     r["date"],
                     r["stock_id"],
-                    safe_bigint(r.get("buy")),
+                    safe_int(r.get("buy")),
                     str(r.get("name", ""))[:50],
-                    safe_bigint(r.get("sell")),
+                    safe_int(r.get("sell")),
                 )
                 for r in data
             ]
@@ -324,7 +324,7 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
                     r["stock_id"],
                     safe_int(r.get("MarginPurchaseBuy")),
                     safe_int(r.get("MarginPurchaseCashRepayment")),
-                    safe_bigint(r.get("MarginPurchaseLimit")),
+                    safe_int(r.get("MarginPurchaseLimit")),
                     safe_int(r.get("MarginPurchaseSell")),
                     safe_int(r.get("MarginPurchaseTodayBalance")),
                     safe_int(r.get("MarginPurchaseYesterdayBalance")),
@@ -332,7 +332,7 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
                     safe_int(r.get("OffsetLoanAndShort")),
                     safe_int(r.get("ShortSaleBuy")),
                     safe_int(r.get("ShortSaleCashRepayment")),
-                    safe_bigint(r.get("ShortSaleLimit")),
+                    safe_int(r.get("ShortSaleLimit")),
                     safe_int(r.get("ShortSaleSell")),
                     safe_int(r.get("ShortSaleTodayBalance")),
                     safe_int(r.get("ShortSaleYesterdayBalance")),
@@ -390,13 +390,13 @@ def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool
                     r["stock_id"],
                     str(r.get("stock_name", "") or "")[:50],
                     str(r.get("InternationalCode", "") or "")[:20],
-                    safe_bigint(r.get("ForeignInvestmentRemainingShares")),
-                    safe_bigint(r.get("ForeignInvestmentShares")),
+                    safe_int(r.get("ForeignInvestmentRemainingShares")),
+                    safe_int(r.get("ForeignInvestmentShares")),
                     safe_float(r.get("ForeignInvestmentRemainRatio")),
                     safe_float(r.get("ForeignInvestmentSharesRatio")),
                     safe_float(r.get("ForeignInvestmentUpperLimitRatio")),
                     safe_float(r.get("ChineseInvestmentUpperLimitRatio")),
-                    safe_bigint(r.get("NumberOfSharesIssued")),
+                    safe_int(r.get("NumberOfSharesIssued")),
                     safe_date(r.get("RecentlyDeclareDate")),
                     str(r.get("note", "") or ""),
                 )
