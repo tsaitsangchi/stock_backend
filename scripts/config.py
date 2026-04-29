@@ -109,7 +109,7 @@ TABLE_REGISTRY = {
     
     # 衍生性商品 (期權)
     "futures_ohlcv":                  {"type": "daily", "id_col": "futures_id", "lag": 1},
-    "options_ohlcv":                  {"type": "daily", "id_col": "options_id", "lag": 1},
+    "options_ohlcv":                  {"type": "daily", "id_col": "option_id", "lag": 1},
     "options_oi_large_holders":       {"type": "daily", "id_col": "options_id", "lag": 1},
     
     # 事件與另類

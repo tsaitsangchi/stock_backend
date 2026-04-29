@@ -126,7 +126,7 @@ TYPE_MAP = {
 # DDL
 # ──────────────────────────────────────────────
 DDL_FUTURES_DAILY = """
-CREATE TABLE IF NOT EXISTS futures_daily (
+CREATE TABLE IF NOT EXISTS futures_ohlcv (
     date             DATE,
     futures_id       VARCHAR(50),
     contract_date    VARCHAR(6),
@@ -142,11 +142,11 @@ CREATE TABLE IF NOT EXISTS futures_daily (
     trading_session  VARCHAR(20),
     PRIMARY KEY (date, futures_id, contract_date)
 );
-CREATE INDEX IF NOT EXISTS idx_futures_daily_futures_id ON futures_daily (futures_id);
+CREATE INDEX IF NOT EXISTS idx_futures_ohlcv_futures_id ON futures_ohlcv (futures_id);
 """
 
 DDL_OPTION_DAILY = """
-CREATE TABLE IF NOT EXISTS option_daily (
+CREATE TABLE IF NOT EXISTS options_ohlcv (
     date             DATE,
     option_id        VARCHAR(50),
     contract_date    VARCHAR(6),
@@ -162,14 +162,14 @@ CREATE TABLE IF NOT EXISTS option_daily (
     trading_session  VARCHAR(20),
     PRIMARY KEY (date, option_id, contract_date, strike_price, call_put)
 );
-CREATE INDEX IF NOT EXISTS idx_option_daily_option_id ON option_daily (option_id);
+CREATE INDEX IF NOT EXISTS idx_options_ohlcv_option_id ON options_ohlcv (option_id);
 """
 
 # ──────────────────────────────────────────────
 # Upsert SQL
 # ──────────────────────────────────────────────
 UPSERT_FUTURES_DAILY = """
-INSERT INTO futures_daily (
+INSERT INTO futures_ohlcv (
     date, futures_id, contract_date,
     open, max, min, close, spread, spread_per,
     volume, settlement_price, open_interest, trading_session
@@ -188,7 +188,7 @@ ON CONFLICT (date, futures_id, contract_date) DO UPDATE SET
 """
 
 UPSERT_OPTION_DAILY = """
-INSERT INTO option_daily (
+INSERT INTO options_ohlcv (
     date, option_id, contract_date, strike_price, call_put,
     open, max, min, close,
     volume, settlement_price, open_interest, trading_session
@@ -372,7 +372,7 @@ def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: boo
 
         for i, fid in enumerate(futures_ids, 1):
             actual_start = resolve_start(
-                conn, "futures_daily", "futures_id", fid,
+                conn, "futures_ohlcv", "futures_id", fid,
                 start_date, "futures_daily", force
             )
             if actual_start is None:
@@ -452,7 +452,7 @@ def fetch_option_daily(start_date: str, end_date: str, delay: float, force: bool
 
         for i, oid in enumerate(option_ids, 1):
             actual_start = resolve_start(
-                conn, "option_daily", "option_id", oid,
+                conn, "options_ohlcv", "option_id", oid,
                 start_date, "option_daily", force
             )
             if actual_start is None:
