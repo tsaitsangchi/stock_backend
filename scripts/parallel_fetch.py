@@ -18,6 +18,7 @@ import time
 import sys
 import logging
 import os
+from datetime import date
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
