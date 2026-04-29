@@ -37,15 +37,20 @@ ANCHOR_TABLES = [
     "institutional_investors_buy_sell"
 ]
 
-# 個股相關補件腳本
-PER_STOCK_SCRIPTS = [
-    "fetch_technical_data.py",
-    "fetch_price_adj_data.py",
-    "fetch_fundamental_data.py",
-    "fetch_chip_data.py",
-    "fetch_derivative_data.py",
-    "fetch_international_data.py",
-]
+# 個股相關補件腳本及其對應的 ID 參數名稱
+PER_STOCK_SCRIPTS_CONFIG = {
+    "fetch_technical_data.py":    "--stock-id",
+    "fetch_price_adj_data.py":    "--stock-id",
+    "fetch_fundamental_data.py":  "--stock-id",
+    "fetch_chip_data.py":         "--stock-id",
+    "fetch_derivative_data.py":   "--ids",
+    "fetch_international_data.py": "--tickers",
+    "fetch_advanced_chip_data.py": "--stock-id",
+    "fetch_sponsor_chip_data.py":  "--stock-id",
+    "fetch_event_risk_data.py":    "--stock-id",
+    "fetch_extended_derivative_data.py": "--ids",
+    "fetch_derivative_sentiment_data.py": "--ids",
+}
 
 # 宏觀資料腳本
 MACRO_SCRIPTS = [
@@ -109,10 +114,9 @@ def main():
             earliest_gap = min([g["gap_start"] for g in gaps])
             logger.info(f"\n>>> 開始補齊 {sid} 的歷史斷層 (起點: {earliest_gap})")
             
-            for script in PER_STOCK_SCRIPTS:
-                # 這裡假設腳本支援 --tables 參數則更精確，
-                # 目前採用的策略是從最早斷層點開始該標的的所有核心抓取
-                run_script(script, args=["--stock-id", sid, "--start", earliest_gap])
+            for script, id_flag in PER_STOCK_SCRIPTS_CONFIG.items():
+                # 根據不同腳本使用正確的參數名稱 (--stock-id, --ids, --tickers)
+                run_script(script, args=[id_flag, sid, "--start", earliest_gap])
 
     # 4. 宏觀資料更新
     logger.info("\nStep 4: 更新全域宏觀資料...")

@@ -91,6 +91,11 @@ class IntegrityAuditor:
                 if start_gap:
                     gaps.append({"start": start_gap, "end": d - timedelta(days=1), "days": (d - start_gap).days})
                     start_gap = None
+        
+        # 處理結尾的斷層 (Risk: 如果最後一天也是缺失的)
+        if start_gap:
+            gaps.append({"start": start_gap, "end": self.expected_dates[-1], "days": (self.expected_dates[-1] - start_gap).days + 1})
+            
         return pd.DataFrame(gaps)
 
     # --- 3. 公告延遲檢查 ---
@@ -116,11 +121,21 @@ class IntegrityAuditor:
         # 以 stock_price 為基準
         sql_price = "SELECT MAX(date) as d FROM stock_price WHERE stock_id = %s"
         price_date = _query(sql_price, (stock_id,))["d"].iloc[0]
-        
         for table in ["institutional_investors_buy_sell", "margin_purchase_short_sale", "securities_lending"]:
-            sql = f"SELECT MAX(date) as d FROM {table} WHERE stock_id = %s"
+            reg = TABLE_REGISTRY.get(table)
+            id_col_local = reg["id_col"] if reg else "stock_id"
+            sql = f"SELECT MAX(date) as d FROM {table} WHERE {id_col_local} = %s"
             t_date = _query(sql, (stock_id,))["d"].iloc[0]
-            diff = (price_date - t_date).days if price_date and t_date else -1
+            
+            # 確保皆為 date 物件後再計算
+            if pd.notnull(price_date) and pd.notnull(t_date):
+                # 處理可能從 DB 回傳的 datetime
+                p_d = price_date.date() if hasattr(price_date, "date") else price_date
+                t_d = t_date.date() if hasattr(t_date, "date") else t_date
+                diff = (p_d - t_d).days
+            else:
+                diff = -999
+                
             results.append({"table": table, "sync_diff": diff, "status": "✅ 同步" if diff == 0 else "⚠️ 落後"})
         return pd.DataFrame(results)
 

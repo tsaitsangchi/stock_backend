@@ -675,6 +675,11 @@ def main():
         sys.exit(1)
         
     df = pd.concat(all_dfs).sort_index()
+    # ── [P0 修復] 移除重複欄位（防止 XGBoost 崩潰） ─────────────
+    if df.columns.duplicated().any():
+        logger.warning(f"  偵測到重複特徵欄位，已自動去重：{df.columns[df.columns.duplicated()].unique().tolist()}")
+        df = df.loc[:, ~df.columns.duplicated()]
+        
     logger.info(f"  資料載入完成，總樣本數: {len(df):,} (標的數: {len(training_pool)})")
     logger.info(f"  特徵框架：{df.shape[1]} 欄")
 

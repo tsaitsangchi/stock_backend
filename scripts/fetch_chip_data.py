@@ -38,6 +38,10 @@ import requests
 from config import DB_CONFIG
 
 # ======================
+# 資料庫連線
+# ======================
+def get_db_conn():
+    return psycopg2.connect(**DB_CONFIG)
 # 設定 logging
 # ======================
 logging.basicConfig(
