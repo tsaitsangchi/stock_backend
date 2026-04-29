@@ -434,8 +434,6 @@ FEATURE_GROUPS: dict = {
         "gross_margin_qoq", "gross_margin_qoq_dir",
         "eps_accel_proxy",
         "foreign_net_weekly", "foreign_net_accel",
-        "margin_chg_rate_5d", "margin_chg_rate_20d",
-        "short_chg_rate_5d",
         "rs_line_20d", "rs_line_slope_5d",
         "adr_premium", "adr_premium_5d_chg", "adr_premium_ma5",
     ],
@@ -447,12 +445,7 @@ FEATURE_GROUPS: dict = {
         "market_entropy",
         "liquidity_quality",
         "smart_money_sync_buy",
-        "kwave_score"
     ],
-    # ─────────────────────────────────────────────
-    # [v3] 第四輪審查衍生因子（新資料表 → alpha 的最後一哩）
-    # 對應 feature_engineering.add_extended_features_bundle()
-    # ─────────────────────────────────────────────
     "quality": [
         # 來源：cash_flows_statement（季資料 ffill）
         "fcf_quarterly", "fcf_yield", "fcf_margin", "capex_intensity",
@@ -520,7 +513,11 @@ def get_all_features(stock_id: str = DEFAULT_STOCK_ID) -> list[str]:
         us_chain_features += [f"{ticker}_ret_1d", f"{ticker}_ret_5d", f"{ticker}_ret_20d"]
     
     groups["us_chain"] = us_chain_features
-    return [f for grp in groups.values() for f in grp]
+    
+    # 確保特徵清單唯一，防止重複欄位導致模型崩潰
+    all_feats = [f for grp in groups.values() for f in grp]
+    seen = set()
+    return [x for x in all_feats if not (x in seen or seen.add(x))]
 
 ALL_FEATURES = get_all_features(DEFAULT_STOCK_ID)
 
