@@ -70,7 +70,10 @@ class XGBPredictor:
         self.feature_names: list[str] = []
         # 個別 Calibrator（預設 Platt Scaling，保序回歸備用）
         self._calibrator = None
-        self._cal_type   = "none"   # 'sigmoid' | 'isotonic' | 'none'
+        self._cal_type   = "none"
+        # [P0 修復 第五輪] 單一類別降級旗標：當 fit() 時 y 僅有一個類別，
+        # 不訓練實際模型，而是讓 predict_score 回傳常數值。
+        self._const_class: Optional[int] = None   # 'sigmoid' | 'isotonic' | 'none'
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series,
             X_val: pd.DataFrame, y_val: pd.Series) -> "XGBPredictor":
@@ -86,6 +89,27 @@ class XGBPredictor:
             # 確保 y_train, y_val 是二元整數 [0, 1]
             y_tr_bin = (y_train > 0).astype(int)
             y_va_bin = (y_val > 0).astype(int)
+
+            # ─────────────────────────────────────────────
+            # [P0 修復 第五輪] 單一類別防護
+            # 觸發情境：RegimeEnsemble 在 High-Vol 子集中僅取得一個方向類別
+            #          （例如 high_vol 子集全部 y=1 → XGBClassifier 直接拋出
+            #          ValueError: Invalid classes inferred from unique values of `y`,
+            #          Expected: [0], got [1]）
+            # 處理策略：偵測單一類別 → 啟用 _const_class flag，讓 predict_score
+            #          直接回傳該類別的常數機率，避免訓練失敗造成整條 fold 崩潰。
+            # ─────────────────────────────────────────────
+            unique_classes = np.unique(y_tr_bin)
+            if len(unique_classes) < 2:
+                self._const_class = int(unique_classes[0]) if len(unique_classes) == 1 else 0
+                self.model = None
+                logger.warning(
+                    f"  [XGB-{self.task}] y_train 只有單一類別 {unique_classes.tolist()}（n={len(y_tr_bin)}），"
+                    f"啟用常數機率回傳 (={float(self._const_class):.2f})，跳過實際訓練。"
+                )
+                return self
+
+            self._const_class = None
             self.model = xgb.XGBClassifier(
                 **p,
                 early_stopping_rounds=es,
@@ -114,6 +138,10 @@ class XGBPredictor:
 
     def predict_score(self, X: pd.DataFrame) -> np.ndarray:
         """回傳原始（未校準）機率或回歸分數，meta-learner 訓練時使用此輸出。"""
+        # [P0 第五輪] 單一類別降級：直接回傳常數機率（接近 0.99 或 0.01）
+        if self.task == "classification" and self._const_class is not None:
+            const_prob = 0.99 if self._const_class == 1 else 0.01
+            return np.full(len(X), const_prob, dtype=float)
         if self.task == "classification":
             return self.model.predict_proba(X)[:, 1]
         else:
@@ -185,6 +213,13 @@ class XGBPredictor:
         )
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
+        # [P0 第五輪] 單一類別降級：對 classification 回傳常數機率，
+        # 對 regression 回傳零（表示無預測能力）。
+        if self._const_class is not None:
+            if self.task == "classification":
+                const_prob = 0.99 if self._const_class == 1 else 0.01
+                return np.full(len(X), const_prob, dtype=float)
+            return np.zeros(len(X), dtype=float)
         return self.model.predict(X)
 
     def feature_importance(self) -> pd.Series:
@@ -213,6 +248,8 @@ class LGBPredictor:
         # 個別 Calibrator（預設 Platt Scaling，同 XGBPredictor）
         self._calibrator = None
         self._cal_type   = "none"
+        # [P0 修復 第五輪] 單一類別降級旗標（同 XGBPredictor）
+        self._const_class: Optional[int] = None
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series,
             X_val: pd.DataFrame, y_val: pd.Series) -> "LGBPredictor":
@@ -232,6 +269,19 @@ class LGBPredictor:
             # 確保 y_train, y_val 是二元整數 [0, 1]
             y_tr_bin = (y_train > 0).astype(int)
             y_va_bin = (y_val > 0).astype(int)
+
+            # [P0 第五輪] 單一類別防護（同 XGBPredictor）
+            unique_classes = np.unique(y_tr_bin)
+            if len(unique_classes) < 2:
+                self._const_class = int(unique_classes[0]) if len(unique_classes) == 1 else 0
+                self.model = None
+                logger.warning(
+                    f"  [LGB-{self.task}] y_train 只有單一類別 {unique_classes.tolist()}（n={len(y_tr_bin)}），"
+                    f"啟用常數機率回傳 (={float(self._const_class):.2f})，跳過實際訓練。"
+                )
+                return self
+
+            self._const_class = None
             self.model = lgb.LGBMClassifier(**p, objective="binary", metric="auc")
             self.model.fit(
                 X_train, y_tr_bin,
@@ -261,6 +311,10 @@ class LGBPredictor:
 
     def predict_score(self, X: pd.DataFrame) -> np.ndarray:
         """回傳原始（未校準）機率、回歸或排序分數，meta-learner 訓練時使用此輸出。"""
+        # [P0 第五輪] 單一類別降級
+        if self.task == "classification" and self._const_class is not None:
+            const_prob = 0.99 if self._const_class == 1 else 0.01
+            return np.full(len(X), const_prob, dtype=float)
         if self.task == "classification":
             return self.model.predict_proba(X)[:, 1]
         else:
@@ -305,6 +359,12 @@ class LGBPredictor:
         )
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
+        # [P0 第五輪] 單一類別降級（同 XGBPredictor）
+        if self._const_class is not None:
+            if self.task == "classification":
+                const_prob = 0.99 if self._const_class == 1 else 0.01
+                return np.full(len(X), const_prob, dtype=float)
+            return np.zeros(len(X), dtype=float)
         return self.model.predict(X)
 
     def feature_importance(self) -> pd.Series:
@@ -318,9 +378,6 @@ class LGBPredictor:
             return None
         explainer = shap.TreeExplainer(self.model)
         return explainer.shap_values(X)
-
-
-        return self.model.feature_importances_
 
 
 # ─────────────────────────────────────────────
@@ -420,6 +477,8 @@ class StackingEnsemble:
         self.weights = {} # 動態加權
         self.scaler     = StandardScaler()
         self.feature_names: Optional[list[str]] = None
+        # [P0 第五輪] meta-learner 單一類別降級時使用
+        self._meta_const_prob: Optional[float] = None
 
     def _get_features(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.feature_names is not None:
@@ -454,13 +513,30 @@ class StackingEnsemble:
         if mask.sum() < 10:
             logger.warning("  [L2] Meta-features 樣本不足，跳過訓練")
             return
-            
+
+        # [P0 第五輪] 單一類別防護：若整個 meta 訓練集只有單一方向標籤，
+        # LogisticRegression 會拋出 ValueError。改為以「常數機率」降級。
+        y_filt = y_bin[mask]
+        unique = np.unique(y_filt)
+        if len(unique) < 2:
+            self._meta_const_prob = 0.99 if (len(unique) == 1 and unique[0] == 1) else 0.01
+            logger.warning(
+                f"  [L2] Meta target 僅有單一類別 {unique.tolist()}，"
+                f"啟用常數機率回傳 (={self._meta_const_prob:.2f})，跳過 meta 訓練。"
+            )
+            return
+
+        self._meta_const_prob = None
         X_meta = self.scaler.fit_transform(meta_features[mask])
         sw = sample_weight[mask] if sample_weight is not None else None
-        self.meta_learner.fit(X_meta, y_bin[mask], sample_weight=sw)
+        self.meta_learner.fit(X_meta, y_filt, sample_weight=sw)
         
     def predict_meta(self, meta_features: pd.DataFrame) -> np.ndarray:
         """使用 Meta-Learner 產出最終機率"""
+        # [P0 第五輪] 單一類別降級回傳
+        const = getattr(self, "_meta_const_prob", None)
+        if const is not None:
+            return np.full(len(meta_features), const, dtype=float)
         X_meta = self.scaler.transform(meta_features.fillna(0.5))
         return self.meta_learner.predict_proba(X_meta)[:, 1]
 
