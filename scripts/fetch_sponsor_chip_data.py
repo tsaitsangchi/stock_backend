@@ -206,15 +206,18 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
         if not rows:
             continue
 
-        records = []
+        # 去重
+        unique = {}
         for r in rows:
             lv = str(r.get("HoldingSharesLevel", ""))
-            records.append((
+            row = (
                 r.get("date"), sid, lv,
                 safe_int(r.get("people")),
                 safe_float(r.get("percent")),
                 r.get("unit", lv),
-            ))
+            )
+            unique[(row[0], row[1], row[2])] = row
+        records = list(unique.values())
 
         bulk_upsert(conn, UPSERT_HOLDING, records, "(%s, %s, %s, %s, %s, %s)")
         total += len(records)
@@ -338,16 +341,17 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
         )
 
         if rows:
-            # 全市場資料直接儲存（包含所有個股的八大行庫彙總值）
-            records = [
-                (
+            # 去重
+            unique = {}
+            for r in rows:
+                row = (
                     r.get("date"),
                     r.get("stock_id"),
                     safe_int(r.get("buy")),
                     safe_int(r.get("sell")),
                 )
-                for r in rows
-            ]
+                unique[(row[0], row[1])] = row
+            records = list(unique.values())
             bulk_upsert(conn, UPSERT_EIGHT_BANKS, records, "(%s, %s, %s, %s)")
             total += len(records)
             logger.info(f"    → 寫入 {len(records):,} 筆（累計 {total:,} 筆）")
@@ -392,8 +396,10 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
         )
         return
 
-    records = [
-        (
+    # 去重
+    unique = {}
+    for r in rows:
+        row = (
             r.get("date"),
             r.get("contract_code", ""),
             r.get("name", ""),
@@ -404,8 +410,8 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
             safe_int(r.get("net_position")),
             safe_int(r.get("market_total_oi")),
         )
-        for r in rows
-    ]
+        unique[(row[0], row[1], row[2])] = row
+    records = list(unique.values())
     bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, records, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)")
     logger.info(f"=== [futures_large_oi] 完成，{len(records):,} 筆 ===")
 
