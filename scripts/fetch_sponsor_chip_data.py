@@ -216,7 +216,7 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
                 r.get("unit", lv),
             ))
 
-        bulk_upsert(conn, UPSERT_HOLDING, records)
+        bulk_upsert(conn, UPSERT_HOLDING, records, "(%s, %s, %s, %s, %s, %s)")
         total += len(records)
 
         if i % 100 == 0:
@@ -270,7 +270,7 @@ def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
                     (k[0], k[1], k[2], v["name"], v["buy"], v["sell"])
                     for k, v in agg.items()
                 ]
-                bulk_upsert(conn, UPSERT_BROKER, records)
+                bulk_upsert(conn, UPSERT_BROKER, records, "(%s, %s, %s, %s, %s, %s)")
                 total += len(records)
                 logger.info(
                     f"  [broker_trades] {sid} {chunk_s}~{chunk_e}: "
@@ -348,7 +348,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
                 )
                 for r in rows
             ]
-            bulk_upsert(conn, UPSERT_EIGHT_BANKS, records)
+            bulk_upsert(conn, UPSERT_EIGHT_BANKS, records, "(%s, %s, %s, %s)")
             total += len(records)
             logger.info(f"    → 寫入 {len(records):,} 筆（累計 {total:,} 筆）")
 
@@ -406,7 +406,7 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
         )
         for r in rows
     ]
-    bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, records)
+    bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, records, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)")
     logger.info(f"=== [futures_large_oi] 完成，{len(records):,} 筆 ===")
 
 
