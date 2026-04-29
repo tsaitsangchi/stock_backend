@@ -274,6 +274,11 @@ def map_margin_susp(r: dict) -> tuple:
 # ─────────────────────────────────────────────
 # 抓取邏輯
 # ─────────────────────────────────────────────
+def fetch_market_dataset(
+    conn, dataset: str, table: str, ddl: str,
+    upsert_sql: str, template: str, mapper, dataset_key: str,
+    start: str, end: str, delay: float, force: bool,
+):
     ensure_ddl(conn, ddl)
     s = start
     if not force:
