@@ -48,6 +48,7 @@ PER_STOCK_SCRIPTS_CONFIG = {
     "fetch_advanced_chip_data.py": "--stock-id",
     "fetch_sponsor_chip_data.py":  "--stock-id",
     "fetch_event_risk_data.py":    "--stock-id",
+    "fetch_cash_flows_data.py":    "--stock-id",
 }
 
 # 宏觀資料腳本

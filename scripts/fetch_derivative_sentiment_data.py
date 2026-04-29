@@ -55,7 +55,7 @@ DEFAULT_END = date.today().strftime("%Y-%m-%d")
 # ─────────────────────────────────────────────
 
 DDL_OPTIONS_LARGE_OI = """
-CREATE TABLE IF NOT EXISTS options_large_oi (
+CREATE TABLE IF NOT EXISTS options_oi_large_holders (
     date               DATE,
     option_id          VARCHAR(50),
     put_call           VARCHAR(10),
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS options_large_oi (
     sell_top10_specific_open_interest_per NUMERIC,
     PRIMARY KEY (date, option_id, put_call, contract_type)
 );
-CREATE INDEX IF NOT EXISTS idx_ooi_date ON options_large_oi (date);
+CREATE INDEX IF NOT EXISTS idx_ooi_date ON options_oi_large_holders (date);
 """
 
 DDL_FEAR_GREED_INDEX = """
@@ -112,7 +112,7 @@ CREATE INDEX IF NOT EXISTS idx_bt_date ON block_trading (date);
 # ─────────────────────────────────────────────
 
 UPSERT_OPTIONS_LARGE_OI = """
-INSERT INTO options_large_oi (
+INSERT INTO options_oi_large_holders (
     date, option_id, put_call, contract_type, name, market_open_interest,
     buy_top5_trader_open_interest, buy_top5_trader_open_interest_per,
     buy_top10_trader_open_interest, buy_top10_trader_open_interest_per,
@@ -187,7 +187,7 @@ def fetch_options_large_oi(conn, start: str, end: str, delay: float, force: bool
     s = start
     if not force:
         with conn.cursor() as cur:
-            cur.execute("SELECT MAX(date) FROM options_large_oi")
+            cur.execute("SELECT MAX(date) FROM options_oi_large_holders")
             last = cur.fetchone()[0]
         if last:
             s = (last + timedelta(days=1)).strftime("%Y-%m-%d")
