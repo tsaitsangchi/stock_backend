@@ -26,12 +26,14 @@ tsmc_predictor/
 ├── data_pipeline.py        # 資料層：從 PostgreSQL 讀取 → 每日寬格式 DataFrame
 ├── feature_engineering.py  # 特徵工程：5 大類 ~100 個通用特徵 + 動態產業特徵
 ├── train_evaluate.py       # 訓練核心：Purged Walk-Forward CV + 評估 + 模型儲存
-├── parallel_train.py       # 並行管理器：全自動並行訓練 80+ 標的模型
-├── parallel_fetch.py       # 並行抓取器：高速抓取全市場技術、籌碼、基本面數據
-├── predict.py              # 推論核心：每日執行，輸出趨勢報告
-├── model_health_check.py   # 健康檢查：監控資料鮮度與實戰 DA
+├── auto_train_manager.py   # 自動化訓練管理員：支援指數退避與失敗隔離重試
+├── predict.py              # 推論核心：每日執行，內建異常偵測 (Outlier Detection)
+├── data_integrity_check.py # 資料審計：個股級別的多表完整性評分矩陣
+├── fetch_missing_stocks_data.py # 智能補抓：基於審計評分自動觸發歷史回填
+├── model_health_check.py   # 健康檢查：整合資料完整性與模型實戰 DA 監控
+├── model_quality_audit.py  # 品質審計：核心個股盲測 (Blind Test) DA/IC 評估
 ├── automate_daily.py       # 自動化流水線：一鍵完成推論、檢查與組合優化
-├── portfolio_backtest.py   # 組合層回測：分析 Beta 暴露、換手率與壓力測試
+├── dashboard.py            # 視覺化儀表板：整合完整性矩陣與異常警示
 ├── models/
 ```
 

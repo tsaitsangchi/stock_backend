@@ -177,6 +177,8 @@ from core.db_utils import (  # noqa: E402,F401
     bulk_upsert,
     safe_float,
     safe_int,
+    get_all_safe_starts,
+    resolve_start_cached,
 )
 
 
@@ -187,47 +189,6 @@ def get_all_stock_ids(conn, stock_id_arg=None):
     return list(STOCK_CONFIGS.keys())
 
 
-# ③ DB 最新日期批次預載（一次 SQL 取代 N 次逐筆查詢）
-def get_all_latest_dates(conn, table: str) -> dict:
-    """
-    一次查出指定資料表所有股票的最新日期。
-    回傳 dict: { stock_id: "YYYY-MM-DD" }
-    原本：每支股票 SELECT MAX(date)（N 次 SQL）
-    現在：一條 GROUP BY SQL 搞定
-    """
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
-        return {
-            row[0]: row[1].strftime("%Y-%m-%d")
-            for row in cur.fetchall()
-            if row[1] is not None
-        }
-
-
-def resolve_start_cached(stock_id: str, latest_dates: dict,
-                         global_start: str, dataset_key: str, force: bool):
-    """
-    從預載快取（latest_dates）決定起始日，不再每支逐筆查 DB。
-    回傳 None 表示此股票不需抓取（已是最新）。
-    """
-    earliest = DATASET_START_DATES[dataset_key]
-    effective_start = max(global_start, earliest)
-
-    if force:
-        return effective_start
-
-    latest = latest_dates.get(str(stock_id))
-    if latest is None:
-        return effective_start  # DB 無此股票，從頭抓
-
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
-
-    if next_day > DEFAULT_END:
-        return None  # 已是最新，不需抓取
-
-    return max(next_day, earliest)
 
 
 # ──────────────────────────────────────────────
@@ -280,7 +241,9 @@ def fetch_dataset_batch(
     stock_starts: dict[str, str] = {}
     skipped = 0
     for sid in stock_ids:
-        s = resolve_start_cached(sid, latest_dates, start_date, dataset_key, force)
+        s = resolve_start_cached(
+            sid, latest_dates, start_date, DATASET_START_DATES[dataset_key], force
+        )
         if s is None:
             skipped += 1
         else:
@@ -426,16 +389,18 @@ def fetch_both_per_stock(
             
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
-        # ③ 預載兩張表的最新日期（各一條 SQL）
-        latest_price = get_all_latest_dates(conn, "stock_price") if "stock_price" in tables else {}
-        latest_per   = get_all_latest_dates(conn, "stock_per")   if "stock_per"   in tables else {}
+        # ③ 預載兩張表的安全起始日（一次偵測所有斷層）
+        latest_price = get_all_safe_starts(conn, "stock_price") if "stock_price" in tables else {}
+        latest_per   = get_all_safe_starts(conn, "stock_per")   if "stock_per"   in tables else {}
 
         skipped_price = skipped_per = 0
 
         for i, sid in enumerate(stock_ids, 1):
             # ── stock_price ──
             if "stock_price" in tables:
-                s = resolve_start_cached(sid, latest_price, start_date, "stock_price", force)
+                s = resolve_start_cached(
+                    sid, latest_price, start_date, DATASET_START_DATES["stock_price"], force
+                )
                 if s is None:
                     skipped_price += 1
                 else:
@@ -453,7 +418,9 @@ def fetch_both_per_stock(
 
             # ── stock_per ──
             if "stock_per" in tables:
-                s = resolve_start_cached(sid, latest_per, start_date, "stock_per", force)
+                s = resolve_start_cached(
+                    sid, latest_per, start_date, DATASET_START_DATES["stock_per"], force
+                )
                 if s is None:
                     skipped_per += 1
                 else:
@@ -511,7 +478,7 @@ def fetch_both_batch(
 
         if "stock_price" in tables:
             logger.info("=== [stock_price] 批次模式 ===")
-            latest = get_all_latest_dates(conn, "stock_price")
+            latest = get_all_safe_starts(conn, "stock_price")
             fetch_dataset_batch(
                 "TaiwanStockPrice", "stock_price",
                 UPSERT_STOCK_PRICE,
@@ -524,7 +491,7 @@ def fetch_both_batch(
 
         if "stock_per" in tables:
             logger.info("=== [stock_per] 批次模式 ===")
-            latest = get_all_latest_dates(conn, "stock_per")
+            latest = get_all_safe_starts(conn, "stock_per")
             fetch_dataset_batch(
                 "TaiwanStockPER", "stock_per",
                 UPSERT_STOCK_PER,
