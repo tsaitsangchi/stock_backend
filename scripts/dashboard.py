@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config import STOCK_CONFIGS, MODEL_DIR
 from data_pipeline import _query
+from data_integrity_audit import IntegrityAuditor
 
 # 頁面配置
 st.set_page_config(
@@ -55,18 +56,14 @@ st.markdown("""
 # ─────────────────────────────────────────────
 
 @st.cache_data(ttl=600)
-def load_data_freshness():
-    tables = ["stock_price", "stock_per", "institutional_investors_buy_sell", 
-              "margin_purchase_short_sale", "shareholding", "stock_forecast_daily"]
-    results = []
-    for table in tables:
-        try:
-            df = _query(f"SELECT MAX(date) as last_date FROM {table}")
-            last_date = df["last_date"].iloc[0] if not df.empty else None
-            results.append({"Table": table, "Last Update": last_date})
-        except:
-            results.append({"Table": table, "Last Update": None})
-    return pd.DataFrame(results)
+def load_integrity_matrix():
+    auditor = IntegrityAuditor(days_window=60)
+    return auditor.audit_coverage_matrix()
+
+@st.cache_data(ttl=600)
+def load_lag_report():
+    auditor = IntegrityAuditor()
+    return auditor.audit_announcement_lag()
 
 @st.cache_data(ttl=600)
 def load_model_status():
@@ -87,7 +84,7 @@ def load_psi_drift():
 def load_today_predictions():
     sql = """
         WITH latest_date AS (SELECT MAX(predict_date) FROM stock_forecast_daily)
-        SELECT stock_id, prob_up, ensemble_price, current_close, confidence_level
+        SELECT stock_id, prob_up, ensemble_price, current_close, confidence_level, warning_flag
         FROM stock_forecast_daily
         WHERE predict_date = (SELECT * FROM latest_date)
           AND day_offset = 30
@@ -96,6 +93,15 @@ def load_today_predictions():
     if not df.empty:
         df["Expected Return"] = (df["ensemble_price"] / df["current_close"] - 1) * 100
     return df
+
+@st.cache_data(ttl=60)
+def load_training_failures():
+    """模擬讀取管理器失敗日誌。"""
+    try:
+        from auto_train_manager import FAILURE_TRACKER
+        return FAILURE_TRACKER
+    except:
+        return {}
 
 # ─────────────────────────────────────────────
 # Sidebar 側欄
@@ -109,8 +115,9 @@ if st.sidebar.button("🔄 重新整理數據"):
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("系統狀態")
-fresh_df = load_data_freshness()
-price_date = fresh_df[fresh_df["Table"]=="stock_price"]["Last Update"].iloc[0]
+fresh_df = load_integrity_matrix()
+# 從第一欄或已知主表獲取日期 (這裏簡化處理)
+price_date = _query("SELECT MAX(date) FROM stock_price").iloc[0,0]
 st.sidebar.metric("市場資料日期", str(price_date) if price_date else "N/A")
 
 # ─────────────────────────────────────────────
@@ -172,8 +179,13 @@ with left_col:
     )
 
 with right_col:
-    st.subheader("⏳ 數據流鮮度")
-    st.table(fresh_df)
+    st.subheader("⏳ 數據完整性矩陣")
+    st.markdown("<small>評分範圍 0.0 ~ 1.0 (1.0 代表 30D 資料全滿)</small>", unsafe_allow_html=True)
+    st.dataframe(
+        fresh_df.head(10),
+        use_container_width=True,
+        height=300
+    )
     
     st.subheader("⚠️ 需注意清單")
     critical = health_report[(health_report["da"] < 0.52) | (health_report["psi"] > 0.15) | (health_report["status"] != "🟢 OK")]
@@ -185,28 +197,69 @@ with right_col:
 
 st.markdown("---")
 
-# 第三排：預測分佈分析
-st.subheader("📈 今日預測分佈分析 (Inference Distribution)")
-if not pred_df.empty:
-    dist_col1, dist_col2 = st.columns(2)
-    
-    with dist_col1:
-        fig = px.histogram(pred_df, x="prob_up", nbins=20, 
-                           title="上漲機率分佈 (Prob_up Distribution)",
-                           color_discrete_sequence=['#58a6ff'])
-        fig.add_vline(x=0.5, line_dash="dash", line_color="red")
-        fig.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
+# 第三排：詳細分析與審計
+tab1, tab2, tab3 = st.tabs(["📊 預測分佈 (Distribution)", "🚨 異常與警示 (Anomalies)", "🛡️ 資料審計 (Integrity Audit)"])
+
+with tab1:
+    if not pred_df.empty:
+        dist_col1, dist_col2 = st.columns(2)
         
-    with dist_col2:
-        top_picks = pred_df.sort_values("prob_up", ascending=False).head(10)
-        top_picks["Name"] = top_picks["stock_id"].map(lambda x: STOCK_CONFIGS.get(x, {}).get("name", "Unknown"))
-        fig_bar = px.bar(top_picks, x="prob_up", y="Name", orientation='h',
-                         title="今日高信心標的 (Top Prob_up)",
-                         color="prob_up", color_continuous_scale="RdYlGn")
-        fig_bar.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig_bar, use_container_width=True)
-else:
-    st.info("今日尚未生成推論數據。")
+        with dist_col1:
+            fig = px.histogram(pred_df, x="prob_up", nbins=20, 
+                               title="上漲機率分佈 (Prob_up Distribution)",
+                               color_discrete_sequence=['#58a6ff'])
+            fig.add_vline(x=0.5, line_dash="dash", line_color="red")
+            fig.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with dist_col2:
+            top_picks = pred_df.sort_values("prob_up", ascending=False).head(10)
+            top_picks["Name"] = top_picks["stock_id"].map(lambda x: STOCK_CONFIGS.get(x, {}).get("name", "Unknown"))
+            fig_bar = px.bar(top_picks, x="prob_up", y="Name", orientation='h',
+                             title="今日高信心標的 (Top Prob_up)",
+                             color="prob_up", color_continuous_scale="RdYlGn")
+            fig_bar.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_bar, use_container_width=True)
+    else:
+        st.info("今日尚未生成推論數據。")
+
+with tab2:
+    st.subheader("🚩 偵測到異常的預測 (Outliers)")
+    if not pred_df.empty:
+        anomalies = pred_df[pred_df["warning_flag"].notna() & (pred_df["warning_flag"] != "")]
+        if not anomalies.empty:
+            st.warning(f"偵測到 {len(anomalies)} 筆預測異常！")
+            st.dataframe(anomalies[["stock_id", "prob_up", "Expected Return", "warning_flag"]], use_container_width=True)
+        else:
+            st.success("✅ 今日所有推論結果皆通過統計常理性檢查。")
+    
+with tab3:
+    st.header("Trinity 資料完整性深度審計 (v5.0)")
+    audit_col1, audit_col2 = st.columns([1, 1])
+    
+    auditor = IntegrityAuditor(days_window=60)
+    
+    with audit_col1:
+        st.subheader("📌 公告延遲監控 (Regulatory Lag)")
+        st.table(load_lag_report())
+        
+        st.subheader("🔄 2330 跨表一致性")
+        st.dataframe(auditor.audit_cross_table_consistency("2330"), use_container_width=True)
+        
+    with audit_col2:
+        st.subheader("📂 完整覆蓋率矩陣 (60D)")
+        st.dataframe(fresh_df, use_container_width=True, height=400)
+        
+    st.markdown("---")
+    st.subheader("🕵️‍♂️ 斷層診斷 (Gap Diagnostic)")
+    target_sid = st.selectbox("選擇要診斷的標的", list(STOCK_CONFIGS.keys()))
+    target_table = st.selectbox("選擇資料表", ["stock_price", "institutional_investors_buy_sell", "margin_purchase_short_sale", "securities_lending"])
+    
+    gaps = auditor.audit_date_gaps(target_sid, target_table)
+    if gaps.empty:
+        st.success(f"✅ {target_sid} 在 {target_table} 中日期完全連續。")
+    else:
+        st.error(f"🚩 偵測到 {len(gaps)} 個時間斷層！")
+        st.dataframe(gaps, use_container_width=True)
 
 st.caption("Quantum Blueprint Quant System Dashboard © 2026 Antigravity Research")

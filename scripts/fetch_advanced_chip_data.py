@@ -54,7 +54,8 @@ from core.db_utils import (
     safe_float,
     safe_int,
     get_db_stock_ids,
-    get_all_latest_dates,
+    get_all_safe_starts,
+    get_market_safe_start,
     resolve_start_cached,
 )
 
@@ -273,31 +274,15 @@ def map_margin_susp(r: dict) -> tuple:
 # ─────────────────────────────────────────────
 # 抓取邏輯
 # ─────────────────────────────────────────────
-def latest_market_date(conn, table: str) -> str | None:
-    """取得市場層資料表（無 stock_id PK）的最新日期。"""
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT MAX(date) FROM {table}")
-        row = cur.fetchone()
-        if row and row[0]:
-            return row[0].strftime("%Y-%m-%d")
-    return None
-
-def fetch_market_dataset(
-    conn, dataset: str, table: str, ddl: str,
-    upsert_sql: str, template: str, mapper, dataset_key: str,
-    start: str, end: str, delay: float, force: bool,
-):
-    """市場層資料：不需 data_id，整段一次抓。"""
     ensure_ddl(conn, ddl)
     s = start
     if not force:
-        last = latest_market_date(conn, table)
-        if last:
-            next_d = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-            if next_d > end:
-                logger.info(f"[{table}] 已最新（最後日期 {last}），跳過")
+        safe_s = get_market_safe_start(conn, table)
+        if safe_s:
+            if safe_s > end:
+                logger.info(f"[{table}] 已最新，跳過")
                 return
-            s = max(next_d, DATASET_START[dataset_key])
+            s = max(safe_s, DATASET_START[dataset_key])
     s = max(s, DATASET_START[dataset_key])
     logger.info(f"[{table}] 抓取 {s} ~ {end}")
     data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay)
@@ -318,7 +303,7 @@ def fetch_per_stock_dataset(
     """個股層資料：Sponsor 可不帶 data_id 批次抓全市場，否則逐支。"""
     ensure_ddl(conn, ddl)
     valid_set = set(stock_ids)
-    latest_dates = get_all_latest_dates(conn, table)
+    latest_dates = get_all_safe_starts(conn, table)
 
     stock_starts: dict[str, str] = {}
     skipped = 0

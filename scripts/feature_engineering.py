@@ -1152,7 +1152,273 @@ def add_staleness_features(df: pd.DataFrame) -> pd.DataFrame:
     if "ann_date_rev" in df.columns:
         df["rev_staleness_days"] = (df.index - pd.to_datetime(df["ann_date_rev"])).dt.days
         df = df.drop(columns=["ann_date_rev"])
-        
+
+    return df
+
+
+# ═════════════════════════════════════════════════════════════════════
+# [v3] 新衍生因子 — 對應第四輪審查後新增的 14 張資料表
+#      將「資料」轉化為「alpha」的最後一哩
+# ═════════════════════════════════════════════════════════════════════
+# 設計原則：
+#   - 全部欄位防禦性處理（df.get / 預設 NaN），新資料表缺失時不破壞既有特徵
+#   - 衍生因子取名清楚標示來源（fcf_/sbl_/fred_/news_/event_/dt_ 等前綴）
+#   - 任何除法皆透過 _safe_div 避免分母為零產生 inf
+#   - 欄位類型一律轉 float（target/regime 例外，由原有清單管控）
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _safe_div(num, den):
+    """
+    除以零保護：分母 0 → NaN（後續會被 inf->NaN 統一處理）。
+    若任一邊為 None（df.get() 缺欄位），回傳 NaN Series 而非例外。
+    """
+    if num is None or den is None:
+        return np.nan
+    if hasattr(den, "replace"):
+        den_safe = den.replace(0, np.nan)
+    else:
+        den_safe = den if den != 0 else np.nan
+    return num / den_safe
+
+
+def add_quality_factors(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    品質因子（cash_flows_statement）— Sloan accruals / FCF Yield / CapEx intensity。
+    依賴：ocf / capex / dep_amor（季資料 ffill）+ market_cap + revenue_stmt + net_income
+    """
+    if "ocf" not in df.columns:
+        return df
+    ocf       = df.get("ocf")
+    capex     = df["capex"].abs() if "capex" in df.columns else pd.Series(0, index=df.index)
+    rev       = df.get("revenue_stmt")
+    ni        = df.get("net_income")
+    mkt_cap   = df.get("market_cap")
+
+    fcf = ocf - capex
+    df["fcf_quarterly"]   = fcf
+    if mkt_cap is not None:
+        df["fcf_yield"]   = _safe_div(fcf, mkt_cap)
+    if rev is not None:
+        df["fcf_margin"]      = _safe_div(fcf, rev)
+        df["capex_intensity"] = _safe_div(capex, rev)
+
+    # Sloan accruals：(NI - OCF) / total assets（用 mkt_cap 替代 → 標準化版本）
+    if ni is not None and mkt_cap is not None:
+        df["accruals"] = _safe_div(ni - ocf, mkt_cap)
+    if ni is not None:
+        df["cash_conversion"] = _safe_div(ocf, ni)
+
+    # OCF YoY 動能（4 季差）
+    if hasattr(ocf, "pct_change"):
+        df["ocf_yoy"] = ocf.pct_change(4)
+    return df
+
+
+def add_price_adj_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    還原股價 + 當沖 + 漲跌停的衍生因子。
+    依賴：close_adj / dt_volume / dt_buy_amount / dt_sell_amount / limit_up / limit_down
+    """
+    if "close_adj" in df.columns:
+        c_adj = df["close_adj"].astype(float)
+        df["log_return_adj_1d"]  = np.log(c_adj / c_adj.shift(1))
+        df["log_return_adj_5d"]  = np.log(c_adj / c_adj.shift(5))
+        df["log_return_adj_20d"] = np.log(c_adj / c_adj.shift(20))
+        # 除權息「蒸發」異常：未調整 close / 還原 close 的比值偏離 1
+        if "close" in df.columns:
+            df["ex_div_evap_ratio"] = _safe_div(df["close"], c_adj) - 1.0
+
+    # 當沖比
+    if "dt_buy_amount" in df.columns and "dt_sell_amount" in df.columns:
+        dt_total = df["dt_buy_amount"].fillna(0) + df["dt_sell_amount"].fillna(0)
+        if "turnover_value" in df.columns:
+            df["day_trading_pct"] = _safe_div(dt_total, df["turnover_value"] * 2)
+        if "volume" in df.columns and "dt_volume" in df.columns:
+            df["day_trading_vol_pct"] = _safe_div(df["dt_volume"], df["volume"])
+
+    # 漲跌停強度
+    if "limit_up" in df.columns and "high" in df.columns:
+        df["touched_limit_up"]   = (df["high"] >= df["limit_up"] * 0.998).astype(float)
+    if "limit_down" in df.columns and "low" in df.columns:
+        df["touched_limit_down"] = (df["low"]  <= df["limit_down"] * 1.002).astype(float)
+    if "limit_up" in df.columns and "close" in df.columns:
+        df["limit_close_pct"] = _safe_div(df["close"], df["limit_up"])
+    return df
+
+
+def add_short_interest_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    放空維度：個股 SBL/融券 + 市場層融資融券（散戶情緒）+ 暫停融券事件。
+    """
+    # 個股放空強度
+    if "sbl_volume" in df.columns and "volume" in df.columns:
+        vol_20 = df["volume"].rolling(20).mean()
+        df["sbl_short_intensity"] = _safe_div(df["sbl_volume"], vol_20)
+    if "sbl_short_bal" in df.columns:
+        df["sbl_short_bal_chg_5d"]     = df["sbl_short_bal"].diff(5)
+        df["sbl_short_bal_chg_pct_5d"] = df["sbl_short_bal"].pct_change(5)
+
+    # 完整放空圖像（融券 + SBL）
+    if "margin_short_bal" in df.columns and "sbl_short_bal" in df.columns:
+        total_short = df["margin_short_bal"].fillna(0) + df["sbl_short_bal"].fillna(0)
+        if "volume" in df.columns:
+            vol_20 = df["volume"].rolling(20).mean()
+            df["total_short_pressure"] = _safe_div(total_short, vol_20)
+
+    # 市場層散戶恐慌
+    if "mkt_margin_balance" in df.columns:
+        df["retail_panic_index"] = df["mkt_margin_balance"].pct_change(5)
+        m20 = df["mkt_margin_balance"].rolling(60).mean()
+        s20 = df["mkt_margin_balance"].rolling(60).std()
+        df["mkt_margin_zscore_60"] = _safe_div(df["mkt_margin_balance"] - m20, s20)
+    if "mkt_short_balance" in df.columns and "mkt_margin_balance" in df.columns:
+        df["mkt_short_to_margin_ratio"] = _safe_div(df["mkt_short_balance"], df["mkt_margin_balance"])
+
+    # 暫停融券事件
+    if "margin_susp_flag" in df.columns:
+        df["is_margin_suspended"] = df["margin_susp_flag"].fillna(0).astype(float)
+
+    return df
+
+
+def add_event_risk_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    事件風險：處置股票、減資、市值、市場層三大法人 breadth。
+    """
+    # 處置期間 flag
+    if "in_disposition" in df.columns:
+        df["is_in_disposition"] = df["in_disposition"].fillna(0).astype(float)
+
+    # 減資事件衰減（距上次減資的天數）
+    if "post_reduction_price" in df.columns:
+        cap_red_dates = df["post_reduction_price"].notna() & (
+            df["post_reduction_price"] != df["post_reduction_price"].shift(1)
+        )
+        cumcnt = (~cap_red_dates).astype(int).groupby(cap_red_dates.cumsum()).cumcount()
+        df["days_since_capital_reduction"] = cumcnt.astype(float)
+        df["recent_capital_reduction"]     = (df["days_since_capital_reduction"] < 60).astype(float)
+
+    # size factor
+    if "market_cap" in df.columns:
+        mc = df["market_cap"].astype(float)
+        df["log_market_cap"]      = np.log(mc.replace(0, np.nan))
+        df["market_cap_chg_30d"]  = mc.pct_change(30)
+        df["market_cap_chg_120d"] = mc.pct_change(120)
+
+    # 市場層三大法人 breadth
+    if "mkt_foreign_net" in df.columns:
+        df["mkt_foreign_pos_5d"]      = (df["mkt_foreign_net"] > 0).astype(float).rolling(5).sum()
+        df["mkt_foreign_net_5d_avg"]  = df["mkt_foreign_net"].rolling(5).mean()
+    if "mkt_trust_net" in df.columns and "mkt_foreign_net" in df.columns:
+        same_dir = (
+            (df["mkt_foreign_net"] > 0) &
+            (df.get("mkt_trust_net",  pd.Series(0, index=df.index)) > 0) &
+            (df.get("mkt_dealer_net", pd.Series(0, index=df.index)) > 0)
+        ).astype(float)
+        df["mkt_inst_sync_buy_5d"] = same_dir.rolling(5).sum()
+
+    return df
+
+
+def add_extended_derivative_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    期貨/選擇權擴充：外資真實意圖（夜盤 vs 日盤）+ PCR + put 買進強度。
+    """
+    if "foreign_fut_oi_net" in df.columns:
+        df["foreign_fut_oi_chg_5d"]  = df["foreign_fut_oi_net"].diff(5)
+        df["foreign_fut_oi_chg_20d"] = df["foreign_fut_oi_net"].diff(20)
+
+    # 夜盤溢價（外資真實意圖訊號）
+    if "foreign_fut_ah_net" in df.columns and "foreign_fut_deal_net" in df.columns:
+        df["night_session_premium"] = (
+            df["foreign_fut_ah_net"].fillna(0) - df["foreign_fut_deal_net"].fillna(0)
+        )
+
+    # 選擇權三大法人特徵
+    if "foreign_put_buy" in df.columns and "foreign_put_sell" in df.columns:
+        denom = df["foreign_put_buy"].fillna(0) + df["foreign_put_sell"].fillna(0) + 1
+        df["foreign_put_buy_intensity"] = _safe_div(df["foreign_put_buy"], denom)
+
+    if "foreign_put_buy" in df.columns and "foreign_call_buy" in df.columns:
+        df["foreign_fear_signal"] = (
+            df["foreign_put_buy"].fillna(0) - df["foreign_call_buy"].fillna(0)
+        )
+
+    # 全市場 PCR（put OI / call OI）
+    if "total_put_oi" in df.columns and "total_call_oi" in df.columns:
+        df["put_call_ratio_oi"] = _safe_div(
+            df["total_put_oi"].fillna(0),
+            df["total_call_oi"].fillna(0) + 1,
+        )
+
+    return df
+
+
+def add_news_attention_features(df: pd.DataFrame) -> pd.DataFrame:
+    """新聞注意力：news_count → 5/20 日累積、z-score、注意力跳升 flag。"""
+    if "news_count" not in df.columns:
+        return df
+    nc = df["news_count"].fillna(0).astype(float)
+    df["news_intensity_5d"]  = nc.rolling(5).sum()
+    df["news_intensity_20d"] = nc.rolling(20).sum()
+    mean_252 = nc.rolling(252).mean()
+    std_252  = nc.rolling(252).std()
+    df["news_intensity_zscore_252"] = _safe_div(nc - mean_252, std_252)
+    df["news_attention_spike"] = (df["news_intensity_zscore_252"] > 2).astype(float)
+    return df
+
+
+def add_fred_macro_features(df: pd.DataFrame) -> pd.DataFrame:
+    """FRED 全球宏觀：殖利率曲線 + VIX + DXY + M2 + PMI + Real Yield。"""
+    if "fred_t10y2y" in df.columns:
+        df["yield_curve_inverted"] = (df["fred_t10y2y"] < 0).astype(float)
+        m252 = df["fred_t10y2y"].rolling(252).mean()
+        s252 = df["fred_t10y2y"].rolling(252).std()
+        df["yield_spread_zscore"] = _safe_div(df["fred_t10y2y"] - m252, s252)
+
+    if "fred_vixcls" in df.columns:
+        vix = df["fred_vixcls"].astype(float)
+        df["vix_level"]       = vix
+        m252 = vix.rolling(252).mean()
+        s252 = vix.rolling(252).std()
+        df["vix_zscore_252"]  = _safe_div(vix - m252, s252)
+        df["vix_regime_high"] = (df["vix_zscore_252"] > 1).astype(float)
+        df["vix_chg_5d"]      = vix.pct_change(5)
+
+    if "fred_dtwexbgs" in df.columns:
+        df["dxy_momentum_60d"]  = df["fred_dtwexbgs"].pct_change(60)
+        df["dxy_momentum_252d"] = df["fred_dtwexbgs"].pct_change(252)
+
+    if "fred_m2sl" in df.columns:
+        df["m2_growth_yoy"] = df["fred_m2sl"].pct_change(252)
+
+    if "fred_napmci" in df.columns:
+        df["pmi_above_50"] = (df["fred_napmci"] > 50).astype(float)
+        df["pmi_chg_3m"]   = df["fred_napmci"].diff(63)
+
+    if "fred_dgs10" in df.columns and "fred_cpiaucsl" in df.columns:
+        cpi_yoy = df["fred_cpiaucsl"].pct_change(252) * 100
+        df["real_yield_10y"] = df["fred_dgs10"] - cpi_yoy
+
+    if "fred_bamlh0a0hym2" in df.columns:
+        df["hy_credit_spread"] = df["fred_bamlh0a0hym2"]
+
+    if "fred_dgs2" in df.columns:
+        df["dgs2_chg_5d"] = df["fred_dgs2"].diff(5)
+
+    return df
+
+
+def add_extended_features_bundle(df: pd.DataFrame) -> pd.DataFrame:
+    """[v3] 統一入口：呼叫所有新特徵函式（防禦性，欄位缺失自動跳過）。"""
+    df = add_quality_factors(df)
+    df = add_price_adj_features(df)
+    df = add_short_interest_features(df)
+    df = add_event_risk_features(df)
+    df = add_extended_derivative_features(df)
+    df = add_news_attention_features(df)
+    df = add_fred_macro_features(df)
     return df
 
 
@@ -1160,125 +1426,65 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     """
     接收 build_daily_frame() 的輸出，返回包含全部特徵 + 目標的 DataFrame。
 
-    v2 新增：
-      - add_trend_regime_features()  ：趨勢 Regime 偵測（牛市/熊市/整理期）
-      - add_multi_horizon_targets()  ：多時程二元目標（15/21/30 天）
+    [v3] 在原有特徵管線最末段加入 add_extended_features_bundle()，
+         注入第四輪審查後新增的 7 組衍生因子（品質/還原價/放空/事件/期權/新聞/FRED）。
     """
     logger.info("=== 開始特徵工程 ===")
     df = raw.copy()
 
-    df = add_technical_features(df)
-    logger.info(f"  技術動能特徵完成，shape={df.shape}")
-
-    df = add_fund_flow_features(df)
-    logger.info(f"  資金流情緒特徵完成，shape={df.shape}")
-
-    df = add_futures_chip_features(df)   # 期貨籌碼（新增）
-    logger.info(f"  期貨籌碼特徵完成，shape={df.shape}")
-
-    df = add_fundamental_features(df)
-    logger.info(f"  基本面脈衝特徵完成，shape={df.shape}")
-
-    df = add_valuation_features(df)
-    logger.info(f"  估值錨點特徵完成，shape={df.shape}")
-
-    # df = add_kwave_macro_score(df)
-    logger.info(f"  宏觀因子特徵完成，shape={df.shape}")
-
-    df = add_commodity_features(df)
-    logger.info(f"  大宗商品特徵完成，shape={df.shape}")
-
-    df = add_us_chain_features(df, stock_id)
-    logger.info(f"  美股供應鏈特徵完成，shape={df.shape}")
-
-    df = add_sponsor_chip_features(df)
-    logger.info(f"  進階籌碼特徵完成，shape={df.shape}")
-
-    df = add_sentiment_macro_features(df)
-    logger.info(f"  進階情緒特徵完成，shape={df.shape}")
-
-    df = add_event_features(df, stock_id)
-    logger.info(f"  事件驅動特徵完成，shape={df.shape}")
-
-    df = add_rolling_stats(df)
-    logger.info(f"  滾動統計特徵完成，shape={df.shape}")
-
-    df = add_volatility_clustering_features(df)
-    logger.info(f"  波動率聚類特徵完成，shape={df.shape}")
-
-    # ── 第一性原則：預期基準與驚奇值 (Expectation Residuals) ─────
-    df = add_expectation_residuals(df)
-    logger.info(f"  預期殘差 (Surprise) 注入完成，shape={df.shape}")
-
-    # ── 宏觀長波：康波週期特徵 (K-Wave) ────────────────────────
-    df = add_kwave_regime_features(df)
-    logger.info(f"  康波長波特徵 (K-Wave) 注入完成，shape={df.shape}")
-
-    # ── 2026 大共振：雙週期與奇點溢價 (2026 Resonance) ──────────
-    df = add_k2026_resonance_features(df, stock_id)
-    logger.info(f"  2026 大共振特徵注入完成，shape={df.shape}")
-
-    # ── 動力學：動力學特徵 (Kinetic Dynamics) ────────────────
-    df = add_kinetic_dynamics_features(df)
-    logger.info(f"  動力學特徵 (Kinetic) 注入完成，shape={df.shape}")
-
-    # ── 冪律分佈：肥尾偵測 (Power Law) ──────────────────────────
-    df = add_power_law_features(df)
-    logger.info(f"  冪律肥尾特徵 (Power Law) 注入完成，shape={df.shape}")
-
+    df = add_technical_features(df);                 logger.info(f"  技術動能特徵完成，shape={df.shape}")
+    df = add_fund_flow_features(df);                 logger.info(f"  資金流情緒特徵完成，shape={df.shape}")
+    df = add_futures_chip_features(df);              logger.info(f"  期貨籌碼特徵完成，shape={df.shape}")
+    df = add_fundamental_features(df);               logger.info(f"  基本面脈衝特徵完成，shape={df.shape}")
+    df = add_valuation_features(df);                 logger.info(f"  估值錨點特徵完成，shape={df.shape}")
+    df = add_commodity_features(df);                 logger.info(f"  大宗商品特徵完成，shape={df.shape}")
+    df = add_us_chain_features(df, stock_id);        logger.info(f"  美股供應鏈特徵完成，shape={df.shape}")
+    df = add_sponsor_chip_features(df);              logger.info(f"  進階籌碼特徵完成，shape={df.shape}")
+    df = add_sentiment_macro_features(df);           logger.info(f"  進階情緒特徵完成，shape={df.shape}")
+    df = add_event_features(df, stock_id);           logger.info(f"  事件驅動特徵完成，shape={df.shape}")
+    df = add_rolling_stats(df);                      logger.info(f"  滾動統計特徵完成，shape={df.shape}")
+    df = add_volatility_clustering_features(df);     logger.info(f"  波動率聚類特徵完成，shape={df.shape}")
+    df = add_expectation_residuals(df);              logger.info(f"  預期殘差完成，shape={df.shape}")
+    df = add_kwave_regime_features(df);              logger.info(f"  康波長波特徵完成，shape={df.shape}")
+    df = add_k2026_resonance_features(df, stock_id); logger.info(f"  2026 大共振特徵完成，shape={df.shape}")
+    df = add_kinetic_dynamics_features(df);          logger.info(f"  動力學特徵完成，shape={df.shape}")
+    df = add_power_law_features(df);                 logger.info(f"  冪律肥尾特徵完成，shape={df.shape}")
     df = add_order_flow_proxy_features(df)
     df = add_microstructure_features(df)
     df = add_cross_asset_correlation_features(df)
     df = add_interaction_features(df)
-    df = add_staleness_features(df)
-    logger.info(f"  複合進階特徵 (Microstructure/Cross-Asset/Interaction) 注入完成，shape={df.shape}")
+    df = add_staleness_features(df);                 logger.info(f"  複合進階特徵完成，shape={df.shape}")
+    df = add_gravity_well_features(df);              logger.info(f"  重力井物理特徵完成，shape={df.shape}")
+    df = add_liquidity_quality_features(df);         logger.info(f"  流動性品質特徵完成，shape={df.shape}")
+    df = add_blueprint_entry_signals(df, stock_id);  logger.info(f"  戰略建倉信號完成，shape={df.shape}")
 
-    # ── 物理學：重力井模型 (Gravity Well) ─────────────────────
-    df = add_gravity_well_features(df)
-    logger.info(f"  重力井物理特徵 (Gravity Well) 注入完成，shape={df.shape}")
+    # ── [v3] 第四輪審查衍生因子 ────────────────────────────
+    df = add_extended_features_bundle(df)
+    logger.info(f"  [v3] 衍生因子（品質/放空/事件/期權/新聞/FRED）完成，shape={df.shape}")
 
-    # ── 降噪歸真：流動性品質 (Liquidity Quality) ───────────────
-    df = add_liquidity_quality_features(df)
-    logger.info(f"  流動性品質特徵注入完成，shape={df.shape}")
-
-    # ── 戰略佈局：2026 建倉信號 (Singularity Entry) ───────────
-    df = add_blueprint_entry_signals(df, stock_id)
-    logger.info(f"  戰略建倉信號注入完成，shape={df.shape}")
-
-
-    # ── 新增：趨勢 Regime 偵測 ────────────────────────────────
-    df = add_trend_regime_features(df)
-    logger.info(f"  趨勢 Regime 特徵完成，shape={df.shape}")
-
-    # ── 舊版目標（向後兼容）──────────────────────────────────
-    df = add_targets(df, HORIZON)
-    logger.info(f"  目標變數完成，shape={df.shape}")
-
-    # ── 新增：多時程二元目標（15/21/30 天）───────────────────
+    df = add_trend_regime_features(df);              logger.info(f"  趨勢 Regime 特徵完成，shape={df.shape}")
+    df = add_targets(df, HORIZON);                   logger.info(f"  目標變數完成，shape={df.shape}")
     df = add_multi_horizon_targets(df, horizons=(15, 21, 30), threshold_pct=0.02)
     logger.info(f"  多時程目標完成，shape={df.shape}")
 
-    # 推論時不能移除最後的 HORIZON 天，因為我們要預測未來
     if not for_inference:
-        # 移除最後 HORIZON 天（目標為 NaN）
         df = df.iloc[:-HORIZON]
 
-    # ── inf → NaN（除以零產生的 inf 必須先清除，XGBoost/LightGBM 無法處理 inf）──
+    # inf → NaN
     num_cols = df.select_dtypes(include="number").columns.tolist()
-    # 統計 inf 數量（inf 出現在 replace 之前）
     n_inf = int(np.isinf(df[num_cols].select_dtypes(include="float")).sum().sum())
     df[num_cols] = df[num_cols].replace([np.inf, -np.inf], np.nan)
     if n_inf > 0:
-        logger.warning(f"  清除 {n_inf} 個 inf 值（已替換為 NaN，請檢查相關特徵）")
+        logger.warning(f"  清除 {n_inf} 個 inf 值")
 
-    # 移除極端值（±5σ clip），只對數值型浮點欄套用
-    # 注意：絕對股價與成交量等非平穩序列（Non-stationary data）絕不可 clip，否則會切斷創新高的最新價格！
+    # ±5σ clip（排除目標欄與絕對價量）
     exclude_clip_cols = {
         "target_30d", "direction_30d", "target_binary", "target_consensus",
         "target_consensus_binary", "close", "open", "high", "low", "volume",
         "trend_regime", "trend_regime_int", "compound_regime",
+        "close_adj", "open_adj", "high_adj", "low_adj", "volume_adj",
+        "limit_up", "limit_down", "ref_price", "market_cap",
     }
-    # 多時程目標也排除 clip
     exclude_clip_cols |= {f"target_{h}d_binary" for h in (15, 21, 30)}
     exclude_clip_cols |= {f"target_{h}d_return" for h in (15, 21, 30)}
 
@@ -1301,15 +1507,8 @@ def build_features_with_medium_term(
 ) -> pd.DataFrame:
     """
     完整特徵工程入口（含中期信號）。
-
-    流程：
-      1. data_pipeline.build_medium_term_features()  → 計算 15 個中期信號特徵
-      2. build_features()                             → 全部特徵工程（含趨勢 Regime + 多時程目標）
-
-    這是推薦的訓練入口，用法：
         from data_pipeline import build_daily_frame, build_medium_term_features
         from feature_engineering import build_features_with_medium_term
-
         raw = build_daily_frame(stock_id="2330")
         df  = build_features_with_medium_term(raw, stock_id="2330")
     """

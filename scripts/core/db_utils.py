@@ -34,11 +34,43 @@ def get_db_conn() -> psycopg2.extensions.connection:
 # ─────────────────────────────────────────────
 # DDL
 # ─────────────────────────────────────────────
+DDL_FETCH_LOG = """
+CREATE TABLE IF NOT EXISTS fetch_log (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    table_name VARCHAR(50),
+    stock_id VARCHAR(50),
+    start_date DATE,
+    end_date DATE,
+    rows_count INTEGER,
+    status VARCHAR(20),
+    error_msg TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_table ON fetch_log (table_name, timestamp DESC);
+"""
+
 def ensure_ddl(conn, *ddls: str) -> None:
     """執行一或多個 DDL 語句（冪等，IF NOT EXISTS）。"""
     with conn.cursor() as cur:
+        # 先確保基礎設施
+        cur.execute(DDL_FETCH_LOG)
         for ddl in ddls:
             cur.execute(ddl)
+    conn.commit()
+
+
+def log_fetch_result(
+    conn, table_name: str, stock_id: str, 
+    start_date: str, end_date: str, 
+    rows_count: int, status: str, error_msg: str = None
+) -> None:
+    """將抓取結果記錄至資料庫。"""
+    sql = """
+    INSERT INTO fetch_log (table_name, stock_id, start_date, end_date, rows_count, status, error_msg)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_count, status, error_msg))
     conn.commit()
 
 
@@ -143,11 +175,58 @@ def safe_timestamp(val) -> datetime | None:
 # ─────────────────────────────────────────────
 def get_all_latest_dates(conn, table: str) -> dict[str, str]:
     """
-    一次查出指定資料表所有股票的最新日期（GROUP BY 優化）。
-    回傳 dict: { stock_id: "YYYY-MM-DD" }
+    [Legacy] 查出所有股票的最新日期。
     """
     with conn.cursor() as cur:
         cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
+        return {
+            row[0]: row[1].strftime("%Y-%m-%d")
+            for row in cur.fetchall()
+            if row[1] is not None
+        }
+
+
+def get_all_safe_starts(
+    conn, table: str, window_days: int = 60, gap_interval: str = "1 day"
+) -> dict[str, str]:
+    """
+    [v3 Trinity] 智能偵測起始點，支援不同頻率（1 day, 1 month, 3 months）。
+    不只看 MAX(date)，還會偵測最近 window_days 內的「第一個斷層 (Gap)」。
+    回傳 dict: { stock_id: "YYYY-MM-DD" }
+    """
+    # 週末過濾僅適用於日線資料
+    dow_filter = (
+        "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
+        if gap_interval == "1 day" else ""
+    )
+
+    sql = f"""
+    WITH gaps AS (
+        SELECT 
+            t1.stock_id, 
+            MIN(t1.date + interval '{gap_interval}') as gap_start
+        FROM {table} t1
+        WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
+          AND t1.date < CURRENT_DATE
+          AND NOT EXISTS (
+              SELECT 1 FROM {table} t2 
+              WHERE t2.stock_id = t1.stock_id 
+                AND t2.date = t1.date + interval '{gap_interval}'
+          )
+          {dow_filter}
+        GROUP BY t1.stock_id
+    ),
+    max_dates AS (
+        SELECT stock_id, MAX(date) as last_date FROM {table} GROUP BY stock_id
+    )
+    SELECT 
+        m.stock_id, 
+        COALESCE(g.gap_start, m.last_date + interval '{gap_interval}') as safe_start
+    FROM max_dates m
+    LEFT JOIN gaps g ON m.stock_id = g.stock_id
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
         return {
             row[0]: row[1].strftime("%Y-%m-%d")
             for row in cur.fetchall()
@@ -172,6 +251,73 @@ def get_latest_date_by_col(conn, table: str, id_col: str, data_id: str) -> str |
             f"SELECT MAX(date) FROM {table} WHERE {id_col} = %s",
             (data_id,),
         )
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].strftime("%Y-%m-%d")
+    return None
+
+
+def get_market_safe_start(conn, table: str, window_days: int = 60) -> str | None:
+    """
+    [v3 Trinity] 查詢市場層資料表（無 stock_id）的「安全起始日」。
+    """
+    sql = f"""
+    WITH gap AS (
+        SELECT MIN(t1.date + interval '1 day') as gap_start
+        FROM {table} t1
+        WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
+          AND t1.date < CURRENT_DATE
+          AND NOT EXISTS (
+              SELECT 1 FROM {table} t2 
+              WHERE t2.date = t1.date + interval '1 day'
+          )
+          AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)
+    )
+    SELECT COALESCE(
+        (SELECT gap_start FROM gap),
+        (SELECT MAX(date) + interval '1 day' FROM {table})
+    )
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0].strftime("%Y-%m-%d")
+    return None
+
+
+def get_safe_start(
+    conn, table: str, stock_id: str, window_days: int = 60, gap_interval: str = "1 day"
+) -> str | None:
+    """
+    [v3 Trinity] 查詢單支股票的「安全起始日」，支援多頻率。
+    """
+    dow_filter = (
+        "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
+        if gap_interval == "1 day" else ""
+    )
+
+    sql = f"""
+    WITH gap AS (
+        SELECT MIN(t1.date + interval '{gap_interval}') as gap_start
+        FROM {table} t1
+        WHERE t1.stock_id = %s
+          AND t1.date >= CURRENT_DATE - interval '{window_days} days'
+          AND t1.date < CURRENT_DATE
+          AND NOT EXISTS (
+              SELECT 1 FROM {table} t2 
+              WHERE t2.stock_id = t1.stock_id 
+                AND t2.date = t1.date + interval '{gap_interval}'
+          )
+          {dow_filter}
+    )
+    SELECT COALESCE(
+        (SELECT gap_start FROM gap),
+        (SELECT MAX(date) + interval '{gap_interval}' FROM {table} WHERE stock_id = %s)
+    )
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (stock_id, stock_id))
         row = cur.fetchone()
         if row and row[0]:
             return row[0].strftime("%Y-%m-%d")
@@ -209,18 +355,16 @@ def resolve_start_cached(
     if force:
         return effective_start
 
-    latest = latest_dates.get(str(stock_id))
-    if latest is None:
+    # latest_dates 現在由 get_all_safe_starts 提供，可能是 gap_start 或 max_date + 1
+    safe_start = latest_dates.get(str(stock_id))
+    
+    if safe_start is None:
         return effective_start
 
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
-
-    if next_day > _today:
+    if safe_start > _today:
         return None  # 已是最新，跳過
 
-    return max(next_day, dataset_earliest)
+    return max(safe_start, dataset_earliest)
 
 
 def resolve_start(

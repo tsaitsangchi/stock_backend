@@ -282,8 +282,11 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: E402,F401
 from core.db_utils import (  # noqa: E402,F401
     get_db_conn,
+    ensure_ddl,
     bulk_upsert,
     safe_float,
+    get_all_safe_starts,
+    resolve_start_cached,
     safe_int,
     safe_date,
     safe_timestamp,
@@ -341,10 +344,6 @@ def get_expected_latest_date(dataset_key: str) -> str:
     return today.strftime("%Y-%m-%d")
 
 
-# [P0 重構] ensure_ddl 與 bulk_upsert 已從 core.db_utils 引入（見上方 import）
-from core.db_utils import ensure_ddl  # noqa: E402,F401
-
-
 def migrate_dividend_columns(conn):
     with conn.cursor() as cur:
         cur.execute(MIGRATE_DIVIDEND_COLUMNS)
@@ -357,53 +356,6 @@ def get_target_stock_ids(conn, stock_id_arg: str = None) -> list:
         return [s.strip() for s in stock_id_arg.split(",")]
     from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
     return list(STOCK_CONFIGS.keys())
-
-
-# ① DB 最新日期批次預載（一條 SQL 取代 N 次逐筆查詢）
-def get_all_latest_dates(conn, table: str) -> dict:
-    """
-    一次查出指定資料表所有股票的最新日期。
-    回傳 { stock_id: "YYYY-MM-DD" }
-
-    原本每支股票 SELECT MAX(date) WHERE stock_id=?（N 次 SQL）
-    現改為一條 GROUP BY SQL，預載後全程用 dict 查快取。
-    """
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
-        return {
-            row[0]: row[1].strftime("%Y-%m-%d")
-            for row in cur.fetchall()
-            if row[1] is not None
-        }
-
-
-def resolve_start_cached(
-    stock_id: str, latest_dates: dict,
-    global_start: str, dataset_key: str, force: bool
-):
-    """
-    從預載快取（latest_dates）決定起始日，不再逐筆查 DB。
-    回傳 None 表示此股票已是最新，不需抓取。
-    """
-    earliest = DATASET_START_DATES[dataset_key]
-    effective_start = max(global_start, earliest)
-
-    if force:
-        return effective_start
-
-    latest = latest_dates.get(str(stock_id))
-
-    if latest is None:
-        return effective_start
-
-    expected_latest = get_expected_latest_date(dataset_key)
-    if latest >= expected_latest:
-        return None  # 已達最新預期，跳過
-
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
-    return max(next_day, earliest)
 
 
 # ──────────────────────────────────────────────
@@ -500,9 +452,9 @@ def fetch_quarterly_combined(
 
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
-        # ① 批次預載兩張表最新日期
-        latest_fin = get_all_latest_dates(conn, "financial_statements") if do_fin else {}
-        latest_bs  = get_all_latest_dates(conn, "balance_sheet")        if do_bs  else {}
+        # ③ 預載各資料表安全起始日（偵測季度/月度斷層）
+        latest_fs = get_all_safe_starts(conn, "financial_statements", window_days=365, gap_interval="3 months") if "financial_statements" in tables else {}
+        latest_bs = get_all_safe_starts(conn, "balance_sheet", window_days=365, gap_interval="3 months") if "balance_sheet" in tables else {}
 
         total_fin = total_bs = 0
         skipped_fin = skipped_bs = 0
@@ -512,7 +464,7 @@ def fetch_quarterly_combined(
             # ── financial_statements ──
             if do_fin:
                 s = resolve_start_cached(
-                    sid, latest_fin, start_date, "financial_statements", force
+                    sid, latest_fs, start_date, DATASET_START_DATES["financial_statements"], force
                 )
                 if s is None:
                     skipped_fin += 1
@@ -532,7 +484,7 @@ def fetch_quarterly_combined(
             # ── balance_sheet ──
             if do_bs:
                 s = resolve_start_cached(
-                    sid, latest_bs, start_date, "balance_sheet", force
+                    sid, latest_bs, start_date, DATASET_START_DATES["balance_sheet"], force
                 )
                 if s is None:
                     skipped_bs += 1
@@ -584,12 +536,13 @@ def fetch_month_revenue_batch(
     增量更新時絕大多數股票 start_date 相同（上個月月初），
     可將 ~2,000 次請求壓縮到少數幾次批次請求。
     """
-    latest_dates = get_all_latest_dates(conn, "month_revenue")
+    # 月營收斷層偵測（365天窗口）
+    latest = get_all_safe_starts(conn, "month_revenue", window_days=365, gap_interval="1 month")
 
     stock_starts: dict[str, str] = {}
     skipped = 0
     for sid in sorted(valid_stock_ids):
-        s = resolve_start_cached(sid, latest_dates, start_date, "month_revenue", force)
+        s = resolve_start_cached(sid, latest, start_date, DATASET_START_DATES["month_revenue"], force)
         if s is None:
             skipped += 1
         else:
@@ -684,11 +637,11 @@ def fetch_month_revenue_per_stock(
     valid_stock_ids: list, conn,
 ):
     """逐支模式（--per-stock 時使用）"""
-    latest_dates = get_all_latest_dates(conn, "month_revenue")
+    latest = get_all_safe_starts(conn, "month_revenue", window_days=365, gap_interval="1 month")
     total_rows = skipped = 0
 
     for i, sid in enumerate(sorted(valid_stock_ids), 1):
-        s = resolve_start_cached(sid, latest_dates, start_date, "month_revenue", force)
+        s = resolve_start_cached(sid, latest, start_date, DATASET_START_DATES["month_revenue"], force)
         if s is None:
             skipped += 1
             continue
@@ -733,6 +686,7 @@ def fetch_month_revenue(
                 start_date, end_date, delay, force, stock_ids, conn
             )
         else:
+            logger.info("=== [month_revenue] 批次模式 ===")
             fetch_month_revenue_batch(
                 start_date, end_date, delay, force,
                 chunk_days, batch_threshold, set(stock_ids), conn,
@@ -742,7 +696,7 @@ def fetch_month_revenue(
 
 
 # ──────────────────────────────────────────────
-# ④ dividend（逐支 + 快取最新日期）
+# ④ dividend（逐支 + 快取）
 # ──────────────────────────────────────────────
 def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list):
     expected = get_expected_latest_date("dividend")
@@ -755,12 +709,12 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, st
         logger.info(f"Target stocks: {len(stock_ids)}")
 
         # ① 批次預載最新日期
-        latest_dates = get_all_latest_dates(conn, "dividend")
+        latest_dates = get_all_safe_starts(conn, "dividend", window_days=365, gap_interval="1 year")
 
         total_rows = skipped = 0
 
         for i, sid in enumerate(stock_ids, 1):
-            s = resolve_start_cached(sid, latest_dates, start_date, "dividend", force)
+            s = resolve_start_cached(sid, latest_dates, start_date, DATASET_START_DATES["dividend"], force)
             if s is None:
                 skipped += 1
                 continue

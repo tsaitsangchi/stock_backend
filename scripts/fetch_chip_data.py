@@ -193,13 +193,9 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 # ──────────────────────────────────────────────
 from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: E402,F401
 from core.db_utils import (  # noqa: E402,F401
-    get_db_conn,
-    ensure_ddl,
-    bulk_upsert,
-    safe_float,
-    safe_int,
-    safe_bigint,
     safe_date,
+    get_all_safe_starts,
+    resolve_start_cached,
 )
 
 
@@ -219,38 +215,6 @@ def get_db_stock_info(conn):
         return [row[0] for row in cur.fetchall()]
 
 
-def get_latest_date(conn, table: str, stock_id: str):
-    """查詢指定資料表中某支股票已有的最新日期，無資料回傳 None。"""
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT MAX(date) FROM {table} WHERE stock_id = %s", (stock_id,))
-        row = cur.fetchone()
-        if row and row[0]:
-            return row[0].strftime("%Y-%m-%d")
-        return None
-
-
-def resolve_start(conn, table: str, stock_id: str, global_start: str, dataset_key: str, force: bool):
-    """
-    決定實際抓取起始日：
-      force=True  → 使用 global_start（強制重抓）
-      force=False → DB 有資料則從最新日期+1天起抓；無資料則從 global_start 起抓
-    回傳 None 表示此股票資料已是最新，不需抓取。
-    """
-    earliest = DATASET_START_DATES[dataset_key]
-    effective_start = max(global_start, earliest)
-
-    if force:
-        return effective_start
-
-    latest = get_latest_date(conn, table, stock_id)
-    if latest is None:
-        return effective_start
-
-    next_day = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-    if next_day > DEFAULT_END:
-        return None  # 已是最新
-
-    return max(next_day, earliest)
 
 
 # ──────────────────────────────────────────────
@@ -262,13 +226,17 @@ def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay
     try:
         ensure_ddl(conn, DDL_INSTITUTIONAL_INVESTORS)
         targets = stock_ids if stock_ids else get_db_stock_info(conn)
+        
+        # [v3] 批次預載安全起始日，取代原本迴圈內的逐筆查詢
+        latest_dates = get_all_safe_starts(conn, "institutional_investors_buy_sell")
+        
         total_rows = 0
         skipped = 0
 
         for i, sid in enumerate(targets, 1):
-            actual_start = resolve_start(
-                conn, "institutional_investors_buy_sell", sid,
-                start_date, "institutional_investors_buy_sell", force
+            actual_start = resolve_start_cached(
+                sid, latest_dates, start_date, 
+                DATASET_START_DATES["institutional_investors_buy_sell"], force
             )
             if actual_start is None:
                 skipped += 1
@@ -313,13 +281,17 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
     try:
         ensure_ddl(conn, DDL_MARGIN_PURCHASE)
         targets = stock_ids if stock_ids else get_db_stock_info(conn)
+        
+        # [v3] 批次預載安全起始日
+        latest_dates = get_all_safe_starts(conn, "margin_purchase_short_sale")
+        
         total_rows = 0
         skipped = 0
 
         for i, sid in enumerate(targets, 1):
-            actual_start = resolve_start(
-                conn, "margin_purchase_short_sale", sid,
-                start_date, "margin_purchase_short_sale", force
+            actual_start = resolve_start_cached(
+                sid, latest_dates, start_date, 
+                DATASET_START_DATES["margin_purchase_short_sale"], force
             )
             if actual_start is None:
                 skipped += 1
@@ -375,13 +347,17 @@ def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool
     try:
         ensure_ddl(conn, DDL_SHAREHOLDING)
         targets = stock_ids if stock_ids else get_db_stock_info(conn)
+        
+        # [v3] 批次預載安全起始日
+        latest_dates = get_all_safe_starts(conn, "shareholding")
+        
         total_rows = 0
         skipped = 0
 
         for i, sid in enumerate(targets, 1):
-            actual_start = resolve_start(
-                conn, "shareholding", sid,
-                start_date, "shareholding", force
+            actual_start = resolve_start_cached(
+                sid, latest_dates, start_date, 
+                DATASET_START_DATES["shareholding"], force
             )
             if actual_start is None:
                 skipped += 1

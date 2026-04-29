@@ -35,7 +35,7 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parent))
 from config import MODEL_DIR, OUTPUT_DIR, STOCK_CONFIGS
 from data_pipeline import _query
-from data_integrity_check import run_integrity_check
+from data_integrity_audit import IntegrityAuditor
 
 # 設定日誌
 logging.basicConfig(
@@ -49,9 +49,10 @@ logger = logging.getLogger(__name__)
 def check_data_freshness_df() -> pd.DataFrame:
     """
     檢查主要資料表的整體健康度。
-    [v3] 委派給 data_integrity_check 執行個股級別深度掃描。
+    [v5] 委派給 IntegrityAuditor 執行深度二維掃描。
     """
-    return run_integrity_check(summary=False)
+    auditor = IntegrityAuditor(days_window=30)
+    return auditor.audit_coverage_matrix()
 
 
 def check_model_files_df(stock_ids: List[str]) -> pd.DataFrame:

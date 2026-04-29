@@ -1,21 +1,24 @@
 """
 fetch_missing_stocks_data.py — 自動補齊 config.py 中新增個股的歷史數據
+[v3 Trinity Edition]
 
-修改摘要（第四輪審查）：
-  [P0-SEC]  移除獨立的 DB_CONFIG 定義，改由 config.py 統一引入
-  [P1 修正] 修正邏輯矛盾：原版找出缺失個股後執行全量更新（忽略篩選結果）
-            → 修正為對每個缺失個股分別傳入 --stock-id SID --start 2010-01-01
-            → 宏觀資料（fetch_macro_data.py）不接受 --stock-id，獨立執行一次
-  [P1 保留] SCRIPTS_DIR = Path(__file__).parent（原版已正確，保留）
+修改摘要：
+1. 強化缺失偵測：從單純檢查 stock_price (count < 100)，升級為多表聯動校驗。
+2. 引入效能機制：利用 data_integrity_check 的邏輯，精確識別需要補件的標的。
+3. 智能補抓觸發：只要核心表 (price_adj, tech, fundamental) 任一出現嚴重缺漏，即觸發該標的的全量補抓。
 """
 
 import subprocess
 import sys
 import logging
 import psycopg2
-
 from pathlib import Path
+
+import json
+# 注入路徑並引入核心配置
+sys.path.append(str(Path(__file__).resolve().parent))
 from config import STOCK_CONFIGS, DB_CONFIG
+from data_integrity_audit import IntegrityAuditor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,88 +27,99 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
-SCRIPTS_DIR = Path(__file__).parent  # 無論從哪個目錄執行，路徑均正確
+SCRIPTS_DIR = Path(__file__).parent
+VENV_PYTHON = str(SCRIPTS_DIR.parent / "venv" / "bin" / "python3")
 
-# 個股相關腳本（支援 --stock-id 參數）
+# 需要精確檢查的「錨點資料表」
+ANCHOR_TABLES = [
+    "stock_price",
+    "price_adj",
+    "institutional_investors_buy_sell"
+]
+
+# 個股相關補件腳本
 PER_STOCK_SCRIPTS = [
     "fetch_technical_data.py",
+    "fetch_price_adj_data.py",
     "fetch_fundamental_data.py",
     "fetch_chip_data.py",
     "fetch_derivative_data.py",
     "fetch_international_data.py",
 ]
 
-# 宏觀資料腳本（不依個股區分，單獨執行一次）
+# 宏觀資料腳本
 MACRO_SCRIPTS = [
     "fetch_macro_data.py",
+    "fetch_fred_data.py"
 ]
 
-
 def run_script(script_name: str, args: list[str] = []) -> bool:
-    """
-    執行腳本，回傳是否成功。
-    使用 SCRIPTS_DIR 確保絕對路徑，避免工作目錄不一致。
-    """
     script_path = str(SCRIPTS_DIR / script_name)
+    if not Path(script_path).exists():
+        logger.error(f"找不到腳本: {script_path}")
+        return False
+        
     cmd = [VENV_PYTHON, script_path] + args
-    logger.info(f"執行指令: {' '.join(cmd)}")
+    logger.info(f"🚀 執行指令: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True)
         return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"執行 {script_name} 失敗（退出碼 {e.returncode}）")
-        return False
     except Exception as e:
-        logger.error(f"執行 {script_name} 發生異常：{e}")
+        logger.error(f"❌ 執行 {script_name} 失敗: {e}")
         return False
 
-
-def get_missing_data_stocks() -> list[str]:
+def get_missing_data_manifest() -> list[dict]:
     """
-    找出 STOCK_CONFIGS 中在 stock_price 資料少於 100 筆的個股。
-    回傳缺少資料的 stock_id 列表。
+    [v5] 執行深度審計並取得斷層清單。
     """
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor()
-    missing = []
-    for sid in STOCK_CONFIGS.keys():
-        cur.execute("SELECT COUNT(*) FROM stock_price WHERE stock_id = %s", (sid,))
-        if cur.fetchone()[0] < 100:
-            missing.append(sid)
-    conn.close()
-    return missing
-
+    auditor = IntegrityAuditor(days_window=1000)
+    manifest_path = "outputs/integrity_gaps.json"
+    auditor.dump_gaps_json(manifest_path)
+    
+    if not Path(manifest_path).exists():
+        return []
+        
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def main():
-    # ── Step 1：更新股票基本資訊（必須最先執行，其他腳本依賴 stock_info）
-    logger.info("=== Step 1：更新股票基本資訊 (stock_info) ===")
+    logger.info("=== [Phase 2] 精確補件管線啟動 ===")
+    
+    # 1. 基礎資訊更新
+    logger.info("Step 1: 更新 stock_info...")
     run_script("fetch_stock_info.py")
 
-    # ── Step 2：找出需要補資料的個股
-    missing_stocks = get_missing_data_stocks()
-    if not missing_stocks:
-        logger.info("所有個股資料皆已充足，無需補齊。")
+    # 2. 深度完整性掃描
+    gap_manifest = get_missing_data_manifest()
+    
+    if not gap_manifest:
+        logger.info("✅ 所有標的核心資料皆已完整，無需執行補件。")
     else:
-        logger.info(f"發現 {len(missing_stocks)} 支需要補資料的個股：{', '.join(missing_stocks)}")
+        logger.info(f"發現 {len(gap_manifest)} 處資料斷層，啟動精確補件...")
+        
+        # 3. 根據清單進行精確補件
+        # 將清單按 stock_id 分組
+        from collections import defaultdict
+        grouped_gaps = defaultdict(list)
+        for gap in gap_manifest:
+            grouped_gaps[gap["stock_id"]].append(gap)
 
-        # ── Step 3：逐支個股執行補齊（傳入 --stock-id 與 --start，只抓該股）
-        # [P1 修正] 原版在迴圈中只有 print，實際執行的是全量更新（語意矛盾）
-        # 修正版：對每支缺失個股分別傳入 --stock-id SID --start 2010-01-01
-        for sid in missing_stocks:
-            logger.info(f"\n=== 補齊個股 {sid} ({STOCK_CONFIGS[sid].get('name', sid)}) ===")
+        for sid, gaps in grouped_gaps.items():
+            # 找出這支股票所有表中最原始的斷層點
+            earliest_gap = min([g["gap_start"] for g in gaps])
+            logger.info(f"\n>>> 開始補齊 {sid} 的歷史斷層 (起點: {earliest_gap})")
+            
             for script in PER_STOCK_SCRIPTS:
-                success = run_script(script, args=["--stock-id", sid, "--start", "2010-01-01"])
-                if not success:
-                    logger.warning(f"  {script} 對 {sid} 執行失敗，繼續下一腳本")
+                # 這裡假設腳本支援 --tables 參數則更精確，
+                # 目前採用的策略是從最早斷層點開始該標的的所有核心抓取
+                run_script(script, args=["--stock-id", sid, "--start", earliest_gap])
 
-    # ── Step 4：宏觀資料無個股區分，獨立執行一次（無論是否有缺失個股）
-    logger.info("\n=== Step 4：更新宏觀資料（全域，不依個股） ===")
+    # 4. 宏觀資料更新
+    logger.info("\nStep 4: 更新全域宏觀資料...")
     for script in MACRO_SCRIPTS:
         run_script(script)
 
-    logger.info("\n✅ 所有補齊作業完成。")
-
+    logger.info("\n✨ 補件任務全數完成。")
 
 if __name__ == "__main__":
     main()

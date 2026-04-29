@@ -31,6 +31,8 @@ SCRIPTS_DIR        = Path(__file__).parent
 MAX_PARALLEL_TRAINS = 2      # 深層訓練耗能高，降低並行數
 CHECK_INTERVAL     = 60      # 每分鐘檢查一次
 METRICS_REGISTRY   = SCRIPTS_DIR / "outputs" / "metrics_registry.json"
+FAILURE_TRACKER    = {}  # {sid: {"retries": 0, "last_fail": timestamp}}
+MAX_RETRIES        = 3
 
 # [P1 2.4] PID 追蹤目錄
 PID_DIR = SCRIPTS_DIR / "outputs" / "pids"
@@ -75,6 +77,27 @@ def get_running_trains() -> list[str]:
         except Exception as e:
             logger.error(f"[PID] 檢查 {sid} 進程失敗：{e}")
     return list(set(running))
+
+
+def check_finished_trains(running_before: list[str], running_now: list[str]) -> list[str]:
+    """辨識剛結束的任務（在 before 中但不在 now 中）。"""
+    return [sid for sid in running_before if sid not in running_now]
+
+
+def get_task_exit_status(sid: str) -> bool:
+    """
+    檢查訓練日誌的最末尾，判斷是否成功。
+    (這是一個啟發式檢查，因為 subprocess.Popen 沒法直接拿 exit code)
+    """
+    log_path = SCRIPTS_DIR / "outputs" / f"train_{sid}.log"
+    if not log_path.exists(): return False
+    try:
+        with open(log_path, "r") as f:
+            last_lines = f.readlines()[-10:]
+            content = "".join(last_lines)
+            return "SUCCESS" in content or "完成" in content or "metrics_registry" in content
+    except:
+        return False
 
 
 def launch_training(sid: str, cmd: list[str], log_path: Path):
@@ -161,8 +184,22 @@ def main():
 
     while True:
         try:
-            running_ids  = get_running_trains()
-            perf_scores  = get_performance_scores()
+            running_now  = get_running_trains()
+            
+            # --- [新功能] 處理剛結束的任務並更新失敗計數 ---
+            if 'running_ids' in locals():
+                finished_tasks = check_finished_trains(running_ids, running_now)
+                for sid in finished_tasks:
+                    if get_task_exit_status(sid):
+                        logger.info(f"✅ [{sid}] 訓練成功結束。")
+                        FAILURE_TRACKER.pop(sid, None)
+                    else:
+                        fail_count = FAILURE_TRACKER.get(sid, {}).get("retries", 0) + 1
+                        FAILURE_TRACKER[sid] = {"retries": fail_count, "last_fail": time.time()}
+                        logger.warning(f"❌ [{sid}] 訓練似乎失敗了！(失敗次數: {fail_count}/{MAX_RETRIES})")
+            
+            running_ids = running_now
+            perf_scores = get_performance_scores()
 
             # 排序標的：基於 Priority Score（降序）
             all_sids     = list(STOCK_CONFIGS.keys())
@@ -190,7 +227,16 @@ def main():
 
             if len(running_ids) < MAX_PARALLEL_TRAINS:
                 for sid in sorted_targets:
-                    if sid not in finished_ids and sid not in running_ids:
+                    # 檢查是否已完成、是否正在執行、是否已達到重試上限
+                    is_quarantined = FAILURE_TRACKER.get(sid, {}).get("retries", 0) >= MAX_RETRIES
+                    
+                    if sid not in finished_ids and sid not in running_ids and not is_quarantined:
+                        # 實施退避 (Backoff)：失敗後需等待一定時間才能重試
+                        last_fail = FAILURE_TRACKER.get(sid, {}).get("last_fail", 0)
+                        retry_wait = (2 ** FAILURE_TRACKER.get(sid, {}).get("retries", 0)) * 60 # 60s, 120s, 240s...
+                        
+                        if time.time() - last_fail < retry_wait:
+                            continue
                         is_anchor = sid in ANCHOR_STOCKS
                         mode_str  = "DEEP (141-Fold)" if is_anchor else "PARETO (60-Fold)"
                         logger.info(

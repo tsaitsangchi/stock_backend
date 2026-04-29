@@ -70,12 +70,17 @@ def _query(sql: str, params: tuple = ()) -> pd.DataFrame:
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-            if not rows:
+            try:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                cols = [desc[0] for desc in cur.description] if cur.description else []
+                if not rows:
+                    return pd.DataFrame(columns=cols)
+                df = pd.DataFrame([dict(r) for r in rows], columns=cols)
+            except (psycopg2.errors.UndefinedTable, psycopg2.ProgrammingError) as e:
+                # 若資料表不存在，回傳空 DataFrame 而非崩潰，讓審計工具判定為缺失
+                logger.warning(f"資料表不存在或查詢失敗: {e}")
                 return pd.DataFrame()
-            cols = [d.name for d in cur.description]
-            df   = pd.DataFrame([dict(r) for r in rows], columns=cols)
     # Decimal / object → float（psycopg2 回傳 Decimal 型態）
     # pandas 2.x 已移除 errors="ignore"，改用 coerce 後還原非數值欄
     for col in df.columns:

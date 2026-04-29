@@ -203,6 +203,38 @@ def explain_prediction(ensemble, X_latest: pd.DataFrame) -> dict:
 
 
 # ─────────────────────────────────────────────
+# 異常偵測 (Outlier Detection)
+# ─────────────────────────────────────────────
+
+def validate_prediction_sanity(report: dict, df_feat: pd.DataFrame) -> List[str]:
+    """
+    執行統計常理性檢查。若發現異常，回傳警告訊息列表。
+    """
+    warnings = []
+    prob_up = report["prob_up"]
+    current_close = report["current_close"]
+    
+    # 1. 預期報酬異常 (Magnitude Check)
+    # 若 30 天預期漲跌幅超過 50%，在一般市場情況下極不合理
+    exp_ret_mid = (report["target_price"]["mid"] / current_close) - 1
+    if abs(exp_ret_mid) > 0.5:
+        warnings.append(f"異常預期報酬: {exp_ret_mid:.1%}")
+
+    # 2. 訊號退化檢查 (Entropy/Degeneration Check)
+    # 如果 prob_up 剛好是 0.5000，且模型一致性極高，可能是特徵全被填為 0 導致的偏誤
+    if abs(prob_up - 0.5) < 1e-4:
+        warnings.append("預測訊號退化 (Prob=0.5)")
+
+    # 3. 資料時效性檢查 (Staleness Check)
+    # 如果最後一筆特徵資料距離現在超過 3 天，推論結果不具時效性
+    last_data_date = df_feat.index[-1]
+    if (datetime.now() - last_data_date).days > 3:
+        warnings.append(f"資料過度陳舊: {last_data_date.strftime('%Y-%m-%d')}")
+
+    return warnings
+
+
+# ─────────────────────────────────────────────
 # 主推論函式
 # ─────────────────────────────────────────────
 
@@ -413,7 +445,16 @@ def run_prediction(
             "tft_prob":         tft_prob_db,
             "extreme_valuation": is_extreme,
             "macro_shock":       is_macro,
+            "warning_flag":      "", # 預留欄位
         })
+
+    # ── 異常偵測 (Outlier Detection) ──
+    sanity_warnings = validate_prediction_sanity(report, df_feat)
+    if sanity_warnings:
+        warning_str = "; ".join(sanity_warnings)
+        logger.warning(f"⚠️ [{stock_id}] 偵測到異常信號: {warning_str}")
+        for day in trajectory:
+            day["warning_flag"] = warning_str
 
     # ── 組裝報告 ──
     report = {

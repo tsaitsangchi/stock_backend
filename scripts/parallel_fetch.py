@@ -22,6 +22,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from core.finmind_client import check_api_quota
+from core.db_utils import get_db_conn, log_fetch_result
 
 # ─────────────────────────────────────────────
 # 路徑設定
@@ -108,29 +109,45 @@ def run_script(script_path: str) -> tuple[str, bool]:
     pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{SCRIPTS_DIR}:{pythonpath}" if pythonpath else str(SCRIPTS_DIR)
 
+    ret_code = 0
+    success = False
     try:
         subprocess.run(
             [VENV_PYTHON, script_path],
             env=env,
             check=True,
-            timeout=MAX_SCRIPT_TIMEOUT,  # [P1 修正] 防止 Worker 永久阻塞
+            timeout=MAX_SCRIPT_TIMEOUT,
         )
-        duration = time.time() - start
-        logger.info(f"✅ 完成: {script_path} (耗時: {duration:.1f} 秒)")
-        return script_path, True
-
-    except subprocess.TimeoutExpired:
-        duration = time.time() - start
-        logger.error(
-            f"⏱️ 超時: {script_path} 執行超過 {MAX_SCRIPT_TIMEOUT // 3600} 小時，強制終止"
-        )
-        return script_path, False
+        success = True
     except subprocess.CalledProcessError as e:
-        logger.error(f"❌ 失敗: {script_path}, 退出代碼: {e.returncode}")
-        return script_path, False
+        ret_code = e.returncode
     except Exception as e:
-        logger.error(f"❌ 異常: {script_path}, 錯誤: {e}")
-        return script_path, False
+        ret_code = -1
+
+    # [Risk 6] 記錄到資料庫
+    conn = get_db_conn()
+    try:
+        status = "SUCCESS" if success else "FAILED"
+        err_msg = "" if success else f"Exit code: {ret_code}"
+        script_name = Path(script_path).name
+        log_fetch_result(
+            conn, script_name, "SYSTEM", 
+            date.today().strftime("%Y-%m-%d"), 
+            date.today().strftime("%Y-%m-%d"),
+            0, status, err_msg
+        )
+    except Exception as e:
+        logger.error(f"無法寫入 fetch_log: {e}")
+    finally:
+        conn.close()
+
+    duration = time.time() - start
+    if success:
+        logger.info(f"✅ 完成: {script_path} (耗時: {duration:.1f} 秒)")
+    else:
+        logger.error(f"❌ 失敗/異常: {script_path} (耗時: {duration:.1f} 秒)")
+    
+    return script_path, success
 
 
 # ─────────────────────────────────────────────
