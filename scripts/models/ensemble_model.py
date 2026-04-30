@@ -490,14 +490,25 @@ class SimpleMomentumModel:
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
         # 核心邏輯：捕捉價格慣性
-        if "returns_1d" in X.columns:
-            mom = X["returns_1d"].rolling(self.lookback).sum().fillna(0)
+        target_col = None
+        for c in ["log_return_1d", "ret_1d", "returns_1d"]:
+            if c in X.columns:
+                target_col = c
+                break
+        
+        if target_col:
+            mom = X[target_col].rolling(self.lookback).sum().fillna(0)
             # 映射至 [0, 1] 機率空間 (Sigmoid 近似)
             return 1 / (1 + np.exp(-mom * 5))
         return np.full(len(X), 0.5)
 
     def feature_importance(self) -> pd.Series:
-        return pd.Series({"returns_1d": 1.0})
+        # 優先回傳存在於系統中的動量特徵名，防止 feature selection 時的 KeyError
+        from config import ALL_FEATURES
+        for c in ["log_return_1d", "ret_1d", "returns_1d"]:
+            if c in ALL_FEATURES:
+                return pd.Series({c: 1.0})
+        return pd.Series(dtype=float)
 
 
 # ─────────────────────────────────────────────
