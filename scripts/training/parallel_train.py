@@ -86,8 +86,8 @@ logging.basicConfig(level=logging.INFO,
 MAX_WORKERS    = 3                                            # 並行訓練數
 VENV_PYTHON    = os.environ.get("VENV_PYTHON",
                                 "/home/hugo/project/stock_backend/venv/bin/python3")
-TRAIN_SCRIPT   = str(BASE_DIR / "train_evaluate.py")
-HEALTH_SCRIPT  = str(BASE_DIR / "model_health_check.py")
+TRAIN_SCRIPT   = str(BASE_DIR / "training" / "train_evaluate.py")
+HEALTH_SCRIPT  = str(BASE_DIR / "monitor" / "model_health_check.py")
 MAX_RETRIES    = 3                                            # 訓練失敗最大重試次數
 TRAIN_TIMEOUT  = 4 * 3600                                     # 單一訓練最長 4 小時
 RETRAIN_AGE_THRESHOLD_DAYS = 30                               # 模型多久之後強制重訓

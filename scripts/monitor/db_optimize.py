@@ -91,8 +91,24 @@ def setup_materialized_views(conn):
 
 
 def ensure_columns(conn):
-    """確保必要的欄位存在於資料表中。"""
-    # [P0 修復 2.2] 加入 is_backfill 欄位以區隔回填與真實預測
+    """確保必要的資料表與欄位存在。"""
+    # [P1] 建立預測紀錄表
+    forecast_sql = """
+    CREATE TABLE IF NOT EXISTS public.stock_forecast_daily (
+        predict_date DATE,
+        forecast_date DATE,
+        stock_id VARCHAR(20),
+        current_close FLOAT,
+        prob_up FLOAT,
+        day_offset INT,
+        is_backfill BOOLEAN DEFAULT FALSE,
+        warning_flag TEXT DEFAULT '',
+        PRIMARY KEY (predict_date, forecast_date, stock_id, day_offset)
+    );
+    """
+    run_sql(conn, forecast_sql, "確保 stock_forecast_daily 資料表存在")
+
+    # [P0 修復 2.2] 加入 is_backfill 欄位（以防表已存在但版本較舊）
     run_sql(
         conn,
         "ALTER TABLE stock_forecast_daily ADD COLUMN IF NOT EXISTS is_backfill BOOLEAN DEFAULT FALSE;",
