@@ -199,13 +199,27 @@ def get_feature_matrix(
         all_features = get_all_features(stock_id)
         feat_cols = [c for c in all_features if c in df.columns]
         
-    X = df[feat_cols].copy()
-    # inf → NaN → 0（雙重保險：feature_engineering 已清一次，這裡再補一次）
-    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
-    y_reg = df["target_30d"]
-    y_ret = df.get("target_return", df["target_30d"]) # Fallback to % if missing
-    # pandas 2.x：y_reg 若含 NaN 不能直接 astype(int)，用 Int64 或先 dropna
+    X = df[feat_cols].copy().replace([np.inf, -np.inf], np.nan).fillna(0)
+    y_reg = df.loc[X.index, "target_30d"]
+    y_ret = df.loc[X.index, "target_ret_30d"] if "target_ret_30d" in df.columns else y_reg
     y_cls = (y_reg > 0).astype(int)
+    
+    # [P0 Fix] 建立唯一索引：結合日期與股票 ID。
+    # 解決 Backbone pooling 時相同日期不同股票導致的「非唯一索引」衝突，
+    # 同時保留推論所需的日期資訊。
+    if "date" in df.columns and "stock_id" in df.columns:
+        multi_idx = pd.MultiIndex.from_frame(df.loc[X.index, ["date", "stock_id"]])
+        X.index = multi_idx
+        y_reg.index = multi_idx
+        y_ret.index = multi_idx
+        y_cls.index = multi_idx
+    else:
+        # Fallback to unique RangeIndex if columns missing
+        X = X.reset_index(drop=True)
+        y_reg = y_reg.reset_index(drop=True)
+        y_ret = y_ret.reset_index(drop=True)
+        y_cls = y_cls.reset_index(drop=True)
+    
     return X, y_reg, y_ret, y_cls
 
 
@@ -452,12 +466,12 @@ def run_walk_forward(
     # 呼叫 predict_meta 直接在 OOF 機率上應用 Meta-Learner 與 Regime 切分
     final_oof_prob_valid = meta_ensemble.predict_meta(oof_valid, X_oof=X.loc[valid_mask])
 
-    oof_prob_up = pd.Series(np.nan, index=df.index)
+    oof_prob_up = pd.Series(np.nan, index=X.index)
     oof_prob_up.loc[valid_mask] = final_oof_prob_valid
 
     # Meta 重算後的全局 OOF 指標
     y_meta_reg  = y_reg.loc[valid_mask]
-    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid), stock_id=stock_id)
+    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid, index=valid_mask[valid_mask].index), stock_id=stock_id)
 
     logger.info("\n=== Meta-Learner OOF 指標（真實部署準確度）===")
     for k, v in meta_metrics.items():
