@@ -266,8 +266,13 @@ def main():
 
                         # [P1 2.4] 使用 launch_training 記錄 PID
                         cmd = [VENV_PYTHON, str(SCRIPTS_DIR / "train_evaluate.py"), "--stock-id", sid]
-                        if not is_anchor:
+                        if is_anchor:
+                            # 對於 Anchor Stock，將步進提高到 60（約 50-fold），兼顧穩健與速度
+                            cmd += ["--step-days", "60"]
+                        else:
+                            # 一般標的維持 fast-mode (double step_days)
                             cmd += ["--fast-mode"]
+                        
                         log_path = SCRIPTS_DIR / "outputs" / f"train_{sid}.log"
                         launch_training(sid, cmd, log_path)
 

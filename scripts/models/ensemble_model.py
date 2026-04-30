@@ -695,7 +695,7 @@ class RegimeEnsemble:
                 weights = global_weights[mask] if isinstance(mask, np.ndarray) else global_weights[mask.values]
                 model.fit_meta(oof_df[mask], y_meta[mask], sample_weight=weights)
             else:
-                model.meta = self.mid_vol_model.meta
+                model.meta_learner = self.mid_vol_model.meta_learner
 
     def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
         if X_oof is None:
