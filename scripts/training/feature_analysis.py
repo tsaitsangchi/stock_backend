@@ -40,8 +40,8 @@ class FactorAnalyzer:
             
             x = self.df[f]
             
-            # 1. Rolling Spearman Correlation (Rank IC)
-            ic_series = x.rolling(window).corr(y, method='spearman')
+            # 1. Rolling Correlation (IC)
+            ic_series = x.rolling(window).corr(y)
             
             # 2. 基本指標
             mean_ic = ic_series.mean()
