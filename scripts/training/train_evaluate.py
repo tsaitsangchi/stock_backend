@@ -56,6 +56,7 @@ train_evaluate.py — Purged Walk-Forward Cross-Validation 訓練 + 評估
 
 import argparse
 import logging
+import os
 from dataclasses import dataclass
 from typing import Generator, Optional
 
@@ -242,7 +243,7 @@ def run_walk_forward(
     }
     """
     X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
-    n = len(df)
+    n = len(X)
 
     _test_window = WF_CONFIG.get("test_window", WF_CONFIG["step_days"])
     folds = list(purged_walk_forward_folds(
@@ -260,9 +261,9 @@ def run_walk_forward(
 
     # ── 收集 Level-1 OOF 預測（每個模型分開）──────────────────────
     # 關鍵：三個 Series 分開記錄，才能讓 Meta-Learner 學習差異化權重
-    oof_xgb     = pd.Series(np.nan, index=df.index)
-    oof_lgb     = pd.Series(np.nan, index=df.index)
-    oof_tft     = pd.Series(np.nan, index=df.index)
+    oof_xgb     = pd.Series(np.nan, index=X.index)
+    oof_lgb     = pd.Series(np.nan, index=X.index)
+    oof_tft     = pd.Series(np.nan, index=X.index)
 
     fold_metrics    = []
     all_importances = []
@@ -437,14 +438,14 @@ def run_walk_forward(
     meta_ensemble.fit_meta(oof_valid, y_meta, X_oof=X.loc[valid_mask])
 
     logger.info("✅ Level-2 Meta-Learner 已完成訓練（基於全 OOF，無未來洩漏）")
-    if hasattr(meta_ensemble.low_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.low_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.low_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.low_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [Low Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
-    if hasattr(meta_ensemble.mid_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.mid_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.mid_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.mid_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [Mid Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
-    if hasattr(meta_ensemble.high_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.high_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.high_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.high_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [High Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
 
     # ── 用 Meta 重新計算全局 OOF 機率（反映真實部署效果）─────────
@@ -561,15 +562,15 @@ def train_final_model(
         for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
             cv_model = getattr(meta_ensemble_from_cv, attr)
             ens_model = getattr(ens, attr)
-            if cv_model.meta is not None:
-                ens_model.meta = cv_model.meta
+            if hasattr(cv_model, "meta_learner"):
+                ens_model.meta_learner = cv_model.meta_learner
                 ens_model.scaler = cv_model.scaler
             if hasattr(cv_model, "_calibrator"):
                 ens_model._calibrator = cv_model._calibrator
-            if cv_model.xgb_clf._calibrator is not None:
-                ens_model.xgb_clf._calibrator = cv_model.xgb_clf._calibrator
-            if cv_model.lgb_clf._calibrator is not None:
-                ens_model.lgb_clf._calibrator = cv_model.lgb_clf._calibrator
+            if "xgb" in cv_model.models and cv_model.models["xgb"]._calibrator is not None:
+                ens_model.models["xgb"]._calibrator = cv_model.models["xgb"]._calibrator
+            if "lgb" in cv_model.models and cv_model.models["lgb"]._calibrator is not None:
+                ens_model.models["lgb"]._calibrator = cv_model.models["lgb"]._calibrator
         logger.info("✅ Meta-Learner + 個別 Calibrators 已從 CV 移植至最終模型")
     else:
         # Fallback：在 Hold-Out 上訓練 Meta（樣本少，僅供緊急使用）
