@@ -367,7 +367,20 @@ class SignalFilter:
         boosting_reasons = []
         dimensions       = []
         
-        # ── 動力學 DNA 注入 ───────────────────────────────────────
+        # ── 1. 核心風險硬阻斷 (Hard Blocks) ──
+        # [P0 修復 2.3] 防止買入高風險標的（下市預警、處置股、暫停融券）
+        latest = df_feat.iloc[-1]
+        if latest.get("is_delisted", 0) > 0:
+            return FilterResult("HOLD_CASH", 0, blocking_reasons=["⛔ 已下市/停止交易"])
+        
+        if latest.get("is_in_disposition", 0) > 0:
+            return FilterResult("HOLD_CASH", 0, blocking_reasons=["⛔ 處置股票期間（流動性風險）"])
+
+        if latest.get("is_margin_suspended", 0) > 0:
+            # 暫停融券通常預示股東會前夕或重大訊息，風險溢酬不穩
+            blocking_reasons.append("⚠️ 暫停融券（軋空風險/停止過戶）")
+
+        # ── 2. 動力學 DNA 注入 ───────────────────────────────────────
         if dynamics:
             # 根據敏感度調整門檻：敏感度越低，門檻越高
             sensitivity_bias = (0.5 - dynamics["sensitivity"]) * 0.1
