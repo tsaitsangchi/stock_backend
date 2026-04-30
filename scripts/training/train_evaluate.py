@@ -137,20 +137,16 @@ def purged_walk_forward_folds(
     step_days:    int,
     embargo_days: int,
     test_window:  Optional[int] = None,
+    turbo:        bool = False,  # [新增] Turbo 模式
 ) -> Generator[Fold, None, None]:
     """
     Purged Walk-Forward CV。
-    embargo_days：訓練集末尾到驗證集起始之間的禁區，
-    防止含有未來目標（30 天後收盤）的訓練樣本滲入驗證集。
-
-    test_window（新增）：每個 fold 的 test 窗口大小。
-      預設為 step_days（向後兼容），但建議設為 126（半年）以獲得
-      足夠的樣本量，使 DA 估計穩定：
-        • test_window=21  → DA std 理論上限 ~50%（不穩定）
-        • test_window=126 → DA std 理論上限 ~4.5%（穩定）
-      test 窗口相鄰 fold 之間可以重疊（rolling window），
-      這是合法的——重疊不等於洩漏，因為訓練集與 test 集仍嚴格分開。
+    turbo=True：會將 step_days 強制放大到 126 (半年)，極速縮減 fold 數量。
     """
+    if turbo:
+        step_days = max(step_days, 126)
+        logger.info(f"⚡ [Turbo Mode] Step days forced to {step_days}")
+
     if test_window is None:
         test_window = step_days   # 向後兼容
 
@@ -237,6 +233,7 @@ def run_walk_forward(
     use_tft:         bool = False,
     calibrate_probs: bool = True,
     feature_list:    Optional[list[str]] = None,
+    turbo:           bool = False,  # [新增]
 ) -> dict:
     """
     【第一性原理優化版】完整 Walk-Forward 訓練 + OOF 評估。
@@ -271,6 +268,7 @@ def run_walk_forward(
         step_days    = WF_CONFIG["step_days"],
         embargo_days = WF_CONFIG["embargo_days"],
         test_window  = _test_window,
+        turbo        = turbo,
     ))
     logger.info(
         f"=== Walk-Forward：共 {len(folds)} folds "
@@ -676,6 +674,7 @@ def _parse_args():
     p.add_argument("--no-calibration",  action="store_true",        help="停用 Isotonic Calibration")
     p.add_argument("--step-days",       type=int,                   help="Walk-Forward 步進天數（覆蓋 config.RETRAIN_FREQ）")
     p.add_argument("--fast-mode",       action="store_true",        help="快速模式：減少 Fold 數並強制 80/20 篩選")
+    p.add_argument("--turbo",           action="store_true",        help="⚡ 極速模式：step_days=126 (半年)，並跳過耗時分析")
     return p.parse_args()
 
 
@@ -691,9 +690,12 @@ def main():
 
     args             = _parse_args()
     # ── 資源傾斜設定 (80/20) ────────────────────────────────
-    if args.fast_mode:
-        logger.info("⚡ 啟動快速模式：將步進天數加倍以減少 Fold 數...")
-        WF_CONFIG["step_days"] *= 2  # 例如 21 -> 42，Fold 數減半
+    if args.turbo:
+        WF_CONFIG["step_days"] = 126
+        logger.info("⚡ [Turbo Mode] 啟用：目標為全標的一鍵快速更新")
+    elif args.fast_mode:
+        logger.info("🚀 [Fast Mode] 啟用：step_days=42")
+        WF_CONFIG["step_days"] = 42
         
     use_tft          = not args.no_tft
     calibrate_probs  = not args.no_calibration
@@ -767,7 +769,7 @@ def main():
     
     # --- Phase 1: 快速探索與降維 (Universal Model Approach) ---
     logger.info("\n>>> Phase 1: 核心特徵掃描與 LASSO 降維...")
-    scan_result = run_walk_forward(df, stock_id=stock_id, use_tft=False, calibrate_probs=False)
+    scan_result = run_walk_forward(df, stock_id=stock_id, use_tft=False, calibrate_probs=False, turbo=args.turbo)
     
     # 結合策略 ② 與 ③：特徵降維 + 正則化
     if TRAINING_STRATEGY["feature_selection"] == "robust_ic":
@@ -798,7 +800,8 @@ def main():
         df, stock_id=stock_id, 
         use_tft=use_tft, 
         calibrate_probs=calibrate_probs,
-        feature_list=golden_features
+        feature_list=golden_features,
+        turbo=args.turbo
     )
     
     wf_result["oof_metrics"].to_csv(OUTPUT_DIR / "wf_fold_metrics.csv")
