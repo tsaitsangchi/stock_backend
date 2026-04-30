@@ -429,14 +429,14 @@ def run_walk_forward(
     meta_ensemble.fit_meta(oof_valid, y_meta, X_oof=X.loc[valid_mask])
 
     logger.info("✅ Level-2 Meta-Learner 已完成訓練（基於全 OOF，無未來洩漏）")
-    if hasattr(meta_ensemble.low_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.low_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.low_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.low_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [Low Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
-    if hasattr(meta_ensemble.mid_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.mid_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.mid_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.mid_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [Mid Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
-    if hasattr(meta_ensemble.high_vol_model.meta, "coef_"):
-        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.high_vol_model.meta.coef_.flatten()))
+    if hasattr(meta_ensemble.high_vol_model.meta_learner, "coef_"):
+        coef_dict = dict(zip(oof_valid.columns, meta_ensemble.high_vol_model.meta_learner.coef_.flatten()))
         logger.info(f"   [High Vol] Meta 係數: { {k: f'{v:.4f}' for k, v in coef_dict.items()} }")
 
     # ── 用 Meta 重新計算全局 OOF 機率（反映真實部署效果）─────────
@@ -471,8 +471,8 @@ def run_walk_forward(
     # 供 backtest_audit.py 的 calibration_analysis() 與 model_health_check.py
     # 的 PSI 參考分佈使用。
     oof_full_df = pd.DataFrame({
-        "date":     df.index,
-        "prob_up":  oof_prob_up.values,
+        "date":     y_cls.index,
+        "prob_up":  oof_prob_up.loc[y_cls.index].values,
         "y_true":   y_cls.values,         # 二元標籤（漲/跌）
         "y_return": y_ret.values,         # 連續報酬率
     }).dropna(subset=["prob_up"])
@@ -553,8 +553,8 @@ def train_final_model(
         for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
             cv_model = getattr(meta_ensemble_from_cv, attr)
             ens_model = getattr(ens, attr)
-            if cv_model.meta is not None:
-                ens_model.meta = cv_model.meta
+            if cv_model.meta_learner is not None:
+                ens_model.meta_learner = cv_model.meta_learner
                 ens_model.scaler = cv_model.scaler
             if hasattr(cv_model, "_calibrator"):
                 ens_model._calibrator = cv_model._calibrator
@@ -715,6 +715,8 @@ def main():
         logger.warning(f"  偵測到重複特徵欄位，已自動去重：{df.columns[df.columns.duplicated()].unique().tolist()}")
         df = df.loc[:, ~df.columns.duplicated()]
         
+    df = df.dropna(subset=["target_30d"])
+        
     logger.info(f"  資料載入完成，總樣本數: {len(df):,} (標的數: {len(training_pool)})")
     logger.info(f"  特徵框架：{df.shape[1]} 欄")
 
@@ -741,7 +743,8 @@ def main():
         # 混合篩選：IC IR + LASSO
         logger.info("執行混合特徵篩選 (IC IR + LASSO)...")
         # 首先用 LASSO 將空間壓縮到 30 個最具解釋力的維度
-        lasso_cols = lasso_feature_selection(df[all_cols], df["target_30d"], max_features=30)
+        feature_cols = [c for c in scan_result["importance"].index if c in df.columns]
+        lasso_cols = lasso_feature_selection(df[feature_cols], df["target_30d"], max_features=30)
         
         # 再用 IC IR 驗證其穩定性
         analyzer = FactorAnalyzer(df, target_col="target_30d")
