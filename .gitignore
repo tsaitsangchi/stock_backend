@@ -11,16 +11,17 @@
 !*.txt
 !*.sh
 
-# 排除快取與特定目錄 (避免意外加入)
-__pycache__/
+# 排除備份與大型資料庫
+root_legacy_backup/
+scripts/archive/
+scripts_backup/
+mlflow.db
+scratch/
+.ipynb_checkpoints/
 *.pyc
-outputs/
-lightning_logs/
-
-# [P0-SEC] 顯式排除 .env（含 FinMind Token 等敏感資訊），保留 .env.example
-.env
-!.env.example
+__pycache__/
 venv/
 .env
+outputs/
+lightning_logs/
 *.log
-__pycache__/

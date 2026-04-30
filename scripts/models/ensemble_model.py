@@ -39,10 +39,9 @@ except ImportError:
 try:
     from catboost import CatBoostClassifier, CatBoostRegressor
     HAS_CAT = True
-except Exception:
-    # catboost 尚未支援 Python 3.14+；底層 C 擴充可能拋出 ValueError 而非 ImportError
+except Exception as e:
     HAS_CAT = False
-    logger.warning("catboost 不可用（Python 3.14 尚不支援），已略過")
+    logger.warning(f"catboost 不可用：{e}")
 
 try:
     import shap
