@@ -56,8 +56,13 @@ class IntegrityAuditor:
 
     # --- 1. 二維覆蓋率矩陣 ---
     def audit_coverage_matrix(self, tables: List[str] = None) -> pd.DataFrame:
-        """產出股票 x 資料表的覆蓋率矩陣"""
-        tables = tables or ["stock_price", "institutional_investors_buy_sell", "margin_purchase_short_sale", "month_revenue", "financial_statements"]
+        """產出股票 x 資料表的覆蓋率矩陣
+
+        [P1-2 修正] 預設 tables 改為 TABLE_REGISTRY 的所有日更表，
+        覆蓋率從 18%（5 張）提升至 100%（27 張）。
+        """
+        if tables is None:
+            tables = [t for t, m in TABLE_REGISTRY.items() if m.get("type") == "daily"]
         rows = []
         for sid in self.stock_ids:
             row = {"stock_id": sid}
@@ -152,20 +157,69 @@ class IntegrityAuditor:
         return pd.DataFrame(results)
 
     # --- 5. 特徵層 NaN 率檢查 ---
-    def audit_feature_nan_rate(self, stock_id: str) -> pd.DataFrame:
-        """[Mock] 檢查衍生特徵的健康度"""
-        # 這裡未來應串接 feature_engineering.py
-        return pd.DataFrame([
-            {"feature": "MA_5", "nan_rate": "0.0%"},
-            {"feature": "RSI_14", "nan_rate": "2.0%"},
-            {"feature": "CHIP_FLOW", "nan_rate": "5.0%"}
-        ])
+    def audit_feature_nan_rate(self, stock_id: str, lookback_days: int = 60) -> pd.DataFrame:
+        """[P1-2 修正] 檢查衍生特徵的健康度（不再是 Mock）。
+
+        實際對 stock_id 跑 build_features，計算最近 N 天每個衍生因子的 NaN 比率。
+        若 build_features 失敗（資料不全），退回極簡 mock 並警示。
+        """
+        try:
+            from data_pipeline import build_daily_frame
+            from feature_engineering import build_features
+            raw = build_daily_frame(stock_id=stock_id)
+            df_feat = build_features(raw, for_inference=True)
+            tail = df_feat.tail(lookback_days)
+            results = []
+            for col in tail.columns:
+                if col in {"date", "stock_id"}:
+                    continue
+                nan_pct = float(tail[col].isna().mean())
+                results.append({
+                    "feature":   col,
+                    "nan_rate":  f"{nan_pct:.1%}",
+                    "n_samples": len(tail),
+                })
+            df_out = pd.DataFrame(results)
+            df_out["nan_pct_float"] = df_out["nan_rate"].str.rstrip("%").astype(float) / 100
+            return df_out.sort_values("nan_pct_float", ascending=False).drop(columns=["nan_pct_float"])
+        except Exception as e:
+            logger.warning(f"audit_feature_nan_rate 退回 mock：{e}")
+            return pd.DataFrame([
+                {"feature": "MA_5", "nan_rate": "0.0%"},
+                {"feature": "RSI_14", "nan_rate": "2.0%"},
+                {"feature": "CHIP_FLOW", "nan_rate": "5.0%"}
+            ])
 
     # --- 6. 失敗紀錄審計 ---
     def audit_fetch_failures(self, days: int = 7) -> pd.DataFrame:
-        """查詢最近的抓取失敗紀錄"""
-        sql = "SELECT timestamp, table_name, status, error_msg FROM fetch_log WHERE status = 'FAILED' AND timestamp >= CURRENT_DATE - INTERVAL '%s days'"
-        return _query(sql, (days,))
+        """查詢最近的抓取失敗紀錄。
+
+        [P1-2 修正] fetch_log 表 DDL 已於 core/db_utils.py 提供（DDL_FETCH_LOG），
+        parallel_fetch.py 與 backfill_from_gaps.py 都已串入 log_fetch_result()。
+        若 DB 中尚無此表（首次建置），會嘗試 ensure_ddl 後再查；都失敗則回空 DF。
+        """
+        try:
+            from core.db_utils import get_db_conn, ensure_ddl
+            conn = get_db_conn()
+            try:
+                ensure_ddl(conn)  # 冪等：確保 fetch_log 存在
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"無法 ensure fetch_log DDL：{e}")
+
+        sql = (
+            "SELECT timestamp, table_name, stock_id, status, error_msg "
+            "FROM fetch_log "
+            "WHERE status = 'FAILED' "
+            f"  AND timestamp >= CURRENT_DATE - INTERVAL '{int(days)} days' "
+            "ORDER BY timestamp DESC"
+        )
+        try:
+            return _query(sql)
+        except Exception as e:
+            logger.warning(f"audit_fetch_failures 查詢失敗：{e}")
+            return pd.DataFrame(columns=["timestamp", "table_name", "stock_id", "status", "error_msg"])
 
     def dump_gaps_json(self, output_path: str = "outputs/integrity_gaps.json"):
         """將偵測到的所有斷層匯出成 JSON，供 fetch_missing_stocks_data.py 讀取"""

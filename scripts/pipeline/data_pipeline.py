@@ -288,16 +288,21 @@ def load_financial_statements(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df["date"] = pd.to_datetime(df["date"])
-    
-    # ── 防範未來資訊洩漏：動態平移 ──
+
+    # ── 防範未來資訊洩漏：動態平移（[QW-6] 修正） ──
+    # 法規：Q1-Q3 公告期限 45 天（5/15、8/14、11/14）
+    #       Q4 / 年報    90 天（隔年 3/31）
+    # 之前誤用 DATA_LAG_CONFIG["financial_statements"] = 145 天，等於白白丟掉 3 個月 alpha。
     def _get_lag(dt):
-        # 如果是 12-31，視為 Q4/年報，延遲 90 天；其餘 45 天
-        if dt.month == 12:
+        if dt.month == 12:                         # Q4 / 年報
             return pd.Timedelta(days=DATA_LAG_CONFIG["annual_report"])
+        if dt.month in (3, 6, 9):                  # Q1-Q3
+            return pd.Timedelta(days=DATA_LAG_CONFIG["quarterly_report"])
+        # 安全 fallback：145 天（不在標準季底）
         return pd.Timedelta(days=DATA_LAG_CONFIG["financial_statements"])
 
     df["date"] = df.apply(lambda r: r["date"] + _get_lag(r["date"]), axis=1)
-    
+
     wide = df.pivot_table(
         index="date", columns="type", values="value", aggfunc="last"
     ).sort_index()
@@ -310,7 +315,7 @@ def load_financial_statements(stock_id: str = STOCK_ID) -> pd.DataFrame:
         "TAX":             "tax",
     })
     wide["ann_date_stmt"] = wide.index
-    logger.debug(f"[financial_statements] {len(wide):,} 季期 (已套用公告延遲與日期標記)")
+    logger.debug(f"[financial_statements] {len(wide):,} 季期 (已套用 Q1-3=45/Q4=90 動態延遲)")
     return wide
 
 
@@ -342,10 +347,22 @@ def load_balance_sheet(stock_id: str = STOCK_ID) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     df["date"] = pd.to_datetime(df["date"])
+
+    # ── [QW-6] 套用動態 lag：與 load_financial_statements 對齊 ──
+    from config import DATA_LAG_CONFIG as _LAG
+    def _bs_lag(dt):
+        if dt.month == 12:
+            return pd.Timedelta(days=_LAG["annual_report"])
+        if dt.month in (3, 6, 9):
+            return pd.Timedelta(days=_LAG["quarterly_report"])
+        return pd.Timedelta(days=_LAG["balance_sheet"])
+
+    df["date"] = df.apply(lambda r: r["date"] + _bs_lag(r["date"]), axis=1)
+
     wide = df.pivot_table(
         index="date", columns="type", values="value", aggfunc="last"
     ).sort_index()
-    logger.debug(f"[balance_sheet] {len(wide):,} 季期")
+    logger.debug(f"[balance_sheet] {len(wide):,} 季期 (已套用 Q1-3=45/Q4=90 動態延遲)")
     return wide
 
 

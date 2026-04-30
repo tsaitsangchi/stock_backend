@@ -45,8 +45,10 @@ logger = logging.getLogger(__name__)
 
 FILTER_CONFIG = {
     # ① 模型機率門檻
-    "prob_up_threshold":     0.65,   # 上漲機率 > 65% 才考慮進場
-    "prob_down_threshold":   0.35,   # 下跌機率 < 35%（做多時）
+    # [P0-2 修正] 0.65 → 0.75，搭配最小持倉日數，把 n_trades 從 1984 → < 600
+    # 高 prob 門檻 + 5 天最小持倉，目標：中波動 fold net Sharpe > 0.8
+    "prob_up_threshold":     0.75,   # 上漲機率 > 75% 才考慮進場
+    "prob_down_threshold":   0.25,   # 下跌機率 < 25%（做多時）
 
     # ② 模型一致性門檻
     "min_model_agreement":   0.60,   # XGB/LGB/TFT 方向一致性
@@ -73,6 +75,22 @@ FILTER_CONFIG = {
     # ⑧ 停損停利（建議值，供 report 顯示）
     "stop_loss_pct":   -0.05,         # -5% 停損
     "take_profit_pct": +0.12,         # +12% 停利
+
+    # ⑨ [P0-2 新增] 最小持倉天數
+    # 解決 max_drawdown -99.9% / 5% TC 吞光 alpha 的根本：頻繁訊號進出
+    # 一旦進場，至少持有 5 個交易日，避免單日訊號回轉
+    "min_hold_days":   5,
+
+    # ⑩ [P0-2 新增] net Sharpe 門檻（含成本）
+    # 強制使用 net Sharpe（含 commission/tax/slippage），避免被 gross Sharpe 誤導
+    "use_net_sharpe":          True,
+    "min_net_sharpe":          0.8,   # net Sharpe < 0.8 直接拒絕
+    "max_n_trades_per_year":   120,   # 單年交易次數上限（避免高頻過擬合）
+
+    # ⑪ [P1-1 新增] v3 衍生因子 hard block 門檻
+    "vix_zscore_block":        2.0,   # VIX z-score > 2σ 強制不交易
+    "yield_curve_inverted_combo_credit_spread": 5.0,
+    "fcf_yield_boost_threshold": 0.05,  # FCF yield > 5% 加分
 }
 
 # 各維度的權重（用於綜合評分，0~100）
@@ -368,17 +386,48 @@ class SignalFilter:
         dimensions       = []
         
         # ── 1. 核心風險硬阻斷 (Hard Blocks) ──
-        # [P0 修復 2.3] 防止買入高風險標的（下市預警、處置股、暫停融券）
+        # [P0 修復 2.3 / QW-3] 防止買入高風險標的（下市預警、處置股、暫停融券）
         latest = df_feat.iloc[-1]
-        if latest.get("is_delisted", 0) > 0:
-            return FilterResult("HOLD_CASH", 0, blocking_reasons=["⛔ 已下市/停止交易"])
-        
-        if latest.get("is_in_disposition", 0) > 0:
-            return FilterResult("HOLD_CASH", 0, blocking_reasons=["⛔ 處置股票期間（流動性風險）"])
 
-        if latest.get("is_margin_suspended", 0) > 0:
+        def _f(col, default=0.0):
+            """安全取出 latest 中的數值，缺欄位/NaN 都回 default。"""
+            try:
+                v = latest.get(col, default)
+                if v is None:
+                    return default
+                if isinstance(v, float) and np.isnan(v):
+                    return default
+                return float(v)
+            except Exception:
+                return default
+
+        if _f("is_delisted") > 0:
+            return FilterResult("HOLD_CASH", 0, blocking_reasons=["⛔ 已下市/停止交易"])
+
+        if _f("is_in_disposition") > 0:
+            return FilterResult("HOLD_CASH", 0,
+                                blocking_reasons=["⛔ 處置股票期間（流動性風險）"])
+
+        if _f("is_margin_suspended") > 0:
             # 暫停融券通常預示股東會前夕或重大訊息，風險溢酬不穩
             blocking_reasons.append("⚠️ 暫停融券（軋空風險/停止過戶）")
+
+        # ── [P1-1] v3 宏觀 regime 硬阻斷（VIX 極端 + 殖利率倒掛+信用緊縮）──
+        vix_z = _f("vix_zscore_252")
+        if vix_z > self.cfg.get("vix_zscore_block", 2.0):
+            blocking_reasons.append(
+                f"⛔ VIX 極端恐慌 (z={vix_z:.2f} > {self.cfg.get('vix_zscore_block', 2.0):.1f})"
+            )
+            return FilterResult("HOLD_CASH", 0, blocking_reasons=blocking_reasons)
+
+        yc_inv = _f("yield_curve_inverted")
+        hy_spread = _f("hy_credit_spread")
+        if yc_inv > 0 and hy_spread > self.cfg.get(
+                "yield_curve_inverted_combo_credit_spread", 5.0):
+            blocking_reasons.append(
+                f"⛔ 殖利率倒掛 + 信用緊縮 (HY spread={hy_spread:.2f}%)"
+            )
+            return FilterResult("HOLD_CASH", 0, blocking_reasons=blocking_reasons)
 
         # ── 2. 動力學 DNA 注入 ───────────────────────────────────────
         if dynamics:
@@ -561,6 +610,68 @@ class SignalFilter:
              blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={dynamics['tail_risk']:.2f})")
              decision = "HOLD_CASH"
 
+        # ── [P1-1] v3 衍生因子 soft boost 加分（高品質基本面 + 期貨/夜盤確認）──
+        fcf_y = _f("fcf_yield")
+        if fcf_y > self.cfg.get("fcf_yield_boost_threshold", 0.05):
+            boosting_reasons.append(f"⭐ FCF Yield 強勁 ({fcf_y:.1%})")
+            overall += 4
+
+        foreign_fut_oi_chg_5d = _f("foreign_fut_oi_chg_5d")
+        night_session_premium = _f("night_session_premium")
+        if foreign_fut_oi_chg_5d > 0 and night_session_premium > 0:
+            boosting_reasons.append("⭐ 外資期貨多頭 + 夜盤同向確認")
+            overall += 5
+
+        sbl_short_intensity = _f("sbl_short_intensity")
+        if sbl_short_intensity > 0.05:
+            blocking_reasons.append(
+                f"⚠️ SBL 借券強度過高 ({sbl_short_intensity:.1%}) — 軋空/做空風險"
+            )
+            overall -= 5
+
+        # ── [P1-1] news 異常事件提醒 ──
+        news_intensity = _f("news_intensity")
+        if news_intensity > 2.0:  # z-score > 2
+            blocking_reasons.append(
+                f"⚠️ 新聞異常爆量 (z={news_intensity:.2f}) — 重大事件未明朗"
+            )
+
+        # ── [P0-2] 中波動 fold 過度交易守門 ──
+        # 在 evaluate() 端，若上層 backtest_filter 已產出 n_trades，
+        # 由呼叫端在 report 中傳入 estimated_n_trades_year 進行硬阻斷
+        n_trades_year = report.get("estimated_n_trades_year")
+        if n_trades_year is not None and n_trades_year > self.cfg.get("max_n_trades_per_year", 120):
+            blocking_reasons.append(
+                f"⛔ 估算年化交易次數 {n_trades_year:.0f} > 上限 "
+                f"{self.cfg.get('max_n_trades_per_year', 120)}（過頻訊號）"
+            )
+            decision = "HOLD_CASH"
+
+        # ── [P0-2] 含成本 net Sharpe 門檻 ──
+        net_sharpe = report.get("net_sharpe")
+        if (self.cfg.get("use_net_sharpe", True) and net_sharpe is not None
+                and net_sharpe < self.cfg.get("min_net_sharpe", 0.8)
+                and decision == "LONG"):
+            blocking_reasons.append(
+                f"⛔ Net Sharpe {net_sharpe:.2f} < 門檻 "
+                f"{self.cfg.get('min_net_sharpe', 0.8):.2f}（含成本後 alpha 不足）"
+            )
+            decision = "HOLD_CASH"
+
+        # ── [P1-5] 訊號歷史持久化（best-effort，失敗不影響主流程）──
+        try:
+            self._persist_signal_history(
+                stock_id=stock_id,
+                ts=getattr(latest, "name", None),
+                decision=decision,
+                overall_score=overall,
+                prob_up=report.get("prob_up", 0.5),
+                blocking_reasons=blocking_reasons,
+                boosting_reasons=boosting_reasons,
+            )
+        except Exception as e:
+            logger.debug(f"persist_signal_history 失敗（不影響主流程）：{e}")
+
         return FilterResult(
             decision         = decision,
             overall_score    = overall,
@@ -568,6 +679,72 @@ class SignalFilter:
             blocking_reasons = blocking_reasons,
             boosting_reasons = boosting_reasons,
         )
+
+    # ─────────────────────────────────────────────
+    # [P1-5] signal_history 持久化
+    # ─────────────────────────────────────────────
+    _SIGNAL_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS signal_history (
+        date              DATE         NOT NULL,
+        stock_id          VARCHAR(50)  NOT NULL,
+        decision          VARCHAR(20)  NOT NULL,
+        overall_score     NUMERIC(6,2),
+        prob_up           NUMERIC(6,4),
+        blocking_reasons  TEXT,
+        boosting_reasons  TEXT,
+        created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (date, stock_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_signal_history_decision
+        ON signal_history (decision, date DESC);
+    """
+
+    def _persist_signal_history(self, stock_id: str, ts, decision: str,
+                                overall_score: float, prob_up: float,
+                                blocking_reasons: list, boosting_reasons: list) -> None:
+        """寫入 signal_history（best-effort，DB 不可用時靜默退出）。"""
+        import json as _json
+        from datetime import date as _date
+        # 如果 ts 不可用，使用今天日期
+        try:
+            if ts is None:
+                row_date = _date.today().isoformat()
+            elif hasattr(ts, "date"):
+                row_date = ts.date().isoformat()
+            else:
+                row_date = str(ts)[:10]
+        except Exception:
+            row_date = _date.today().isoformat()
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            for stmt in [s.strip() for s in self._SIGNAL_HISTORY_DDL.split(";") if s.strip()]:
+                cur.execute(stmt)
+            cur.execute(
+                """
+                INSERT INTO signal_history
+                    (date, stock_id, decision, overall_score, prob_up,
+                     blocking_reasons, boosting_reasons)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (date, stock_id) DO UPDATE SET
+                    decision         = EXCLUDED.decision,
+                    overall_score    = EXCLUDED.overall_score,
+                    prob_up          = EXCLUDED.prob_up,
+                    blocking_reasons = EXCLUDED.blocking_reasons,
+                    boosting_reasons = EXCLUDED.boosting_reasons,
+                    created_at       = CURRENT_TIMESTAMP
+                """,
+                (row_date, stock_id, decision,
+                 round(float(overall_score), 2),
+                 round(float(prob_up), 4),
+                 _json.dumps(blocking_reasons, ensure_ascii=False),
+                 _json.dumps(boosting_reasons, ensure_ascii=False)),
+            )
+            conn.commit()
+            cur.close()
+        finally:
+            conn.close()
 
     def backtest_filter(
         self,
@@ -584,6 +761,9 @@ class SignalFilter:
         """
         results = []
         cfg = self.cfg
+        # [P0-2] 持倉狀態追蹤：實作 min_hold_days 硬規則
+        min_hold = int(cfg.get("min_hold_days", 5))
+        in_position_until = None  # type: Optional[pd.Timestamp]
 
         for dt in oof_preds.dropna().index:
             if dt not in df_feat.index:
@@ -617,12 +797,25 @@ class SignalFilter:
             )
 
             must_pass = prob_ok and vol_ok and trend_ok
-            if must_pass and score >= 60:
+
+            # [P0-2] 持倉鎖定：若仍在最小持倉期間，繼續 LONG 不出場
+            if in_position_until is not None and dt <= in_position_until:
                 decision = "LONG"
-            elif must_pass and score >= 45:
-                decision = "WATCH"
+                hold_locked = True
             else:
-                decision = "HOLD_CASH"
+                hold_locked = False
+                if must_pass and score >= 60:
+                    decision = "LONG"
+                    # 進場：鎖定到 dt + min_hold 個交易日
+                    try:
+                        in_position_until = dt + pd.tseries.offsets.BDay(min_hold)
+                    except Exception:
+                        in_position_until = dt + pd.Timedelta(days=int(min_hold * 1.5))
+                elif must_pass and score >= 45:
+                    decision = "WATCH"
+                else:
+                    decision = "HOLD_CASH"
+                    in_position_until = None
 
             results.append({
                 "date":          dt,
@@ -633,8 +826,24 @@ class SignalFilter:
                 "overall_score": score,
                 "decision":      decision,
                 "passed":        decision == "LONG",
+                "hold_locked":   hold_locked,
+                "min_hold_days": min_hold,
             })
 
         if not results:
             return pd.DataFrame()
-        return pd.DataFrame(results).set_index("date")
+        df_out = pd.DataFrame(results).set_index("date")
+        # [P0-2] 估算年化 n_trades 以供呼叫端評估高頻過擬合風險
+        try:
+            entries = df_out["decision"].eq("LONG") & ~df_out["hold_locked"]
+            n_trades = int(entries.sum())
+            n_years  = max(1.0, len(df_out) / 252)
+            df_out.attrs["n_trades_per_year"] = n_trades / n_years
+            if (n_trades / n_years) > cfg.get("max_n_trades_per_year", 120):
+                logger.warning(
+                    f"[backtest_filter] 估算年化交易次數 {n_trades / n_years:.0f} "
+                    f"> 上限 {cfg.get('max_n_trades_per_year', 120)}，可能高頻過擬合"
+                )
+        except Exception:
+            pass
+        return df_out

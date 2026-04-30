@@ -10,10 +10,12 @@
 !*.py
 !*.txt
 !*.sh
+!*.md
 
 # 排除備份與大型資料庫
 root_legacy_backup/
 scripts/archive/
+scripts/_patch_backup/
 scripts_backup/
 mlflow.db
 scratch/
