@@ -608,7 +608,7 @@ class StackingEnsemble:
         X_meta = self.scaler.transform(meta_features.fillna(0.5))
         return self.meta_learner.predict_proba(X_meta)[:, 1]
 
-    def predict(self, X: pd.DataFrame, recent_performance: dict = None) -> dict:
+    def predict(self, X: pd.DataFrame, tft_pred: np.ndarray = None, recent_performance: dict = None) -> dict:
         """
         產出各模型預測，並根據最近表現進行動態加權。
         """
@@ -617,17 +617,25 @@ class StackingEnsemble:
         for name, model in self.models.items():
             preds[name] = model.predict(feat_X)
         
+        if tft_pred is not None:
+            preds["tft"] = tft_pred
+        
         # ── 動態加權 (Softmax weighting) ──────────────────────
-        if recent_performance:
+        if isinstance(recent_performance, dict) and recent_performance:
             # 依據各模型最近 60 天的 DA/IC 評分
-            scores = np.array([recent_performance.get(name, 0.5) for name in self.models.keys()])
+            valid_names = [n for n in self.models.keys() if n in recent_performance]
+            if not valid_names:
+                preds["ensemble"] = np.mean(list(preds.values()), axis=0)
+                return preds
+
+            scores = np.array([recent_performance.get(name, 0.5) for name in valid_names])
             # Simple softmax implementation
             exp_scores = np.exp(scores / 0.05)
             w = exp_scores / np.sum(exp_scores)
-            self.weights = dict(zip(self.models.keys(), w))
+            self.weights = dict(zip(valid_names, w))
             
             ensemble_prob = np.zeros(len(X))
-            for i, name in enumerate(self.models.keys()):
+            for i, name in enumerate(valid_names):
                 ensemble_prob += preds[name] * w[i]
             preds["ensemble"] = ensemble_prob
         else:
@@ -819,9 +827,9 @@ class RegimeEnsemble:
             
         m_low, m_mid, m_high = self._split_mask(X)
         
-        p_low = self.low_vol_model.predict(X[m_low], tft_pred[m_low] if tft_pred is not None else None) if m_low.sum() > 0 else None
-        p_mid = self.mid_vol_model.predict(X[m_mid], tft_pred[m_mid] if tft_pred is not None else None) if m_mid.sum() > 0 else None
-        p_high = self.high_vol_model.predict(X[m_high], tft_pred[m_high] if tft_pred is not None else None) if m_high.sum() > 0 else None
+        p_low = self.low_vol_model.predict(X[m_low], tft_pred=tft_pred[m_low] if tft_pred is not None else None) if m_low.sum() > 0 else None
+        p_mid = self.mid_vol_model.predict(X[m_mid], tft_pred=tft_pred[m_mid] if tft_pred is not None else None) if m_mid.sum() > 0 else None
+        p_high = self.high_vol_model.predict(X[m_high], tft_pred=tft_pred[m_high] if tft_pred is not None else None) if m_high.sum() > 0 else None
         
         res = {}
         for k in ["ensemble", "xgb", "lgb", "tft", "xgb_cal", "lgb_cal", "tft_cal"]:

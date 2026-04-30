@@ -496,8 +496,8 @@ def run_walk_forward(
     # 供 backtest_audit.py 的 calibration_analysis() 與 model_health_check.py
     # 的 PSI 參考分佈使用。
     oof_full_df = pd.DataFrame({
-        "date":     df.index,
-        "prob_up":  oof_prob_up.values,
+        "date":     y_cls.index,
+        "prob_up":  oof_prob_up.loc[y_cls.index].values,
         "y_true":   y_cls.values,         # 二元標籤（漲/跌）
         "y_return": y_ret.values,         # 連續報酬率
     }).dropna(subset=["prob_up"])
@@ -578,7 +578,11 @@ def train_final_model(
         for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
             cv_model = getattr(meta_ensemble_from_cv, attr)
             ens_model = getattr(ens, attr)
+<<<<<<< Updated upstream:scripts/training/train_evaluate.py
             if hasattr(cv_model, "meta_learner"):
+=======
+            if cv_model.meta_learner is not None:
+>>>>>>> Stashed changes:train_evaluate.py
                 ens_model.meta_learner = cv_model.meta_learner
                 ens_model.scaler = cv_model.scaler
             if hasattr(cv_model, "_calibrator"):
@@ -744,6 +748,8 @@ def main():
         logger.warning(f"  偵測到重複特徵欄位，已自動去重：{df.columns[df.columns.duplicated()].unique().tolist()}")
         df = df.loc[:, ~df.columns.duplicated()]
         
+    df = df.dropna(subset=["target_30d"])
+        
     logger.info(f"  資料載入完成，總樣本數: {len(df):,} (標的數: {len(training_pool)})")
     logger.info(f"  特徵框架：{df.shape[1]} 欄")
 
@@ -768,10 +774,10 @@ def main():
     # 結合策略 ② 與 ③：特徵降維 + 正則化
     if TRAINING_STRATEGY["feature_selection"] == "robust_ic":
         # 混合篩選：IC IR + LASSO
-        # [P0 Fix] 移除目標變數缺失的行（通常為最近 30 天），防止 LASSO 報錯
-        df_clean = df.dropna(subset=["target_30d"])
-        all_cols = [c for c in scan_result["importance"].index if c in df_clean.columns]
-        lasso_cols = lasso_feature_selection(df_clean[all_cols], df_clean["target_30d"], max_features=30)
+        logger.info("執行混合特徵篩選 (IC IR + LASSO)...")
+        # 首先用 LASSO 將空間壓縮到 30 個最具解釋力的維度
+        feature_cols = [c for c in scan_result["importance"].index if c in df.columns]
+        lasso_cols = lasso_feature_selection(df[feature_cols], df["target_30d"], max_features=30)
         
         # 再用 IC IR 驗證其穩定性
         analyzer = FactorAnalyzer(df, target_col="target_30d")
