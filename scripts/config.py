@@ -128,7 +128,7 @@ DATA_LAG_CONFIG["quarterly_report"] = 45
 # 訓練策略配置 (Training Strategy)
 # ─────────────────────────────────────────────
 TRAINING_STRATEGY = {
-    "use_global_backbone": True,
+    "use_global_backbone": False,
     "finetune_local":      True,
     "feature_selection":   "robust_ic",
 }
