@@ -71,14 +71,46 @@ RISK_CONFIG = {
 }
 
 # ─────────────────────────────────────────────
-# 資料可用性時間表 (Data Availability Calendar)
+# 資料可用性與完整性註冊表 (Table Registry)
 # ─────────────────────────────────────────────
-DATA_LAG_CONFIG = {
-    "month_revenue":        40,
-    "financial_statements": 45,
-    "annual_report":        90,
-    "institutional_chip":   1,
+# 用於自動化監控、健康檢查與斷層癒合。
+TABLE_REGISTRY = {
+    # 核心價量
+    "stock_price":                      {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "stock_per":                        {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "price_adj":                        {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "day_trading":                     {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "price_limit":                     {"type": "daily", "id_col": "stock_id", "lag": 1},
+    
+    # 籌碼面
+    "institutional_investors_buy_sell": {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "margin_purchase_short_sale":       {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "shareholding":                    {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "securities_lending":              {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "daily_short_balance":             {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "eight_banks_buy_sell":            {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "sponsor_chip":                    {"type": "daily", "id_col": "stock_id", "lag": 2}, # 分點資料通常較慢
+    
+    # 基本面 (月/季)
+    "month_revenue":                   {"type": "monthly", "id_col": "stock_id", "lag": 40},
+    "financial_statements":            {"type": "quarterly", "id_col": "stock_id", "lag": 145},
+    "balance_sheet":                   {"type": "quarterly", "id_col": "stock_id", "lag": 145},
+    "cash_flows_statement":            {"type": "quarterly", "id_col": "stock_id", "lag": 145},
+    "dividend":                        {"type": "event", "id_col": "stock_id", "lag": 365},
+    
+    # 市場層級與國際
+    "total_margin_short":              {"type": "market", "id_col": None, "lag": 1},
+    "total_inst_investors":            {"type": "market", "id_col": None, "lag": 1},
+    "futures_inst_investors":          {"type": "market", "id_col": None, "lag": 1},
+    "options_inst_investors":          {"type": "market", "id_col": None, "lag": 1},
+    "us_stock_price":                  {"type": "daily", "id_col": "stock_id", "lag": 1},
+    "exchange_rate":                  {"type": "daily", "id_col": "currency", "lag": 1},
+    "interest_rate":                  {"type": "daily", "id_col": "country", "lag": 7},
 }
+
+DATA_LAG_CONFIG = {k: v["lag"] for k, v in TABLE_REGISTRY.items()}
+DATA_LAG_CONFIG["annual_report"]    = 90
+DATA_LAG_CONFIG["quarterly_report"] = 45
 
 # ─────────────────────────────────────────────
 # 訓練策略配置 (Training Strategy)

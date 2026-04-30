@@ -34,7 +34,7 @@ def run_predict(stock_id: str) -> dict:
     回傳：{'success': bool, 'stock_id': str, 'error': str}
     """
     timeout = SYSTEM_STABILITY_CONFIG.get("inference_timeout", 45)
-    cmd = [VENV_PYTHON, "scripts/predict.py", "--stock-id", stock_id]
+    cmd = [VENV_PYTHON, "scripts/training/predict.py", "--stock-id", stock_id]
     
     try:
         # 使用 subprocess 執行，並設定超時限制
@@ -82,7 +82,7 @@ def main():
     # 2. 健康檢查
     logger.info("[Step 2] 執行核心模型健康診斷")
     try:
-        subprocess.run([VENV_PYTHON, "scripts/model_health_check.py"], check=True)
+        subprocess.run([VENV_PYTHON, "scripts/monitor/model_health_check.py"], check=True)
     except Exception as e:
         logger.error(f"❌ 健康檢查執行失敗（可能資料庫連線異常）: {e}")
         
@@ -90,7 +90,7 @@ def main():
     logger.info("[Step 3] 執行投資組合優化與生成決策報告")
     try:
         # 優化器會讀取 predict_date 當日預測，缺失標的將自動降級處理
-        subprocess.run([VENV_PYTHON, "scripts/portfolio_optimizer.py", "--budget", "100000"], check=True)
+        subprocess.run([VENV_PYTHON, "scripts/pipeline/portfolio_optimizer.py", "--budget", "100000"], check=True)
     except Exception as e:
         logger.error(f"❌ 投資組合優化失敗: {e}")
 
@@ -98,7 +98,7 @@ def main():
     # [P1 修復 2.8] 確保每日抓取與推論後，視圖能反映最新數據
     logger.info("[Step 4] 刷新資料庫物化視圖 (PostgreSQL Optimization)")
     try:
-        subprocess.run([VENV_PYTHON, "scripts/db_optimize.py", "--refresh-only"], check=True)
+        subprocess.run([VENV_PYTHON, "scripts/monitor/db_optimize.py", "--refresh-only"], check=True)
         logger.info("✅ 物化視圖刷新完成。")
     except Exception as e:
         logger.warning(f"⚠️ 物化視圖刷新失敗（不影響主要管線）: {e}")
