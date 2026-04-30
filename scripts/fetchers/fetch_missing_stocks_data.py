@@ -40,7 +40,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = Path(__file__).parent
-VENV_PYTHON = str(SCRIPTS_DIR.parent / "venv" / "bin" / "python3")
+VENV_PYTHON = str(SCRIPTS_DIR.parent.parent / "venv" / "bin" / "python3")
 
 # 需要精確檢查的「錨點資料表」
 ANCHOR_TABLES = [

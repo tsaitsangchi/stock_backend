@@ -1,39 +1,22 @@
 import sys
 from pathlib import Path
 base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
+for sub in ["fetchers", "pipeline", "training", "monitor", "models"]:
+    sys.path.append(str(base_dir / sub))
 sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-"""
-auto_train_manager.py — 自動訓練管理員
 
-修改摘要（第三輪審查修復）：
-  [P1 2.3] 修正優先級雙重加成無效問題：
-           原版對 SIXTH_WAVE_DRIVERS 執行 ×1.2 後又 +20，
-           但 min(100, ...) 截斷使加成無效。
-           修正為統一乘法加成，並移除重複條件判斷。
-  [P1 2.4] 以 PID 檔案機制取代 ps aux 文字解析，
-           解決跨平台不穩定與行程追蹤失效問題。
-  [P1 2.5] 加入 update_feature_store.py 存在性檢查，
-           找不到時發出警告並跳過，不靜默失敗。
-"""
+from config import STOCK_CONFIGS, TIER_1_STOCKS
+
 import os
 import time
 import subprocess
 import logging
-import sys
 import json
 from datetime import datetime
-from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.config import STOCK_CONFIGS, TIER_1_STOCKS
+"""
+auto_train_manager.py — 自動訓練管理員
+"""
 
 # ─────────────────────────────────────────────
 # 基本設定
