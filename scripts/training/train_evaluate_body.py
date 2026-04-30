@@ -50,6 +50,7 @@ import argparse
 import logging
 from dataclasses import dataclass
 from typing import Generator, Optional
+from datetime import datetime
 
 import joblib
 import numpy as np
@@ -558,10 +559,10 @@ def train_final_model(
                 ens_model.scaler = cv_model.scaler
             if hasattr(cv_model, "_calibrator"):
                 ens_model._calibrator = cv_model._calibrator
-            if cv_model.xgb_clf._calibrator is not None:
-                ens_model.xgb_clf._calibrator = cv_model.xgb_clf._calibrator
-            if cv_model.lgb_clf._calibrator is not None:
-                ens_model.lgb_clf._calibrator = cv_model.lgb_clf._calibrator
+            if "xgb" in cv_model.models and cv_model.models["xgb"]._calibrator is not None:
+                ens_model.models["xgb"]._calibrator = cv_model.models["xgb"]._calibrator
+            if "lgb" in cv_model.models and cv_model.models["lgb"]._calibrator is not None:
+                ens_model.models["lgb"]._calibrator = cv_model.models["lgb"]._calibrator
         logger.info("✅ Meta-Learner + 個別 Calibrators 已從 CV 移植至最終模型")
     else:
         # Fallback：在 Hold-Out 上訓練 Meta（樣本少，僅供緊急使用）
@@ -602,7 +603,7 @@ def train_final_model(
 
     # ── Hold-Out Regime 分析 ──────────────────────────────────────
     oos_pred = pd.Series(ensemble_prob, index=df.index[split:])
-    regime_oos = regime_analysis(df.iloc[split:].copy(), oos_pred)
+    regime_oos = regime_analysis(df.iloc[split:].copy(), oos_pred, REGIME_CONFIG)
     ens._oos_regime_results = regime_oos   # 附掛到模型供後續查閱
 
     # ── 警示：若高波動 DA 衰退 > 15%，記錄警告 ──────────────────
