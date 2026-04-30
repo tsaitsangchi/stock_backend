@@ -14,8 +14,9 @@ import subprocess
 import sys
 import logging
 import time
+from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from config import STOCK_CONFIGS, SYSTEM_STABILITY_CONFIG
+from config import STOCK_CONFIGS, SYSTEM_STABILITY_CONFIG, BASE_DIR
 
 # 環境路徑設定
 VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
@@ -58,6 +59,25 @@ def main():
     start_time = time.time()
     logger.info("=== 🚀 啟動 Antigravity 每日全自動管線 (穩定性強化版) ===")
     
+    # [Step 0] 數據抓取：排入 parallel_fetch.py
+    now = datetime.now()
+    target_time = now.replace(hour=20, minute=1, second=0, microsecond=0)
+    
+    if now < target_time:
+        logger.warning(f"⚠️ 當前時間 {now.strftime('%H:%M')} 早於建議抓取時間 20:01")
+        logger.warning("這可能導致當日數據不完整，但仍將繼續執行抓取...")
+    
+    logger.info("[Step 0] 啟動並行數據抓取 (parallel_fetch.py)")
+    try:
+        # 呼叫根目錄的 parallel_fetch.py
+        fetch_cmd = [VENV_PYTHON, str(BASE_DIR / "parallel_fetch.py")]
+        subprocess.run(fetch_cmd, check=True)
+        logger.info("✅ 數據抓取完成。")
+    except Exception as e:
+        logger.error(f"❌ 數據抓取失敗: {e}")
+        # 是否要繼續？通常建議繼續，因為可能只有部分資料失效
+        logger.info("將嘗試使用現有資料繼續後續推論...")
+
     # 1. 並行批次推論
     stock_ids = list(STOCK_CONFIGS.keys())
     logger.info(f"[Step 1] 執行批次推論 (個股數: {len(stock_ids)}, 並行數: {MAX_WORKERS})")
