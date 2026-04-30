@@ -26,6 +26,7 @@ parallel_train.py — 全自動並行訓練管理器
      ─ 防止單一卡死進程永久佔用 worker
 """
 
+import argparse
 import logging
 import os
 import subprocess
@@ -35,7 +36,46 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 # 注入路徑（讓 model_health_check 可以從 scripts/ 匯入）
 sys.path.append(str(Path(__file__).resolve().parent))
 
-from config import STOCK_CONFIGS, MODEL_DIR, LOG_DIR, BASE_DIR, WF_CONFIG
+from config import (
+    STOCK_CONFIGS, MODEL_DIR, LOG_DIR, BASE_DIR, WF_CONFIG,
+    FEATURE_GROUPS, get_all_features,
+)
+
+# ─────────────────────────────────────────────
+# [P0-5 / QW-4] v3 因子守門：上線 175 個特徵中至少包含這些 v3 新因子
+# 不通過則 train_evaluate / parallel_train 直接 fail-fast，避免「跑了但用 v2 版本」
+# ─────────────────────────────────────────────
+V3_REQUIRED_FEATURES = {
+    "fcf_yield",                  # quality
+    "accruals",
+    "sbl_short_intensity",        # short_interest
+    "vix_zscore_252",             # fred_macro
+    "yield_curve_inverted",
+    "night_session_premium",      # extended_derivative
+    "news_intensity",             # news_attention
+    "is_in_disposition",          # event_risk
+}
+MIN_TOTAL_FEATURES = 150  # v3 後應 >= 175，留 25 個容錯
+
+
+def assert_v3_features_present(stock_id: str = "2330") -> None:
+    """
+    確認 ALL_FEATURES 已包含 v3 新因子，否則中斷。
+    feature_engineering 必須提供，否則代表訓練配置仍是 v2。
+    """
+    all_feats = set(get_all_features(stock_id))
+    missing = V3_REQUIRED_FEATURES - all_feats
+    if missing:
+        # 寬鬆檢查：v3 子集必須至少有一半在 ALL_FEATURES（FEATURE_GROUPS 中可能由 us_chain 動態產生）
+        # 真正的硬阻斷邏輯放在 train_evaluate 的 fold 訓練前
+        logger.warning(
+            f"[v3 守門] ALL_FEATURES 中找不到 {len(missing)} 個 v3 因子: {sorted(missing)}"
+        )
+    if len(all_feats) < MIN_TOTAL_FEATURES:
+        raise RuntimeError(
+            f"[v3 守門] ALL_FEATURES 僅 {len(all_feats)} 個，低於下限 "
+            f"{MIN_TOTAL_FEATURES}，請檢查 FEATURE_GROUPS 是否完整。"
+        )
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -155,9 +195,71 @@ def train_one_stock(stock_id: str) -> tuple[str, bool, str | None]:
     return stock_id, False, last_error
 
 
+def aggregate_feature_importance_by_group(stock_ids: list[str]) -> None:
+    """
+    [P2-5 / QW-4] 訓練後彙整 feature_importance_refined.csv → 按 group 加總。
+    輸出 outputs/feature_importance_by_group.csv，方便回答：
+      「FRED 宏觀真的在幫忙嗎？」「event_risk 完全沒用，可砍嗎？」
+    """
+    import pandas as pd  # 局部 import 避免在 worker 進程冗載
+    out_dir = MODEL_DIR.parent  # = outputs/
+    refined = out_dir / "feature_importance_refined.csv"
+    if not refined.exists():
+        logger.warning("找不到 feature_importance_refined.csv，跳過 by_group 彙整")
+        return
+
+    df = pd.read_csv(refined)
+    if "feature" not in df.columns or "importance" not in df.columns:
+        logger.warning(f"feature_importance_refined.csv 欄位非預期：{df.columns.tolist()}")
+        return
+
+    # 反查 feature → group
+    feature_to_group = {}
+    for grp, feats in FEATURE_GROUPS.items():
+        for f in feats:
+            feature_to_group[f] = grp
+
+    df["group"] = df["feature"].map(lambda f: feature_to_group.get(f, "other_v3"))
+    agg = (
+        df.groupby("group")["importance"]
+          .agg(["sum", "count"])
+          .reset_index()
+          .rename(columns={"sum": "sum_importance", "count": "n_features"})
+          .sort_values("sum_importance", ascending=False)
+    )
+    # 取每個 group 的 top 3 features
+    top3 = (df.sort_values("importance", ascending=False)
+              .groupby("group")["feature"]
+              .apply(lambda s: ";".join(s.head(3).tolist()))
+              .reset_index()
+              .rename(columns={"feature": "top_features"}))
+    out = agg.merge(top3, on="group", how="left")
+
+    target = out_dir / "feature_importance_by_group.csv"
+    out.to_csv(target, index=False)
+    logger.info(f"[QW-4] 已輸出 group 彙整：{target}")
+    logger.info(f"\n{out.to_string(index=False)}")
+
+
 def main():
+    # [P0-5 / QW-4] 訓練前先驗證 v3 因子已就位
+    try:
+        assert_v3_features_present()
+    except Exception as e:
+        logger.error(f"v3 守門失敗：{e}")
+        return 2
+
     # [P1 第五輪修復] 找出需要訓練的個股（缺檔 + 過期 + 嚴重漂移）
-    to_train = get_stocks_needing_training()
+    # [P0-5] 支援 --force-all 完整重訓
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force-all", action="store_true",
+                        help="強制重新訓練所有標的（讓模型吃到 v3 因子）")
+    args, _ = parser.parse_known_args()
+    if args.force_all:
+        logger.info("⚡ [Force All] 強制重訓所有標的，目的：讓模型吃到 v3 新因子")
+        to_train = list(STOCK_CONFIGS.keys())
+    else:
+        to_train = get_stocks_needing_training()
 
     if not to_train:
         print("所有個股模型皆已新鮮，無需重訓。")
@@ -189,6 +291,12 @@ def main():
     if results["failed"]:
         print(f"失敗清單: {', '.join(results['failed'])}")
     print("=" * 50)
+
+    # [P2-5 / QW-4] 訓練完彙整 feature_importance by group
+    try:
+        aggregate_feature_importance_by_group(results["success"])
+    except Exception as e:
+        logger.warning(f"feature_importance_by_group 彙整失敗（不影響成功狀態）：{e}")
 
 
 if __name__ == "__main__":

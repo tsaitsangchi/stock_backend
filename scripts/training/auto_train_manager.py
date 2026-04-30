@@ -16,18 +16,38 @@ from datetime import datetime
 
 """
 auto_train_manager.py — 自動訓練管理員
+
+[P0-3 / QW-2] 加入 heartbeat 機制：
+  - 每 60 秒寫入 outputs/auto_train.heartbeat（含 timestamp + progress）
+  - 同步寫入 DB auto_train_heartbeat 表（cron 可從 DB 監控）
+  - 配合 deploy/auto_train.service（systemd Restart=always）
+    與 deploy/cron_check_heartbeat.sh，避免靜默死機
 """
 
 # ─────────────────────────────────────────────
 # 基本設定
 # ─────────────────────────────────────────────
-VENV_PYTHON        = "/home/hugo/project/stock_backend/venv/bin/python3"
+VENV_PYTHON        = os.environ.get("VENV_PYTHON",
+                                    "/home/hugo/project/stock_backend/venv/bin/python3")
 SCRIPTS_DIR        = Path(__file__).parent
 MAX_PARALLEL_TRAINS = 2      # 深層訓練耗能高，降低並行數
 CHECK_INTERVAL     = 60      # 每分鐘檢查一次
 METRICS_REGISTRY   = SCRIPTS_DIR / "outputs" / "metrics_registry.json"
 FAILURE_TRACKER    = {}  # {sid: {"retries": 0, "last_fail": timestamp}}
 MAX_RETRIES        = 3
+
+# [P0-3 / QW-2] Heartbeat 設定
+HEARTBEAT_FILE     = SCRIPTS_DIR / "outputs" / "auto_train.heartbeat"
+HEARTBEAT_DDL      = """
+CREATE TABLE IF NOT EXISTS auto_train_heartbeat (
+    id          SERIAL PRIMARY KEY,
+    ts          TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    pid         INTEGER,
+    running_ids TEXT,
+    progress    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeat_ts ON auto_train_heartbeat (ts DESC);
+"""
 
 # [P1 2.4] PID 追蹤目錄
 PID_DIR = SCRIPTS_DIR / "outputs" / "pids"
@@ -93,6 +113,51 @@ def get_task_exit_status(sid: str) -> bool:
             return "SUCCESS" in content or "完成" in content or "metrics_registry" in content
     except:
         return False
+
+
+def write_heartbeat(running_ids: list, finished_ids: list, total: int) -> None:
+    """
+    [P0-3 / QW-2] 寫入心跳：檔案 + DB 雙軌。
+
+    cron / systemd 監控腳本透過讀取 HEARTBEAT_FILE 的 mtime 判斷活性，
+    DB auto_train_heartbeat 則保留長期軌跡，便於問題分析。
+    """
+    progress_str = f"{len(finished_ids)}/{total}"
+    payload = {
+        "ts":          datetime.now().isoformat(),
+        "pid":         os.getpid(),
+        "running_ids": running_ids,
+        "finished":    len(finished_ids),
+        "total":       total,
+        "progress":    progress_str,
+    }
+    # 1) 檔案心跳（main caller / cron 可用 mtime 判斷活性）
+    try:
+        HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HEARTBEAT_FILE.write_text(json.dumps(payload, ensure_ascii=False))
+    except Exception as e:
+        logger.debug(f"[heartbeat] 檔案寫入失敗：{e}")
+
+    # 2) DB 心跳（輕量，可被 audit / dashboard 使用）
+    try:
+        from core.db_utils import get_db_conn
+        conn = get_db_conn()
+        try:
+            with conn.cursor() as cur:
+                for stmt in [s.strip() for s in HEARTBEAT_DDL.split(";") if s.strip()]:
+                    cur.execute(stmt)
+                cur.execute(
+                    """
+                    INSERT INTO auto_train_heartbeat (pid, running_ids, progress)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (os.getpid(), ",".join(running_ids), progress_str),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.debug(f"[heartbeat] DB 寫入失敗（不影響主流程）：{e}")
 
 
 def launch_training(sid: str, cmd: list[str], log_path: Path):
@@ -228,6 +293,9 @@ def main():
                 f"有效模型: {len(finished_ids)} | "
                 f"待訓練: {len(sorted_targets) - len(finished_ids)}"
             )
+
+            # [P0-3 / QW-2] 每輪迴圈寫一次心跳
+            write_heartbeat(running_ids, finished_ids, len(sorted_targets))
 
             if len(running_ids) < MAX_PARALLEL_TRAINS:
                 for sid in sorted_targets:
