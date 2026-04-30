@@ -204,11 +204,13 @@ def get_feature_matrix(
     y_ret = df.loc[X.index, "target_ret_30d"] if "target_ret_30d" in df.columns else y_reg
     y_cls = (y_reg > 0).astype(int)
     
-    # [P0 Fix] 建立唯一索引：結合日期與股票 ID。
-    # 解決 Backbone pooling 時相同日期不同股票導致的「非唯一索引」衝突，
-    # 同時保留推論所需的日期資訊。
+    # [P0 Fix] 確保索引唯一且具備 (date, stock_id) 語意。
+    # 解決當 pool 訓練時，不同股票可能具有相同原始 index (e.g. 0, 1, 2) 導致的 loc 衝突。
     if "date" in df.columns and "stock_id" in df.columns:
-        multi_idx = pd.MultiIndex.from_frame(df.loc[X.index, ["date", "stock_id"]])
+        df = df.copy()
+        df["_tmp_idx"] = range(len(df))
+        multi_idx = pd.MultiIndex.from_frame(df[["date", "stock_id"]])
+        df.index = multi_idx
         X.index = multi_idx
         y_reg.index = multi_idx
         y_ret.index = multi_idx
@@ -220,7 +222,7 @@ def get_feature_matrix(
         y_ret = y_ret.reset_index(drop=True)
         y_cls = y_cls.reset_index(drop=True)
     
-    return X, y_reg, y_ret, y_cls
+    return df, X, y_reg, y_ret, y_cls
 
 
 # ─────────────────────────────────────────────
@@ -256,7 +258,7 @@ def run_walk_forward(
         "meta_ensemble":  RegimeEnsemble, # 帶有訓練好 Meta 的 ensemble（供最終模型使用）
     }
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
+    df, X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
     n = len(X)
 
     _test_window = WF_CONFIG.get("test_window", WF_CONFIG["step_days"])
@@ -470,8 +472,8 @@ def run_walk_forward(
     oof_prob_up.loc[valid_mask] = final_oof_prob_valid
 
     # Meta 重算後的全局 OOF 指標
-    y_meta_reg  = y_reg.loc[valid_mask]
-    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid, index=valid_mask[valid_mask].index), stock_id=stock_id)
+    y_meta_reg  = y_reg.iloc[np.where(valid_mask.values)[0]]
+    meta_metrics = evaluate_fold(y_meta_reg, pd.Series(final_oof_prob_valid, index=y_meta_reg.index), stock_id=stock_id)
 
     logger.info("\n=== Meta-Learner OOF 指標（真實部署準確度）===")
     for k, v in meta_metrics.items():
@@ -533,7 +535,7 @@ def train_final_model(
       移植至最終模型，避免在有限的 Hold-Out 上重訓 Meta 導致過擬合。
       CV OOF 的樣本量遠大於 Hold-Out，Meta 在此訓練更穩健。
     """
-    X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
+    df, X, y_reg, y_ret, y_cls = get_feature_matrix(df, stock_id=stock_id, feature_list=feature_list)
     oos_window = REGIME_CONFIG["oos_window"]   # 預設 504（2 年）
     # 若資料不足 5 年 + 2 年，退回 1 年 Hold-Out
     min_train = 252 * 5
@@ -726,13 +728,17 @@ def main():
     for sid in training_pool:
         df_sid = load_features_from_store(sid, start_date=args.start, end_date=args.end)
         if not df_sid.empty:
+            # [P0 Fix] 確保 date 與 stock_id 存在於欄位中，以便後續排序與建立 MultiIndex
+            df_sid = df_sid.reset_index()
+            if "stock_id" not in df_sid.columns:
+                df_sid["stock_id"] = sid
             all_dfs.append(df_sid)
             
     if not all_dfs:
         logger.error(f"  查無資料，請先執行 python scripts/update_feature_store.py")
         sys.exit(1)
         
-    df = pd.concat(all_dfs).sort_index()
+    df = pd.concat(all_dfs, ignore_index=True).sort_values(["date", "stock_id"])
     # ── [P0 修復] 移除重複欄位（防止 XGBoost 崩潰） ─────────────
     if df.columns.duplicated().any():
         logger.warning(f"  偵測到重複特徵欄位，已自動去重：{df.columns[df.columns.duplicated()].unique().tolist()}")
@@ -762,9 +768,10 @@ def main():
     # 結合策略 ② 與 ③：特徵降維 + 正則化
     if TRAINING_STRATEGY["feature_selection"] == "robust_ic":
         # 混合篩選：IC IR + LASSO
-        logger.info("執行混合特徵篩選 (IC IR + LASSO)...")
-        # 首先用 LASSO 將空間壓縮到 30 個最具解釋力的維度
-        lasso_cols = lasso_feature_selection(df[all_cols], df["target_30d"], max_features=30)
+        # [P0 Fix] 移除目標變數缺失的行（通常為最近 30 天），防止 LASSO 報錯
+        df_clean = df.dropna(subset=["target_30d"])
+        all_cols = [c for c in scan_result["importance"].index if c in df_clean.columns]
+        lasso_cols = lasso_feature_selection(df_clean[all_cols], df_clean["target_30d"], max_features=30)
         
         # 再用 IC IR 驗證其穩定性
         analyzer = FactorAnalyzer(df, target_col="target_30d")
