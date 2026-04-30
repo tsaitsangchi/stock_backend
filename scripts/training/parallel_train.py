@@ -148,8 +148,11 @@ def train_one_stock(stock_id: str) -> tuple[str, bool, str | None]:
         VENV_PYTHON,
         TRAIN_SCRIPT,
         "--stock-id", stock_id,
-        "--step-days", step_days,
     ]
+    if "--turbo" in sys.argv:
+        cmd.append("--turbo")
+    elif "--fast-mode" in sys.argv:
+        cmd.append("--fast-mode")
 
     last_error: str | None = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -254,6 +257,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--force-all", action="store_true",
                         help="強制重新訓練所有標的（讓模型吃到 v3 因子）")
+    parser.add_argument("--turbo", action="store_true", help="⚡ 極速模式：大規模並行訓練優化")
+    parser.add_argument("--fast-mode", action="store_true", help="快速模式")
     args, _ = parser.parse_known_args()
     if args.force_all:
         logger.info("⚡ [Force All] 強制重訓所有標的，目的：讓模型吃到 v3 新因子")
