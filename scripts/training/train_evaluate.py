@@ -54,13 +54,15 @@ train_evaluate.py — Purged Walk-Forward Cross-Validation 訓練 + 評估
 """
 
 
-import argparse
+import sys
 import logging
 import os
+import joblib
+import argparse
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Generator, Optional
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
@@ -578,11 +580,7 @@ def train_final_model(
         for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
             cv_model = getattr(meta_ensemble_from_cv, attr)
             ens_model = getattr(ens, attr)
-<<<<<<< Updated upstream:scripts/training/train_evaluate.py
             if hasattr(cv_model, "meta_learner"):
-=======
-            if cv_model.meta_learner is not None:
->>>>>>> Stashed changes:train_evaluate.py
                 ens_model.meta_learner = cv_model.meta_learner
                 ens_model.scaler = cv_model.scaler
             if hasattr(cv_model, "_calibrator"):
@@ -631,7 +629,7 @@ def train_final_model(
 
     # ── Hold-Out Regime 分析 ──────────────────────────────────────
     oos_pred = pd.Series(ensemble_prob, index=df.index[split:])
-    regime_oos = regime_analysis(df.iloc[split:].copy(), oos_pred)
+    regime_oos = regime_analysis(df.iloc[split:].copy(), oos_pred, REGIME_CONFIG)
     ens._oos_regime_results = regime_oos   # 附掛到模型供後續查閱
 
     # ── 警示：若高波動 DA 衰退 > 15%，記錄警告 ──────────────────
