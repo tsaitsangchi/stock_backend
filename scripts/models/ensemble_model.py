@@ -169,6 +169,7 @@ class XGBPredictor:
         y_true: np.ndarray,
         method: str = "isotonic",
         sample_weight: np.ndarray = None,
+        cv_strategy: str = "oof",
     ) -> None:
         """
         用 Walk-Forward 全量 OOF 訓練個別 Calibrator。
@@ -181,12 +182,43 @@ class XGBPredictor:
                        若 OOF 顯示線性關係時較穩定，但本模型 XGB coef<0
                        （反向映射），使用 sigmoid 會得到錯誤方向。
 
+        cv_strategy:
+          'oof'         — 直接以已時間有序的 OOF preds 校準（預設，最快）
+          'time_series' — [QW-5] 在 OOF 上再做 TimeSeriesSplit 5-fold
+                          交叉驗證，避免單一切點過擬合校準曲線。
+
         Args:
             oof_probs: OOF 各行的原始預測機率（shape: [N]）
             y_true:    真實方向標籤 0/1（shape: [N]）
             method:    'isotonic'（預設）或 'sigmoid'
             sample_weight: 樣本權重（用於處理時間漂移）
+            cv_strategy: 'oof' / 'time_series'
         """
+        if cv_strategy == "time_series":
+            # [QW-5] 強制走 TimeSeriesSplit，呼叫端要的「真正的時間安全校準」
+            from sklearn.model_selection import TimeSeriesSplit
+            from sklearn.isotonic import IsotonicRegression
+            tscv = TimeSeriesSplit(n_splits=5)
+            best_cal = None
+            best_mse = float("inf")
+            for tr_idx, va_idx in tscv.split(oof_probs):
+                cal = IsotonicRegression(out_of_bounds="clip")
+                w = sample_weight[tr_idx] if sample_weight is not None else None
+                cal.fit(oof_probs[tr_idx], y_true[tr_idx], sample_weight=w)
+                pred = cal.predict(oof_probs[va_idx])
+                mse = float(np.mean((pred - y_true[va_idx]) ** 2))
+                if mse < best_mse:
+                    best_mse = mse
+                    best_cal = cal
+            self._calibrator = best_cal
+            self._cal_type = "isotonic_ts"
+            cal_mean = float(best_cal.predict(oof_probs).mean())
+            logger.info(
+                f"  [XGB Calibrator/isotonic_ts] TimeSeriesSplit(5) 完成，"
+                f"best fold MSE={best_mse:.4f}, 校準後均值 {cal_mean:.4f}"
+            )
+            return
+
         if method == "sigmoid":
             from sklearn.linear_model import LogisticRegression
             cal = LogisticRegression(
@@ -334,8 +366,34 @@ class LGBPredictor:
         y_true: np.ndarray,
         method: str = "isotonic",
         sample_weight: np.ndarray = None,
+        cv_strategy: str = "oof",
     ) -> None:
-        """用 Walk-Forward 全量 OOF 訓練個別 Calibrator（同 XGBPredictor）。"""
+        """用 Walk-Forward 全量 OOF 訓練個別 Calibrator（同 XGBPredictor）。
+
+        cv_strategy='time_series' 時 [QW-5] 走 TimeSeriesSplit(5)，
+        強化校準曲線時間安全性。"""
+        if cv_strategy == "time_series":
+            from sklearn.model_selection import TimeSeriesSplit
+            from sklearn.isotonic import IsotonicRegression
+            tscv = TimeSeriesSplit(n_splits=5)
+            best_cal = None
+            best_mse = float("inf")
+            for tr_idx, va_idx in tscv.split(oof_probs):
+                cal = IsotonicRegression(out_of_bounds="clip")
+                w = sample_weight[tr_idx] if sample_weight is not None else None
+                cal.fit(oof_probs[tr_idx], y_true[tr_idx], sample_weight=w)
+                pred = cal.predict(oof_probs[va_idx])
+                mse = float(np.mean((pred - y_true[va_idx]) ** 2))
+                if mse < best_mse:
+                    best_mse = mse
+                    best_cal = cal
+            self._calibrator = best_cal
+            self._cal_type = "isotonic_ts"
+            logger.info(
+                f"  [LGB Calibrator/isotonic_ts] TimeSeriesSplit(5) best MSE={best_mse:.4f}"
+            )
+            return
+
         if method == "sigmoid":
             from sklearn.linear_model import LogisticRegression
             cal = LogisticRegression(C=1.0, max_iter=500, solver="lbfgs")
@@ -697,37 +755,51 @@ class RegimeEnsemble:
             else:
                 model.meta_learner = self.mid_vol_model.meta_learner
 
-    def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series, X_oof: pd.DataFrame = None):
+    def calibrate(self, oof_df: pd.DataFrame, y_meta: pd.Series,
+                  X_oof: pd.DataFrame = None, cv_strategy: str = "time_series"):
+        """
+        [QW-5] 預設 cv_strategy='time_series'，把 make_time_series_calibrator 風格
+        實際串入：透過 calibrate(..., cv_strategy='time_series') 走 TimeSeriesSplit。
+        舊行為可顯式傳 cv_strategy='oof' 取得。
+        """
         if X_oof is None:
             for model in [self.low_vol_model, self.mid_vol_model, self.high_vol_model]:
                 if "xgb" in model.models:
-                    model.models["xgb"].calibrate(oof_df["xgb_pred"].values, y_meta.values)
+                    model.models["xgb"].calibrate(
+                        oof_df["xgb_pred"].values, y_meta.values,
+                        cv_strategy=cv_strategy,
+                    )
                 if "lgb" in model.models:
-                    model.models["lgb"].calibrate(oof_df["lgb_pred"].values, y_meta.values)
+                    model.models["lgb"].calibrate(
+                        oof_df["lgb_pred"].values, y_meta.values,
+                        cv_strategy=cv_strategy,
+                    )
             return
-            
+
         m_low, m_mid, m_high = self._split_mask(X_oof)
-        
+
         # [P0 Fix] 生成時間權重，防止校準器過度擬合舊市場環境
         # 假設 oof 序列是時間有序的，最近的樣本權重較高 (Exponential Decay)
         n_total = len(oof_df)
         decay = 0.999  # 緩慢衰減，保留大部分資訊但重視近期
         global_weights = np.power(decay, np.arange(n_total)[::-1])
-        
+
         for mask, model in [(m_low, self.low_vol_model), (m_mid, self.mid_vol_model), (m_high, self.high_vol_model)]:
             if mask.sum() >= 50:
                 weights = global_weights[mask] if isinstance(mask, np.ndarray) else global_weights[mask.values]
                 if "xgb" in model.models:
                     model.models["xgb"].calibrate(
-                        oof_df.loc[mask, "xgb_pred"].values, 
+                        oof_df.loc[mask, "xgb_pred"].values,
                         y_meta[mask].values,
-                        sample_weight=weights
+                        sample_weight=weights,
+                        cv_strategy=cv_strategy,
                     )
                 if "lgb" in model.models:
                     model.models["lgb"].calibrate(
-                        oof_df.loc[mask, "lgb_pred"].values, 
+                        oof_df.loc[mask, "lgb_pred"].values,
                         y_meta[mask].values,
-                        sample_weight=weights
+                        sample_weight=weights,
+                        cv_strategy=cv_strategy,
                     )
 
     def predict(self, X: pd.DataFrame, tft_pred: Optional[Union[np.ndarray, float]] = None) -> dict:
