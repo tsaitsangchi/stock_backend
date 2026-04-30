@@ -100,43 +100,67 @@ def get_missing_data_manifest() -> list[dict]:
     with open(manifest_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+import argparse
+
 def main():
-    logger.info("=== [Phase 2] 精確補件管線啟動 ===")
+    parser = argparse.ArgumentParser(description="自動補齊或強制更新個股資料庫")
+    parser.add_argument("--stock-id", help="指定單一標的 ID (例如 2330)")
+    parser.add_argument("--force", action="store_true", help="強制重新抓取所有配置中的腳本 (不論是否有斷層)")
+    args_parsed = parser.parse_args()
+
+    logger.info("=== [Phase 2] 精確補件/更新管線啟動 ===")
     
     # 1. 基礎資訊更新
     logger.info("Step 1: 更新 stock_info...")
     run_script("fetch_stock_info.py")
 
-    # 2. 深度完整性掃描
-    gap_manifest = get_missing_data_manifest()
-    
-    if not gap_manifest:
-        logger.info("✅ 所有標的核心資料皆已完整，無需執行補件。")
-    else:
-        logger.info(f"發現 {len(gap_manifest)} 處資料斷層，啟動精確補件...")
-        
-        # 3. 根據清單進行精確補件
-        # 將清單按 stock_id 分組
-        from collections import defaultdict
-        grouped_gaps = defaultdict(list)
-        for gap in gap_manifest:
-            grouped_gaps[gap["stock_id"]].append(gap)
+    target_stocks = {} # stock_id -> start_date
 
-        for sid, gaps in grouped_gaps.items():
-            # 找出這支股票所有表中最原始的斷層點
-            earliest_gap = min([g["gap_start"] for g in gaps])
-            logger.info(f"\n>>> 開始補齊 {sid} 的歷史斷層 (起點: {earliest_gap})")
+    if args_parsed.stock_id:
+        # 指定單一標的模式
+        logger.info(f"模式: 指定單一標的 {args_parsed.stock_id}")
+        # 如果是強制模式，起始日期設為各表的最早可用日期 (1994)
+        # 否則設為 2020-01-01 作為預設增量起點
+        start_date = "1994-10-01" if args_parsed.force else "2024-01-01"
+        target_stocks[args_parsed.stock_id] = start_date
+    else:
+        # 2. 深度完整性掃描
+        gap_manifest = get_missing_data_manifest()
+        
+        if not gap_manifest:
+            logger.info("✅ 所有標的核心資料皆已完整，無需執行補件。")
+        else:
+            logger.info(f"發現 {len(gap_manifest)} 處資料斷層，啟動精確補件...")
             
-            for script, id_flag in PER_STOCK_SCRIPTS_CONFIG.items():
-                # 根據不同腳本使用正確的參數名稱 (--stock-id, --ids, --tickers)
-                run_script(script, args=[id_flag, sid, "--start", earliest_gap])
+            # 3. 根據清單進行分組
+            from collections import defaultdict
+            grouped_gaps = defaultdict(list)
+            for gap in gap_manifest:
+                grouped_gaps[gap["stock_id"]].append(gap)
+
+            for sid, gaps in grouped_gaps.items():
+                earliest_gap = min([g["gap_start"] for g in gaps])
+                target_stocks[sid] = earliest_gap
+
+    if not target_stocks:
+        logger.info("無任何標的需要更新。")
+        return
+
+    for sid, start_date in target_stocks.items():
+        logger.info(f"\n>>> 開始處理 {sid} 的資料更新 (起點: {start_date})")
+        
+        for script, id_flag in PER_STOCK_SCRIPTS_CONFIG.items():
+            run_args = [id_flag, sid, "--start", start_date]
+            if args_parsed.force:
+                run_args.append("--force")
+            run_script(script, args=run_args)
 
     # 4. 宏觀資料更新
     logger.info("\nStep 4: 更新全域宏觀資料...")
     for script in MACRO_SCRIPTS:
         run_script(script)
 
-    logger.info("\n✨ 補件任務全數完成。")
+    logger.info("\n✨ 任務全數完成。")
 
 if __name__ == "__main__":
     main()

@@ -3,13 +3,6 @@ from pathlib import Path
 base_dir = Path(__file__).resolve().parent.parent
 for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
 sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
 """
 fetch_technical_data.py  v2.0（API 用量優化版）
 從 FinMind API 抓取技術面資料並寫入 PostgreSQL：
