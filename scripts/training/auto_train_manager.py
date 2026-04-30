@@ -167,7 +167,13 @@ def calculate_priority(sid: str, perf_scores: dict) -> float:
 # ─────────────────────────────────────────────
 
 def main():
-    logger.info("=== 自動訓練管理員啟動（第四輪修正版）===")
+    # ── 參數解析 ──
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force-all", action="store_true", help="強制重新訓練所有標的，忽略模型有效期")
+    args = parser.parse_args()
+
+    logger.info(f"=== 自動訓練管理員啟動（第四輪修正版, force_all={args.force_all}）===")
 
     # [P1 2.5] update_feature_store.py 存在性預檢
     feature_store_script = SCRIPTS_DIR / "update_feature_store.py"
@@ -203,16 +209,19 @@ def main():
 
             # 有效模型清單（Tier 1 每週重訓，其他每月）
             finished_ids = []
-            now = time.time()
-            model_dir = SCRIPTS_DIR / "outputs" / "models"
-            if model_dir.exists():
-                for f in model_dir.iterdir():
-                    if f.suffix == ".pkl" and "ensemble_" in f.name:
-                        sid = f.stem.replace("ensemble_", "")
-                        days_old = (now - f.stat().st_mtime) / (24 * 3600)
-                        limit = 7 if sid in TIER_1_STOCKS else 30
-                        if days_old < limit:
-                            finished_ids.append(sid)
+            if not args.force_all:
+                now = time.time()
+                model_dir = SCRIPTS_DIR / "outputs" / "models"
+                if model_dir.exists():
+                    for f in model_dir.iterdir():
+                        if f.suffix == ".pkl" and "ensemble_" in f.name:
+                            sid = f.stem.replace("ensemble_", "")
+                            days_old = (now - f.stat().st_mtime) / (24 * 3600)
+                            limit = 7 if sid in TIER_1_STOCKS else 30
+                            if days_old < limit:
+                                finished_ids.append(sid)
+            else:
+                logger.info("⚡ [Force All] 模式已啟動，將強制重新訓練所有標的。")
 
             logger.info(
                 f"執行中: {running_ids} | "
