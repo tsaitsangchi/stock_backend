@@ -1202,7 +1202,7 @@ def save_forecast_daily(report: dict) -> None:
             %(xgb_prob)s, %(lgb_prob)s, %(tft_prob)s,
             %(extreme_valuation)s, %(macro_shock)s, %(warning_flag)s
         )
-        ON CONFLICT (predict_date, stock_id, forecast_date) DO UPDATE SET
+        ON CONFLICT (predict_date, stock_id, forecast_date, day_offset) DO UPDATE SET
             day_offset        = EXCLUDED.day_offset,
             price_q10         = EXCLUDED.price_q10,
             price_q25         = EXCLUDED.price_q25,
@@ -1219,7 +1219,7 @@ def save_forecast_daily(report: dict) -> None:
             tft_prob          = EXCLUDED.tft_prob,
             extreme_valuation = EXCLUDED.extreme_valuation,
             macro_shock       = EXCLUDED.macro_shock,
-            warning_flag      = EXCLUDED.warning_flag;
+            warning_flag      = EXCLUDED.warning_flag,
             created_at        = CURRENT_TIMESTAMP;
     """
 

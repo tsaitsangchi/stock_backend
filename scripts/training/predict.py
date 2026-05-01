@@ -279,14 +279,14 @@ def run_prediction(
     # ── Ensemble 推論 ──
     pred_dict    = ensemble.predict(X_latest, tft_pred=tft_prob_up)
     prob_up_raw  = float(pred_dict["ensemble"][0])
-    xgb_prob_raw = float(pred_dict["xgb"][0])   # 压縮前原始機率（僅供參考）
-    lgb_prob_raw = float(pred_dict["lgb"][0])
+    xgb_prob_raw = float(pred_dict.get("xgb", pred_dict["ensemble"])[0])
+    lgb_prob_raw = float(pred_dict.get("lgb", pred_dict["ensemble"])[0])
 
     # 邏語對齊的「隔離貢獻校準」機率（經過 scaler + meta + calibrator 技紹）
     # 用於一致性計算：語意和 ensemble 對齊，0.5 為方向臨界
-    xgb_prob = float(pred_dict.get("xgb_cal", pred_dict["xgb"])[0])
-    lgb_prob = float(pred_dict.get("lgb_cal", pred_dict["lgb"])[0])
-    tft_cal  = float(pred_dict.get("tft_cal", pred_dict["tft"])[0]) if tft_prob_up is not None else None
+    xgb_prob = float(pred_dict.get("xgb_cal", pred_dict.get("xgb", pred_dict["ensemble"]))[0])
+    lgb_prob = float(pred_dict.get("lgb_cal", pred_dict.get("lgb", pred_dict["ensemble"]))[0])
+    tft_cal  = float(pred_dict.get("tft_cal", pred_dict.get("tft", pred_dict["ensemble"]))) if tft_prob_up is not None else None
 
     # ── 極端估值動態權重抑制 (Dynamic Shrinkage) ──
     per_pct_rank = float(df_feat["per_pct_rank_252"].iloc[-1]) if "per_pct_rank_252" in df_feat.columns else 0.5
@@ -453,14 +453,6 @@ def run_prediction(
             "warning_flag":      "", # 預留欄位
         })
 
-    # ── 異常偵測 (Outlier Detection) ──
-    sanity_warnings = validate_prediction_sanity(report, df_feat)
-    if sanity_warnings:
-        warning_str = "; ".join(sanity_warnings)
-        logger.warning(f"⚠️ [{stock_id}] 偵測到異常信號: {warning_str}")
-        for day in trajectory:
-            day["warning_flag"] = warning_str
-
     # ── 組裝報告 ──
     report = {
         "as_of_date":        today_str,
@@ -514,6 +506,15 @@ def run_prediction(
 
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+
+    # ── 異常偵測 (Outlier Detection) ──
+    sanity_warnings = validate_prediction_sanity(report, df_feat)
+    if sanity_warnings:
+        warning_str = "; ".join(sanity_warnings)
+        logger.warning(f"⚠️ [{stock_id}] 偵測到異常信號: {warning_str}")
+        for day in trajectory:
+            day["warning_flag"] = warning_str
+        report["warnings"]["sanity_fail"] = warning_str
 
     # ── 訊號過濾（Signal Filtering）───────────────────────────
     try:
@@ -632,6 +633,15 @@ def parse_args():
 
 
 def main():
+    import signal
+    # [P2-1 修正] 推論超時保護：防止因特徵計算或模型載入卡死
+    # 設定超時為 120 秒，對一般推論而言綽綽有餘
+    def timeout_handler(signum, frame):
+        raise TimeoutError("推論執行超時，已強制終止。")
+    
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(120)  # 2 分鐘超時
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",

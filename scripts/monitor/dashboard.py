@@ -1,15 +1,15 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+
+# Setup paths - dashboard is in scripts/monitor/
+current_dir = Path(__file__).resolve().parent
+scripts_dir = current_dir.parent
+project_root = scripts_dir.parent
+
+for sub in ["fetchers", "pipeline", "training", "monitor"]:
+    sys.path.append(str(scripts_dir / sub))
+sys.path.append(str(scripts_dir))
+sys.path.append(str(project_root))
 """
 scripts/dashboard.py
 量子藍圖 — 系統監控儀表板 v1.0
@@ -207,9 +207,45 @@ def style_trinity(val):
 
 st.dataframe(
     matrix_df.style.map(style_trinity),
-    width='stretch',
-    height=500
+    use_container_width=True,
+    height=400
 )
+
+st.markdown("---")
+
+# 第三排：Log 導航員 (P2-2 修正)
+st.subheader("📋 系統日誌導航 (Log Navigator)")
+
+log_col1, log_col2 = st.columns([1, 3])
+
+with log_col1:
+    log_files = {
+        "自動訓練管理器": scripts_dir / "training" / "outputs" / "manager.log",
+        "數據完整度審計": scripts_dir / "outputs" / "audit_data_integrity.log",
+        "回測引擎審計": scripts_dir / "outputs" / "audit_backtest.log",
+    }
+    
+    # 加入所有標的的訓練日誌
+    for sid in STOCK_CONFIGS.keys():
+        f = scripts_dir / "training" / "outputs" / f"train_{sid}.log"
+        if f.exists():
+            log_files[f"模型訓練: {sid}"] = f
+
+    selected_log_name = st.selectbox("選擇日誌檔案", list(log_files.keys()))
+    num_lines = st.slider("顯示行數", 10, 500, 100)
+    refresh_log = st.button("🔄 刷新日誌")
+
+with log_col2:
+    selected_file = log_files[selected_log_name]
+    if selected_file.exists():
+        with open(selected_file, "r") as f:
+            lines = f.readlines()
+            # 顯示最後 N 行
+            tail_lines = "".join(lines[-num_lines:])
+            st.code(tail_lines, language="text")
+            st.caption(f"檔案路徑: {selected_file}")
+    else:
+        st.warning(f"找不到檔案: {selected_file}")
 
 st.markdown("---")
 st.caption("Quantum Blueprint Quant System Dashboard (Simplified) © 2026 Antigravity Research")

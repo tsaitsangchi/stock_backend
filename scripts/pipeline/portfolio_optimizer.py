@@ -109,59 +109,63 @@ def calculate_market_breadth(df_all):
         return 0.5
     return 1.0
 
-def optimize_portfolio(df_candidates, df_all_stats, budget, max_industry_pct=0.4, max_stock_pct=0.25):
-    """執行資產配置優化。"""
-    df = df_candidates.copy()
+def optimize_portfolio(df_all_stats, budget, max_stock_pct=0.05):
+    """
+    執行 20/60/20 資本過濾與不對稱槓鈴策略。
     
-    # 1. 取得市場寬度乘數 (Risk Gate)
-    risk_gate_mult = calculate_market_breadth(df_all_stats)
+    1.  20/60/20 過濾：只保留表現最優異的前 20% 標的。
+    2.  不對稱槓鈴：80% 配置於防禦端 (現金/中性)，20% 配置於攻擊端 (Top 20% 標的)。
+    """
+    if df_all_stats.empty: return pd.DataFrame()
     
-    df["raw_score"] = (df["prob_up"] - 0.5) * df["expected_return_mid"]
+    df = df_all_stats.copy()
     
-    # 1. 信心等級加權
-    confidence_map = {"高信心 (Green)": 1.5, "中信心 (Yellow)": 1.0, "低信心 (Red)": 0.3}
-    df["weight_mult"] = df["confidence_level"].map(lambda x: confidence_map.get(x, 1.0))
-    
-    # 2. 康波週期時代溢價 (K-Wave)
-    def get_era_multiplier(industry):
-        if industry in ["AI_Hardware", "Semiconductor"]: return 1.2
-        return 1.0
-    df["era_mult"] = df["industry"].apply(get_era_multiplier)
-    
-    # 3. 美元流動性修正
+    # [Step 1] 市場寬度感應與流動性修正
+    risk_gate_mult = calculate_market_breadth(df)
     liq_mult = get_liquidity_multiplier()
-    # 只有成長型產業受流動性因子顯著影響
-    df["liq_mult"] = df["industry"].apply(lambda x: liq_mult if x in ["AI_Hardware", "Semiconductor"] else 1.0)
     
-    df["score"] = df["raw_score"] * df["weight_mult"] * df["era_mult"] * df["liq_mult"]
+    # [Step 2] 綜合評分 (第一性原則 + 時代溢價)
+    confidence_map = {"🔥 強烈買進 (STRONG_BUY)": 2.0, "🟢 高信心": 1.5, "🟡 中等信心": 1.0, "🔴 低信心（建議觀望）": 0.2}
+    df["conf_mult"] = df["confidence_level"].map(lambda x: confidence_map.get(x, 1.0))
     
-    df = df[df["score"] > 0].sort_values("score", ascending=False)
-    if df.empty: return pd.DataFrame()
+    # 時代溢價 (MBNRIC 產業)
+    mbnric_industries = ["Semiconductor", "AI_Hardware", "Biotech", "Robotics"]
+    df["era_mult"] = df["industry"].apply(lambda x: 1.3 if x in mbnric_industries else 1.0)
+    
+    # 物理得分：機率 x 預期報酬 x 信心 x 時代
+    df["quantum_score"] = (df["prob_up"] - 0.5) * df["expected_return_mid"] * df["conf_mult"] * df["era_mult"]
+    
+    # [Step 3] 20/60/20 資本過濾 (Pareto Filtering)
+    # 依分數排序，只保留前 20% 的標的 (右側發光綠色區)
+    df = df.sort_values("quantum_score", ascending=False)
+    n_top = max(1, int(len(df) * 0.2))
+    df_top_20 = df.head(n_top).copy()
+    
+    logger.info(f"🎯 [八二法則] 從 {len(df)} 檔中篩選出前 {n_top} 檔「發光綠色區」標的。")
+    
+    # [Step 4] 不對稱槓鈴分配 (Barbell Strategy)
+    # 攻擊端 (Spear)：佔總預算 20%
+    attack_budget_ratio = 0.20 * risk_gate_mult # 受風險閘門控管
+    defense_budget_ratio = 1.0 - attack_budget_ratio
+    
+    if df_top_20.empty or df_top_20["quantum_score"].max() <= 0:
+        logger.warning("⚠️ 無法找到符合攻擊條件的標的，全數退守防禦端。")
+        return pd.DataFrame()
 
-    # 貪婪分配法
-    df["weight"] = 0.0
-    industry_usage = {ind: 0.0 for ind in df["industry"].unique()}
-    total_allocated = 0.0
-    scores_sum = df["score"].sum()
-    df["ideal_weight"] = df["score"] / scores_sum
-    
-    for idx, row in df.iterrows():
-        ind = row["industry"]
-        actual_w = min(row["ideal_weight"], max_stock_pct, max(0, max_industry_pct - industry_usage[ind]))
-        df.at[idx, "weight"] = actual_w
-        industry_usage[ind] += actual_w
-        total_allocated += actual_w
-        if total_allocated >= 1.0: break
-            
-    # 應用風險閘門 (Global Exposure Control)
-    df["weight"] = df["weight"] * risk_gate_mult
-    
-    if df["weight"].sum() > 0:
-        # 在風險閘門範圍內進行歸一化 (若沒觸發避險則維持 100%)
-        # 若觸發避險，則總權重會低於 1.0，剩餘為現金
-        pass 
+    # 攻擊端內的權重分配 (依分數比例)
+    pos_scores = df_top_20["quantum_score"].clip(lower=0)
+    if pos_scores.sum() > 0:
+        df_top_20["attack_weight"] = pos_scores / pos_scores.sum()
+    else:
+        df_top_20["attack_weight"] = 1.0 / len(df_top_20)
         
-    return df[df["weight"] > 0]
+    # 最終權重 = 攻擊預算 x 攻擊端內權重
+    # 單一標的上限控管 (Anti-fragility)
+    df_top_20["weight"] = (df_top_20["attack_weight"] * attack_budget_ratio).clip(upper=max_stock_pct)
+    
+    logger.info(f"🛡️ [槓鈴策略] 防禦端 (現金/安全資產): {defense_budget_ratio:.1%}, 攻擊端 (標的): {df_top_20['weight'].sum():.1%}")
+    
+    return df_top_20[df_top_20["weight"] > 0]
 
 def main():
     parser = argparse.ArgumentParser(description="宏觀感知優化器 v2.1")
@@ -175,15 +179,17 @@ def main():
     df_preds["industry"] = df_preds["stock_id"].apply(lambda x: STOCK_CONFIGS.get(x, {}).get("industry", "Unknown"))
     df_preds["name"] = df_preds["stock_id"].apply(lambda x: STOCK_CONFIGS.get(x, {}).get("name", "Unknown"))
     
-    # 傳入全市場資料進行寬度計算，並過濾出可交易標的
-    df_final = optimize_portfolio(df_preds[df_preds["prob_up"] >= 0.55], df_preds, args.budget)
+    # 執行優化 (槓鈴策略)
+    df_final = optimize_portfolio(df_preds, args.budget)
     
-    # 輸出簡報 (僅顯示權重與宏觀狀態)
+    # 輸出簡報
+    defense_ratio = 1.0 - (df_final["weight"].sum() if not df_final.empty else 0.0)
     print("\n" + "═" * 60)
     print(f" 🌐 宏觀感知投資組合建議 ({datetime.now().strftime('%Y-%m-%d')})")
     print("═" * 60)
+    print(f" 🛡️  防禦端 (現金/安全資產): {defense_ratio:>6.1%}")
     for _, row in df_final.sort_values("weight", ascending=False).iterrows():
-        print(f"  {row['stock_id']:<6} {row['name']:<8} | 權重: {row['weight']:>6.1%} | 產業: {row['industry']}")
+        print(f"  {row['stock_id']:<6} {row['name']:<8} | 攻擊端權重: {row['weight']:>6.1%} | 產業: {row['industry']}")
     print("═" * 60 + "\n")
 
 if __name__ == "__main__":

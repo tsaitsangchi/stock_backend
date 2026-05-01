@@ -293,6 +293,42 @@ def regime_live_analysis(df: pd.DataFrame) -> dict:
     return results
 
 
+def audit_strategy_consistency(wf_data: dict, df_live: pd.DataFrame) -> dict:
+    """
+    [P2-3 修正] 策略一致性審核：
+    比較歷史 OOF (Training Phase) 與 近期 Live (Production Phase) 的行為是否一致。
+    若 Live DA 顯著低於 OOF DA，可能發生 Concept Drift。
+    """
+    if "meta" not in wf_data or df_live.empty:
+        return {}
+    
+    oof_da = wf_data["meta"]["directional_accuracy"].iloc[0]
+    
+    # 取最近 2 週的 Live 數據
+    recent_cutoff = df_live["predict_date"].max() - pd.Timedelta(days=14)
+    recent_live = df_live[df_live["predict_date"] >= recent_cutoff].copy()
+    
+    if recent_live.empty:
+        return {"oof_da": oof_da, "live_da": None, "drift_flag": "⚪ 無數據"}
+        
+    recent_live["actual_up"] = (recent_live["actual_close"] > recent_live["current_close"]).astype(int)
+    recent_live["pred_up"] = (recent_live["prob_up"] >= 0.5).astype(int)
+    live_da = (recent_live["pred_up"] == recent_live["actual_up"]).mean()
+    
+    drift_val = oof_da - live_da
+    drift_flag = "🟢 正常"
+    if drift_val > 0.15: drift_flag = "🔴 嚴重衰退"
+    elif drift_val > 0.08: drift_flag = "🟡 輕微漂移"
+    
+    return {
+        "oof_da": oof_da,
+        "live_da": live_da,
+        "drift_value": drift_val,
+        "drift_flag": drift_flag,
+        "sample_size": len(recent_live)
+    }
+
+
 # ─────────────────────────────────────────────
 # 主報告
 # ─────────────────────────────────────────────
