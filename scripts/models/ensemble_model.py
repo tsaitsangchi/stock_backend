@@ -142,9 +142,9 @@ class XGBPredictor:
             const_prob = 0.99 if self._const_class == 1 else 0.01
             return np.full(len(X), const_prob, dtype=float)
         if self.task == "classification":
-            return self.model.predict_proba(X)[:, 1]
+            return self.model.predict_proba(X[self.feature_names])[:, 1]
         else:
-            return self.model.predict(X)
+            return self.model.predict(X[self.feature_names])
 
     def predict_score_cal(self, X: pd.DataFrame) -> np.ndarray:
         """
@@ -243,7 +243,7 @@ class XGBPredictor:
             f"（樣本 {len(oof_probs):,} 筆）"
         )
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: pd.DataFrame, **kwargs) -> np.ndarray:
         # [P0 第五輪] 單一類別降級：對 classification 回傳常數機率，
         # 對 regression 回傳零（表示無預測能力）。
         if self._const_class is not None:
@@ -251,7 +251,7 @@ class XGBPredictor:
                 const_prob = 0.99 if self._const_class == 1 else 0.01
                 return np.full(len(X), const_prob, dtype=float)
             return np.zeros(len(X), dtype=float)
-        return self.model.predict(X)
+        return self.model.predict(X[self.feature_names])
 
     def feature_importance(self) -> pd.Series:
         if self.model is None:
@@ -347,9 +347,9 @@ class LGBPredictor:
             const_prob = 0.99 if self._const_class == 1 else 0.01
             return np.full(len(X), const_prob, dtype=float)
         if self.task == "classification":
-            return self.model.predict_proba(X)[:, 1]
+            return self.model.predict_proba(X[self.feature_names])[:, 1]
         else:
-            return self.model.predict(X)
+            return self.model.predict(X[self.feature_names])
 
     def predict_score_cal(self, X: pd.DataFrame) -> np.ndarray:
         """Platt/Isotonic 校準後機率（同 XGBPredictor，若無校準器則回退原始值）。"""
@@ -415,14 +415,14 @@ class LGBPredictor:
             f"（樣本 {len(oof_probs):,} 筆）"
         )
 
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
+    def predict(self, X: pd.DataFrame, **kwargs) -> np.ndarray:
         # [P0 第五輪] 單一類別降級（同 XGBPredictor）
         if self._const_class is not None:
             if self.task == "classification":
                 const_prob = 0.99 if self._const_class == 1 else 0.01
                 return np.full(len(X), const_prob, dtype=float)
             return np.zeros(len(X), dtype=float)
-        return self.model.predict(X)
+        return self.model.predict(X[self.feature_names])
 
     def feature_importance(self) -> pd.Series:
         if self.model is None:

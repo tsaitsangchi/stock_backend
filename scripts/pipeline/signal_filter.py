@@ -47,7 +47,7 @@ FILTER_CONFIG = {
     # ① 模型機率門檻
     # [P0-2 修正] 0.65 → 0.75，搭配最小持倉日數，把 n_trades 從 1984 → < 600
     # 高 prob 門檻 + 5 天最小持倉，目標：中波動 fold net Sharpe > 0.8
-    "prob_up_threshold":     0.75,   # 上漲機率 > 75% 才考慮進場
+    "prob_up_threshold":     CONFIDENCE_THRESHOLD,   # 使用全域信心門檻
     "prob_down_threshold":   0.25,   # 下跌機率 < 25%（做多時）
 
     # ② 模型一致性門檻
@@ -270,7 +270,12 @@ class SignalFilter:
             vol_regime = "high_vol"
 
         # 趨勢 Regime（優先使用特徵工程已計算的欄位）
-        trend_regime = str(latest.get("trend_regime", "sideways"))
+        trend_regime_val = latest.get("trend_regime", "sideways")
+        # 處理 NaN (pandas/numpy nan)
+        if pd.isna(trend_regime_val):
+            trend_regime = "sideways"
+        else:
+            trend_regime = str(trend_regime_val)
         trend_int    = int(latest.get("trend_regime_int", 0))
 
         allowed_vol   = self.cfg["allowed_vol_regimes"]
@@ -432,7 +437,7 @@ class SignalFilter:
         # ── 2. 動力學 DNA 注入 ───────────────────────────────────────
         if dynamics:
             # 根據敏感度調整門檻：敏感度越低，門檻越高
-            sensitivity_bias = (0.5 - dynamics["sensitivity"]) * 0.1
+            sensitivity_bias = (0.5 - float(dynamics["sensitivity"])) * 0.1
             self.cfg["prob_up_threshold"] += max(-0.05, min(0.05, sensitivity_bias))
             boosting_reasons.append(f"🧬 已載入個股動態 DNA (Sensitivity={dynamics['sensitivity']:.2f})")
 
@@ -527,7 +532,7 @@ class SignalFilter:
         kinetic_momentum = float(latest.get("kinetic_momentum", 0))
         if kinetic_momentum > 0:
             # 根據創新速度加乘
-            velocity_multiplier = dynamics.get("innovation_velocity", 1.0) if dynamics else 1.0
+            velocity_multiplier = float(dynamics.get("innovation_velocity", 1.0)) if dynamics else 1.0
             boosting_reasons.append(f"🌀 動力學動量正向 (Mass x Disp) — 動能釋放 (Velocity={velocity_multiplier:.2f})")
             overall += (3 * velocity_multiplier)
             
@@ -593,8 +598,8 @@ class SignalFilter:
         # 核心原則：0% 隱藏危險區 (捨棄中等風險/報酬標的)
         if must_pass and overall >= 65:
             # 右側 20%：極端正向尾部
-            if dynamics and dynamics.get("convexity", 0) > 1.0:
-                boosting_reasons.append(f"💎 右側 20%：高凸性資產 (Convexity={dynamics['convexity']:.2f})")
+            if dynamics and float(dynamics.get("convexity", 0)) > 1.0:
+                boosting_reasons.append(f"💎 右側 20%：高凸性資產 (Convexity={float(dynamics['convexity']):.2f})")
                 decision = "LONG"
             else:
                 decision = "LONG"
@@ -606,8 +611,8 @@ class SignalFilter:
             decision = "HOLD_CASH"
             
         # 左側 20%：尾部風險熔斷
-        if dynamics and dynamics.get("tail_risk", 0) < -5.0:
-             blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={dynamics['tail_risk']:.2f})")
+        if dynamics and float(dynamics.get("tail_risk", 0)) < -5.0:
+             blocking_reasons.append(f"💀 左側 20%：毀滅性風險預警 (TailRisk={float(dynamics['tail_risk']):.2f})")
              decision = "HOLD_CASH"
 
         # ── [P1-1] v3 衍生因子 soft boost 加分（高品質基本面 + 期貨/夜盤確認）──

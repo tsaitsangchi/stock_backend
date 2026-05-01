@@ -269,11 +269,11 @@ INTERNATIONAL_WATCHLIST = _get_international_watchlist()
 # 回測 / 訓練相關參數（保留原有值）
 # ─────────────────────────────────────────────
 LOOKBACK       = 60
-HORIZON        = 5
+HORIZON        = 30
 RETRAIN_FREQ   = 21
 
 PARETO_RATIO          = 0.2
-CONFIDENCE_THRESHOLD  = 0.75
+CONFIDENCE_THRESHOLD  = 0.65
 TIER_1_STOCKS         = ["2330", "2317", "2454", "2382", "2881", "2412", "2308", "2882"]
 
 REGIME_CONFIG = {
@@ -448,6 +448,12 @@ FEATURE_GROUPS: dict = {
         "market_entropy",
         "liquidity_quality",
         "smart_money_sync_buy",
+        "price_acceleration",
+        "information_force",
+        "system_entropy",
+        "info_force_intensity",
+        "kinetic_energy_v4",
+        "entropy_weighted_pull",
     ],
     "quality": [
         # 來源：cash_flows_statement（季資料 ffill）
@@ -659,7 +665,7 @@ INTERNATIONAL_WATCHLIST = _get_international_watchlist()
 # 八二法則 (Pareto Principle) 設定
 # ─────────────────────────────────────────────
 PARETO_RATIO = 0.2  # 特徵層面：只保留前 20% 黃金特徵
-CONFIDENCE_THRESHOLD = 0.75  # 訊號層面：極端高信心門檻
+CONFIDENCE_THRESHOLD = 0.65  # 訊號層面：極端高信心門檻
 TIER_1_STOCKS = ["2330", "2317", "2454", "2382", "2881", "2412", "2308", "2882"] # 標的層面：核心權值股
 
 # ─────────────────────────────────────────────

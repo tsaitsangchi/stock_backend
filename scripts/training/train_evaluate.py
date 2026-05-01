@@ -93,6 +93,7 @@ def make_time_series_calibrator(estimator, n_splits: int = 5, method: str = "iso
 from config import (
     ALL_FEATURES, EVAL_TARGETS, HORIZON, TRAIN_START_DATE,
     MODEL_DIR, OUTPUT_DIR, REGIME_CONFIG, TFT_PARAMS, WF_CONFIG,
+    XGB_PARAMS, LGB_PARAMS,
     STOCK_CONFIGS, get_all_features, PARETO_RATIO, TRAINING_STRATEGY, SECTOR_POOLS,
     FRICTION_CONFIG, LARGE_CAP_TICKERS, calculate_net_return
 )
@@ -322,11 +323,29 @@ def run_walk_forward(
         # ── Level-1：XGBoost + LightGBM ───────────────────────
         vol_low = REGIME_CONFIG["vol_low"]
         vol_high = REGIME_CONFIG["vol_high"]
-        ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
-        ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
+        
+        # [超級加速] Turbo 模式下全程使用單一模型 (不分 regime)
+        if turbo:
+            from models.ensemble_model import LGBPredictor
+            lgb_params = LGB_PARAMS.copy()
+            lgb_params["n_estimators"] = 100 if feature_list is None else 300
+            lgb_params["learning_rate"] = 0.1
+            lgb_params["n_jobs"] = 2  # 減少並行衝突
+            ens = LGBPredictor(params=lgb_params)
+            ens.fit(X_tr, y_tr, X_va, y_va)
+            
+            p = ens.predict_score(X_te)
+            raw_pred = {
+                "xgb": p, "lgb": p, "ensemble": p
+            }
+            # 為 Phase 1 & 2 提供重要性介面 (相容性)
+            importance = pd.Series(ens.model.feature_importances_, index=ens.feature_names)
+            ens.combined_importance = lambda: {"mean": importance}
+        else:
+            ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
+            ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
+            raw_pred = ens.predict(X_te, tft_pred=tft_prob)
 
-        # 取出各 Level-1 模型的原始預測（不經 meta，確保 OOF 無洩漏）
-        raw_pred = ens.predict(X_te, tft_pred=tft_prob)
 
         # 記錄分模型 OOF——這是 Meta-Learner 的訓練素材
         oof_xgb.iloc[sti] = raw_pred["xgb"]
@@ -405,6 +424,32 @@ def run_walk_forward(
     for feat, row in importance_df.head(20).iterrows():
         logger.info(f"  {feat:42s}: {row.iloc[0]:.4f}")
 
+    # ── [P2-5 修正] 因子類別重要性分析 ──────────────────────────
+    FEATURE_GROUPS = {
+        "Technical":    ["rsi", "ma", "kdj", "boll", "macd", "willr", "atr", "cci", "mfi", "slope", "mom"],
+        "Chip":         ["foreign", "investment", "dealer", "margin", "short", "institutional", "sponsor", "buy_sell"],
+        "Fundamental":  ["revenue", "eps", "gross_margin", "operating_income", "net_income", "fcf", "rev_yoy", "per", "pbr"],
+        "Macro":        ["fed_rate", "vix", "yield", "usd_twd", "crude_oil", "gold", "adr_premium"],
+        "Physics":      ["info_force", "price_accel", "entropy", "gravity", "elasticity", "system_entropy"],
+        "Sentiment":    ["news", "sentiment", "volatility_cluster"],
+        "Wave":         ["k_wave", "cycle", "kondratiev", "regime"],
+    }
+    
+    group_importance = {}
+    for group, patterns in FEATURE_GROUPS.items():
+        score = 0.0
+        for feat in importance_df.index:
+            if any(p in feat.lower() for p in patterns):
+                score += importance_df.loc[feat, "importance"]
+        group_importance[group] = score
+        
+    group_imp_df = pd.Series(group_importance).sort_values(ascending=False).to_frame(name="importance")
+    group_imp_df.to_csv(OUTPUT_DIR / "feature_importance_by_group.csv")
+    
+    logger.info("\n=== 因子類別重要性 (Aggregated) ===")
+    for grp, row in group_imp_df.iterrows():
+        logger.info(f"  {grp:15s}: {row['importance']:.4f}")
+
     # ── 訓練 Level-2 Meta-Learner（關鍵修正）────────────────────
     #
     # 只使用有完整 OOF 覆蓋的行（三個模型都有預測的交集）
@@ -431,11 +476,31 @@ def run_walk_forward(
     #   1. Meta-Learner 輸入分布更乾淨（原本 XGB OOF 均值偏高約 0.61）
     #   2. 個別模型一致性比較不再需要「隔離貢獻校準」的近似
     #   3. predict.py 的 xgb_cal / lgb_cal 直接反映真實校準後機率
-    logger.info("\n=== 個別模型 Isotonic Calibration ===")
-    # 複用最後一個 fold 的 ens（包含 XGB/LGB 結構）作為 template
-    vol_low = REGIME_CONFIG["vol_low"]
-    vol_high = REGIME_CONFIG["vol_high"]
-    meta_ensemble = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
+    meta_ensemble = ens
+    if turbo:
+        # 為相容性，我們返回與 non-turbo 一致的字典結構
+        all_imp_df = pd.DataFrame(all_importances).T
+        importance_mean = all_imp_df.mean(axis=1).sort_values(ascending=False)
+        
+        # 構造 oof_full 以供 main() 儲存 .csv 與 .npy
+        oof_full = pd.DataFrame({
+            "date":     y_cls.index,
+            "prob_up":  oof_xgb,   # Turbo 模式下以 XGB OOF 代表
+            "y_true":   y_cls.values
+        })
+        
+        logger.info("✅ [Turbo] 已跳過 Meta-Learner 訓練，直接產出單一模型")
+        return {
+            "importance":   importance_mean,
+            "meta_metrics": summary,
+            "final_model":  ens,
+            "oof_metrics":  pd.DataFrame(fold_metrics),
+            "oof_preds":    oof_xgb,
+            "oof_full":     oof_full,
+            "regime_results": {},
+            "summary":      summary,
+            "meta_ensemble": None
+        }
 
     # ── 個別模型 Isotonic Calibration（在 meta 訓練前完成）──
     # 使用已收集的 OOF 機率 vs 真實標籤
@@ -520,10 +585,11 @@ def run_walk_forward(
 
 def train_final_model(
     df:                    pd.DataFrame,
-    stock_id:              str,
+    feature_list:          list,
+    stock_id:              str = "2330",
     use_tft:               bool = False,
     meta_ensemble_from_cv: Optional[RegimeEnsemble] = None,
-    feature_list:          Optional[list[str]] = None,
+    turbo:                 bool = False,
 ) -> RegimeEnsemble:
     """
     使用全部資料訓練最終部署模型。
@@ -568,26 +634,30 @@ def train_final_model(
         except Exception as e:
             logger.warning(f"最終 TFT 訓練失敗：{e}")
 
+    if turbo:
+        from models.ensemble_model import LGBPredictor
+        lgb_params = LGB_PARAMS.copy()
+        lgb_params["n_estimators"] = 500  # 最終模型多訓練一點
+        lgb_params["learning_rate"] = 0.05
+        lgb_params["n_jobs"] = 4
+        ens = LGBPredictor(params=lgb_params)
+        ens.fit(X_tr, y_tr, X_va, y_va)
+        logger.info("✅ [Turbo] 最終單一模型訓練完成")
+        
+        # [P2 Fix] 為了相容 predict.py 的 ensemble.predict() 格式，
+        # 將單一 Turbo 模型包裝進 StackingEnsemble。
+        from models.ensemble_model import StackingEnsemble
+        wrapper = StackingEnsemble(use_xgb=False, use_lgb=True, use_elastic=False, use_mom=False)
+        wrapper.models = {"lgb": ens}
+        wrapper.feature_names = ens.feature_names
+        return wrapper
+
     vol_low = REGIME_CONFIG["vol_low"]
     vol_high = REGIME_CONFIG["vol_high"]
     ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
     ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
-
-    # ── 移植 CV 訓練好的 Meta-Learner（核心優化）────────────────
     if meta_ensemble_from_cv is not None:
-        for attr in ["low_vol_model", "mid_vol_model", "high_vol_model"]:
-            cv_model = getattr(meta_ensemble_from_cv, attr)
-            ens_model = getattr(ens, attr)
-            if hasattr(cv_model, "meta_learner"):
-                ens_model.meta_learner = cv_model.meta_learner
-                ens_model.scaler = cv_model.scaler
-            if hasattr(cv_model, "_calibrator"):
-                ens_model._calibrator = cv_model._calibrator
-            if "xgb" in cv_model.models and cv_model.models["xgb"]._calibrator is not None:
-                ens_model.models["xgb"]._calibrator = cv_model.models["xgb"]._calibrator
-            if "lgb" in cv_model.models and cv_model.models["lgb"]._calibrator is not None:
-                ens_model.models["lgb"]._calibrator = cv_model.models["lgb"]._calibrator
-        logger.info("✅ Meta-Learner + 個別 Calibrators 已從 CV 移植至最終模型")
+        pass
     else:
         # Fallback：在 Hold-Out 上訓練 Meta（樣本少，僅供緊急使用）
         logger.warning(
@@ -697,7 +767,7 @@ def main():
         logger.info("🚀 [Fast Mode] 啟用：step_days=42")
         WF_CONFIG["step_days"] = 42
         
-    use_tft          = not args.no_tft
+    use_tft          = not args.no_tft and not args.turbo
     calibrate_probs  = not args.no_calibration
     stock_id         = args.stock_id
 
@@ -779,13 +849,24 @@ def main():
         feature_cols = [c for c in scan_result["importance"].index if c in df.columns]
         lasso_cols = lasso_feature_selection(df[feature_cols], df["target_30d"], max_features=30)
         
+        # [P0 Fix] 若 LASSO 失敗，則直接從 importance 取前 30
+        if not lasso_cols:
+            logger.warning("  ⚠️ LASSO 篩選結果為空，改為使用重要性排序作為備援...")
+            lasso_cols = feature_cols[:30]
+
         # 再用 IC IR 驗證其穩定性
         analyzer = FactorAnalyzer(df, target_col="target_30d")
         ic_report = analyzer.analyze_robustness(lasso_cols)
-        golden_features = ic_report[ic_report["is_robust"]]["feature"].tolist()
         
+        # [P0 Fix] 確保 ic_report 不為空且包含 is_robust 欄位
+        if not ic_report.empty and "is_robust" in ic_report.columns:
+            golden_features = ic_report[ic_report["is_robust"]]["feature"].tolist()
+        else:
+            logger.warning("  ⚠️ IC IR 分析未產出有效強健因子，將回退至 LASSO 選項。")
+            golden_features = []
+
         if len(golden_features) < 10:
-            logger.info("  ⚠️ LASSO 與 IC IR 交集過少，保留所有 LASSO 選項...")
+            logger.info(f"  ⚠️ 黃金特徵過少 ({len(golden_features)})，改為完整保留 {len(lasso_cols)} 個 LASSO 選項...")
             golden_features = lasso_cols
     else:
         golden_features = select_top_features(scan_result["importance"])
@@ -857,7 +938,8 @@ def main():
             stock_id              = stock_id,
             use_tft               = use_tft,
             meta_ensemble_from_cv = wf_result["meta_ensemble"],  # 移植 Meta
-            feature_list          = golden_features             # 使用精煉特徵
+            feature_list          = golden_features,            # 使用精煉特徵
+            turbo                 = args.turbo
         )
         # 紀錄特徵清單至模型物件，方便預測時讀取
         final_model.refined_features = golden_features

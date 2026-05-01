@@ -1415,6 +1415,49 @@ def add_fred_macro_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_quantum_physics_evolution_v4(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    《2026 量子金融藍圖》進化 v4.0：微觀物理特徵深度重構。
+    包含：資訊力 (Force)、加速度 (Acceleration)、系統熵 (Entropy)。
+    """
+    c = df["close"]
+    v = df["volume"]
+    log_r = np.log(c / c.shift(1))
+    
+    # 1. 價格加速度 (Acceleration)
+    # A = delta(v) / delta(t)，這裡 v 是回報率
+    df["price_acceleration"] = log_r.diff(1)
+    df["price_acceleration_ma5"] = df["price_acceleration"].rolling(5).mean()
+    
+    # 2. 資訊力 (Information Force)
+    # F = M * A
+    # M (Mass) = 慣性指標，使用 inertial_mass (若已計算) 或 fallback
+    mass = df["inertial_mass"] if "inertial_mass" in df.columns else np.log1p(v.rolling(252).mean())
+    df["information_force"] = mass * df["price_acceleration"]
+    
+    # 3. 系統熵 (System Entropy) - 衡量市場雜訊與紊亂度
+    # 熵越高，代表當前價格運動越偏離物理規律 (低熵態)，引力越弱
+    # 利用回報率的滾動標準差與自相關性反向模擬
+    autocorr = log_r.rolling(20).apply(lambda x: pd.Series(x).autocorr(lag=1)).abs().fillna(0)
+    df["system_entropy"] = (log_r.rolling(20).std() * (1.1 - autocorr)).fillna(0)
+    
+    # 4. 資訊衝擊強度 (Force Intensity)
+    force_ma = df["information_force"].rolling(60).mean()
+    force_std = df["information_force"].rolling(60).std()
+    df["info_force_intensity"] = (df["information_force"] - force_ma) / force_std.replace(0, np.nan)
+    
+    # 5. 能量釋放 (Energy Release)
+    # E = 0.5 * M * V^2
+    df["kinetic_energy_v4"] = 0.5 * mass * (log_r ** 2)
+    df["energy_surge_v4"] = df["kinetic_energy_v4"] / df["kinetic_energy_v4"].rolling(60).mean().replace(0, np.nan)
+
+    # 6. 熵權重引力 (Entropy-weighted Gravity)
+    if "gravity_pull" in df.columns:
+        df["entropy_weighted_pull"] = df["gravity_pull"] / (1 + df["system_entropy"])
+
+    return df
+
+
 def add_extended_features_bundle(df: pd.DataFrame) -> pd.DataFrame:
     """[v3] 統一入口：呼叫所有新特徵函式（防禦性，欄位缺失自動跳過）。"""
     df = add_quality_factors(df)
@@ -1461,6 +1504,10 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
     df = add_staleness_features(df);                 logger.info(f"  複合進階特徵完成，shape={df.shape}")
     df = add_gravity_well_features(df);              logger.info(f"  重力井物理特徵完成，shape={df.shape}")
     df = add_liquidity_quality_features(df);         logger.info(f"  流動性品質特徵完成，shape={df.shape}")
+    
+    # ── [v4.0] 微觀物理進化 ───────────────────────────
+    df = add_quantum_physics_evolution_v4(df);       logger.info(f"  v4.0 微觀物理進化特徵完成，shape={df.shape}")
+    
     df = add_blueprint_entry_signals(df, stock_id);  logger.info(f"  戰略建倉信號完成，shape={df.shape}")
 
     # ── [v3] 第四輪審查衍生因子 ────────────────────────────
