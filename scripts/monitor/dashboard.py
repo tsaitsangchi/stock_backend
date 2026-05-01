@@ -70,22 +70,22 @@ st.markdown("""
 # 資料載入邏輯 (Cached)
 # ─────────────────────────────────────────────
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1)
 def load_integrity_matrix():
     auditor = IntegrityAuditor(days_window=60)
     return auditor.audit_coverage_matrix()
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1)
 def load_lag_report():
     auditor = IntegrityAuditor()
     return auditor.audit_announcement_lag()
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1)
 def load_model_status():
     from model_health_check import check_model_files_df
     return check_model_files_df(list(STOCK_CONFIGS.keys()))
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1)
 def load_performance_da():
     from model_health_check import evaluate_recent_performance_df
     return evaluate_recent_performance_df(list(STOCK_CONFIGS.keys()))
@@ -344,8 +344,9 @@ with tab1:
     matrix_df["資料狀態"] = fresh_df.apply(get_data_status, axis=1)
 
     # 2. 模型狀態
-    matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id")
+    matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id", how="left")
     matrix_df.rename(columns={"status": "模型狀態"}, inplace=True)
+    matrix_df["模型狀態"] = matrix_df["模型狀態"].fillna("🔴 MISSING")
 
     # 3. 預測狀態
     if not pred_df.empty:
@@ -353,6 +354,14 @@ with tab1:
         matrix_df["預測狀態"] = matrix_df["stock_id"].apply(lambda x: "🟢 已產出" if x in pred_ids else "⚪ 待處理")
     else:
         matrix_df["預測狀態"] = "⚪ 待處理"
+
+    # 4. 效能與漂移
+    matrix_df = pd.merge(matrix_df, perf_df[["stock_id", "da"]], on="stock_id", how="left")
+    matrix_df = pd.merge(matrix_df, drift_df[["stock_id", "psi"]], on="stock_id", how="left")
+    
+    matrix_df.rename(columns={"da": "準確度 (DA)", "psi": "漂移 (PSI)"}, inplace=True)
+    matrix_df["準確度 (DA)"] = matrix_df["準確度 (DA)"].apply(lambda x: f"{x:.1%}" if pd.notnull(x) else "N/A")
+    matrix_df["漂移 (PSI)"] = matrix_df["漂移 (PSI)"].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "N/A")
 
     # 樣式與顯示
     def style_trinity(val):

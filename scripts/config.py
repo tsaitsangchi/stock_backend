@@ -134,11 +134,20 @@ TRAINING_STRATEGY = {
 }
 
 SECTOR_POOLS = {
-    "Semiconductor": ["2330", "2454", "2303", "3037", "3711", "3661", "3443", "3035", "8046", "3008", "2344", "2408", "2327", "2409"],
-    "AI_Hardware":   ["2317", "2382", "6669", "2308", "3324", "3231", "3017", "2376", "2301", "2357", "3533", "1519", "1503"],
-    "Finance":       ["2881", "2882", "2886", "2891", "5880", "2884", "2885", "2892", "5871"],
-    "Shipping":      ["2603", "2609", "2615", "2610", "2618"],
-    "Energy_Materials": ["1513", "1301", "1303", "2002", "1101", "2412", "2912", "2207"],
+    "Semiconductor": [
+        "2330", "2454", "2303", "3037", "3711", "3661", "3443", "3035", "8046", "3008", 
+        "2344", "2408", "3105", "3529", "6488", "8299", "5347", "6223", "3264", "6182",
+        "3583", "3131", "3141", "6138", "3016", "2327", "2409", "3481"
+    ],
+    "AI_Hardware": [
+        "2317", "2382", "6669", "2308", "3324", "3231", "3017", "2376", "2301", "2357", 
+        "3533", "1519", "1503", "3515", "3693", "3013", "6125", "2324", "2353", "2352"
+    ],
+    "Finance": ["2881", "2882", "2886", "2891", "5880", "2884", "2885", "2892", "5871"],
+    "Shipping": ["2603", "2609", "2615", "2610", "2618"],
+    "Biotech": ["1760", "4743", "6446", "4147", "6547"],
+    "Software_Game": ["6180", "3293", "5478"],
+    "Energy_Materials": ["1513", "1301", "1303", "2002", "1101", "6244", "3576", "2412", "2912", "2207", "9904"],
 }
 
 STOCK_ID       = "2330"
@@ -169,63 +178,97 @@ def calculate_net_return(gross_return: float, ticker: str) -> float:
 # ─────────────────────────────────────────────
 STOCK_CONFIGS = {
     # ── [AI Hardware / Infrastructure] ──────────────────
-    "2317": {"name": "鴻海", "industry": "AI_Hardware", "us_chain_tickers": ["AAPL", "HPE", "MSFT"], "vol_low": 0.25, "vol_high": 0.45},
-    "2382": {"name": "廣達", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "MSFT", "GOOGL", "AMZN", "SMCI"], "vol_low": 0.25, "vol_high": 0.50},
-    "6669": {"name": "緯穎", "industry": "AI_Hardware", "us_chain_tickers": ["MSFT", "META", "AMZN", "NVDA"], "vol_low": 0.30, "vol_high": 0.60},
-    "2308": {"name": "台達電", "industry": "AI_Hardware", "us_chain_tickers": ["TSLA", "NVDA", "ENPH", "SOXX"], "vol_low": 0.20, "vol_high": 0.40},
-    "3324": {"name": "雙鴻", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "VRT", "AMD"], "vol_low": 0.35, "vol_high": 0.70},
-    "3231": {"name": "緯創", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "SMCI", "MSFT", "DELL"], "vol_low": 0.30, "vol_high": 0.60},
-    "3017": {"name": "奇鋐", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "VRT", "AMD"], "vol_low": 0.35, "vol_high": 0.70},
-    "2376": {"name": "技嘉", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "AMD", "SMCI"], "vol_low": 0.30, "vol_high": 0.60},
-    "2301": {"name": "光寶科", "industry": "AI_Hardware", "us_chain_tickers": ["MSFT", "GOOGL", "NVDA"], "vol_low": 0.20, "vol_high": 0.45},
-    "2357": {"name": "華碩", "industry": "AI_Hardware", "us_chain_tickers": ["INTC", "NVDA", "AMD"], "vol_low": 0.20, "vol_high": 0.40},
-    "3533": {"name": "嘉澤", "industry": "AI_Hardware", "us_chain_tickers": ["INTC", "AMD", "NVDA"], "vol_low": 0.25, "vol_high": 0.50},
-    "1519": {"name": "華城", "industry": "AI_Hardware", "us_chain_tickers": ["ETN", "PWR", "GE"], "vol_low": 0.40, "vol_high": 0.80},
-    "1503": {"name": "士電", "industry": "AI_Hardware", "us_chain_tickers": ["ETN", "PWR", "GE"], "vol_low": 0.30, "vol_high": 0.60},
+    "2317": {"name": "鴻海", "industry": "AI_Hardware", "us_chain_tickers": ["AAPL", "HPE", "MSFT"]},
+    "2382": {"name": "廣達", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "MSFT", "GOOGL", "AMZN", "SMCI"]},
+    "6669": {"name": "緯穎", "industry": "AI_Hardware", "us_chain_tickers": ["MSFT", "META", "AMZN", "NVDA"]},
+    "2308": {"name": "台達電", "industry": "AI_Hardware", "us_chain_tickers": ["TSLA", "NVDA", "ENPH", "SOXX"]},
+    "3324": {"name": "雙鴻", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "VRT", "AMD"]},
+    "3231": {"name": "緯創", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "SMCI", "MSFT", "DELL"]},
+    "3017": {"name": "奇鋐", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "VRT", "AMD"]},
+    "2376": {"name": "技嘉", "industry": "AI_Hardware", "us_chain_tickers": ["NVDA", "AMD", "SMCI"]},
+    "2301": {"name": "光寶科", "industry": "AI_Hardware", "us_chain_tickers": ["MSFT", "GOOGL", "NVDA"]},
+    "2357": {"name": "華碩", "industry": "AI_Hardware", "us_chain_tickers": ["INTC", "NVDA", "AMD"]},
+    "3533": {"name": "嘉澤", "industry": "AI_Hardware", "us_chain_tickers": ["INTC", "AMD", "NVDA"]},
+    "1519": {"name": "華城", "industry": "AI_Hardware", "us_chain_tickers": ["ETN", "PWR", "GE"]},
+    "1503": {"name": "士電", "industry": "AI_Hardware", "us_chain_tickers": ["ETN", "PWR", "GE"]},
+    "3515": {"name": "華擎", "industry": "AI_Hardware", "us_chain_tickers": ["AMD", "NVDA", "INTC"]},
+    "3693": {"name": "營邦", "industry": "AI_Hardware", "us_chain_tickers": ["SMCI", "DELL"]},
+    "3013": {"name": "晟銘電", "industry": "AI_Hardware", "us_chain_tickers": ["SMCI", "NVDA"]},
+    "6125": {"name": "廣運", "industry": "AI_Hardware", "us_chain_tickers": ["VRT", "NVDA"]},
+    "2324": {"name": "仁寶", "industry": "AI_Hardware", "us_chain_tickers": ["DELL", "HPQ"]},
+    "2353": {"name": "宏碁", "industry": "AI_Hardware", "us_chain_tickers": ["INTC", "MSFT"]},
+    "2352": {"name": "佳世達", "industry": "AI_Hardware", "us_chain_tickers": ["PHG", "GE"]},
 
-    # ── [Semiconductor / IC Design] ────────────────────
-    "2330": {"name": "台積電", "industry": "Semiconductor", "us_chain_tickers": ["TSM", "NVDA", "AAPL", "SOXX"], "vol_low": 0.20, "vol_high": 0.40, "use_adr_premium": True},
-    "2454": {"name": "聯發科", "industry": "Semiconductor", "us_chain_tickers": ["QCOM", "ARM", "SOXX", "NVDA"], "vol_low": 0.30, "vol_high": 0.50},
-    "2303": {"name": "聯電", "industry": "Semiconductor", "us_chain_tickers": ["UMC", "INTC", "TXN"], "vol_low": 0.20, "vol_high": 0.40},
-    "3037": {"name": "欣興", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "INTC", "SOXX"], "vol_low": 0.25, "vol_high": 0.50},
-    "3711": {"name": "日月光投控", "industry": "Semiconductor", "us_chain_tickers": ["ASX", "INTC", "AMAT"], "vol_low": 0.20, "vol_high": 0.40},
-    "3661": {"name": "世芯-KY", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMZN", "MSFT"], "vol_low": 0.40, "vol_high": 0.80},
-    "3443": {"name": "創意", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "SOXX"], "vol_low": 0.35, "vol_high": 0.70},
-    "3035": {"name": "智原", "industry": "Semiconductor", "us_chain_tickers": ["ARM", "QCOM", "SOXX"], "vol_low": 0.30, "vol_high": 0.65},
-    "8046": {"name": "南電", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "SOXX"], "vol_low": 0.35, "vol_high": 0.70},
-    "3008": {"name": "大立光", "industry": "Semiconductor", "us_chain_tickers": ["AAPL", "LITE"], "vol_low": 0.20, "vol_high": 0.40},
-    "2344": {"name": "華邦電", "industry": "Semiconductor", "us_chain_tickers": ["MU", "WDC", "STX"], "vol_low": 0.25, "vol_high": 0.50},
-    "2408": {"name": "南亞科", "industry": "Semiconductor", "us_chain_tickers": ["MU", "WDC", "STX"], "vol_low": 0.25, "vol_high": 0.50},
+    # ── [Semiconductor / IC Design / Equipment] ──────────
+    "2330": {"name": "台積電", "industry": "Semiconductor", "us_chain_tickers": ["TSM", "NVDA", "AAPL", "SOXX"], "use_adr_premium": True},
+    "2454": {"name": "聯發科", "industry": "Semiconductor", "us_chain_tickers": ["QCOM", "ARM", "SOXX", "NVDA"]},
+    "2303": {"name": "聯電", "industry": "Semiconductor", "us_chain_tickers": ["UMC", "INTC", "TXN"]},
+    "3037": {"name": "欣興", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "INTC", "SOXX"]},
+    "3711": {"name": "日月光投控", "industry": "Semiconductor", "us_chain_tickers": ["ASX", "INTC", "AMAT"]},
+    "3661": {"name": "世芯-KY", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMZN", "MSFT"]},
+    "3443": {"name": "創意", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "SOXX"]},
+    "3035": {"name": "智原", "industry": "Semiconductor", "us_chain_tickers": ["ARM", "QCOM", "SOXX"]},
+    "8046": {"name": "南電", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMD", "SOXX"]},
+    "3008": {"name": "大立光", "industry": "Semiconductor", "us_chain_tickers": ["AAPL", "LITE"]},
+    "2344": {"name": "華邦電", "industry": "Semiconductor", "us_chain_tickers": ["MU", "WDC", "STX"]},
+    "2408": {"name": "南亞科", "industry": "Semiconductor", "us_chain_tickers": ["MU", "WDC", "STX"]},
+    "3105": {"name": "穩懋", "industry": "Semiconductor", "us_chain_tickers": ["QRVO", "SWKS", "AVGO"]},
+    "3529": {"name": "力旺", "industry": "Semiconductor", "us_chain_tickers": ["ARM", "NVDA", "SOXX"]},
+    "6488": {"name": "環球晶", "industry": "Semiconductor", "us_chain_tickers": ["WOLF", "ON", "SUMCO"]},
+    "8299": {"name": "群聯", "industry": "Semiconductor", "us_chain_tickers": ["MU", "WDC", "STX"]},
+    "5347": {"name": "世界", "industry": "Semiconductor", "us_chain_tickers": ["UMC", "TXN"]},
+    "6223": {"name": "旺矽", "industry": "Semiconductor", "us_chain_tickers": ["NVDA", "AMAT"]},
+    "3264": {"name": "欣銓", "industry": "Semiconductor", "us_chain_tickers": ["ASX", "TXN"]},
+    "6182": {"name": "合晶", "industry": "Semiconductor", "us_chain_tickers": ["WOLF", "STMicro"]},
+    "3583": {"name": "辛耘", "industry": "Semiconductor", "us_chain_tickers": ["AMAT", "ASML"]},
+    "3131": {"name": "弘塑", "industry": "Semiconductor", "us_chain_tickers": ["AMAT", "ASML"]},
+    "3141": {"name": "晶宏", "industry": "Semiconductor", "us_chain_tickers": ["EINK", "AAPL"]},
+    "6138": {"name": "茂達", "industry": "Semiconductor", "us_chain_tickers": ["TXN", "ADI"]},
+    "3016": {"name": "嘉晶", "industry": "Semiconductor", "us_chain_tickers": ["WOLF", "ON"]},
+    "2327": {"name": "國巨", "industry": "Semiconductor", "us_chain_tickers": ["TEL", "APH"]},
+    "2409": {"name": "友達", "industry": "Semiconductor", "us_chain_tickers": ["LPL", "SONY"]},
+    "3481": {"name": "群創", "industry": "Semiconductor", "us_chain_tickers": ["LPL", "SONY"]},
 
     # ── [Finance / Banking] ──────────────────────────
-    "2881": {"name": "富邦金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "TNX"], "vol_low": 0.12, "vol_high": 0.25},
-    "2882": {"name": "國泰金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "VTI"], "vol_low": 0.12, "vol_high": 0.25},
-    "2886": {"name": "兆豐金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "TLT"], "vol_low": 0.10, "vol_high": 0.20},
-    "2891": {"name": "中信金", "industry": "Finance", "us_chain_tickers": ["XLF", "VTI"], "vol_low": 0.12, "vol_high": 0.25},
-    "5880": {"name": "合庫金", "industry": "Finance", "us_chain_tickers": ["XLF", "TLT"], "vol_low": 0.08, "vol_high": 0.18},
-    "2884": {"name": "玉山金", "industry": "Finance", "us_chain_tickers": ["XLF", "VTI"], "vol_low": 0.10, "vol_high": 0.20},
-    "2885": {"name": "元大金", "industry": "Finance", "us_chain_tickers": ["XLF", "IAU"], "vol_low": 0.12, "vol_high": 0.25},
-    "2892": {"name": "第一金", "industry": "Finance", "us_chain_tickers": ["XLF", "TLT"], "vol_low": 0.10, "vol_high": 0.20},
-    "5871": {"name": "中租-KY", "industry": "Finance", "us_chain_tickers": ["VTI", "FXI"], "vol_low": 0.20, "vol_high": 0.45},
+    "2881": {"name": "富邦金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "TNX"]},
+    "2882": {"name": "國泰金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "VTI"]},
+    "2886": {"name": "兆豐金", "industry": "Finance", "us_chain_tickers": ["XLF", "KBE", "TLT"]},
+    "2891": {"name": "中信金", "industry": "Finance", "us_chain_tickers": ["XLF", "VTI"]},
+    "5880": {"name": "合庫金", "industry": "Finance", "us_chain_tickers": ["XLF", "TLT"]},
+    "2884": {"name": "玉山金", "industry": "Finance", "us_chain_tickers": ["XLF", "VTI"]},
+    "2885": {"name": "元大金", "industry": "Finance", "us_chain_tickers": ["XLF", "IAU"]},
+    "2892": {"name": "第一金", "industry": "Finance", "us_chain_tickers": ["XLF", "TLT"]},
+    "5871": {"name": "中租-KY", "industry": "Finance", "us_chain_tickers": ["VTI", "FXI"]},
 
     # ── [Shipping / Logistics] ──────────────────────
-    "2603": {"name": "長榮", "industry": "Shipping", "us_chain_tickers": ["ZIM", "MATX", "SEA", "BDRY"], "vol_low": 0.30, "vol_high": 0.60},
-    "2609": {"name": "陽明", "industry": "Shipping", "us_chain_tickers": ["ZIM", "MATX", "SEA"], "vol_low": 0.35, "vol_high": 0.65},
-    "2615": {"name": "萬海", "industry": "Shipping", "us_chain_tickers": ["ZIM", "SEA"], "vol_low": 0.35, "vol_high": 0.70},
-    "2610": {"name": "華航", "industry": "Shipping", "us_chain_tickers": ["JETS", "LUV", "DAL"], "vol_low": 0.25, "vol_high": 0.50},
-    "2618": {"name": "長榮航", "industry": "Shipping", "us_chain_tickers": ["JETS", "LUV", "DAL"], "vol_low": 0.25, "vol_high": 0.50},
+    "2603": {"name": "長榮", "industry": "Shipping", "us_chain_tickers": ["ZIM", "MATX", "SEA", "BDRY"]},
+    "2609": {"name": "陽明", "industry": "Shipping", "us_chain_tickers": ["ZIM", "MATX", "SEA"]},
+    "2615": {"name": "萬海", "industry": "Shipping", "us_chain_tickers": ["ZIM", "SEA"]},
+    "2610": {"name": "華航", "industry": "Shipping", "us_chain_tickers": ["JETS", "LUV", "DAL"]},
+    "2618": {"name": "長榮航", "industry": "Shipping", "us_chain_tickers": ["JETS", "LUV", "DAL"]},
 
-    # ── [Materials / Energy / Others] ───────────────
-    "1513": {"name": "中興電", "industry": "Energy", "us_chain_tickers": ["ETN", "PWR", "GE"], "vol_low": 0.25, "vol_high": 0.50},
-    "1301": {"name": "台塑", "industry": "Materials", "us_chain_tickers": ["DOW", "LYB", "XOM"], "vol_low": 0.15, "vol_high": 0.35},
-    "1303": {"name": "南亞", "industry": "Materials", "us_chain_tickers": ["DOW", "LYB", "XOM"], "vol_low": 0.15, "vol_high": 0.35},
-    "2002": {"name": "中鋼", "industry": "Materials", "us_chain_tickers": ["X", "NUE", "STLD"], "vol_low": 0.10, "vol_high": 0.30},
-    "1101": {"name": "台泥", "industry": "Materials", "us_chain_tickers": ["VMC", "MLM"], "vol_low": 0.15, "vol_high": 0.35},
-    "2412": {"name": "中華電", "industry": "Telecom", "us_chain_tickers": ["VZ", "T", "TMUS"], "vol_low": 0.05, "vol_high": 0.15},
-    "2912": {"name": "統一超", "industry": "Retail", "us_chain_tickers": ["WMT", "COST", "TGT"], "vol_low": 0.10, "vol_high": 0.20},
-    "2207": {"name": "和泰車", "industry": "Retail", "us_chain_tickers": ["TM", "HMC", "F"], "vol_low": 0.15, "vol_high": 0.30},
-    "2327": {"name": "國巨", "industry": "Semiconductor", "us_chain_tickers": ["TEL", "APH"], "vol_low": 0.25, "vol_high": 0.50},
-    "2409": {"name": "友達", "industry": "Semiconductor", "us_chain_tickers": ["LPL", "SONY"], "vol_low": 0.25, "vol_high": 0.55},
+    # ── [Biotech / Healthcare] ──────────────────────
+    "1760": {"name": "寶齡富錦", "industry": "Biotech", "us_chain_tickers": ["IBB", "XBI", "PFE"]},
+    "4743": {"name": "合一", "industry": "Biotech", "us_chain_tickers": ["IBB", "XBI", "LLY"]},
+    "6446": {"name": "藥華藥", "industry": "Biotech", "us_chain_tickers": ["IBB", "XBI", "MRK"]},
+    "4147": {"name": "泰博", "industry": "Biotech", "us_chain_tickers": ["TMO", "DHR"]},
+    "6547": {"name": "高端疫苗", "industry": "Biotech", "us_chain_tickers": ["MRNA", "BNTX"]},
+
+    # ── [Software / Game / Others] ──────────────────
+    "6180": {"name": "橘子", "industry": "Software", "us_chain_tickers": ["ATVI", "EA", "NTES"]},
+    "3293": {"name": "鈊象", "industry": "Software", "us_chain_tickers": ["WYNN", "LVS"]},
+    "5478": {"name": "智冠", "industry": "Software", "us_chain_tickers": ["ATVI", "EA"]},
+    "6244": {"name": "茂迪", "industry": "Energy", "us_chain_tickers": ["TAN", "FSLR"]},
+    "3576": {"name": "聯合再生", "industry": "Energy", "us_chain_tickers": ["TAN", "FSLR"]},
+    "1513": {"name": "中興電", "industry": "Energy", "us_chain_tickers": ["ETN", "PWR", "GE"]},
+    "1301": {"name": "台塑", "industry": "Materials", "us_chain_tickers": ["DOW", "LYB", "XOM"]},
+    "1303": {"name": "南亞", "industry": "Materials", "us_chain_tickers": ["DOW", "LYB", "XOM"]},
+    "2002": {"name": "中鋼", "industry": "Materials", "us_chain_tickers": ["X", "NUE", "STLD"]},
+    "1101": {"name": "台泥", "industry": "Materials", "us_chain_tickers": ["VMC", "MLM"]},
+    "2412": {"name": "中華電", "industry": "Telecom", "us_chain_tickers": ["VZ", "T", "TMUS"]},
+    "2912": {"name": "統一超", "industry": "Retail", "us_chain_tickers": ["WMT", "COST", "TGT"]},
+    "2207": {"name": "和泰車", "industry": "Retail", "us_chain_tickers": ["TM", "HMC", "F"]},
+    "9904": {"name": "寶成", "industry": "Retail", "us_chain_tickers": ["NKE", "ADDYY"]},
 }
 
 # ─────────────────────────────────────────────
@@ -599,6 +642,19 @@ EVAL_TARGETS = {
     "ic":                   0.05,
     "sharpe":               1.0,
 }
+CATBOOST_PARAMS = {
+    "iterations":        1500,
+    "depth":             6,
+    "learning_rate":     0.03,
+    "loss_function":     "Logloss",
+    "eval_metric":       "AUC",
+    "random_seed":       42,
+    "bootstrap_type":    "Bernoulli",
+    "subsample":         0.8,
+    "task_type":         "GPU",     # 正式啟用 RTX 4060 加速
+    "devices":           "0",       # 使用第一張顯卡
+    "early_stopping_rounds": 50,
+}
 
 # 組合層回測目標 (Portfolio Level)
 PORTFOLIO_EVAL_TARGETS = {
@@ -647,7 +703,10 @@ TIER_1_STOCKS = [
     "6669", "3231", "3017", "2376", "3037", "3711", "2609", "2886", "2891", "2412",
     "3324", "3661", "1301", "2002", "3008", "1519", "2615", "5880", "2884", "2357",
     "3533", "3443", "3035", "8046", "2344", "2408", "2885", "2892", "5871", "2610",
-    "2618", "1503", "1303", "1101", "2912", "2207", "2327", "2409"
+    "2618", "1503", "1303", "1101", "2912", "2207", "2327", "2409", "3105", "3529",
+    "6488", "8299", "5347", "6223", "3264", "6182", "3583", "3131", "3141", "6138",
+    "3016", "3515", "3693", "3013", "6125", "1760", "4743", "6446", "4147", "6547",
+    "6180", "3293", "5478", "6244", "3576", "3481", "2324", "2353", "2352", "9904"
 ]
 
 # ─────────────────────────────────────────────
