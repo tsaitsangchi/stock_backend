@@ -81,11 +81,11 @@ def check_model_files_df(stock_ids: List[str]) -> pd.DataFrame:
         if exists:
             mtime: datetime = datetime.fromtimestamp(model_path.stat().st_mtime)
             age_days: int = (now - mtime).days
-            status: str = "[OK]" if age_days <= 30 else "[STALE]"
+            status: str = "🟢 OK" if age_days <= 30 else "🟡 STALE"
         else:
             mtime = None
             age_days = 999
-            status = "[MISSING]"
+            status = "🔴 MISSING"
 
         results.append({
             "stock_id":      sid,

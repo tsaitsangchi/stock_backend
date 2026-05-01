@@ -109,63 +109,88 @@ def calculate_market_breadth(df_all):
         return 0.5
     return 1.0
 
-def optimize_portfolio(df_all_stats, budget, max_stock_pct=0.05):
-    """
-    執行 20/60/20 資本過濾與不對稱槓鈴策略。
-    
-    1.  20/60/20 過濾：只保留表現最優異的前 20% 標的。
-    2.  不對稱槓鈴：80% 配置於防禦端 (現金/中性)，20% 配置於攻擊端 (Top 20% 標的)。
-    """
-    if df_all_stats.empty: return pd.DataFrame()
-    
-    df = df_all_stats.copy()
-    
-    # [Step 1] 市場寬度感應與流動性修正
-    risk_gate_mult = calculate_market_breadth(df)
-    liq_mult = get_liquidity_multiplier()
-    
-    # [Step 2] 綜合評分 (第一性原則 + 時代溢價)
-    confidence_map = {"🔥 強烈買進 (STRONG_BUY)": 2.0, "🟢 高信心": 1.5, "🟡 中等信心": 1.0, "🔴 低信心（建議觀望）": 0.2}
-    df["conf_mult"] = df["confidence_level"].map(lambda x: confidence_map.get(x, 1.0))
-    
-    # 時代溢價 (MBNRIC 產業)
-    mbnric_industries = ["Semiconductor", "AI_Hardware", "Biotech", "Robotics"]
-    df["era_mult"] = df["industry"].apply(lambda x: 1.3 if x in mbnric_industries else 1.0)
-    
-    # 物理得分：機率 x 預期報酬 x 信心 x 時代
-    df["quantum_score"] = (df["prob_up"] - 0.5) * df["expected_return_mid"] * df["conf_mult"] * df["era_mult"]
-    
-    # [Step 3] 20/60/20 資本過濾 (Pareto Filtering)
-    # 依分數排序，只保留前 20% 的標的 (右側發光綠色區)
-    df = df.sort_values("quantum_score", ascending=False)
-    n_top = max(1, int(len(df) * 0.2))
-    df_top_20 = df.head(n_top).copy()
-    
-    logger.info(f"🎯 [八二法則] 從 {len(df)} 檔中篩選出前 {n_top} 檔「發光綠色區」標的。")
-    
-    # [Step 4] 不對稱槓鈴分配 (Barbell Strategy)
-    # 攻擊端 (Spear)：佔總預算 20%
-    attack_budget_ratio = 0.20 * risk_gate_mult # 受風險閘門控管
-    defense_budget_ratio = 1.0 - attack_budget_ratio
-    
-    if df_top_20.empty or df_top_20["quantum_score"].max() <= 0:
-        logger.warning("⚠️ 無法找到符合攻擊條件的標的，全數退守防禦端。")
-        return pd.DataFrame()
+class PortfolioOptimizer:
+    def __init__(self, risk_free_rate=0.02):
+        self.risk_free_rate = risk_free_rate
+        self.confidence_map = {
+            "🔥 強烈買進 (STRONG_BUY)": 2.0,
+            "🟢 高信心": 1.5,
+            "🟡 中等信心": 1.0,
+            "🔴 低信心（建議觀望）": 0.2
+        }
+        self.mbnric_industries = ["Semiconductor", "AI_Hardware", "Biotech", "Robotics"]
 
-    # 攻擊端內的權重分配 (依分數比例)
-    pos_scores = df_top_20["quantum_score"].clip(lower=0)
-    if pos_scores.sum() > 0:
-        df_top_20["attack_weight"] = pos_scores / pos_scores.sum()
-    else:
-        df_top_20["attack_weight"] = 1.0 / len(df_top_20)
+    def optimize_v4(self, signals: dict, exchange_rate: float = 32.0) -> dict:
+        """
+        v4.0 核心優化邏輯：實踐不對稱槓鈴策略與 20/60/20 資本過濾。
+        """
+        if not signals:
+            return {"CASH": 1.0}
+
+        # 1. 轉換為 DataFrame 進行運算
+        data = []
+        for sid, s in signals.items():
+            # 關鍵修正：只有被 SignalFilter 允許交易 (LONG) 的標的才能進入權重分配
+            if s.get('decision') == 'LONG':
+                industry = STOCK_CONFIGS.get(sid, {}).get("industry", "Unknown")
+                era_mult = 1.3 if industry in self.mbnric_industries else 1.0
+                conf_mult = self.confidence_map.get(s.get('confidence_level', "🟡 中等信心"), 1.0)
+                
+                data.append({
+                    "stock_id": sid,
+                    "prob_up": s['prob_up'],
+                    "overall_score": (s.get('overall_score', 50.0) / 100.0),
+                    "era_mult": era_mult,
+                    "conf_mult": conf_mult,
+                    "expected_return_mid": s.get('expected_return_mid', 0.05)
+                })
         
-    # 最終權重 = 攻擊預算 x 攻擊端內權重
-    # 單一標的上限控管 (Anti-fragility)
-    df_top_20["weight"] = (df_top_20["attack_weight"] * attack_budget_ratio).clip(upper=max_stock_pct)
+        if not data:
+            return {"CASH": 1.0}
+            
+        df = pd.DataFrame(data)
+        
+        # 2. 市場寬度
+        risk_gate_mult = calculate_market_breadth(df)
+        
+        # 3. 量子得分 (Quantum Score)
+        df["quantum_score"] = (df["prob_up"] - 0.5) * df["overall_score"] * df["era_mult"] * df["conf_mult"]
+        
+        # 4. 20/60/20 篩選
+        df = df.sort_values("quantum_score", ascending=False)
+        n_top = max(1, int(len(df) * 0.2))
+        df_top = df.head(n_top).copy()
+        
+        # 5. 槓鈴分配
+        attack_ratio = 0.20 * risk_gate_mult
+        total_q = df_top["quantum_score"].clip(lower=1e-6).sum()
+        
+        weights = {}
+        for _, row in df_top.iterrows():
+            w = (row["quantum_score"] / total_q) * attack_ratio
+            weights[row["stock_id"]] = round(float(w), 4)
+            
+        weights["CASH"] = round(1.0 - sum(weights.values()), 4)
+        return weights
+
+def optimize_portfolio(df_all_stats, budget, max_stock_pct=0.05):
+    """舊版入口封裝 (Backward Compatibility)"""
+    optimizer = PortfolioOptimizer()
+    signals = {}
+    for _, row in df_all_stats.iterrows():
+        signals[row['stock_id']] = {
+            'prob_up': row['prob_up'],
+            'expected_return_mid': row.get('expected_return_mid', 0.05),
+            'confidence_level': row.get('confidence_level', "🟡 中等信心"),
+            'overall_score': row.get('overall_score', 80.0)
+        }
     
-    logger.info(f"🛡️ [槓鈴策略] 防禦端 (現金/安全資產): {defense_budget_ratio:.1%}, 攻擊端 (標的): {df_top_20['weight'].sum():.1%}")
-    
-    return df_top_20[df_top_20["weight"] > 0]
+    weights = optimizer.optimize_v4(signals)
+    results = []
+    for sid, w in weights.items():
+        if sid != "CASH":
+            results.append({"stock_id": sid, "weight": w})
+    return pd.DataFrame(results)
 
 def main():
     parser = argparse.ArgumentParser(description="宏觀感知優化器 v2.1")
