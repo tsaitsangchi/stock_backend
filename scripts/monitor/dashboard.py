@@ -86,6 +86,14 @@ def load_model_status():
     return check_model_files_df(list(STOCK_CONFIGS.keys()))
 
 @st.cache_data(ttl=1)
+def load_trade_ledger():
+    from data_pipeline import _query
+    df = _query("SELECT * FROM trade_ledger")
+    if df.empty:
+        return pd.DataFrame(columns=["stock_id", "shares", "entry_price", "entry_date", "total_amount"])
+    return df
+
+@st.cache_data(ttl=1)
 def load_performance_da():
     from model_health_check import evaluate_recent_performance_df
     return evaluate_recent_performance_df(list(STOCK_CONFIGS.keys()))
@@ -362,6 +370,52 @@ with tab1:
     matrix_df.rename(columns={"da": "準確度 (DA)", "psi": "漂移 (PSI)"}, inplace=True)
     matrix_df["準確度 (DA)"] = matrix_df["準確度 (DA)"].apply(lambda x: f"{x:.1%}" if pd.notnull(x) else "N/A")
     matrix_df["漂移 (PSI)"] = matrix_df["漂移 (PSI)"].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "N/A")
+
+    st.markdown("---")
+    st.subheader("💎 專業投資交易帳本矩陣")
+    ledger_df = load_trade_ledger()
+    
+    if ledger_df.empty:
+        st.info("💡 交易帳本為空。您可以在資料庫中更新 `trade_ledger` 表以開始追蹤利潤與決策。")
+    else:
+        # 準備帳本矩陣
+        matrix = ledger_df.copy()
+        matrix["股票"] = matrix["stock_id"].apply(lambda x: f"{x} {STOCK_CONFIGS.get(x, {}).get('name', '')}")
+        
+        # 獲取最新價格
+        from data_pipeline import _query
+        prices_sql = f"SELECT stock_id, close FROM stock_price WHERE stock_id IN ({','.join([f"'{s}'" for s in ledger_df['stock_id']])}) AND date = (SELECT max(date) FROM stock_price)"
+        prices = _query(prices_sql)
+        matrix = pd.merge(matrix, prices, on="stock_id", how="left")
+        
+        # 動態計算
+        matrix["現值"] = matrix["shares"] * matrix["close"]
+        matrix["利潤率"] = (matrix["close"] - matrix["entry_price"]) / matrix["entry_price"]
+        
+        # 連結明日投資建議 (防呆版)
+        if not pred_df.empty:
+            col = "decision" if "decision" in pred_df.columns else ("action" if "action" in pred_df.columns else None)
+            if col:
+                sugg_map = pred_df.set_index("stock_id")[col].to_dict()
+                matrix["明日投資建議"] = matrix["stock_id"].apply(lambda x: sugg_map.get(x, "⚪ 觀望"))
+            else:
+                matrix["明日投資建議"] = "⚪ 待更新"
+        else:
+            matrix["明日投資建議"] = "⏳ 運算中"
+
+        # 顯示表格 (格式化數字)
+        display_df = matrix[["股票", "shares", "現值", "entry_date", "利潤率", "明日投資建議"]].rename(columns={
+            "shares": "持股數", "entry_date": "成交日"
+        })
+        
+        st.dataframe(
+            display_df.style.format({
+                "現值": "{:,.0f}",
+                "利潤率": "{:+.2%}"
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
 
     # 樣式與顯示
     def style_trinity(val):
