@@ -83,7 +83,7 @@ logging.basicConfig(level=logging.INFO,
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 # ── 設定區域 ───────────────────────────────────────────────────
-MAX_WORKERS    = 3                                            # 並行訓練數
+MAX_WORKERS    = 6                                            # 並行訓練數 (擴張至 6 以壓榨 RTX 4060 算力)
 VENV_PYTHON    = os.environ.get("VENV_PYTHON",
                                 "/home/hugo/project/stock_backend/venv/bin/python3")
 TRAIN_SCRIPT   = str(BASE_DIR / "training" / "train_evaluate.py")

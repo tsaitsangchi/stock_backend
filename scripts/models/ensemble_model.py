@@ -438,6 +438,65 @@ class LGBPredictor:
 
 
 # ─────────────────────────────────────────────
+# Level-1：CatBoost
+# ─────────────────────────────────────────────
+
+class CatPredictor:
+    def __init__(self, params: dict = None, task: str = "classification"):
+        from config import CATBOOST_PARAMS
+        self.params = params or CATBOOST_PARAMS.copy()
+        self.task = task
+        self.model = None
+        self.feature_names: list[str] = []
+        self._const_class: Optional[int] = None
+
+    def fit(self, X_train: pd.DataFrame, y_train: pd.Series,
+            X_val: pd.DataFrame, y_val: pd.Series) -> "CatPredictor":
+        if not HAS_CAT:
+            raise ImportError("catboost 未安裝")
+
+        self.feature_names = X_train.columns.tolist()
+        p = self.params.copy()
+        es = p.pop("early_stopping_rounds", 50)
+
+        # [關鍵] 在 WSL2 下確保 CatBoost 能抓到顯卡路徑
+        if p.get("task_type") == "GPU":
+            if "/usr/lib/wsl/lib" not in os.environ.get("LD_LIBRARY_PATH", ""):
+                os.environ["LD_LIBRARY_PATH"] = "/usr/lib/wsl/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+
+        if self.task == "classification":
+            y_tr_bin = (y_train > 0).astype(int)
+            y_va_bin = (y_val > 0).astype(int)
+
+            unique_classes = np.unique(y_tr_bin)
+            if len(unique_classes) < 2:
+                self._const_class = int(unique_classes[0]) if len(unique_classes) == 1 else 0
+                return self
+
+            self._const_class = None
+            self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
+            self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
+        else:
+            self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
+            self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
+        return self
+
+    def predict_score(self, X: pd.DataFrame) -> np.ndarray:
+        if self.task == "classification" and self._const_class is not None:
+            const_prob = 0.99 if self._const_class == 1 else 0.01
+            return np.full(len(X), const_prob, dtype=float)
+        
+        if self.task == "classification":
+            return self.model.predict_proba(X[self.feature_names])[:, 1]
+        return self.model.predict(X[self.feature_names])
+
+    def feature_importance(self) -> pd.Series:
+        if self.model is None: return pd.Series(dtype=float)
+        imp = self.model.feature_importances_
+        return pd.Series(imp, index=self.feature_names).sort_values(ascending=False)
+
+
+# ─────────────────────────────────────────────
 # Level-1：異質性模型 (ElasticNet & Momentum)
 # ─────────────────────────────────────────────
 
@@ -530,6 +589,7 @@ class StackingEnsemble:
         self,
         use_xgb: bool = True,
         use_lgb: bool = True,
+        use_cat: bool = True,
         use_elastic: bool = True,
         use_mom: bool = True,
         task: str = "classification"
@@ -538,6 +598,7 @@ class StackingEnsemble:
         self.models = {}
         if use_xgb:     self.models["xgb"] = XGBPredictor(task=task)
         if use_lgb:     self.models["lgb"] = LGBPredictor(task=task)
+        if use_cat:     self.models["cat"] = CatPredictor(task=task)
         if use_elastic: self.models["elastic"] = ElasticNetPredictor()
         if use_mom:     self.models["mom"] = SimpleMomentumModel()
         
@@ -566,7 +627,7 @@ class StackingEnsemble:
         for name, model in self.models.items():
             logger.info(f"  [L1] 訓練 {name}…")
             if hasattr(model, "fit"):
-                if name in ["xgb", "lgb"]:
+                if name in ["xgb", "lgb", "cat"]:
                     model.fit(X_train, y_train, X_val, y_val)
                 else:
                     model.fit(X_train, (y_train > 0).astype(int))
