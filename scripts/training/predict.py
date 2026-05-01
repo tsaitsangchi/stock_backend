@@ -24,15 +24,15 @@ import argparse
 import json
 import logging
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 import pandas as pd
 
 from config import (
-    ALL_FEATURES, HORIZON, MODEL_DIR, OUTPUT_DIR,
-    TFT_PARAMS, EVAL_TARGETS, STOCK_CONFIGS, get_all_features,
-    CONFIDENCE_THRESHOLD
+    STOCK_CONFIGS, MODEL_DIR, OUTPUT_DIR, 
+    LOOKBACK, HORIZON, CONFIDENCE_THRESHOLD,
+    get_all_features
 )
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
@@ -148,7 +148,8 @@ def check_data_drift(reference_df: pd.DataFrame,
         from evidently import Report
         from evidently.presets import DataDriftPreset
 
-        feat_cols = [c for c in ALL_FEATURES if c in reference_df.columns]
+        all_feats = get_all_features(reference_df.attrs.get("stock_id", "2330"))
+        feat_cols = [c for c in all_feats if c in reference_df.columns]
         report = Report(metrics=[DataDriftPreset()])
         report.run(
             reference_data=reference_df[feat_cols].tail(252),
@@ -176,11 +177,12 @@ def check_data_drift(reference_df: pd.DataFrame,
 # SHAP 解釋（第一性驗證）
 # ─────────────────────────────────────────────
 
-def explain_prediction(ensemble, X_latest: pd.DataFrame) -> dict:
+def explain_prediction(ensemble, X_latest: pd.DataFrame, stock_id: str) -> dict:
     """
     取得最新一天的 SHAP 解釋（top 10 正/負貢獻因子）。
     """
     try:
+        all_feats = get_all_features(stock_id)
         shap_dict = ensemble.shap_analysis(X_latest)
         xgb_shap  = shap_dict.get("xgb_shap")
         lgb_shap  = shap_dict.get("lgb_shap")
@@ -192,7 +194,7 @@ def explain_prediction(ensemble, X_latest: pd.DataFrame) -> dict:
         if isinstance(shap_vals, list):
             shap_vals = shap_vals[1]    # 二分類取正類
 
-        feat_cols = [c for c in ALL_FEATURES if c in X_latest.columns]
+        feat_cols = [c for c in all_feats if c in X_latest.columns]
         shap_series = pd.Series(
             shap_vals[-1] if shap_vals.ndim > 1 else shap_vals,
             index=feat_cols[:len(shap_vals[-1])]
@@ -261,9 +263,19 @@ def run_prediction(
 
     current_close = float(df_feat["close"].iloc[-1])
 
-    # ── 準備特徵 ──
-    feat_cols = [c for c in ALL_FEATURES if c in df_feat.columns]
-    X_latest  = df_feat[feat_cols].fillna(0).iloc[[-1]]    # 最後一行
+    # ── 準備特徵 (Robust Feature Alignment) ──
+    all_feats = get_all_features(stock_id)
+    
+    # 建立一個全 0 的 DataFrame，確保包含所有模型可能需要的特徵
+    X_latest = pd.DataFrame(0.0, index=[df_feat.index[-1]], columns=all_feats)
+    
+    # 將實際有的特徵填入
+    for col in all_feats:
+        if col in df_feat.columns:
+            X_latest[col] = float(df_feat[col].iloc[-1])
+    
+    # 填充 NaN 為 0
+    X_latest = X_latest.fillna(0.0)
 
     # ── TFT 推論（可選）──
     tft_result = None
@@ -363,7 +375,7 @@ def run_prediction(
     target_price_high = current_close * (1 + exp_ret_high)
 
     # ── SHAP 解釋 ──
-    shap_explanation = explain_prediction(ensemble, X_latest)
+    shap_explanation = explain_prediction(ensemble, X_latest, stock_id)
 
     # ── 最新關鍵指標 ──
     latest = df_feat.iloc[-1]
