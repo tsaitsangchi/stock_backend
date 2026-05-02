@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_price_adj_data.py — 還原股價 + 當沖交易 + 漲跌停價
 ==========================================================
@@ -42,6 +42,7 @@ fetch_price_adj_data.py — 還原股價 + 當沖交易 + 漲跌停價
 
 import argparse
 import logging
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 from config import DB_CONFIG  # noqa: F401
@@ -227,7 +228,6 @@ def fetch_dataset_unified(
         return
 
     # 分組：相同 start_date 的股票歸為一組
-    from collections import defaultdict
     groups: dict[str, list] = defaultdict(list)
     for sid, s in stock_starts.items():
         groups[s].append(sid)
@@ -346,7 +346,7 @@ def main():
             )
     finally:
         conn.close()
-    logger.info("✅ 全部完成")
+    logger.info("全部完成")
 
 if __name__ == "__main__":
     main()

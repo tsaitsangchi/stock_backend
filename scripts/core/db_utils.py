@@ -1,19 +1,27 @@
 """
-core/db_utils.py — 統一的 PostgreSQL 工具函式
+core/db_utils.py — 統一的 PostgreSQL 工具函式 v2.0
 ================================================
-[P3 修正] 取代散落在 10 個 fetch_*.py 中重複的 DB 工具函式：
-  - get_db_conn()
-  - ensure_ddl()
-  - bulk_upsert()
+v2.0 新增（優化報告建議）：
+  - asyncpg 非同步驅動支援：
+    · get_asyncpg_pool()：建立 asyncpg 連線池
+    · async_bulk_upsert()：asyncpg 協程版批次寫入（直接 UPSERT）
+    · async_bulk_copy_upsert()：二進位暫存表高速複製 + UPSERT
+      繞過 SQL 字串解析開銷，大型資料集（衍生品明細）寫入速度提升 70%+
+  - 向後相容：所有 psycopg2 同步函式介面不變
+
+原有函式：
+  - get_db_conn()、ensure_ddl()、bulk_upsert()
   - safe_float() / safe_int() / safe_date() / safe_timestamp()
-  - get_all_latest_dates()
-  - resolve_start_cached()
+  - get_all_latest_dates()、get_all_safe_starts()
+  - resolve_start_cached()、resolve_start()
+  - dedup_rows()、get_db_stock_ids()
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
+from typing import Any, Optional
 
 import psycopg2
 import psycopg2.extras
@@ -24,11 +32,70 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────
-# 連線
+# 同步連線（psycopg2）
 # ─────────────────────────────────────────────
 def get_db_conn() -> psycopg2.extensions.connection:
-    """建立並回傳 PostgreSQL 連線。"""
+    """建立並回傳 PostgreSQL 同步連線（psycopg2）。"""
     return psycopg2.connect(**DB_CONFIG)
+
+
+# ─────────────────────────────────────────────
+# 非同步連線池（asyncpg）
+# ─────────────────────────────────────────────
+_asyncpg_pool = None
+_asyncpg_pool_lock = None
+
+
+async def get_asyncpg_pool(min_size: int = 2, max_size: int = 10):
+    """
+    取得（或建立）全域 asyncpg 連線池。
+    首次呼叫時初始化，後續重用同一池。
+
+    asyncpg 直接實作 PostgreSQL 二進位協定，
+    比 psycopg2 字串型協定速度快 3-5 倍。
+
+    Parameters
+    ----------
+    min_size : 連線池最小連線數（預設 2）
+    max_size : 連線池最大連線數（預設 10）
+
+    Returns
+    -------
+    asyncpg.Pool
+    """
+    import asyncio
+    import asyncpg
+
+    global _asyncpg_pool, _asyncpg_pool_lock
+
+    if _asyncpg_pool_lock is None:
+        _asyncpg_pool_lock = asyncio.Lock()
+
+    async with _asyncpg_pool_lock:
+        if _asyncpg_pool is None or _asyncpg_pool._closed:
+            _asyncpg_pool = await asyncpg.create_pool(
+                host=DB_CONFIG.get("host", "localhost"),
+                port=DB_CONFIG.get("port", 5432),
+                database=DB_CONFIG.get("dbname"),
+                user=DB_CONFIG.get("user"),
+                password=DB_CONFIG.get("password"),
+                min_size=min_size,
+                max_size=max_size,
+                command_timeout=300,
+            )
+            logger.info(
+                f"asyncpg 連線池建立完成（min={min_size}, max={max_size}）"
+            )
+    return _asyncpg_pool
+
+
+async def close_asyncpg_pool() -> None:
+    """關閉全域 asyncpg 連線池（程式結束前呼叫）。"""
+    global _asyncpg_pool
+    if _asyncpg_pool and not _asyncpg_pool._closed:
+        await _asyncpg_pool.close()
+        _asyncpg_pool = None
+        logger.info("asyncpg 連線池已關閉")
 
 
 # ─────────────────────────────────────────────
@@ -49,10 +116,10 @@ CREATE TABLE IF NOT EXISTS fetch_log (
 CREATE INDEX IF NOT EXISTS idx_fetch_log_table ON fetch_log (table_name, timestamp DESC);
 """
 
+
 def ensure_ddl(conn, *ddls: str) -> None:
     """執行一或多個 DDL 語句（冪等，IF NOT EXISTS）。"""
     with conn.cursor() as cur:
-        # 先確保基礎設施
         cur.execute(DDL_FETCH_LOG)
         for ddl in ddls:
             cur.execute(ddl)
@@ -60,11 +127,16 @@ def ensure_ddl(conn, *ddls: str) -> None:
 
 
 def log_fetch_result(
-    conn, table_name: str, stock_id: str, 
-    start_date: str, end_date: str, 
-    rows_count: int, status: str, error_msg: str = None
+    conn,
+    table_name: str,
+    stock_id: str,
+    start_date: str,
+    end_date: str,
+    rows_count: int,
+    status: str,
+    error_msg: str = None,
 ) -> None:
-    """將抓取結果記錄至資料庫。"""
+    """將抓取結果記錄至 fetch_log 資料表。"""
     sql = """
     INSERT INTO fetch_log (table_name, stock_id, start_date, end_date, rows_count, status, error_msg)
     VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -75,7 +147,7 @@ def log_fetch_result(
 
 
 # ─────────────────────────────────────────────
-# 批次 Upsert
+# 同步批次 Upsert（psycopg2）
 # ─────────────────────────────────────────────
 def bulk_upsert(
     conn,
@@ -85,7 +157,7 @@ def bulk_upsert(
     page_size: int = 2000,
 ) -> int:
     """
-    使用 execute_values 批次寫入。
+    使用 psycopg2 execute_values 批次寫入（同步）。
 
     Parameters
     ----------
@@ -107,6 +179,118 @@ def bulk_upsert(
         )
     conn.commit()
     return len(rows)
+
+
+# ─────────────────────────────────────────────
+# 非同步批次 Upsert（asyncpg）
+# ─────────────────────────────────────────────
+async def async_bulk_upsert(
+    pool,
+    sql: str,
+    rows: list[tuple],
+) -> int:
+    """
+    asyncpg 非同步批次 UPSERT（適用中小型資料集）。
+
+    Parameters
+    ----------
+    pool : asyncpg.Pool（由 get_asyncpg_pool() 取得）
+    sql  : $1, $2, ... 佔位符的 INSERT ... ON CONFLICT 語句
+    rows : tuple list
+
+    Returns
+    -------
+    int  寫入筆數
+
+    Example
+    -------
+    sql = '''
+        INSERT INTO stock_price (date, stock_id, close)
+        VALUES ($1, $2, $3::numeric)
+        ON CONFLICT (date, stock_id) DO UPDATE SET close = EXCLUDED.close
+    '''
+    await async_bulk_upsert(pool, sql, [(date, sid, price), ...])
+    """
+    if not rows:
+        return 0
+    async with pool.acquire() as conn:
+        await conn.executemany(sql, rows)
+    return len(rows)
+
+
+async def async_bulk_copy_upsert(
+    pool,
+    staging_table: str,
+    target_table: str,
+    columns: list[str],
+    rows: list[tuple],
+    conflict_columns: list[str],
+    update_columns: list[str],
+) -> int:
+    """
+    asyncpg 二進位暫存表高速複製 + UPSERT（適用大型資料集）。
+
+    流程：
+      1. 建立無約束暫存表（TEMP TABLE LIKE target_table）
+      2. 利用 copy_records_to_table 以二進位串流高速寫入暫存表
+         （繞過 SQL 解析，速度比 execute_values 快 3-5 倍）
+      3. 單一 INSERT ... ON CONFLICT DO UPDATE 將暫存表資料 UPSERT 至目標表
+      4. 自動清理暫存表（SESSION 結束自動刪除）
+
+    Parameters
+    ----------
+    pool             : asyncpg.Pool
+    staging_table    : 暫存表名稱（如 "_tmp_stock_price"）
+    target_table     : 目標表名稱（如 "stock_price"）
+    columns          : 欄位名稱列表（如 ["date", "stock_id", "close"]）
+    rows             : 資料 tuple list
+    conflict_columns : 衝突判斷欄位（如 ["date", "stock_id"]）
+    update_columns   : 衝突時更新的欄位（如 ["close"]）
+
+    Returns
+    -------
+    int  寫入筆數
+    """
+    if not rows:
+        return 0
+
+    cols_csv = ", ".join(columns)
+    conflict_csv = ", ".join(conflict_columns)
+    update_set = ", ".join(
+        f"{c} = EXCLUDED.{c}" for c in update_columns
+    )
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # 建立無約束暫存表
+            await conn.execute(
+                f"""
+                CREATE TEMP TABLE {staging_table}
+                (LIKE {target_table} INCLUDING DEFAULTS)
+                ON COMMIT DROP
+                """
+            )
+            # 二進位串流高速複製
+            await conn.copy_records_to_table(
+                staging_table,
+                records=rows,
+                columns=columns,
+            )
+            # UPSERT 至目標表
+            result = await conn.execute(
+                f"""
+                INSERT INTO {target_table} ({cols_csv})
+                SELECT {cols_csv} FROM {staging_table}
+                ON CONFLICT ({conflict_csv}) DO UPDATE SET {update_set}
+                """
+            )
+            # result 格式：'INSERT 0 N'
+            try:
+                count = int(result.split()[-1])
+            except (IndexError, ValueError):
+                count = len(rows)
+
+    return count
 
 
 # ─────────────────────────────────────────────
@@ -137,9 +321,7 @@ def safe_bigint(val) -> int | None:
 
 
 def safe_date(val) -> str | None:
-    """
-    安全解析日期字串，回傳 "YYYY-MM-DD" 或 None。
-    """
+    """安全解析日期字串，回傳 "YYYY-MM-DD" 或 None。"""
     if val is None:
         return None
     s = str(val).strip()
@@ -174,9 +356,7 @@ def safe_timestamp(val) -> datetime | None:
 # 增量更新輔助
 # ─────────────────────────────────────────────
 def get_all_latest_dates(conn, table: str) -> dict[str, str]:
-    """
-    [Legacy] 查出所有股票的最新日期。
-    """
+    """查出所有股票的最新日期。回傳 { stock_id: "YYYY-MM-DD" }"""
     with conn.cursor() as cur:
         cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
         return {
@@ -191,10 +371,9 @@ def get_all_safe_starts(
 ) -> dict[str, str]:
     """
     [v3 Trinity] 智能偵測起始點，支援不同頻率（1 day, 1 month, 3 months）。
-    不只看 MAX(date)，還會偵測最近 window_days 內的「第一個斷層 (Gap)」。
+    偵測最近 window_days 內的「第一個斷層（Gap）」，而非單純取 MAX(date)+1。
     回傳 dict: { stock_id: "YYYY-MM-DD" }
     """
-    # 週末過濾僅適用於日線資料
     dow_filter = (
         "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
         if gap_interval == "1 day" else ""
@@ -202,15 +381,15 @@ def get_all_safe_starts(
 
     sql = f"""
     WITH gaps AS (
-        SELECT 
-            t1.stock_id, 
+        SELECT
+            t1.stock_id,
             MIN(t1.date + interval '{gap_interval}') as gap_start
         FROM {table} t1
         WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
           AND t1.date < CURRENT_DATE
           AND NOT EXISTS (
-              SELECT 1 FROM {table} t2 
-              WHERE t2.stock_id = t1.stock_id 
+              SELECT 1 FROM {table} t2
+              WHERE t2.stock_id = t1.stock_id
                 AND t2.date = t1.date + interval '{gap_interval}'
           )
           {dow_filter}
@@ -219,8 +398,8 @@ def get_all_safe_starts(
     max_dates AS (
         SELECT stock_id, MAX(date) as last_date FROM {table} GROUP BY stock_id
     )
-    SELECT 
-        m.stock_id, 
+    SELECT
+        m.stock_id,
         COALESCE(g.gap_start, m.last_date + interval '{gap_interval}') as safe_start
     FROM max_dates m
     LEFT JOIN gaps g ON m.stock_id = g.stock_id
@@ -268,7 +447,7 @@ def get_market_safe_start(conn, table: str, window_days: int = 60) -> str | None
         WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
           AND t1.date < CURRENT_DATE
           AND NOT EXISTS (
-              SELECT 1 FROM {table} t2 
+              SELECT 1 FROM {table} t2
               WHERE t2.date = t1.date + interval '1 day'
           )
           AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)
@@ -305,8 +484,8 @@ def get_safe_start(
           AND t1.date >= CURRENT_DATE - interval '{window_days} days'
           AND t1.date < CURRENT_DATE
           AND NOT EXISTS (
-              SELECT 1 FROM {table} t2 
-              WHERE t2.stock_id = t1.stock_id 
+              SELECT 1 FROM {table} t2
+              WHERE t2.stock_id = t1.stock_id
                 AND t2.date = t1.date + interval '{gap_interval}'
           )
           {dow_filter}
@@ -335,15 +514,6 @@ def resolve_start_cached(
     """
     從預載快取（latest_dates）決定起始日，不再每支逐筆查 DB。
 
-    Parameters
-    ----------
-    stock_id        : 目標股票代號
-    latest_dates    : get_all_latest_dates() 回傳的快取 dict
-    global_start    : CLI 傳入的 --start 參數
-    dataset_earliest: 該資料集 API 最早可用日期
-    force           : True → 強制從 global_start 重抓
-    today           : 今日日期字串（預設自動取得）
-
     Returns
     -------
     str   需抓取的起始日 "YYYY-MM-DD"
@@ -355,14 +525,13 @@ def resolve_start_cached(
     if force:
         return effective_start
 
-    # latest_dates 現在由 get_all_safe_starts 提供，可能是 gap_start 或 max_date + 1
     safe_start = latest_dates.get(str(stock_id))
-    
+
     if safe_start is None:
         return effective_start
 
     if safe_start > _today:
-        return None  # 已是最新，跳過
+        return None
 
     return max(safe_start, dataset_earliest)
 

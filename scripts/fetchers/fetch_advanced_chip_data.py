@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_advanced_chip_data.py — 進階籌碼與融資融券資料
 ======================================================
@@ -304,7 +304,7 @@ def fetch_market_dataset(
         # 假設前 2 個欄位是 PK (date, name)
         pk = mapped[:2]
         rows_map[pk] = mapped
-    
+
     rows = list(rows_map.values())
     n = bulk_upsert(conn, upsert_sql, rows, template)
     logger.info(f"[{table}] 寫入 {n} 筆")
@@ -383,7 +383,7 @@ def fetch_per_stock_dataset(
                     pk_len = 3 if table == "securities_lending" else 2
                     pk = mapped[:pk_len]
                     rows_map[pk] = mapped
-                
+
                 rows = list(rows_map.values())
                 bulk_upsert(conn, upsert_sql, rows, template)
                 total_rows += len(rows)
@@ -404,7 +404,7 @@ def fetch_per_stock_dataset(
                     pk_len = 3 if table == "securities_lending" else 2
                     pk = mapped[:pk_len]
                     rows_map[pk] = mapped
-                
+
                 rows = list(rows_map.values())
                 total_rows += bulk_upsert(conn, upsert_sql, rows, template)
 
@@ -472,7 +472,7 @@ def main():
             )
     finally:
         conn.close()
-    logger.info("✅ 全部完成")
+    logger.info("全部完成")
 
 if __name__ == "__main__":
     main()
