@@ -169,6 +169,16 @@ def load_wf_oof_with_actual(stock_id: str = "2330") -> dict:
     if oof_seq_path.exists():
         try:
             results["oof_seq"] = pd.read_csv(oof_seq_path)
+            # 處理可能存在的 MultiIndex 字串格式: "(Timestamp('2013-09-27 00:00:00'), '2330')"
+            if results["oof_seq"]["date"].dtype == object:
+                import re
+                def extract_date(s):
+                    if isinstance(s, str) and "Timestamp" in s:
+                        m = re.search(r"Timestamp\('([^']+)'\)", s)
+                        return m.group(1) if m else s
+                    return s
+                results["oof_seq"]["date"] = results["oof_seq"]["date"].apply(extract_date)
+            
             results["oof_seq"]["date"] = pd.to_datetime(results["oof_seq"]["date"])
             min_d = results["oof_seq"]["date"].min()
             max_d = results["oof_seq"]["date"].max()
@@ -495,6 +505,8 @@ def parse_args():
                    help="Live 驗證起始日（預設 2025-01-01）")
     p.add_argument("--live",     action="store_true",
                    help="僅顯示 live 部署紀錄驗證")
+    p.add_argument("--include-backfill", action="store_true",
+                   help="包含 historical_backfill.py 回填的資料（預設排除以防 Bias）")
     p.add_argument("--save-csv", action="store_true",
                    help="儲存各分析結果為 CSV（到 outputs/）")
     return p.parse_args()
@@ -543,8 +555,12 @@ def main():
 
     # ── ② Live 部署紀錄（stock_forecast_daily × stock_price）────
     logger.info(f"載入 live 預測紀錄 ({stock_id}, since={args.since})…")
-    df_live = load_live_forecasts(stock_id=stock_id, since=args.since)
-    logger.info(f"  live 紀錄：{len(df_live)} 筆（可驗證：已過期且有實際收盤）")
+    df_live = load_live_forecasts(
+        stock_id=stock_id, 
+        since=args.since,
+        exclude_backfill=not args.include_backfill
+    )
+    logger.info(f"  live 紀錄：{len(df_live)} 筆（包含已過期且有實際收盤之預測）")
     print_live_summary(df_live)
 
     # ── ③ Signal Filtering 回測比較 ─────────────────────────────
