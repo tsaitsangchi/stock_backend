@@ -1,15 +1,8 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_macro_data.py
 抓取宏觀經濟與產業特徵資料：
@@ -20,18 +13,14 @@ fetch_macro_data.py
 
 import argparse
 import logging
-import sys
 import time
 from datetime import date, timedelta, datetime
-import psycopg2
 
-from config import DB_CONFIG
+import psycopg2
 import psycopg2.extras
 
-# [P0 重構] 統一使用 core.finmind_client / core.db_utils，
-#          取代本檔原有重複的 finmind_get / wait_until_next_hour / get_db_conn
 from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: F401
-from core.db_utils import get_db_conn  # noqa: F401
+from core.db_utils import get_db_conn
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,11 +80,11 @@ def get_latest_date(conn, table: str, id_col: str, data_id: str):
 def resolve_start(conn, table: str, id_col: str, data_id: str, global_start: str, force: bool):
     if force:
         return global_start
-    
+
     latest = get_latest_date(conn, table, id_col, data_id)
     if latest is None:
         return global_start
-    
+
     next_day = (datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     if next_day > date.today().strftime("%Y-%m-%d"):
         return None
@@ -110,7 +99,7 @@ def fetch_interest_rate(conn, start_date, end_date, force=False):
         if not actual_start:
             logger.info(f"  [{country}] 已是最新，跳過")
             continue
-            
+
         data = finmind_get("InterestRate", {"data_id": country, "start_date": actual_start, "end_date": end_date})
         if data:
             rows = [(r["date"], r["country"], r.get("full_country_name"), r["interest_rate"]) for r in data]
@@ -140,7 +129,7 @@ def fetch_exchange_rate(conn, start_date, end_date, force=False):
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(cur, """
                     INSERT INTO exchange_rate (date, currency, cash_buy, cash_sell, spot_buy, spot_sell)
-                    VALUES %s ON CONFLICT (date, currency) DO UPDATE SET 
+                    VALUES %s ON CONFLICT (date, currency) DO UPDATE SET
                         spot_buy = EXCLUDED.spot_buy,
                         spot_sell = EXCLUDED.spot_sell
                 """, rows)
@@ -183,11 +172,11 @@ def main():
 
     conn = get_db_conn()
     ensure_ddl(conn)
-    
+
     fetch_interest_rate(conn, args.start, args.end, args.force)
     fetch_exchange_rate(conn, args.start, args.end, args.force)
     fetch_bond_yield(conn, args.start, args.end, args.force)
-    
+
     conn.close()
     logger.info("Macro data 抓取完成")
 

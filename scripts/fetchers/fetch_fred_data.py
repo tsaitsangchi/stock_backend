@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_fred_data.py — FRED API 全球宏觀資料（FinMind 範圍外）
 ================================================================
@@ -58,12 +58,12 @@ fetch_fred_data.py — FRED API 全球宏觀資料（FinMind 範圍外）
 import argparse
 import logging
 import os
+import random
 import time
 from datetime import date, datetime, timedelta
 
 import requests
 
-from config import DB_CONFIG  # noqa: F401
 from core.db_utils import get_db_conn, ensure_ddl, bulk_upsert, safe_float
 
 logging.basicConfig(
@@ -115,7 +115,7 @@ def fred_get(series_id: str, api_key: str,
              max_retries: int = 3) -> list[dict]:
     """
     向 FRED API 請求單一 series 的觀測值。
-    失敗時指數退避重試（1s -> 2s -> 4s）。
+    失敗時指數退避重試（含 jitter）。
     """
     params = {
         "series_id":         series_id,
@@ -138,12 +138,13 @@ def fred_get(series_id: str, api_key: str,
             data = resp.json()
             return data.get("observations", [])
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            wait = 2 ** (attempt - 1)
-            logger.warning(f"[{series_id}] 第 {attempt}/{max_retries} 次失敗：{e}，{wait}s 後重試")
+            wait = 2 ** (attempt - 1) + random.uniform(0, 1.0)
+            logger.warning(f"[{series_id}] 第 {attempt}/{max_retries} 次失敗：{e}，{wait:.2f}s 後重試")
             time.sleep(wait)
         except Exception as e:
+            wait = 2 ** (attempt - 1) + random.uniform(0, 1.0)
             logger.warning(f"[{series_id}] 第 {attempt}/{max_retries} 次異常：{e}")
-            time.sleep(2 ** (attempt - 1))
+            time.sleep(wait)
     logger.error(f"[{series_id}] 已重試 {max_retries} 次，放棄")
     return []
 
@@ -208,7 +209,7 @@ def main():
     api_key = os.environ.get("FRED_API_KEY")
     if not api_key:
         logger.error(
-            "❌ 未設定 FRED_API_KEY。請至 https://fredaccount.stlouisfed.org/ 申請後，"
+            "未設定 FRED_API_KEY。請至 https://fredaccount.stlouisfed.org/ 申請後，"
             "填入 scripts/.env 的 FRED_API_KEY=...。"
         )
         sys.exit(1)
@@ -227,7 +228,7 @@ def main():
                 continue
     finally:
         conn.close()
-    logger.info("✅ 全部完成")
+    logger.info("全部完成")
 
 if __name__ == "__main__":
     main()

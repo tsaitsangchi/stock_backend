@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_derivative_sentiment_data.py — 衍生品與情緒指標資料抓取
 ============================================================
@@ -33,11 +33,18 @@ import random
 import time
 from datetime import date, datetime, timedelta
 
-import psycopg2
-
-from config import FINMIND_TOKEN, DB_CONFIG
 import psycopg2.extras
-import requests
+
+from core.finmind_client import (
+    finmind_get,
+    wait_until_next_hour as wait_next_hour,  # 沿用本檔原命名
+)
+from core.db_utils import (
+    get_db_conn as get_conn,  # 沿用本檔原命名
+    ensure_ddl,
+    safe_float,
+    safe_int,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,7 +53,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 DATASET_START = {
     "options_large_oi":  "2018-01-01",
     "fear_greed_index":  "2011-01-03",
@@ -164,20 +170,6 @@ ON CONFLICT (date, stock_id, securities_trader_id, price, trade_type) DO UPDATE 
     buy = EXCLUDED.buy,
     sell = EXCLUDED.sell;
 """
-
-# ─────────────────────────────────────────────
-# [P0 重構] 工具改用共享模組
-# ─────────────────────────────────────────────
-from core.finmind_client import (  # noqa: E402,F401
-    finmind_get,
-    wait_until_next_hour as wait_next_hour,  # 沿用本檔原命名
-)
-from core.db_utils import (  # noqa: E402,F401
-    get_db_conn as get_conn,  # 沿用本檔原命名
-    ensure_ddl,
-    safe_float,
-    safe_int,
-)
 
 
 # ─────────────────────────────────────────────

@@ -1,15 +1,8 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_stock_info.py
 從 FinMind API 抓取 TaiwanStockInfo（台股總覽）並寫入 PostgreSQL stock_info 資料表。
@@ -19,16 +12,17 @@ fetch_stock_info.py
 """
 
 import logging
-import sys
-
 import time
 from datetime import datetime, timedelta
 
 import psycopg2
 
-from config import FINMIND_TOKEN, DB_CONFIG
-import psycopg2.extras
-import requests
+from core.finmind_client import finmind_get, wait_until_next_hour
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+)
 
 # ======================
 # 設定 logging
@@ -40,14 +34,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# FinMind API 設定
-# ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
-# PostgreSQL 連線設定
-# ======================
 # ======================
 # DDL（若資料表尚未存在則建立）
 # ======================
@@ -78,17 +64,6 @@ DO UPDATE SET
 
 
 # ──────────────────────────────────────────────
-# [P0 重構] 工具函式統一改用 core 模組
-# ──────────────────────────────────────────────
-from core.finmind_client import finmind_get, wait_until_next_hour
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    bulk_upsert,
-)
-
-
-# ──────────────────────────────────────────────
 # 1. 抓取與轉換
 # ──────────────────────────────────────────────
 def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
@@ -106,7 +81,7 @@ def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
             continue
         _date = r.get("date", "")
         date_val = _date if (_date and _date.upper() != "NONE") else None
-        
+
         # 同一 stock_id 保留日期最新的那筆
         if sid not in seen or (date_val and date_val > (seen[sid][4] or "")):
             seen[sid] = (
@@ -135,10 +110,10 @@ def run_update(delay: float = 1.0) -> None:
     try:
         ensure_ddl(conn, CREATE_TABLE_SQL)
         n = bulk_upsert(
-            conn, UPSERT_SQL, rows, 
+            conn, UPSERT_SQL, rows,
             template="(%s, %s, %s, %s, %s::date)"
         )
-        logger.info(f"✅ 完成，upsert {n} 筆")
+        logger.info(f"完成，upsert {n} 筆")
     finally:
         conn.close()
 

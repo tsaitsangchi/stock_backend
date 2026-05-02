@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_technical_data.py  v2.0（API 用量優化版）
 從 FinMind API 抓取技術面資料並寫入 PostgreSQL：
@@ -46,14 +46,11 @@ v2.0 優化重點（三層節省 API 用量）：
 
 import argparse
 import logging
-import sys
 import time
 from collections import defaultdict
 from datetime import date, timedelta, datetime
 
 import psycopg2
-import psycopg2.extras
-import requests
 
 from config import DB_CONFIG
 
@@ -63,7 +60,15 @@ from core.finmind_client import (
     wait_until_next_hour,  # noqa: F401（保留以維持向後相容，本檔不再直接使用）
     BatchNotSupportedError,
 )
-from core.db_utils import get_db_conn  # noqa: F401
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    safe_float,
+    safe_int,
+    get_all_safe_starts,
+    resolve_start_cached,
+)
 
 
 def finmind_get(dataset: str, params: dict, delay: float) -> list:
@@ -87,14 +92,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# FinMind API 設定
-# ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
-# PostgreSQL 連線設定
-# ======================
 # ======================
 # 各資料集最早可用日期
 # ======================
@@ -174,26 +171,11 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 """
 
 
-# ──────────────────────────────────────────────
-# [P0 重構] 工具函式統一改用 core 模組（與 wait_until_next_hour/finmind_get 同源）
-# ──────────────────────────────────────────────
-from core.db_utils import (  # noqa: E402,F401
-    ensure_ddl,
-    bulk_upsert,
-    safe_float,
-    safe_int,
-    get_all_safe_starts,
-    resolve_start_cached,
-)
-
-
 def get_all_stock_ids(conn, stock_id_arg=None):
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
-    from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
+    from config import STOCK_CONFIGS
     return list(STOCK_CONFIGS.keys())
-
-
 
 
 # ──────────────────────────────────────────────
@@ -231,6 +213,7 @@ def fetch_dataset_batch(
     dataset_key: str, start_date: str, end_date: str,
     delay: float, force: bool, chunk_days: int, batch_threshold: int,
     valid_stock_ids: set, latest_dates: dict,
+    conn,
 ):
     """
     批次模式核心：
@@ -336,7 +319,7 @@ def fetch_dataset_batch(
 
             if chunk_rows:
                 rows = [row_mapper(r) for r in chunk_rows]
-                bulk_upsert(conn_ref[0], upsert_sql, rows, template)
+                bulk_upsert(conn, upsert_sql, rows, template)
                 total_rows += len(rows)
                 logger.info(f"  [{table}] 批次寫入 {len(rows)} 筆")
 
@@ -357,16 +340,12 @@ def fetch_dataset_batch(
                 if not data:
                     continue
                 rows = [row_mapper(r) for r in data]
-                bulk_upsert(conn_ref[0], upsert_sql, rows, template)
+                bulk_upsert(conn, upsert_sql, rows, template)
                 total_rows += len(rows)
 
     logger.info(
         f"[{table}] 完成  API 請求：{total_api_calls} 次  寫入：{total_rows} 筆"
     )
-
-
-# conn_ref 供 fetch_dataset_batch 內 bulk_upsert 使用
-conn_ref = [None]
 
 
 # ──────────────────────────────────────────────
@@ -382,16 +361,15 @@ def fetch_both_per_stock(
     """
     logger.info("=== [逐支模式] price + PER 合併迴圈 ===")
     conn = get_db_conn()
-    conn_ref[0] = conn
 
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-        
+
         if stock_id:
             stock_ids = [s.strip() for s in stock_id.split(",")]
         else:
             stock_ids = get_all_stock_ids(conn)
-            
+
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         # ③ 預載兩張表的安全起始日（一次偵測所有斷層）
@@ -468,16 +446,15 @@ def fetch_both_batch(
     依資料集分別執行，每個資料集按起始日分組後批次請求。
     """
     conn = get_db_conn()
-    conn_ref[0] = conn
 
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-        
+
         if stock_id:
             stock_ids = [s.strip() for s in stock_id.split(",")]
         else:
             stock_ids = get_all_stock_ids(conn)
-            
+
         valid_set = set(stock_ids)
         logger.info(f"目標清單共 {len(valid_set)} 支有效股票")
 
@@ -492,6 +469,7 @@ def fetch_both_batch(
                 "stock_price", start_date, end_date,
                 delay, force, chunk_days, batch_threshold,
                 valid_set, latest,
+                conn,
             )
 
         if "stock_per" in tables:
@@ -505,6 +483,7 @@ def fetch_both_batch(
                 "stock_per", start_date, end_date,
                 delay, force, chunk_days, batch_threshold,
                 valid_set, latest,
+                conn,
             )
     finally:
         conn.close()
