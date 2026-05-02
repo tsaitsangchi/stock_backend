@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS investment_recommendations (
     prob_up NUMERIC(5,4),
     signal_level VARCHAR(50),
     recommended_weight NUMERIC(5,4),
+    investment_amount NUMERIC(15,2) DEFAULT 0,
+    recommended_shares BIGINT DEFAULT 0,
     last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (stock_id, prediction_date)
 );
@@ -101,48 +103,97 @@ def sync_health_matrix():
     conn.close()
     logger.info("健康度矩陣同步完成。")
 
-def sync_investment_recommendations():
-    logger.info("同步投資建議矩陣...")
-    # 從預測結果表提取最新建議
+def sync_investment_recommendations(total_capital: float = 100000.0):
+    logger.info(f"同步投資建議矩陣 (總資金: ${total_capital:,.0f})...")
+    
+    # 確保 DDL 並補償新欄位
+    conn = get_db_conn()
+    cur = conn.cursor()
+    cur.execute(DDL_INVESTMENT_RECOMM)
+    for col in ["investment_amount", "recommended_shares"]:
+        cur.execute(f"""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='investment_recommendations' AND column_name='{col}') THEN
+                    ALTER TABLE investment_recommendations ADD COLUMN {col} NUMERIC;
+                END IF;
+            END $$;
+        """)
+    conn.commit()
+
+    # 從預測結果表提取最新建議，並關聯最新收盤價以計算股數
     query = """
     WITH latest_pred AS (
-        SELECT stock_id, predict_date, prob_up, 
-               RANK() OVER (PARTITION BY stock_id ORDER BY predict_date DESC) as rk
-        FROM stock_forecast_daily
+        SELECT f.stock_id, f.predict_date, f.prob_up, f.current_close,
+               RANK() OVER (PARTITION BY f.stock_id ORDER BY f.predict_date DESC) as rk
+        FROM stock_forecast_daily f
     )
     SELECT * FROM latest_pred WHERE rk = 1
+    ORDER BY prob_up DESC
     """
     df = _query(query)
     if df.empty:
         logger.warning("尚無預測資料可同步。")
+        conn.close()
         return
         
-    conn = get_db_conn()
-    cur = conn.cursor()
+    # 1. 篩選最強前三支 (且必須具備看漲信號 prob_up > 0.55)
+    top_picks = df[df["prob_up"] > 0.55].head(3).copy()
     
+    if top_picks.empty:
+        logger.info("⚠️ 目前無足夠強度的投資標的，建議全部保留現金。")
+    else:
+        # 2. 依訊號強度 (prob_up - 0.5) 進行權重分配
+        # 權重公式：(P - 0.5) / Sum(P_i - 0.5)
+        top_picks["excess_prob"] = top_picks["prob_up"] - 0.5
+        total_excess = top_picks["excess_prob"].sum()
+        top_picks["alloc_ratio"] = top_picks["excess_prob"] / total_excess
+        top_picks["alloc_amount"] = top_picks["alloc_ratio"] * total_capital
+        # 計算股數 (取整數，無條件捨去以免超額)
+        top_picks["shares"] = (top_picks["alloc_amount"] / top_picks["current_close"]).apply(lambda x: int(x))
+        # 修正實際金額
+        top_picks["actual_amount"] = top_picks["shares"] * top_picks["current_close"]
+
+    # 3. 遍歷所有最新預測並寫入
     for _, row in df.iterrows():
         sid = str(row["stock_id"])
         prob = float(row["prob_up"])
         p_date = row["predict_date"]
+        price = float(row["current_close"])
         
-        # 簡易信號分級邏輯 (可根據需求微調)
+        # 信號分級
         if prob >= 0.8: level = "🚀 極致攻擊 (Strong Buy)"
         elif prob >= 0.65: level = "🏹 戰略突擊 (Buy)"
         elif prob >= 0.55: level = "🛡️ 陣地防禦 (Hold)"
         elif prob >= 0.45: level = "🌫️ 混沌中立 (Neutral)"
         else: level = "🧊 零度真空 (Avoid)"
         
-        weight = max(0, (prob - 0.5) * 2 * 0.1) # 簡易倉位建議
+        # 判斷是否為前三名分配標的
+        invest_amt = 0.0
+        shares = 0
+        if not top_picks.empty and sid in top_picks["stock_id"].values:
+            match = top_picks[top_picks["stock_id"] == sid]
+            invest_amt = float(match["actual_amount"].iloc[0])
+            shares = int(match["shares"].iloc[0])
+            level = f"⭐ 核心配置 | {level}"
+
+        # 建議倉位 (原有邏輯保留)
+        weight = max(0, (prob - 0.5) * 2 * 0.1)
         
         cur.execute("""
-            INSERT INTO investment_recommendations (stock_id, prediction_date, prob_up, signal_level, recommended_weight)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO investment_recommendations (
+                stock_id, prediction_date, prob_up, signal_level, 
+                recommended_weight, investment_amount, recommended_shares
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (stock_id, prediction_date) DO UPDATE SET
                 prob_up = EXCLUDED.prob_up,
                 signal_level = EXCLUDED.signal_level,
                 recommended_weight = EXCLUDED.recommended_weight,
+                investment_amount = EXCLUDED.investment_amount,
+                recommended_shares = EXCLUDED.recommended_shares,
                 last_updated_at = CURRENT_TIMESTAMP;
-        """, (sid, p_date, prob, level, weight))
+        """, (sid, p_date, prob, level, weight, invest_amt, shares))
         
     conn.commit()
     conn.close()
