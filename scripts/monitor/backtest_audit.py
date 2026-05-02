@@ -168,11 +168,14 @@ def load_wf_oof_with_actual(stock_id: str = "2330") -> dict:
         results["regime"] = pd.read_csv(regime_path)
     if oof_seq_path.exists():
         try:
-            results["oof_seq"] = pd.read_csv(oof_seq_path, parse_dates=["date"])
+            results["oof_seq"] = pd.read_csv(oof_seq_path)
+            results["oof_seq"]["date"] = pd.to_datetime(results["oof_seq"]["date"])
+            min_d = results["oof_seq"]["date"].min()
+            max_d = results["oof_seq"]["date"].max()
             logger.info(
                 f"  逐筆 OOF 序列：{len(results['oof_seq'])} 筆"
-                f"（{results['oof_seq']['date'].min().date()}"
-                f" ~ {results['oof_seq']['date'].max().date()}）"
+                f"（{min_d.date() if hasattr(min_d, 'date') else min_d}"
+                f" ~ {max_d.date() if hasattr(max_d, 'date') else max_d}）"
             )
         except Exception as e:
             logger.warning(f"讀取 oof_predictions_with_dates.csv 失敗：{e}")
@@ -349,7 +352,10 @@ def print_wf_summary(wf_data: dict):
         print(f"    Sharpe          : {meta['sharpe']:.2f}"
               f"  {'✅' if meta['sharpe'] >= 1.0 else '⚠️'} （目標 ≥ 1.0）")
         print(f"    勝率            : {meta['win_rate']:.1%}")
-        print(f"    最大回撤        : {meta['max_drawdown']:.1%}")
+        if "max_drawdown" in meta:
+            print(f"    最大回撤        : {meta['max_drawdown']:.1%}")
+        if "expectancy" in meta:
+            print(f"    期望值 (R-multi) : {meta['expectancy']:.4f}")
 
     if "regime" in wf_data:
         print(f"\n  【波動 Regime 分析】")
