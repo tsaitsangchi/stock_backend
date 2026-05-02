@@ -56,7 +56,7 @@ PHASE_2 = [
     str(FETCHERS_DIR / "fetch_fred_data.py"),
 ]
 
-MAX_WORKERS = 3
+MAX_WORKERS = 8
 MAX_SCRIPT_TIMEOUT = 3 * 3600
 API_QUOTA_MIN = 100
 
@@ -145,16 +145,13 @@ def main():
     for script in PHASE_0:
         run_script(script)
 
-    # Phase 1
+    # Phase 1 & 2 Combined (Hyper-Fetch)
     results = []
+    all_parallel_scripts = PHASE_1 + PHASE_2
+    logger.info(f"[Hyper-Fetch] 並行執行 {len(all_parallel_scripts)} 個抓取腳本 (Workers: {MAX_WORKERS})")
+    
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(run_script, s): s for s in PHASE_1}
-        for future in as_completed(futures):
-            results.append(future.result())
-
-    # Phase 2
-    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(run_script, s): s for s in PHASE_2}
+        futures = {executor.submit(run_script, s): s for s in all_parallel_scripts}
         for future in as_completed(futures):
             results.append(future.result())
 
