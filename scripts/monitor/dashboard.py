@@ -116,84 +116,150 @@ model_df = load_model_status(all_stock_ids)
 perf_df = load_performance_da(all_stock_ids)
 pred_df = load_today_predictions()
 
-st.sidebar.subheader("系統狀態")
+st.sidebar.subheader("系統監控")
 price_date = _query("SELECT MAX(date) FROM stock_price").iloc[0,0]
-st.sidebar.metric("市場資料日期", str(price_date) if price_date else "N/A")
-st.sidebar.metric("監控標的總數", len(all_stock_ids))
+st.sidebar.metric("最後資料日期", str(price_date) if price_date else "無資料")
+st.sidebar.metric("核心標的總數", len(all_stock_ids))
 
 # ─────────────────────────────────────────────
 # 主界面
 # ─────────────────────────────────────────────
-st.title("量子藍圖 — 系統監控儀表板 (Trinity v5.0)")
+st.title("量子藍圖 — 全系統監控儀表板 (Trinity v5.0)")
 
-# 第一排：指標
+# 第一排：關鍵指標
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     if not fresh_df.empty and len(fresh_df.columns) > 1:
-        # 使用 applymap 進行元素級轉型（處理 % 字串）
         numeric_df = fresh_df.iloc[:, 1:].applymap(lambda x: float(str(x).rstrip('%')) if isinstance(x, str) else float(x))
         avg_integrity = numeric_df.mean().mean() / 100
     else:
         avg_integrity = 0
-    st.metric("1. 資料完整度", f"{avg_integrity:.1%}")
+    st.metric("📊 資料完整度", f"{avg_integrity:.1%}")
 with col2:
     trained_ratio = (model_df["status"].str.contains("OK")).sum() / len(model_df) if len(model_df)>0 else 0
-    st.metric("2. 模型訓練完整度", f"{trained_ratio:.1%}")
+    st.metric("🤖 模型訓練率", f"{trained_ratio:.1%}")
 with col3:
     pred_count = len(pred_df) if not pred_df.empty else 0
-    st.metric("3. 預測完整度", f"{pred_count / len(all_stock_ids):.1%}")
+    st.metric("🎯 預測達成率", f"{pred_count / len(all_stock_ids):.1%}")
 with col4:
     avg_da = perf_df["da"].mean() if not perf_df.empty else 0
-    st.metric("平均 30D 準確率", f"{avg_da:.1%}")
+    st.metric("📈 平均 30D 準確率", f"{avg_da:.1%}")
 
 st.markdown("---")
 
-# 第二排：矩陣
-tab1, tab2, tab3 = st.tabs(["💎 專業投資交易帳本", "🛡️ 全系統健康度矩陣", "🚀 全系統投資建議矩陣"])
+# 第二排：核心矩陣
+tab1, tab2, tab3 = st.tabs(["💎 投資交易帳本", "🛡️ 健康度矩陣", "🚀 投資建議矩陣"])
 
 with tab1:
-    st.subheader("💎 專業投資交易帳本 (DB-Backed)")
+    st.subheader("💎 專業投資交易帳本 (資料庫驅動)")
     ledger_df = load_trade_ledger()
     if ledger_df.empty:
-        st.info("💡 交易帳本目前為空。")
+        st.info("💡 目前尚無未平倉合約。")
     else:
         matrix = ledger_df.copy()
         matrix["股票"] = matrix["stock_id"].astype(str).apply(lambda x: f"{x} {assets_df[assets_df['stock_id']==x]['name'].iloc[0] if x in assets_df['stock_id'].values else ''}")
-        st.dataframe(matrix[["股票", "shares", "entry_price", "entry_date"]], use_container_width=True)
+        # 重新命名欄位
+        matrix = matrix.rename(columns={
+            "shares": "持有股數",
+            "entry_price": "進場成本",
+            "entry_date": "進場日期"
+        })
+        st.dataframe(matrix[["股票", "持有股數", "進場成本", "進場日期"]], use_container_width=True)
 
 with tab2:
-    st.subheader("🛡️ 全系統健康度矩陣 (DB-Backed)")
+    st.subheader("🛡️ 全系統健康度矩陣 (資料庫驅動)")
     health_db_df = load_health_matrix_db()
     if health_db_df.empty:
-        st.warning("⚠️ 資料庫中尚無健康度審計紀錄，請執行 `sync_trinity_db.py`。")
+        st.warning("⚠️ 資料庫中尚無紀錄，請執行 `sync_trinity_db.py`。")
     else:
         health_db_df["股票"] = health_db_df["stock_id"].astype(str) + " " + health_db_df["name"]
+        health_db_df = health_db_df.rename(columns={
+            "industry": "產業分組",
+            "data_coverage_pct": "資料覆蓋率",
+            "model_status": "模型狀態",
+            "prediction_status": "預測狀態",
+            "last_updated_at": "最後更新時間"
+        })
         def style_health(val):
-            if "🟢" in str(val) or (isinstance(val, float) and val > 0.9): return 'color: #2ea043'
-            if "🟡" in str(val) or (isinstance(val, float) and val > 0.7): return 'color: #d29922'
-            if "🔴" in str(val) or (isinstance(val, float) and val <= 0.7): return 'color: #f85149'
+            if "🟢" in str(val) or (isinstance(val, float) and val > 90): return 'color: #2ea043'
+            if "🟡" in str(val) or (isinstance(val, float) and val > 70): return 'color: #d29922'
+            if "🔴" in str(val) or (isinstance(val, float) and val <= 70): return 'color: #f85149'
             return ''
-        st.dataframe(health_db_df[["股票", "industry", "data_coverage_pct", "model_status", "prediction_status", "last_updated_at"]].style.map(style_health), use_container_width=True)
+        st.dataframe(health_db_df[["股票", "產業分組", "資料覆蓋率", "模型狀態", "預測狀態", "最後更新時間"]].style.map(style_health), use_container_width=True)
 
 with tab3:
-    st.subheader("🚀 全系統投資建議矩陣 (DB-Backed)")
+    st.subheader("🚀 全系統投資建議矩陣 (資料庫驅動)")
+    
+    # [新增] 投資金額輸入與分配邏輯
+    col_amt, col_info = st.columns([1, 3])
+    with col_amt:
+        total_inv = st.number_input("💸 預計投入總金額 (TWD)", min_value=0, value=100000, step=10000)
+    with col_info:
+        st.info("💡 依據「系統核心思想」：資金將優先分配給訊號最強的前 3 支標的。若無買進訊號則保留現金。")
+
     recomm_df = load_recommendations_db()
     if recomm_df.empty:
-        st.warning("⚠️ 目前尚無投資建議紀錄。")
+        st.warning("⚠️ 目前尚無預測產出的投資建議。")
     else:
+        # 獲取最新價格以便計算股數
+        try:
+            prices = _query("SELECT stock_id, close FROM stock_price WHERE date = (SELECT MAX(date) FROM stock_price)")
+            prices["stock_id"] = prices["stock_id"].astype(str)
+            recomm_df = recomm_df.merge(prices, on="stock_id", how="left")
+        except:
+            recomm_df["close"] = 0.0
+
         recomm_df["股票"] = recomm_df["stock_id"].astype(str) + " " + recomm_df["name"]
-        st.dataframe(recomm_df[["股票", "industry", "signal_level", "prob_up", "recommended_weight", "prediction_date"]], use_container_width=True)
+        
+        # 篩選前三強標的 (限 買進/強力買進)
+        buy_signals = ["🟢 強力買進", "🟡 買進"]
+        top_3 = recomm_df[recomm_df["signal_level"].isin(buy_signals)].sort_values("prob_up", ascending=False).head(3).copy()
+        
+        if top_3.empty:
+            st.success("✅ 目前無強力買進標的，建議：**全數保留現金 (100% Cash)**")
+        else:
+            # 權重分配 (依據 prob_up 相對比例)
+            total_prob = top_3["prob_up"].sum()
+            top_3["分配比例"] = top_3["prob_up"] / total_prob
+            top_3["分配金額"] = (top_3["分配比例"] * total_inv).round(0)
+            top_3["建議股數"] = (top_3["分配金額"] / top_3["close"]).replace([np.inf, -np.inf], 0).fillna(0).astype(int)
+            
+            st.markdown("#### 🎯 核心配置建議 (Top 3)")
+            display_cols = ["股票", "signal_level", "prob_up", "close", "分配比例", "分配金額", "建議股數"]
+            display_df = top_3[display_cols].rename(columns={
+                "signal_level": "訊號強度",
+                "prob_up": "看漲機率",
+                "close": "目前價格",
+                "分配比例": "分配比重",
+            })
+            st.dataframe(display_df.style.format({
+                "分配比重": "{:.1%}",
+                "看漲機率": "{:.1%}",
+                "分配金額": "{:,.0f}",
+                "建議股數": "{:,.0f}"
+            }), use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("#### 📊 全標的掃描清單")
+        recomm_df_disp = recomm_df.rename(columns={
+            "industry": "產業分組",
+            "signal_level": "訊號強度",
+            "prob_up": "看漲機率",
+            "recommended_weight": "建議權重",
+            "prediction_date": "預測日期"
+        })
+        st.dataframe(recomm_df_disp[["股票", "產業分組", "訊號強度", "看漲機率", "建議權重", "預測日期"]], use_container_width=True)
 
 st.markdown("---")
-st.subheader("📋 系統日誌導航 (Log Navigator)")
+st.subheader("📋 系統日誌導覽 (Log Navigator)")
 log_files = {
-    "自動訓練管理器": scripts_dir / "training" / "outputs" / "manager.log",
+    "自動訓練管理員": scripts_dir / "outputs" / "manager.log",
+    "自動預測管理器": scripts_dir / "outputs" / "predict_manager.log",
     "數據完整度審計": scripts_dir / "outputs" / "audit_data_integrity.log",
 }
-selected_log_name = st.selectbox("選擇日誌檔案", list(log_files.keys()))
+selected_log_name = st.selectbox("選擇欲查看的日誌", list(log_files.keys()))
 if log_files[selected_log_name].exists():
     with open(log_files[selected_log_name], "r") as f:
         st.code("".join(f.readlines()[-100:]), language="text")
-
 st.markdown("---")
 st.caption("Quantum Blueprint Quant System Dashboard © 2026 Antigravity Research")

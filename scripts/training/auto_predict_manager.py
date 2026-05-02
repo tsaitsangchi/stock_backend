@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import core.path_setup  # noqa: F401
+from config import OUTPUT_DIR, MODEL_DIR
 
 import json
 import logging
@@ -32,16 +33,14 @@ from datetime import datetime
 # 路徑設定
 # ─────────────────────────────────────────────
 SCRIPTS_DIR    = Path(__file__).resolve().parent.parent
-MODEL_DIR      = SCRIPTS_DIR / "outputs" / "models"
 VENV_PYTHON    = os.environ.get("VENV_PYTHON",
                                 "/home/hugo/project/stock_backend/venv/bin/python3")
 PREDICT_SCRIPT = SCRIPTS_DIR / "training" / "predict.py"
-OUTPUTS_DIR    = SCRIPTS_DIR / "training" / "outputs"
-HEARTBEAT_FILE = OUTPUTS_DIR / "auto_predict.heartbeat"
-PID_FILE       = OUTPUTS_DIR / "auto_predict.pid"
-LOG_FILE       = OUTPUTS_DIR / "predict_manager.log"
+HEARTBEAT_FILE = OUTPUT_DIR / "auto_predict.heartbeat"
+PID_FILE       = OUTPUT_DIR / "auto_predict.pid"
+LOG_FILE       = OUTPUT_DIR / "predict_manager.log"
 
-OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────
 # 日誌設定
