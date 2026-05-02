@@ -249,10 +249,9 @@ def run_walk_forward(
         test_window  = _test_window,
         turbo        = turbo,
     ))
-    logger.info(
-        f"=== Walk-Forward：共 {len(folds)} folds "
-        f"（step={WF_CONFIG['step_days']}d, test_window={_test_window}d）==="
-    )
+    if not folds:
+        logger.warning(f"  [{stock_id}] 資料量不足以建立任何訓練 Fold (n={n})，跳過訓練。")
+        return {}
 
     # ── 收集 Level-1 OOF 預測（每個模型分開）──────────────────────
     # 關鍵：三個 Series 分開記錄，才能讓 Meta-Learner 學習差異化權重
@@ -818,6 +817,9 @@ def main():
     # --- Phase 1: 快速探索與降維 (Universal Model Approach) ---
     logger.info("\n>>> Phase 1: 核心特徵掃描與 LASSO 降維...")
     scan_result = run_walk_forward(df, stock_id=stock_id, use_tft=False, calibrate_probs=False, turbo=args.turbo)
+    if not scan_result:
+        logger.warning(f"❌ [{stock_id}] Phase 1 掃描失敗（可能原因：資料量不足以建立回測 Folds），訓練中斷。")
+        sys.exit(0)  # 使用 exit 0 讓管理員視為正常結束（已處理），或者改用 1
     
     # 結合策略 ② 與 ③：特徵降維 + 正則化
     if TRAINING_STRATEGY["feature_selection"] == "robust_ic":

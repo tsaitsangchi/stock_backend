@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import core.path_setup  # noqa: F401
 
-from config import STOCK_CONFIGS, TIER_1_STOCKS
+from config import STOCK_CONFIGS, TIER_1_STOCKS, MODEL_DIR, OUTPUT_DIR
 
 import os
 import time
@@ -27,15 +27,16 @@ auto_train_manager.py — 自動訓練管理員
 # ─────────────────────────────────────────────
 VENV_PYTHON        = os.environ.get("VENV_PYTHON",
                                     "/home/hugo/project/stock_backend/venv/bin/python3")
-SCRIPTS_DIR        = Path(__file__).parent
+SCRIPTS_DIR        = Path(__file__).parent # 腳本所在目錄 (scripts/training)
+PROJECT_SCRIPTS    = SCRIPTS_DIR.parent    # 父目錄 (scripts)
 MAX_PARALLEL_TRAINS = 2      # 深層訓練耗能高，降低並行數
 CHECK_INTERVAL     = 60      # 每分鐘檢查一次
-METRICS_REGISTRY   = SCRIPTS_DIR / "outputs" / "metrics_registry.json"
+METRICS_REGISTRY   = OUTPUT_DIR / "metrics_registry.json"
 FAILURE_TRACKER    = {}  # {sid: {"retries": 0, "last_fail": timestamp}}
 MAX_RETRIES        = 3
 
 # [P0-3 / QW-2] Heartbeat 設定
-HEARTBEAT_FILE     = SCRIPTS_DIR / "outputs" / "auto_train.heartbeat"
+HEARTBEAT_FILE     = OUTPUT_DIR / "auto_train.heartbeat"
 HEARTBEAT_DDL      = """
 CREATE TABLE IF NOT EXISTS auto_train_heartbeat (
     id          SERIAL PRIMARY KEY,
@@ -48,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_heartbeat_ts ON auto_train_heartbeat (ts DESC);
 """
 
 # [P1 2.4] PID 追蹤目錄
-PID_DIR = SCRIPTS_DIR / "outputs" / "pids"
+PID_DIR = OUTPUT_DIR / "pids"
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
 ANCHOR_STOCKS      = ["2330", "2317", "2454"]
@@ -58,7 +59,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler(str(SCRIPTS_DIR / "outputs" / "manager.log")),
+        logging.FileHandler(str(OUTPUT_DIR / "manager.log")),
         logging.StreamHandler(sys.stdout),
     ],
 )
@@ -97,20 +98,24 @@ def check_finished_trains(running_before: list[str], running_now: list[str]) -> 
     return [sid for sid in running_before if sid not in running_now]
 
 
-def get_task_exit_status(sid: str) -> bool:
+def get_task_status(sid: str) -> str:
     """
-    檢查訓練日誌的最末尾，判斷是否成功。
-    (這是一個啟發式檢查，因為 subprocess.Popen 沒法直接拿 exit code)
+    檢查訓練日誌，返回任務狀態：'SUCCESS', 'SKIPPED', 或 'FAILED'。
     """
-    log_path = SCRIPTS_DIR / "outputs" / f"train_{sid}.log"
-    if not log_path.exists(): return False
+    log_path = OUTPUT_DIR / f"train_{sid}.log"
+    if not log_path.exists():
+        return "FAILED"
     try:
         with open(log_path, "r") as f:
-            last_lines = f.readlines()[-10:]
+            last_lines = f.readlines()[-20:]
             content = "".join(last_lines)
-            return "SUCCESS" in content or "完成" in content or "metrics_registry" in content
+            if "SUCCESS" in content or "完成" in content or "metrics_registry" in content:
+                return "SUCCESS"
+            if "跳過訓練" in content:
+                return "SKIPPED"
+            return "FAILED"
     except:
-        return False
+        return "FAILED"
 
 
 def write_heartbeat(running_ids: list, finished_ids: list, total: int) -> None:
@@ -252,15 +257,22 @@ def main():
             
             # --- [新功能] 處理剛結束的任務並更新失敗計數 ---
             if 'running_ids' in locals():
-                finished_tasks = check_finished_trains(running_ids, running_now)
-                for sid in finished_tasks:
-                    if get_task_exit_status(sid):
+                finished_this_tick = check_finished_trains(running_ids, running_now)
+                # [P1 2.2] 檢查剛結束的任務
+                for sid in finished_this_tick:
+                    status = get_task_status(sid)
+                    if status == "SUCCESS":
                         logger.info(f"✅ [{sid}] 訓練成功結束。")
-                        FAILURE_TRACKER.pop(sid, None)
+                    elif status == "SKIPPED":
+                        logger.warning(f"⚠️ [{sid}] 訓練跳過 (原因: 資料量不足)。將進入退避等待。")
+                        FAILURE_TRACKER[sid] = FAILURE_TRACKER.get(sid, {"retries": 0})
+                        FAILURE_TRACKER[sid]["retries"] += 1
+                        FAILURE_TRACKER[sid]["last_fail"] = time.time()
                     else:
-                        fail_count = FAILURE_TRACKER.get(sid, {}).get("retries", 0) + 1
-                        FAILURE_TRACKER[sid] = {"retries": fail_count, "last_fail": time.time()}
-                        logger.warning(f"❌ [{sid}] 訓練似乎失敗了！(失敗次數: {fail_count}/{MAX_RETRIES})")
+                        logger.warning(f"❌ [{sid}] 訓練似乎失敗了！(失敗次數: {FAILURE_TRACKER.get(sid,{}).get('retries',0)+1}/{MAX_RETRIES})")
+                        FAILURE_TRACKER[sid] = FAILURE_TRACKER.get(sid, {"retries": 0})
+                        FAILURE_TRACKER[sid]["retries"] += 1
+                        FAILURE_TRACKER[sid]["last_fail"] = time.time()
             
             running_ids = running_now
             perf_scores = get_performance_scores()
@@ -274,9 +286,8 @@ def main():
             finished_ids = []
             if not args.force_all:
                 now = time.time()
-                model_dir = SCRIPTS_DIR / "outputs" / "models"
-                if model_dir.exists():
-                    for f in model_dir.iterdir():
+                if MODEL_DIR.exists():
+                    for f in MODEL_DIR.iterdir():
                         if f.suffix == ".pkl" and "ensemble_" in f.name:
                             sid = f.stem.replace("ensemble_", "")
                             days_old = (now - f.stat().st_mtime) / (24 * 3600)
@@ -339,7 +350,7 @@ def main():
                             # 一般標的維持 fast-mode (double step_days)
                             cmd += ["--fast-mode"]
                         
-                        log_path = SCRIPTS_DIR / "outputs" / f"train_{sid}.log"
+                        log_path = OUTPUT_DIR / f"train_{sid}.log"
                         launch_training(sid, cmd, log_path)
 
                         logger.info(f"[{sid}] 任務已分發。")
