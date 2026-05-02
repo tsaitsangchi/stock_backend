@@ -329,50 +329,11 @@ with col4:
 
 st.markdown("---")
 
-# 第二排：核心狀態矩陣 (Trinity Status Matrix)
-tab1, tab2 = st.tabs(["🛡️ 全系統健康度矩陣", "🎯 全系統投資建議矩陣"])
+# 第二排：核心矩陣系統 (The Trinity Matrices)
+tab1, tab2, tab3 = st.tabs(["💎 專業投資交易帳本", "🛡️ 全系統健康度矩陣", "🚀 全系統投資建議矩陣"])
 
 with tab1:
-    st.subheader("全系統健康度矩陣")
-    # 準備矩陣數據
-    # 1. 資料狀態：從 fresh_df 計算平均，若 > 95% 為綠燈
-    def get_data_status(row):
-        # 排除 stock_id 欄位，計算其餘欄位的平均覆蓋率
-        vals = row.iloc[1:].str.rstrip('%').astype(float)
-        avg = vals.mean()
-        # 關鍵指標：若 stock_price 為 100%，則至少為黃燈以上
-        price_col = "stock_price" if "stock_price" in vals.index else None
-        is_price_ok = (vals[price_col] >= 100) if price_col else False
-        
-        if avg > 90 and is_price_ok: return "🟢 完整"
-        if avg > 70 and is_price_ok: return "🟡 部分"
-        return "🔴 缺漏"
-
-    matrix_df = pd.DataFrame({"stock_id": list(STOCK_CONFIGS.keys())})
-    matrix_df["資料狀態"] = fresh_df.apply(get_data_status, axis=1)
-
-    # 2. 模型狀態
-    matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id", how="left")
-    matrix_df.rename(columns={"status": "模型狀態"}, inplace=True)
-    matrix_df["模型狀態"] = matrix_df["模型狀態"].fillna("🔴 MISSING")
-
-    # 3. 預測狀態
-    if not pred_df.empty:
-        pred_ids = set(pred_df["stock_id"].tolist())
-        matrix_df["預測狀態"] = matrix_df["stock_id"].apply(lambda x: "🟢 已產出" if x in pred_ids else "⚪ 待處理")
-    else:
-        matrix_df["預測狀態"] = "⚪ 待處理"
-
-    # 4. 效能與漂移
-    matrix_df = pd.merge(matrix_df, perf_df[["stock_id", "da"]], on="stock_id", how="left")
-    matrix_df = pd.merge(matrix_df, drift_df[["stock_id", "psi"]], on="stock_id", how="left")
-    
-    matrix_df.rename(columns={"da": "準確度 (DA)", "psi": "漂移 (PSI)"}, inplace=True)
-    matrix_df["準確度 (DA)"] = matrix_df["準確度 (DA)"].apply(lambda x: f"{x:.1%}" if pd.notnull(x) else "N/A")
-    matrix_df["漂移 (PSI)"] = matrix_df["漂移 (PSI)"].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "N/A")
-
-    st.markdown("---")
-    st.subheader("💎 專業投資交易帳本矩陣")
+    st.subheader("專業投資交易帳本矩陣")
     ledger_df = load_trade_ledger()
     
     if ledger_df.empty:
@@ -417,6 +378,44 @@ with tab1:
             hide_index=True
         )
 
+with tab2:
+    st.subheader("全系統健康度矩陣")
+    # 準備矩陣數據
+    def get_data_status(row):
+        vals = row.iloc[1:].str.rstrip('%').astype(float)
+        avg = vals.mean()
+        price_col = "stock_price" if "stock_price" in vals.index else None
+        is_price_ok = (vals[price_col] >= 100) if price_col else False
+        
+        if avg >= 99 and is_price_ok: icon = "🟢"
+        elif avg > 70 and is_price_ok: icon = "🟡"
+        else: icon = "🔴"
+        
+        return f"{icon} {avg:.1f}%"
+
+    matrix_df = pd.DataFrame({"stock_id": list(STOCK_CONFIGS.keys())})
+    matrix_df["資料狀態"] = fresh_df.apply(get_data_status, axis=1)
+
+    # 2. 模型狀態
+    matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id", how="left")
+    matrix_df.rename(columns={"status": "模型狀態"}, inplace=True)
+    matrix_df["模型狀態"] = matrix_df["模型狀態"].fillna("🔴 MISSING")
+
+    # 3. 預測狀態
+    if not pred_df.empty:
+        pred_ids = set(pred_df["stock_id"].tolist())
+        matrix_df["預測狀態"] = matrix_df["stock_id"].apply(lambda x: "🟢 已產出" if x in pred_ids else "⚪ 待處理")
+    else:
+        matrix_df["預測狀態"] = "⚪ 待處理"
+
+    # 4. 效能與漂移
+    matrix_df = pd.merge(matrix_df, perf_df[["stock_id", "da"]], on="stock_id", how="left")
+    matrix_df = pd.merge(matrix_df, drift_df[["stock_id", "psi"]], on="stock_id", how="left")
+    
+    matrix_df.rename(columns={"da": "準確度 (DA)", "psi": "漂移 (PSI)"}, inplace=True)
+    matrix_df["準確度 (DA)"] = matrix_df["準確度 (DA)"].apply(lambda x: f"{x:.1%}" if pd.notnull(x) else "N/A")
+    matrix_df["漂移 (PSI)"] = matrix_df["漂移 (PSI)"].apply(lambda x: f"{x:.2f}" if pd.notnull(x) else "N/A")
+
     # 樣式與顯示
     def style_trinity(val):
         if "🟢" in str(val): color = '#2ea043'
@@ -431,7 +430,7 @@ with tab1:
         height=400
     )
 
-with tab2:
+with tab3:
     st.subheader("全系統投資建議矩陣 (100k Barbell Strategy)")
     advice_df = load_investment_advice(capital)
     if not advice_df.empty:
