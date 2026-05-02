@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_sponsor_chip_data.py — Sponsor 方案進階籌碼資料抓取
 ==========================================================
@@ -38,13 +38,11 @@ import logging
 from datetime import date, datetime, timedelta
 
 import psycopg2
-import psycopg2.extras
 import urllib3
 
 # 隱藏 InsecureRequestWarning（當 verify=False 時）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# [P0-SEC] 統一從 config.py 讀取，不再硬編碼
 from config import DB_CONFIG  # noqa: F401（db_utils 內部使用）
 from core.finmind_client import finmind_get
 from core.db_utils import (

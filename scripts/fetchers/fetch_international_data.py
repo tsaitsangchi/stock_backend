@@ -1,15 +1,8 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_international_data.py  v1.0
 從 FinMind API 抓取國際影響資料並寫入 PostgreSQL：
@@ -42,15 +35,21 @@ fetch_international_data.py  v1.0
 
 import argparse
 import logging
-import sys
 import time
 from datetime import date, timedelta, datetime
 
 import psycopg2
-import psycopg2.extras
-import requests
 import pandas as pd
-from config import INTERNATIONAL_WATCHLIST, FINMIND_TOKEN, DB_CONFIG
+from config import INTERNATIONAL_WATCHLIST
+
+from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: F401
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    safe_float,
+    safe_int,
+)
 
 # ======================
 # 設定 logging
@@ -62,14 +61,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# FinMind API 設定
-# ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
-# PostgreSQL 連線設定
-# ======================
 # ======================
 # 各資料集最早可用日期
 # ======================
@@ -152,19 +143,6 @@ ON CONFLICT (date) DO UPDATE SET
 """
 
 
-# ──────────────────────────────────────────────
-# [P0 重構] 工具函式統一改用 core 模組
-# ──────────────────────────────────────────────
-from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: E402,F401
-from core.db_utils import (  # noqa: E402,F401
-    get_db_conn,
-    ensure_ddl,
-    bulk_upsert,
-    safe_float,
-    safe_int,
-)
-
-
 def get_latest_date(conn, table: str, date_col: str = "date", key_col: str = None) -> dict | str | None:
     """
     取得資料表最新日期。
@@ -218,14 +196,14 @@ def resolve_start_by_key(latest_dict: dict, key: str, global_start: str, dataset
 
     if next_day > DEFAULT_END:
         return None  # 已是最新
-        
+
     # 週末防護：如果 latest 是週五 (weekday 4)，且今天是週六或週日，則視為已最新
     latest_dt = datetime.strptime(latest, "%Y-%m-%d")
     today_dt = datetime.today()
     if latest_dt.weekday() == 4: # 週五
         if (today_dt - latest_dt).days <= 2:
             return None
-            
+
     return max(next_day, earliest)
 
 
@@ -341,7 +319,7 @@ def fetch_us_stock_price(
                 key = (row[0], row[1])
                 seen[key] = row
             rows = list(seen.values())
-            
+
             bulk_upsert(conn, UPSERT_US_STOCK_PRICE, rows, template)
             total_rows += len(rows)
 
@@ -424,7 +402,7 @@ def fetch_gold_price(
             key = row[0]
             seen[key] = row
         rows = list(seen.values())
-        
+
         template = "(%s::date,%s::numeric)"
         bulk_upsert(conn, UPSERT_GOLD_PRICE, rows, template)
         logger.info(f"  [gold_price] 寫入 {len(rows)} 筆")

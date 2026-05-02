@@ -1,58 +1,27 @@
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
 """
-fetch_fundamental_data.py  v2.0（API 用量優化版）
+fetch_fundamental_data.py  v2.1（去重複化 + core 模組整合）
 從 FinMind API 抓取基本面資料並寫入 PostgreSQL：
   - financial_statements ← TaiwanStockFinancialStatements (綜合損益表, Free)
   - balance_sheet        ← TaiwanStockBalanceSheet        (資產負債表, Free)
   - month_revenue        ← TaiwanStockMonthRevenue        (月營收,     Free)
   - dividend             ← TaiwanStockDividend            (股利政策,   Free)
 
+v2.1 改進（去重複化）：
+  · 移除本檔重複的 safe_float/safe_int/safe_date/safe_timestamp/dedup_rows
+    → 改用 core.db_utils 統一版本
+  · 移除本檔重複的 finmind_get/wait_until_next_hour/FINMIND_API_URL
+    → 改用 core.finmind_client 統一版本（含 Token Bucket 速率限制）
+  · 移除本檔重複的 get_db_conn/ensure_ddl/bulk_upsert/get_all_latest_dates
+    → 改用 core.db_utils 統一版本
+  · 移除本檔重複的 resolve_start_cached
+    → 改用 core.db_utils 統一版本
+  · 修正頂部三重 sys.path 重複插入
+
 v2.0 優化重點（三層節省 API 用量）：
-
   ① DB 最新日期批次預載（全表共用，效能優化）
-       原：每支股票 SELECT MAX(date)（N 次 SQL → 約 2,000 次/資料集）
-       後：一條 GROUP BY SQL 預載所有股票最新日期 → dict 查快取
-
   ② financial_statements + balance_sheet 合併迴圈
-       兩者同為季報、相同股票清單、相同 API 模式
-       原：兩個獨立迴圈各跑 ~2,000 次 API = 4,000 次
-       後：同一迴圈內依序抓取，省去重複遍歷與 DB 連線開銷
-       --per-table 旗標可還原為分別抓取
-
   ③ month_revenue 批次模式（最大節省）
-       增量更新時大多數股票 start_date 相同（上個月月初）
-       → 不帶 data_id 的全市場請求，依 --chunk-days 分段
-       原：~2,000 次 API   後：少數幾次批次請求
-       --per-stock 旗標可還原為逐支請求
-
-  ④ dividend 智慧跳過（原有邏輯強化）
-       保留逐支請求（股利資料量少、更新不規律）
-       + 快取最新日期（省掉逐筆 SQL）
-       + get_expected_latest_date() 判斷是否需要抓取
-
-執行範例：
-    # 增量更新（預設，API 用量最少）
-    python fetch_fundamental_data.py
-
-    # 只抓月營收 + 財報
-    python fetch_fundamental_data.py --tables month_revenue financial_statements balance_sheet
-
-    # 退回逐支模式（相容舊行為）
-    python fetch_fundamental_data.py --per-stock --per-table
-
-    # 強制重抓（建議搭配 --tables 限縮範圍）
-    python fetch_fundamental_data.py --force --tables month_revenue
+  ④ dividend 智慧跳過（季節性跳過邏輯）
 
 注意事項：
   - 財報公告截止日慣例（台灣法規）：
@@ -60,25 +29,35 @@ v2.0 優化重點（三層節省 API 用量）：
       Q3 (9/30) → 11/14  │ Q4 (12/31) → 隔年 3/31
   - 月營收：次月 10 日前公告，最新可用月為「上個月」
   - 股利：股東會集中 5~6 月，保守取「去年底」為最新穩定基準
-  - dedup_rows() 在寫入前去除 API 偶爾回傳的重複列，
-    避免 PostgreSQL ON CONFLICT DO UPDATE CardinalityViolation 錯誤。
-  - 批次模式回傳全市場資料，程式自動過濾僅保留 stock_info 內的股票。
 """
+
+import sys
+from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 
 import argparse
 import logging
-import sys
-import time
 from collections import defaultdict
 from datetime import date, timedelta, datetime
 
 import psycopg2
-import psycopg2.extras
-import requests
 
-# ======================
-# 設定 logging
-# ======================
+from config import DB_CONFIG
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    get_all_latest_dates,
+    safe_float,
+    safe_int,
+    safe_date,
+    safe_timestamp,
+    dedup_rows,
+)
+from core.finmind_client import finmind_get
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -86,20 +65,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# [P0-SECURITY 第四輪修復] FinMind API & PostgreSQL 連線設定
-# 從統一的 config 模組載入，不再硬編碼於原始碼
-# Token 由 .env 檔案載入；DB 連線由 config.DB_CONFIG 提供
-# 注意：若需要保留批次模式效率（直接 psycopg2 連線），仍可使用 DB_CONFIG，
-# 但所有「DB 連線設定」必須透過 config.DB_CONFIG，不允許就地硬編碼。
-# ======================
-from config import DB_CONFIG, FINMIND_TOKEN  # noqa: E402
-
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
+# ──────────────────────────────────────────────
 # 各資料集最早可用日期
-# ======================
+# ──────────────────────────────────────────────
 DATASET_START_DATES = {
     "financial_statements": "1990-03-01",
     "balance_sheet":        "2011-12-01",
@@ -110,9 +78,8 @@ DATASET_START_DATES = {
 DEFAULT_END   = date.today().strftime("%Y-%m-%d")
 DEFAULT_START = "1990-03-01"
 
-# 批次模式：每次請求最多涵蓋幾天（避免單次回傳筆數過多）
-DEFAULT_CHUNK_DAYS      = 60    # 月營收用，60 天 = 約 2 個月的全市場資料
-DEFAULT_BATCH_THRESHOLD = 20    # 同起始日超過此支數才啟用批次
+DEFAULT_CHUNK_DAYS      = 60
+DEFAULT_BATCH_THRESHOLD = 20
 
 # ──────────────────────────────────────────────
 # DDL
@@ -290,64 +257,8 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 
 
 # ──────────────────────────────────────────────
-# 工具函式
+# 輔助函式
 # ──────────────────────────────────────────────
-def safe_float(val):
-    if val is None:
-        return None
-    s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def safe_int(val):
-    f = safe_float(val)
-    return int(f) if f is not None else None
-
-
-def safe_date(val):
-    if val is None:
-        return None
-    s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
-    try:
-        datetime.strptime(s, "%Y-%m-%d")
-        return s
-    except ValueError:
-        return None
-
-
-def safe_timestamp(val):
-    if val is None:
-        return None
-    s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%H:%M:%S"):
-        try:
-            return datetime.strptime(s, fmt)
-        except ValueError:
-            continue
-    return None
-
-
-def dedup_rows(rows: list, key_indices: tuple) -> list:
-    """
-    依指定欄位索引去除重複列（後出現的覆蓋先出現的）。
-    解決 FinMind 偶爾回傳同批資料含重複 PK 導致 CardinalityViolation 的問題。
-    """
-    seen = {}
-    for row in rows:
-        key = tuple(row[i] for i in key_indices)
-        seen[key] = row
-    return list(seen.values())
-
-
 def get_expected_latest_date(dataset_key: str) -> str:
     """
     依各資料集的公告週期，推算目前「合理可取得的最新資料日期」。
@@ -387,158 +298,11 @@ def get_expected_latest_date(dataset_key: str) -> str:
     return today.strftime("%Y-%m-%d")
 
 
-def wait_until_next_hour():
-    """
-    當遇到 402 (Payment Required) 錯誤時，代表 API 用量達上限。
-    通常 FinMind 會在整點重置配額，因此等待至下一整點。
-    """
-    now = datetime.now()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    wait_sec = (next_hour - now).total_seconds() + 65
-    logger.warning(
-        f"API 用量達上限（402），等待至下一整點重置。"
-        f"目前時間：{now.strftime('%H:%M:%S')}，"
-        f"預計恢復：{next_hour.strftime('%H:%M:%S')}，"
-        f"等待 {wait_sec:.0f} 秒…"
-    )
-    time.sleep(wait_sec)
-    logger.info("等待結束，恢復請求。")
-
-
-def finmind_get(dataset: str, params: dict, delay: float) -> list:
-    """
-    通用 FinMind API 請求（v2 — 強化超時與重試）。
-
-    修正項目：
-      ① timeout 改為 (connect=15, read=120)：connect 過慢直接中斷，不等滿 120 秒
-      ② 指數退避（5s → 20s → 60s）：避免連線風暴，給 API 服務器恢復時間
-      ③ 最多重試 5 次（逾時類錯誤）/ 3 次（其他 HTTP 錯誤）
-      ④ ConnectTimeout 與 ReadTimeout 分開處理，記錄更清晰
-    """
-    import random
-    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
-    req_params = {"dataset": dataset, **params}
-
-    MAX_RETRIES   = 5       # 連線逾時最多重試次數
-    BASE_WAIT     = 5.0     # 指數退避基礎秒數
-
-    while True:
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = requests.get(
-                    FINMIND_API_URL,
-                    headers=headers,
-                    params=req_params,
-                    timeout=(15, 120),   # (connect_timeout, read_timeout)
-                )
-                if resp.status_code == 402:
-                    wait_until_next_hour()
-                    break
-                resp.raise_for_status()
-                payload = resp.json()
-                status = payload.get("status")
-                if status == 402:
-                    wait_until_next_hour()
-                    break
-                if status != 200:
-                    logger.warning(
-                        f"[{dataset}] status={status}, msg={payload.get('msg')}，跳過"
-                    )
-                    return []
-                time.sleep(delay)
-                return payload.get("data", [])
-
-            except requests.exceptions.ConnectTimeout:
-                # 連線階段超時（DNS 慢或 API 服務器暫時不回應）
-                wait_sec = BASE_WAIT * (3 ** (attempt - 1)) + random.uniform(0, 3)
-                if attempt < MAX_RETRIES:
-                    logger.warning(
-                        f"[{dataset}] 連線逾時（第 {attempt}/{MAX_RETRIES} 次），"
-                        f"{wait_sec:.0f} 秒後重試…"
-                    )
-                    time.sleep(wait_sec)
-                else:
-                    logger.error(f"[{dataset}] 連線逾時，已重試 {MAX_RETRIES} 次，跳過")
-                    return []
-
-            except requests.exceptions.ReadTimeout:
-                # 讀取階段超時（資料量過大或 API 服務器處理慢）
-                wait_sec = BASE_WAIT * (2 ** (attempt - 1)) + random.uniform(0, 2)
-                if attempt < MAX_RETRIES:
-                    logger.warning(
-                        f"[{dataset}] 讀取逾時（第 {attempt}/{MAX_RETRIES} 次），"
-                        f"{wait_sec:.0f} 秒後重試…"
-                    )
-                    time.sleep(wait_sec)
-                else:
-                    logger.error(f"[{dataset}] 讀取逾時，已重試 {MAX_RETRIES} 次，跳過")
-                    return []
-
-            except requests.HTTPError as http_err:
-                code = http_err.response.status_code if http_err.response is not None else 0
-                if code == 400:
-                    logger.debug(
-                        f"[{dataset}] 400 Bad Request，跳過 "
-                        f"(data_id={params.get('data_id')}, start={params.get('start_date')})"
-                    )
-                    return []
-                elif code == 402:
-                    wait_until_next_hour()
-                    break
-                else:
-                    wait_sec = BASE_WAIT * (2 ** (attempt - 1))
-                    logger.warning(f"[{dataset}] HTTP {code} 錯誤，{wait_sec:.0f} 秒後重試：{http_err}")
-                    if attempt < 3:
-                        time.sleep(wait_sec)
-                    else:
-                        logger.error(f"[{dataset}] HTTP 錯誤，已重試 3 次，跳過")
-                        return []
-
-            except Exception as exc:
-                wait_sec = BASE_WAIT * (2 ** (attempt - 1)) + random.uniform(0, 2)
-                logger.warning(
-                    f"[{dataset}] 第 {attempt}/{MAX_RETRIES} 次請求失敗：{exc}，"
-                    f"{wait_sec:.0f} 秒後重試"
-                )
-                if attempt < MAX_RETRIES:
-                    time.sleep(wait_sec)
-                else:
-                    logger.error(f"[{dataset}] 已重試 {MAX_RETRIES} 次，跳過")
-                    return []
-        else:
-            break
-
-
-# ──────────────────────────────────────────────
-# DB 工具
-# ──────────────────────────────────────────────
-def get_db_conn():
-    return psycopg2.connect(**DB_CONFIG)
-
-
-def ensure_ddl(conn, *ddls):
-    with conn.cursor() as cur:
-        for ddl in ddls:
-            cur.execute(ddl)
-    conn.commit()
-
-
-def migrate_dividend_columns(conn):
+def migrate_dividend_columns(conn) -> None:
     with conn.cursor() as cur:
         cur.execute(MIGRATE_DIVIDEND_COLUMNS)
     conn.commit()
     logger.info("[dividend] 欄位精度確認完畢（已確保 NUMERIC(20,4)）")
-
-
-def bulk_upsert(conn, sql: str, rows: list, template: str, page_size: int = 2000) -> int:
-    if not rows:
-        return 0
-    with conn.cursor() as cur:
-        psycopg2.extras.execute_values(
-            cur, sql, rows, template=template, page_size=page_size
-        )
-    conn.commit()
-    return len(rows)
 
 
 def get_target_stock_ids(conn, stock_id_arg: str = None) -> list:
@@ -548,30 +312,15 @@ def get_target_stock_ids(conn, stock_id_arg: str = None) -> list:
     return list(STOCK_CONFIGS.keys())
 
 
-# ① DB 最新日期批次預載（一條 SQL 取代 N 次逐筆查詢）
-def get_all_latest_dates(conn, table: str) -> dict:
+def resolve_start_fundamental(
+    stock_id: str,
+    latest_dates: dict,
+    global_start: str,
+    dataset_key: str,
+    force: bool,
+) -> str | None:
     """
-    一次查出指定資料表所有股票的最新日期。
-    回傳 { stock_id: "YYYY-MM-DD" }
-
-    原本每支股票 SELECT MAX(date) WHERE stock_id=?（N 次 SQL）
-    現改為一條 GROUP BY SQL，預載後全程用 dict 查快取。
-    """
-    with conn.cursor() as cur:
-        cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
-        return {
-            row[0]: row[1].strftime("%Y-%m-%d")
-            for row in cur.fetchall()
-            if row[1] is not None
-        }
-
-
-def resolve_start_cached(
-    stock_id: str, latest_dates: dict,
-    global_start: str, dataset_key: str, force: bool
-):
-    """
-    從預載快取（latest_dates）決定起始日，不再逐筆查 DB。
+    基本面專用的起始日計算，結合 get_expected_latest_date 智慧跳過。
     回傳 None 表示此股票已是最新，不需抓取。
     """
     earliest = DATASET_START_DATES[dataset_key]
@@ -581,13 +330,12 @@ def resolve_start_cached(
         return effective_start
 
     latest = latest_dates.get(str(stock_id))
-
     if latest is None:
         return effective_start
 
     expected_latest = get_expected_latest_date(dataset_key)
     if latest >= expected_latest:
-        return None  # 已達最新預期，跳過
+        return None
 
     next_day = (
         datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
@@ -665,11 +413,6 @@ def fetch_quarterly_combined(
     """
     財報合併迴圈：financial_statements 與 balance_sheet 共享同一支股票迴圈。
     兩者同為季報，更新週期完全一致，合併後省掉重複遍歷與 DB 連線開銷。
-
-    tables 可為：
-      ["financial_statements", "balance_sheet"]  兩者皆抓
-      ["financial_statements"]                   只抓損益表
-      ["balance_sheet"]                          只抓資負表
     """
     do_fin = "financial_statements" in tables
     do_bs  = "balance_sheet"        in tables
@@ -689,7 +432,6 @@ def fetch_quarterly_combined(
 
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
-        # ① 批次預載兩張表最新日期
         latest_fin = get_all_latest_dates(conn, "financial_statements") if do_fin else {}
         latest_bs  = get_all_latest_dates(conn, "balance_sheet")        if do_bs  else {}
 
@@ -697,12 +439,8 @@ def fetch_quarterly_combined(
         skipped_fin = skipped_bs = 0
 
         for i, sid in enumerate(stock_ids, 1):
-
-            # ── financial_statements ──
             if do_fin:
-                s = resolve_start_cached(
-                    sid, latest_fin, start_date, "financial_statements", force
-                )
+                s = resolve_start_fundamental(sid, latest_fin, start_date, "financial_statements", force)
                 if s is None:
                     skipped_fin += 1
                 else:
@@ -718,11 +456,8 @@ def fetch_quarterly_combined(
                             "(%s::date, %s, %s, %s::numeric, %s)",
                         )
 
-            # ── balance_sheet ──
             if do_bs:
-                s = resolve_start_cached(
-                    sid, latest_bs, start_date, "balance_sheet", force
-                )
+                s = resolve_start_fundamental(sid, latest_bs, start_date, "balance_sheet", force)
                 if s is None:
                     skipped_bs += 1
                 else:
@@ -778,7 +513,7 @@ def fetch_month_revenue_batch(
     stock_starts: dict[str, str] = {}
     skipped = 0
     for sid in sorted(valid_stock_ids):
-        s = resolve_start_cached(sid, latest_dates, start_date, "month_revenue", force)
+        s = resolve_start_fundamental(sid, latest_dates, start_date, "month_revenue", force)
         if s is None:
             skipped += 1
         else:
@@ -790,7 +525,6 @@ def fetch_month_revenue_batch(
     if not stock_starts:
         return 0
 
-    # 按 actual_start 分組
     groups: dict[str, list] = defaultdict(list)
     for sid, s in stock_starts.items():
         groups[s].append(sid)
@@ -808,7 +542,6 @@ def fetch_month_revenue_batch(
         sids_set = set(sids)
 
         if len(sids) >= batch_threshold:
-            # 批次模式：不帶 data_id，按 chunk_days 分段
             seg_start = group_start
             seg_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
             chunk_rows_all = []
@@ -845,7 +578,6 @@ def fetch_month_revenue_batch(
                 )
                 logger.info(f"  [month_revenue] 批次寫入 {len(rows)} 筆")
         else:
-            # 小尾巴：逐支請求
             for sid in sids:
                 data = finmind_get(
                     "TaiwanStockMonthRevenue",
@@ -877,7 +609,7 @@ def fetch_month_revenue_per_stock(
     total_rows = skipped = 0
 
     for i, sid in enumerate(sorted(valid_stock_ids), 1):
-        s = resolve_start_cached(sid, latest_dates, start_date, "month_revenue", force)
+        s = resolve_start_fundamental(sid, latest_dates, start_date, "month_revenue", force)
         if s is None:
             skipped += 1
             continue
@@ -918,9 +650,7 @@ def fetch_month_revenue(
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         if per_stock:
-            fetch_month_revenue_per_stock(
-                start_date, end_date, delay, force, stock_ids, conn
-            )
+            fetch_month_revenue_per_stock(start_date, end_date, delay, force, stock_ids, conn)
         else:
             fetch_month_revenue_batch(
                 start_date, end_date, delay, force,
@@ -943,13 +673,11 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, st
         migrate_dividend_columns(conn)
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
-        # ① 批次預載最新日期
         latest_dates = get_all_latest_dates(conn, "dividend")
-
         total_rows = skipped = 0
 
         for i, sid in enumerate(stock_ids, 1):
-            s = resolve_start_cached(sid, latest_dates, start_date, "dividend", force)
+            s = resolve_start_fundamental(sid, latest_dates, start_date, "dividend", force)
             if s is None:
                 skipped += 1
                 continue
@@ -993,13 +721,12 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, st
 # CLI 主程式
 # ──────────────────────────────────────────────
 ALL_TABLES = ["financial_statements", "balance_sheet", "month_revenue", "dividend"]
-# 季報合併群組（可以一起處理）
 QUARTERLY_TABLES = {"financial_statements", "balance_sheet"}
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="FinMind 基本面資料抓取工具 v2.0（API 用量優化版）"
+        description="FinMind 基本面資料抓取工具 v2.1（去重複化版）"
     )
     parser.add_argument(
         "--tables", nargs="+",
@@ -1007,41 +734,17 @@ def parse_args():
         default=["all"],
         help="要抓取的資料表（預設 all）",
     )
-    parser.add_argument(
-        "--start", default=DEFAULT_START,
-        help="開始日期 YYYY-MM-DD（預設 1990-03-01）",
-    )
-    parser.add_argument(
-        "--end", default=DEFAULT_END,
-        help="結束日期 YYYY-MM-DD（預設今天）",
-    )
-    parser.add_argument(
-        "--delay", type=float, default=1.2,
-        help="每次 API 請求後等待秒數（預設 1.2）",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="強制重抓：忽略 DB 已有資料，從 --start 開始重新覆蓋",
-    )
-    # ② 合併迴圈控制
-    parser.add_argument(
-        "--per-table", action="store_true",
-        help="停用 financial_statements + balance_sheet 合併迴圈，改為分別抓取",
-    )
-    # ③ 批次模式控制
-    parser.add_argument(
-        "--per-stock", action="store_true",
-        help="month_revenue 退回逐支請求（相容舊行為）",
-    )
-    parser.add_argument(
-        "--batch-threshold", type=int, default=DEFAULT_BATCH_THRESHOLD,
-        help=f"批次閾值：同起始日超過此支數才合併（預設 {DEFAULT_BATCH_THRESHOLD}）",
-    )
-    parser.add_argument(
-        "--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS,
-        help=f"批次每段天數（預設 {DEFAULT_CHUNK_DAYS}）",
-    )
-    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
+    parser.add_argument("--start", default=DEFAULT_START)
+    parser.add_argument("--end",   default=DEFAULT_END)
+    parser.add_argument("--delay", type=float, default=1.2)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--per-table", action="store_true",
+                        help="停用 financial_statements + balance_sheet 合併迴圈")
+    parser.add_argument("--per-stock", action="store_true",
+                        help="month_revenue 退回逐支請求")
+    parser.add_argument("--batch-threshold", type=int, default=DEFAULT_BATCH_THRESHOLD)
+    parser.add_argument("--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS)
+    parser.add_argument("--stock-id", default=None)
     return parser.parse_args()
 
 
@@ -1057,25 +760,19 @@ def main():
     logger.info(f"目標股票數：{len(target_stocks)}")
     logger.info(f"抓取資料表：{tables}")
     logger.info(f"日期區間：{args.start} ~ {args.end}")
-    logger.info(f"請求間隔：{args.delay} 秒")
+    logger.info(f"請求間隔：{args.delay} 秒（Token Bucket 速率限制）")
     logger.info(f"執行模式：{mode_str}")
-    logger.info(
-        f"財報合併迴圈：{'關閉 (--per-table)' if args.per_table else '啟用'}  "
-        f"月營收批次：{'關閉 (--per-stock)' if args.per_stock else '啟用'}"
-    )
 
     for key in tables:
         logger.info(f"  [{key}] 預期最新日期 = {get_expected_latest_date(key)}")
 
     try:
-        # ── 季報：財報 + 資負表（合併或分別）──────────────
         quarterly = [t for t in tables if t in QUARTERLY_TABLES]
         if quarterly:
             fetch_quarterly_combined(
                 args.start, args.end, args.delay, args.force, quarterly, target_stocks
             )
 
-        # ── 月營收（批次或逐支）────────────────────────────
         if "month_revenue" in tables:
             fetch_month_revenue(
                 args.start, args.end, args.delay, args.force,
@@ -1083,7 +780,6 @@ def main():
                 target_stocks
             )
 
-        # ── 股利（逐支 + 快取）─────────────────────────────
         if "dividend" in tables:
             fetch_dividend(args.start, args.end, args.delay, args.force, target_stocks)
 

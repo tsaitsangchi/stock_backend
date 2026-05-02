@@ -1,15 +1,8 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_derivative_data.py
 從 FinMind API 抓取衍生品資料並寫入 PostgreSQL：
@@ -47,15 +40,19 @@ fetch_derivative_data.py
 
 import argparse
 import logging
-import sys
 import time
 from datetime import date, timedelta, datetime
 
 import psycopg2
 
-from config import FINMIND_TOKEN, DB_CONFIG
-import psycopg2.extras
-import requests
+from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: F401
+from core.db_utils import (
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    safe_float,
+    safe_int,
+)
 
 # ======================
 # 設定 logging
@@ -67,14 +64,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# FinMind API 設定
-# ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
-# PostgreSQL 連線設定
-# ======================
 # ======================
 # 各資料集最早可用日期
 # ======================
@@ -215,19 +204,6 @@ ON CONFLICT (date, option_id, contract_date, strike_price, call_put) DO UPDATE S
     open_interest    = EXCLUDED.open_interest,
     trading_session  = EXCLUDED.trading_session;
 """
-
-
-# ──────────────────────────────────────────────
-# [P0 重構] 工具函式統一改用 core 模組
-# ──────────────────────────────────────────────
-from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: E402,F401
-from core.db_utils import (  # noqa: E402,F401
-    get_db_conn,
-    ensure_ddl,
-    bulk_upsert,
-    safe_float,
-    safe_int,
-)
 
 
 def dedup_rows(rows: list, key_indices: tuple) -> list:

@@ -1,70 +1,42 @@
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
 """
-fetch_chip_data.py
+fetch_chip_data.py  v2.1（去重複化 + core 模組整合）
 從 FinMind API 抓取籌碼面資料並寫入 PostgreSQL：
-  - institutional_investors_buy_sell ← TaiwanStockInstitutionalInvestorsBuySell (三大法人, Free)
-  - margin_purchase_short_sale       ← TaiwanStockMarginPurchaseShortSale       (融資融券, Free)
-  - shareholding                     ← TaiwanStockShareholding                  (外資持股, Free)
+  - institutional_investors_buy_sell ← TaiwanStockInstitutionalInvestorsBuySell
+  - margin_purchase_short_sale       ← TaiwanStockMarginPurchaseShortSale
+  - shareholding                     ← TaiwanStockShareholding
 
-需求套件：
-    pip install requests psycopg2-binary
-
-執行範例：
-    # 首次全量抓取（自動從各資料集最早日期開始）
-    python fetch_chip_data.py
-
-    # 只抓三大法人
-    python fetch_chip_data.py --tables institutional_investors_buy_sell
-
-    # 強制重抓（忽略 DB 已有資料）
-    python fetch_chip_data.py --force
-
-注意事項：
-  - 預設啟用「增量模式」：每支股票自動從 DB 最新日期的隔天開始抓，避免重複請求。
-  - institutional_investors_buy_sell 的 PK 含 name（外資/投信/自營），
-    增量判斷以 MAX(date) 為準。
-  - 預設請求間隔 1.2 秒，可用 --delay 調整。
+v2.1 改進：
+  · 修正頂部三重 sys.path 重複插入
+  · 移除本地 get_db_conn 重複定義 → 改用 core.db_utils
+  · 移除冗餘 FINMIND_API_URL 常數（已在 core.finmind_client 定義）
+  · 修正 main() 中重複建立 conn + 重複取得 target_stocks 的問題
 """
+
+import sys
+from pathlib import Path
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 
 import argparse
 import logging
-import sys
-import time
-from datetime import date, timedelta, datetime
+from datetime import date
 
 import psycopg2
-import psycopg2.extras
-import requests
 
 from config import DB_CONFIG
 from core.db_utils import (
-    ensure_ddl, 
-    bulk_upsert, 
-    get_all_safe_starts, 
+    get_db_conn,
+    ensure_ddl,
+    bulk_upsert,
+    get_all_safe_starts,
     resolve_start_cached,
     safe_int,
-    safe_float
+    safe_float,
+    safe_date,
 )
 from core.finmind_client import finmind_get
 
-# ======================
-# 資料庫連線
-# ======================
-def get_db_conn():
-    return psycopg2.connect(**DB_CONFIG)
-# 設定 logging
-# ======================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -72,17 +44,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# FinMind API 設定
-# ======================
-FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
-
-# ======================
-# PostgreSQL 連線設定
-# ======================
-# ======================
+# ──────────────────────────────────────────────
 # 各資料集最早可用日期
-# ======================
+# ──────────────────────────────────────────────
 DATASET_START_DATES = {
     "institutional_investors_buy_sell": "2005-01-01",
     "margin_purchase_short_sale":       "2001-01-01",
@@ -213,54 +177,31 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 
 
 # ──────────────────────────────────────────────
-# [P0 重構] 工具函式統一改用 core 模組
-# 移除本檔重複的 safe_*、ensure_ddl、bulk_upsert、finmind_get、wait_until_next_hour、get_db_conn
+# 輔助函式
 # ──────────────────────────────────────────────
-from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: E402,F401
-from core.db_utils import (  # noqa: E402,F401
-    safe_date,
-    get_all_safe_starts,
-    resolve_start_cached,
-)
-
-
-def get_target_stock_ids(conn, stock_id_arg=None):
+def get_target_stock_ids(conn, stock_id_arg=None) -> list:
     if stock_id_arg:
         return [s.strip() for s in stock_id_arg.split(",")]
-    
-    from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
+    from config import STOCK_CONFIGS
     return list(STOCK_CONFIGS.keys())
-
-def get_db_stock_info(conn):
-    """取得所有 WSE/OTC 股票的基本資訊（供非 87 支時使用）"""
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT stock_id FROM stock_info WHERE type IN ('twse', 'otc') ORDER BY stock_id"
-        )
-        return [row[0] for row in cur.fetchall()]
-
-
 
 
 # ──────────────────────────────────────────────
 # institutional_investors_buy_sell（三大法人）
 # ──────────────────────────────────────────────
-def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
-    logger.info(f"\n=== [institutional_investors_buy_sell] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
+def fetch_institutional_investors_buy_sell(
+    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
+):
+    logger.info(f"\n=== [institutional_investors_buy_sell] 開始（{len(stock_ids)} 支）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_INSTITUTIONAL_INVESTORS)
-        targets = stock_ids if stock_ids else get_db_stock_info(conn)
-        
-        # [v3] 批次預載安全起始日，取代原本迴圈內的逐筆查詢
         latest_dates = get_all_safe_starts(conn, "institutional_investors_buy_sell")
-        
-        total_rows = 0
-        skipped = 0
+        total_rows = skipped = 0
 
-        for i, sid in enumerate(targets, 1):
+        for i, sid in enumerate(stock_ids, 1):
             actual_start = resolve_start_cached(
-                sid, latest_dates, start_date, 
+                sid, latest_dates, start_date,
                 DATASET_START_DATES["institutional_investors_buy_sell"], force
             )
             if actual_start is None:
@@ -290,32 +231,32 @@ def fetch_institutional_investors_buy_sell(start_date: str, end_date: str, delay
                 "(%s::date, %s, %s, %s, %s)",
             )
             if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(targets)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
+                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過：{skipped} 支）")
 
     finally:
         conn.close()
-    logger.info(f"=== [institutional_investors_buy_sell] 完成，共寫入 {total_rows} 筆（略過：{skipped} 支）===")
+    logger.info(
+        f"=== [institutional_investors_buy_sell] 完成，"
+        f"共寫入 {total_rows} 筆（略過：{skipped} 支）==="
+    )
 
 
 # ──────────────────────────────────────────────
 # margin_purchase_short_sale（融資融券）
 # ──────────────────────────────────────────────
-def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
-    logger.info(f"\n=== [margin_purchase_short_sale] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
+def fetch_margin_purchase_short_sale(
+    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
+):
+    logger.info(f"\n=== [margin_purchase_short_sale] 開始（{len(stock_ids)} 支）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_MARGIN_PURCHASE)
-        targets = stock_ids if stock_ids else get_db_stock_info(conn)
-        
-        # [v3] 批次預載安全起始日
         latest_dates = get_all_safe_starts(conn, "margin_purchase_short_sale")
-        
-        total_rows = 0
-        skipped = 0
+        total_rows = skipped = 0
 
-        for i, sid in enumerate(targets, 1):
+        for i, sid in enumerate(stock_ids, 1):
             actual_start = resolve_start_cached(
-                sid, latest_dates, start_date, 
+                sid, latest_dates, start_date,
                 DATASET_START_DATES["margin_purchase_short_sale"], force
             )
             if actual_start is None:
@@ -356,32 +297,32 @@ def fetch_margin_purchase_short_sale(start_date: str, end_date: str, delay: floa
                 "(%s::date, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             )
             if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(targets)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
+                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過：{skipped} 支）")
 
     finally:
         conn.close()
-    logger.info(f"=== [margin_purchase_short_sale] 完成，共寫入 {total_rows} 筆（略過：{skipped} 支）===")
+    logger.info(
+        f"=== [margin_purchase_short_sale] 完成，"
+        f"共寫入 {total_rows} 筆（略過：{skipped} 支）==="
+    )
 
 
 # ──────────────────────────────────────────────
 # shareholding（外資持股）
 # ──────────────────────────────────────────────
-def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list = None):
-    logger.info(f"\n=== [shareholding] 開始（{len(stock_ids) if stock_ids else '全市場'}）===")
+def fetch_shareholding(
+    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
+):
+    logger.info(f"\n=== [shareholding] 開始（{len(stock_ids)} 支）===")
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_SHAREHOLDING)
-        targets = stock_ids if stock_ids else get_db_stock_info(conn)
-        
-        # [v3] 批次預載安全起始日
         latest_dates = get_all_safe_starts(conn, "shareholding")
-        
-        total_rows = 0
-        skipped = 0
+        total_rows = skipped = 0
 
-        for i, sid in enumerate(targets, 1):
+        for i, sid in enumerate(stock_ids, 1):
             actual_start = resolve_start_cached(
-                sid, latest_dates, start_date, 
+                sid, latest_dates, start_date,
                 DATASET_START_DATES["shareholding"], force
             )
             if actual_start is None:
@@ -424,11 +365,14 @@ def fetch_shareholding(start_date: str, end_date: str, delay: float, force: bool
                 ),
             )
             if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過已最新：{skipped} 支）")
+                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆（略過：{skipped} 支）")
 
     finally:
         conn.close()
-    logger.info(f"=== [shareholding] 完成，共寫入 {total_rows} 筆（略過：{skipped} 支）===")
+    logger.info(
+        f"=== [shareholding] 完成，"
+        f"共寫入 {total_rows} 筆（略過：{skipped} 支）==="
+    )
 
 
 # ──────────────────────────────────────────────
@@ -442,27 +386,17 @@ TABLE_FUNCS = {
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具")
+    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具 v2.1")
     parser.add_argument(
         "--tables", nargs="+",
         choices=list(TABLE_FUNCS.keys()) + ["all"],
         default=["all"],
-        help="要抓取的資料表（預設 all）",
     )
-    parser.add_argument(
-        "--start", default=DEFAULT_START,
-        help="開始日期 YYYY-MM-DD（增量模式下為首次抓取的起始日，預設 2001-01-01）",
-    )
-    parser.add_argument("--end", default=DEFAULT_END, help="結束日期 YYYY-MM-DD（預設今天）")
-    parser.add_argument(
-        "--delay", type=float, default=1.2,
-        help="每次 API 請求後的等待秒數（預設 1.2）",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="強制重抓：忽略 DB 已有資料，從 --start 開始重新覆蓋",
-    )
-    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
+    parser.add_argument("--start", default=DEFAULT_START)
+    parser.add_argument("--end",   default=DEFAULT_END)
+    parser.add_argument("--delay", type=float, default=1.2)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--stock-id", default=None)
     return parser.parse_args()
 
 
@@ -471,31 +405,17 @@ def main():
     tables = list(TABLE_FUNCS.keys()) if "all" in args.tables else args.tables
 
     conn = get_db_conn()
-    
-    # 決定目標股票
-    if args.stock_id:
-        target_stocks = [s.strip() for s in args.stock_id.split(",")]
-    else:
-        # 如果沒指定，預設先抓 87 支重點股
-        from config import STOCK_CONFIGS, FINMIND_TOKEN, DB_CONFIG
-        target_stocks = list(STOCK_CONFIGS.keys())
-        
+    target_stocks = get_target_stock_ids(conn, args.stock_id)
+    conn.close()
+
     mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"
     logger.info(f"抓取資料表：{tables}")
     logger.info(f"模式：{mode}，目標股票數：{len(target_stocks)}")
     logger.info(f"日期區間：{args.start} ~ {args.end}")
-    logger.info(f"請求間隔：{args.delay} 秒")
-    logger.info(f"執行模式：{mode}")
 
-    conn = get_db_conn()
-    target_stocks = get_target_stock_ids(conn, args.stock_id)
-    
     for table in tables:
         try:
             TABLE_FUNCS[table](args.start, args.end, args.delay, args.force, target_stocks)
-        except RuntimeError as e:
-            logger.error(str(e))
-            sys.exit(1)
         except psycopg2.OperationalError as e:
             logger.error(f"PostgreSQL 連線失敗：{e}")
             sys.exit(1)

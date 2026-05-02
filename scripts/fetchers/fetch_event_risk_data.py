@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 """
 fetch_event_risk_data.py — 事件風險與股本變動資料
 ====================================================
@@ -477,7 +477,7 @@ def main():
             )
     finally:
         conn.close()
-    logger.info("✅ 全部完成")
+    logger.info("全部完成")
 
 if __name__ == "__main__":
     main()
