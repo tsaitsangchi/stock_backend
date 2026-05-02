@@ -78,7 +78,7 @@ if __name__ == "__main__":
     import sys
     try:
         print("Starting StockFront Auth Service...")
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8001)
     except Exception as e:
         print(f"Failed to start server: {e}")
         sys.exit(1)
