@@ -114,10 +114,10 @@ def _load_chip_flow(stock_id: str, window: int) -> Optional[pd.Series]:
     from data_pipeline import _query
     sql = """
         SELECT date,
-               (COALESCE(foreign_investor_buy, 0) - COALESCE(foreign_investor_sell, 0))::float
-                  AS foreign_net
+               SUM(buy - sell)::float AS foreign_net
         FROM institutional_investors_buy_sell
-        WHERE stock_id = %s
+        WHERE stock_id = %s AND name = 'Foreign_Investor'
+        GROUP BY date
         ORDER BY date DESC
         LIMIT %s
     """
@@ -139,7 +139,7 @@ def _load_taiex(window: int) -> Optional[pd.Series]:
     for sql, params in [
         ("SELECT date, close::float FROM stock_price WHERE stock_id = 'TAIEX' "
          "ORDER BY date DESC LIMIT %s", (window,)),
-        ("SELECT date, close::float FROM total_return_index ORDER BY date DESC LIMIT %s",
+        ("SELECT date, price::float AS close FROM total_return_index ORDER BY date DESC LIMIT %s",
          (window,)),
     ]:
         try:
