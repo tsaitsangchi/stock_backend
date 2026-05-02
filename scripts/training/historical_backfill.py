@@ -348,8 +348,8 @@ def main():
 
     # ── Step 3：載入模型 ─────────────────────────────────────────
     logger.info("\n[Step 3] 載入模型…")
-    ensemble = load_ensemble()
-    tft      = load_tft() if args.with_tft else None
+    ensemble = load_ensemble(stock_id="2330")
+    tft      = load_tft(stock_id="2330") if args.with_tft else None
     if tft is None and args.with_tft:
         logger.warning("  TFT 載入失敗，將以 tree 平均替代 TFT 訊號")
 
