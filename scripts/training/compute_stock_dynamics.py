@@ -94,7 +94,7 @@ def _load_price(stock_id: str, window: int) -> pd.DataFrame:
     """從 stock_price 取最近 window 個交易日的收盤價、成交量。"""
     from data_pipeline import _query
     sql = """
-        SELECT date, close::float, volume::bigint
+        SELECT date, close::float, trading_volume::bigint
         FROM stock_price
         WHERE stock_id = %s
         ORDER BY date DESC
