@@ -25,9 +25,8 @@ logging.basicConfig(
 logger = logging.getLogger("BatchPredict")
 
 def main():
-    logger.info("=== 啟動全系統 80 檔標的預測補齊任務 ===")
-    
     stock_ids = list(STOCK_CONFIGS.keys())
+    logger.info(f"=== 啟動全系統 {len(stock_ids)} 檔標的預測補齊任務 ===")
     total = len(stock_ids)
     success_count = 0
     fail_count = 0
