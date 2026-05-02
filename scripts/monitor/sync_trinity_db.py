@@ -18,36 +18,84 @@ from model_health_check import check_model_files_df
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
+# ─────────────────────────────────────────────
+# DDL (Trinity Tables)
+# ─────────────────────────────────────────────
+DDL_HEALTH_MATRIX = """
+CREATE TABLE IF NOT EXISTS system_health_matrix (
+    stock_id VARCHAR(10) NOT NULL,
+    audit_date DATE NOT NULL,
+    data_coverage_pct NUMERIC(5,2),
+    model_status VARCHAR(50),
+    prediction_status VARCHAR(50) DEFAULT '🔴 NO_PRED',
+    health_score NUMERIC(5,2),
+    last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (stock_id, audit_date)
+);
+"""
+
+DDL_INVESTMENT_RECOMM = """
+CREATE TABLE IF NOT EXISTS investment_recommendations (
+    stock_id VARCHAR(10) NOT NULL,
+    prediction_date DATE NOT NULL,
+    prob_up NUMERIC(5,4),
+    signal_level VARCHAR(50),
+    recommended_weight NUMERIC(5,4),
+    last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (stock_id, prediction_date)
+);
+"""
+
 def sync_health_matrix():
     logger.info("同步全系統健康度矩陣...")
+    
+    # 確保 DDL 存在並更新欄位 (Idempotent)
+    conn = get_db_conn()
+    cur = conn.cursor()
+    cur.execute(DDL_HEALTH_MATRIX)
+    cur.execute(DDL_INVESTMENT_RECOMM)
+    # 補丁：若 prediction_status 欄位不存在則新增
+    cur.execute("""
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_health_matrix' AND column_name='prediction_status') THEN
+                ALTER TABLE system_health_matrix ADD COLUMN prediction_status VARCHAR(50) DEFAULT '🔴 NO_PRED';
+            END IF;
+        END $$;
+    """)
+    conn.commit()
+
     auditor = IntegrityAuditor(days_window=60)
     df = auditor.audit_coverage_matrix()
     
     # 獲取模型狀態
     model_df = check_model_files_df(auditor.stock_ids)
     
-    conn = get_db_conn()
-    cur = conn.cursor()
+    # 獲取今日預測狀態
+    pred_df = _query("SELECT stock_id FROM stock_forecast_daily WHERE predict_date = (SELECT MAX(predict_date) FROM stock_forecast_daily) AND day_offset = 30")
+    pred_ready_ids = set(pred_df["stock_id"].astype(str).tolist()) if not pred_df.empty else set()
+
     today = date.today()
-    
     for _, row in df.iterrows():
         sid = str(row["stock_id"])
         # 解析百分比字串
         vals = row.iloc[1:].apply(lambda x: float(str(x).rstrip('%')) if isinstance(x, str) else float(x))
         avg = float(vals.mean())
         
-        # 模型狀態對應
+        # 狀態對應
         m_status = model_df[model_df["stock_id"] == sid]["status"].iloc[0] if sid in model_df["stock_id"].values else "🔴 MISSING"
+        p_status = "🟢 READY" if sid in pred_ready_ids else "🔴 NO_PRED"
         
         cur.execute("""
-            INSERT INTO system_health_matrix (stock_id, audit_date, data_coverage_pct, model_status, health_score)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO system_health_matrix (stock_id, audit_date, data_coverage_pct, model_status, prediction_status, health_score)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (stock_id, audit_date) DO UPDATE SET
                 data_coverage_pct = EXCLUDED.data_coverage_pct,
                 model_status = EXCLUDED.model_status,
+                prediction_status = EXCLUDED.prediction_status,
                 health_score = EXCLUDED.health_score,
                 last_updated_at = CURRENT_TIMESTAMP;
-        """, (sid, today, avg, m_status, avg/100.0))
+        """, (sid, today, avg, m_status, p_status, avg/100.0))
     
     conn.commit()
     conn.close()
@@ -58,8 +106,8 @@ def sync_investment_recommendations():
     # 從預測結果表提取最新建議
     query = """
     WITH latest_pred AS (
-        SELECT stock_id, date, prob_up, 
-               RANK() OVER (PARTITION BY stock_id ORDER BY date DESC) as rk
+        SELECT stock_id, predict_date, prob_up, 
+               RANK() OVER (PARTITION BY stock_id ORDER BY predict_date DESC) as rk
         FROM stock_forecast_daily
     )
     SELECT * FROM latest_pred WHERE rk = 1
@@ -75,7 +123,7 @@ def sync_investment_recommendations():
     for _, row in df.iterrows():
         sid = str(row["stock_id"])
         prob = float(row["prob_up"])
-        p_date = row["date"]
+        p_date = row["predict_date"]
         
         # 簡易信號分級邏輯 (可根據需求微調)
         if prob >= 0.8: level = "🚀 極致攻擊 (Strong Buy)"

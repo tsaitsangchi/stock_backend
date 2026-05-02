@@ -1,9 +1,8 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import core.path_setup  # noqa: F401
 """
 historical_backfill.py — 歷史預測回填腳本
 =====================================================================

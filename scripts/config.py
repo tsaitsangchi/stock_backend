@@ -89,7 +89,7 @@ TABLE_REGISTRY = {
     "securities_lending":              {"type": "daily", "id_col": "stock_id", "lag": 1},
     "daily_short_balance":             {"type": "daily", "id_col": "stock_id", "lag": 1},
     "eight_banks_buy_sell":            {"type": "daily", "id_col": "stock_id", "lag": 1},
-    "sponsor_chip":                    {"type": "daily", "id_col": "stock_id", "lag": 2}, # 分點資料通常較慢
+    "broker_trades":                   {"type": "daily", "id_col": "stock_id", "lag": 2}, # 分點資料通常較慢
     
     # 基本面 (月/季)
     "month_revenue":                   {"type": "monthly", "id_col": "stock_id", "lag": 40},
@@ -110,7 +110,7 @@ TABLE_REGISTRY = {
     # 衍生性商品 (期權)
     "futures_ohlcv":                  {"type": "daily", "id_col": "futures_id", "lag": 1},
     "options_ohlcv":                  {"type": "daily", "id_col": "option_id", "lag": 1},
-    "options_oi_large_holders":       {"type": "daily", "id_col": "options_id", "lag": 1},
+    "options_oi_large_holders":       {"type": "daily", "id_col": "option_id", "lag": 1},
     
     # 事件與另類
     "disposition_securities":          {"type": "event", "id_col": "stock_id", "lag": 1},

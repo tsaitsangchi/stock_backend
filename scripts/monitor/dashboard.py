@@ -165,10 +165,15 @@ with tab2:
     st.subheader("🛡️ 全系統健康度矩陣 (DB-Backed)")
     health_db_df = load_health_matrix_db()
     if health_db_df.empty:
-        st.warning("⚠️ 資料庫中尚無健康度審計紀錄。")
+        st.warning("⚠️ 資料庫中尚無健康度審計紀錄，請執行 `sync_trinity_db.py`。")
     else:
         health_db_df["股票"] = health_db_df["stock_id"].astype(str) + " " + health_db_df["name"]
-        st.dataframe(health_db_df[["股票", "industry", "data_coverage_pct", "model_status", "last_updated_at"]], use_container_width=True)
+        def style_health(val):
+            if "🟢" in str(val) or (isinstance(val, float) and val > 0.9): return 'color: #2ea043'
+            if "🟡" in str(val) or (isinstance(val, float) and val > 0.7): return 'color: #d29922'
+            if "🔴" in str(val) or (isinstance(val, float) and val <= 0.7): return 'color: #f85149'
+            return ''
+        st.dataframe(health_db_df[["股票", "industry", "data_coverage_pct", "model_status", "prediction_status", "last_updated_at"]].style.map(style_health), use_container_width=True)
 
 with tab3:
     st.subheader("🚀 全系統投資建議矩陣 (DB-Backed)")

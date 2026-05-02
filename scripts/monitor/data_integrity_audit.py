@@ -46,17 +46,17 @@ class IntegrityAuditor:
     def __init__(self, days_window: int = 60, stock_ids: List[str] = None):
         self.days_window = days_window
         if stock_ids is not None:
-            self.stock_ids = stock_ids
+            self.stock_ids = [str(sid) for sid in stock_ids]
         else:
             try:
                 # 優先從資料庫讀取活耀標的
                 db_stocks = _query("SELECT stock_id FROM system_assets WHERE is_active = TRUE")
                 if not db_stocks.empty:
-                    self.stock_ids = db_stocks["stock_id"].tolist()
+                    self.stock_ids = db_stocks["stock_id"].astype(str).tolist()
                 else:
-                    self.stock_ids = list(STOCK_CONFIGS.keys())
+                    self.stock_ids = [str(sid) for sid in STOCK_CONFIGS.keys()]
             except:
-                self.stock_ids = list(STOCK_CONFIGS.keys())
+                self.stock_ids = [str(sid) for sid in STOCK_CONFIGS.keys()]
         
         self.expected_dates = self._get_expected_trading_days(days_window)
         
@@ -69,15 +69,12 @@ class IntegrityAuditor:
     # --- 1. 二維覆蓋率矩陣 ---
     def audit_coverage_matrix(self, tables: List[str] = None) -> pd.DataFrame:
         """產出股票 x 資料表的覆蓋率矩陣
-
-        [P1-2 修正] 預設 tables 改為 TABLE_REGISTRY 的所有日更表，
-        覆蓋率從 18%（5 張）提升至 100%（27 張）。
         """
         if tables is None:
             tables = [t for t, m in TABLE_REGISTRY.items() if m.get("type") == "daily"]
         rows = []
         for sid in self.stock_ids:
-            row = {"stock_id": sid}
+            row = {"stock_id": str(sid)}
             for table in tables:
                 reg = TABLE_REGISTRY.get(table)
                 if not reg: continue
@@ -85,7 +82,10 @@ class IntegrityAuditor:
                 id_col = reg["id_col"]
                 where = f"WHERE {id_col} = %s" if id_col else ""
                 sql = f"SELECT COUNT(*) as cnt FROM {table} {where} {'AND' if id_col else 'WHERE'} date >= %s"
-                df = _query(sql, (sid, min(self.expected_dates)) if id_col else (min(self.expected_dates),))
+                
+                # 強制 sid 為字串
+                params = (str(sid), min(self.expected_dates)) if id_col else (min(self.expected_dates),)
+                df = _query(sql, params)
                 
                 actual_cnt = df["cnt"].iloc[0] if not df.empty else 0
                 expected_cnt = len(self.expected_dates) if reg["type"] == "daily" else 1 # 簡化非日更的預期
@@ -104,7 +104,7 @@ class IntegrityAuditor:
             
         id_col = reg["id_col"]
         sql = f"SELECT date FROM {table} WHERE {id_col} = %s AND date >= %s ORDER BY date"
-        df_actual = _query(sql, (stock_id, min(self.expected_dates)))
+        df_actual = _query(sql, (str(stock_id), min(self.expected_dates)))
         
         if df_actual.empty or "date" not in df_actual.columns:
             actual_dates = set()
