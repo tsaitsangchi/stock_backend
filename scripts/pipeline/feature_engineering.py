@@ -306,6 +306,7 @@ def add_fundamental_features(df: pd.DataFrame) -> pd.DataFrame:
 # ─────────────────────────────────────────────
 
 def add_valuation_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
     for col in ["per", "pbr", "dividend_yield"]:
         if col not in df.columns:
             df[col] = np.nan
@@ -328,6 +329,7 @@ def add_event_features(df: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID) -> pd
     """
     事件驅動特徵：捕捉台股結構性斷點（春節、除息、ADR 跳空）。
     """
+    df = df.copy()
     # 1. 股利與除息日效應
     if "cash_ex_dividend_trading_date" in df.columns:
         ex_dates = pd.to_datetime(df["cash_ex_dividend_trading_date"], errors="coerce")
@@ -405,6 +407,7 @@ def add_futures_chip_features(df: pd.DataFrame) -> pd.DataFrame:
     資料來源：data_pipeline 已將 TX / TFO 資料 JOIN 至主框架
     起始曥期：TX 1998年起，TFO 2005年起（訓練起始 2010年，最少 5 年覆蓋）
     """
+    df = df.copy()
     # ── 台指期基礎特徵 ──────────────────────────────
     if "tx_oi" in df.columns:
         df["tx_oi_chg_1d"] = df["tx_oi"].diff(1)
@@ -455,6 +458,7 @@ def add_futures_chip_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_rolling_stats(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
     log_r = df.get("log_return_1d", np.log(df["close"] / df["close"].shift(1)))
 
     for n in [20, 60]:
@@ -475,6 +479,7 @@ def add_volatility_clustering_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     計算波動率聚類特徵（Volatility Clustering & Regime Shift）。
     """
+    df = df.copy()
     log_r = df.get("log_return_1d", np.log(df["close"] / df["close"].shift(1)))
     
     # 波動率加速度
@@ -494,6 +499,7 @@ def add_us_chain_features(df: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID) ->
     美股供應鏈與 ADR 特徵（US Chain Features）。
     進化 v3.0：新增 Lead-Lag 領先指標與群體動能。
     """
+    df = df.copy()
     config = STOCK_CONFIGS.get(stock_id, STOCK_CONFIGS[DEFAULT_STOCK_ID])
     us_tickers = [t.lower().replace("^", "") for t in config["us_chain_tickers"]]
     
@@ -721,6 +727,7 @@ def add_targets(df: pd.DataFrame, horizon: int = HORIZON) -> pd.DataFrame:
     2. 傳統 30d 漲跌方向
     3. 三重障礙標籤 (Triple-Barrier) - 考慮路徑風險
     """
+    df = df.copy()
     future_close = df["close"].shift(-horizon)
     df["target_30d"] = (future_close / df["close"] - 1)
     df["target_return"] = future_close - df["close"]

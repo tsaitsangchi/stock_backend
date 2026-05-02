@@ -263,6 +263,25 @@ def run_prediction(
 
     current_close = float(df_feat["close"].iloc[-1])
 
+    def _safe_prob(v):
+        """極致魯棒提取：處理 numpy scalar, 0-d array, 1-d array, Series"""
+        try:
+            # 優先嘗試 .item() (適用於 numpy scalar 或 size-1 array)
+            if hasattr(v, "item"):
+                return float(v.item())
+            # 嘗試 iloc (適用於 Series/DataFrame)
+            if hasattr(v, "iloc"):
+                return float(v.iloc[0])
+            # 回退到 standard indexing
+            return float(np.atleast_1d(v)[0])
+        except Exception as e:
+            # 最後一線：直接轉換
+            try:
+                return float(v)
+            except:
+                logger.error(f"無法解析預測值: {v} (type: {type(v)}) | Error: {e}")
+                return 0.5
+
     # ── 準備特徵 (Robust Feature Alignment) ──
     all_feats = get_all_features(stock_id)
     
@@ -289,16 +308,22 @@ def run_prediction(
             logger.warning(f"TFT 推論失敗：{e}")
 
     # ── Ensemble 推論 ──
-    pred_dict    = ensemble.predict(X_latest, tft_pred=tft_prob_up)
-    prob_up_raw  = float(pred_dict["ensemble"][0])
-    xgb_prob_raw = float(pred_dict.get("xgb", pred_dict["ensemble"])[0])
-    lgb_prob_raw = float(pred_dict.get("lgb", pred_dict["ensemble"])[0])
+    raw_res = ensemble.predict(X_latest, tft_pred=tft_prob_up)
+    
+    # 兼容性處理：若模型直接回傳 array (如單一 LGBPredictor)，將其封裝為 dict
+    if isinstance(raw_res, (np.ndarray, list)):
+        pred_dict = {"ensemble": raw_res, "xgb": raw_res, "lgb": raw_res}
+    else:
+        pred_dict = raw_res
 
-    # 邏語對齊的「隔離貢獻校準」機率（經過 scaler + meta + calibrator 技紹）
-    # 用於一致性計算：語意和 ensemble 對齊，0.5 為方向臨界
-    xgb_prob = float(pred_dict.get("xgb_cal", pred_dict.get("xgb", pred_dict["ensemble"]))[0])
-    lgb_prob = float(pred_dict.get("lgb_cal", pred_dict.get("lgb", pred_dict["ensemble"]))[0])
-    tft_cal  = float(pred_dict.get("tft_cal", pred_dict.get("tft", pred_dict["ensemble"]))) if tft_prob_up is not None else None
+    prob_up_raw  = _safe_prob(pred_dict["ensemble"])
+    xgb_prob_raw = _safe_prob(pred_dict.get("xgb", pred_dict["ensemble"]))
+    lgb_prob_raw = _safe_prob(pred_dict.get("lgb", pred_dict["ensemble"]))
+
+    # 邏語對齊的「隔離貢獻校準」機率
+    xgb_prob = _safe_prob(pred_dict.get("xgb_cal", pred_dict.get("xgb", pred_dict["ensemble"])))
+    lgb_prob = _safe_prob(pred_dict.get("lgb_cal", pred_dict.get("lgb", pred_dict["ensemble"])))
+    tft_cal  = _safe_prob(pred_dict.get("tft_cal", pred_dict.get("tft", pred_dict["ensemble"]))) if tft_prob_up is not None else None
 
     # ── 極端估值動態權重抑制 (Dynamic Shrinkage) ──
     per_pct_rank = float(df_feat["per_pct_rank_252"].iloc[-1]) if "per_pct_rank_252" in df_feat.columns else 0.5

@@ -165,13 +165,15 @@ def load_investment_advice(capital: float):
         elif score > 0.6: rating = "🟢 高 (結構溢價)"
         else: rating = "🟡 中 (觀察中)"
         
-        # 操作訊號判斷 (P1 新增)
+        # 7 級量子力場操作訊號判斷 (基於系統核心思想.md)
         prob = float(row['prob_up'])
-        if prob > 0.8: signal = "🔴 強烈建議買進"
-        elif prob > 0.6: signal = "🟠 建議買進"
-        elif prob >= 0.4: signal = "🟡 建議持有"
-        elif prob > 0.2: signal = "🔵 建議賣出"
-        else: signal = "🟢 強烈建議賣出"
+        if prob > 0.85: signal = "💎 量子噴發 (Extreme Buy)"
+        elif prob > 0.70: signal = "🚀 強烈建議買進"
+        elif prob > 0.55: signal = "📈 建議加碼 (Buy)"
+        elif prob >= 0.48: signal = "⚖️ 狹幅持有 (Neutral)"
+        elif prob > 0.30: signal = "📉 建議減碼 (Reduce)"
+        elif prob > 0.15: signal = "⚠️ 強烈建議賣出"
+        else: signal = "💀 物理崩塌 (Extreme Sell)"
         
         stock_name = STOCK_CONFIGS.get(sid, {}).get('name', '未知標的')
         
@@ -363,30 +365,49 @@ with tab1:
         matrix["現值"] = matrix["shares"] * matrix["close"]
         matrix["利潤率"] = (matrix["close"] - matrix["entry_price"]) / matrix["entry_price"]
         
-        # 連結明日投資建議 (防呆版)
+        # 連結明日投資建議 (P1: 升級為 7 級量子力場訊號)
         if not pred_df.empty:
-            col = "decision" if "decision" in pred_df.columns else ("action" if "action" in pred_df.columns else None)
-            if col:
-                sugg_map = pred_df.set_index("stock_id")[col].to_dict()
-                matrix["明日投資建議"] = matrix["stock_id"].apply(lambda x: sugg_map.get(x, "⚪ 觀望"))
-            else:
-                matrix["明日投資建議"] = "⚪ 待更新"
+            prob_map = pred_df.set_index("stock_id")["prob_up"].to_dict()
+            
+            def map_7level(sid):
+                prob = prob_map.get(sid)
+                if prob is None: return "⚪ 觀望"
+                
+                # 7 級量子力場邏輯 (同步核心思想)
+                if prob > 0.85: return "💎 量子噴發"
+                elif prob > 0.70: return "🚀 強烈買進"
+                elif prob > 0.55: return "📈 建議加碼"
+                elif prob >= 0.48: return "⚖️ 狹幅持有"
+                elif prob > 0.30: return "📉 建議減碼"
+                elif prob > 0.15: return "⚠️ 強烈賣出"
+                else: return "💀 物理崩塌"
+            
+            matrix["明日投資建議"] = matrix["stock_id"].apply(map_7level)
         else:
             matrix["明日投資建議"] = "⏳ 運算中"
 
         # 顯示表格 (格式化數字)
         display_df = matrix[["股票", "shares", "現值", "entry_date", "利潤率", "明日投資建議"]].rename(columns={
-            "shares": "持股數", "entry_date": "成交日"
+            "shares": "持有股數",
+            "entry_date": "進場日期"
         })
         
-        st.dataframe(
-            display_df.style.format({
-                "現值": "{:,.0f}",
-                "利潤率": "{:+.2%}"
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+        # 套用配色 (P1: 同步量子力場配色)
+        def style_ledger_signal(val):
+            if not isinstance(val, str): return ""
+            if "💎" in val: return "background-color: #4a004a; color: #ffccff;"
+            if "🚀" in val: return "background-color: #4a0e0e; color: #ffcccc;"
+            if "📈" in val: return "background-color: #4a2d0e; color: #ffebcc;"
+            if "⚖️" in val: return "background-color: #4a4a0e; color: #ffffcc;"
+            if "📉" in val: return "background-color: #0e2d4a; color: #cce0ff;"
+            if "⚠️" in val: return "background-color: #0e4a0e; color: #ccffcc;"
+            if "💀" in val: return "background-color: #002200; color: #88ff88;"
+            return ""
+
+        styled_matrix = display_df.style.applymap(style_ledger_signal, subset=["明日投資建議"])\
+            .format({"利潤率": "{:.2%}", "現值": "{:,.0f}"})
+            
+        st.dataframe(styled_matrix, use_container_width=True, height=400)
 
 with tab2:
     st.subheader("全系統健康度矩陣")
@@ -397,26 +418,39 @@ with tab2:
         price_col = "stock_price" if "stock_price" in vals.index else None
         is_price_ok = (vals[price_col] >= 100) if price_col else False
         
-        if avg >= 99 and is_price_ok: icon = "🟢"
-        elif avg > 70 and is_price_ok: icon = "🟡"
-        else: icon = "🔴"
+        if avg >= 99 and is_price_ok: 
+            icon = "🟢"
+            label = "🌊 流動性足"
+        elif avg > 70 and is_price_ok: 
+            icon = "🟡"
+            label = "🌫️ 資訊斷層"
+        else: 
+            icon = "🔴"
+            label = "🧊 零度真空"
         
-        return f"{icon} {avg:.1f}%"
+        return f"{icon} {label} ({avg:.1f}%)"
 
     matrix_df = pd.DataFrame({"stock_id": list(STOCK_CONFIGS.keys())})
     matrix_df["資料狀態"] = fresh_df.apply(get_data_status, axis=1)
 
-    # 2. 模型狀態
+    # 2. 模型狀態 (P1: 依核心思想深度區分)
+    model_status_map = {
+        "🟢 OK": "💎 低熵穩定",       # 近期重訓，資訊力強
+        "🟡 STALE": "🌫️ 資訊衰減",    # 熵值上升，模型失去時效
+        "🔴 MISSING": "🌑 混沌狀態",   # 結構缺失，無法定義
+        "🔴 ERROR": "💀 物理崩塌"      # 發生致命錯誤
+    }
     matrix_df = pd.merge(matrix_df, model_df[["stock_id", "status"]], on="stock_id", how="left")
-    matrix_df.rename(columns={"status": "模型狀態"}, inplace=True)
-    matrix_df["模型狀態"] = matrix_df["模型狀態"].fillna("🔴 MISSING")
-
-    # 3. 預測狀態
+    matrix_df["模型狀態"] = matrix_df["status"].map(model_status_map).fillna("🌑 混沌狀態")
+    
+    # 3. 預測狀態 (P1: 依動能與位能區分)
     if not pred_df.empty:
         pred_ids = set(pred_df["stock_id"].tolist())
-        matrix_df["預測狀態"] = matrix_df["stock_id"].apply(lambda x: "🟢 已產出" if x in pred_ids else "⚪ 待處理")
+        matrix_df["預測狀態"] = matrix_df["stock_id"].apply(
+            lambda x: "🚀 能量釋放" if x in pred_ids else "🧊 潛能積蓄"
+        )
     else:
-        matrix_df["預測狀態"] = "⚪ 待處理"
+        matrix_df["預測狀態"] = "🧊 潛能積蓄"
 
     # 4. 效能與漂移
     matrix_df = pd.merge(matrix_df, perf_df[["stock_id", "da"]], on="stock_id", how="left")
@@ -444,14 +478,16 @@ with tab3:
     st.subheader("全系統投資建議矩陣 (100k Barbell Strategy)")
     advice_df = load_investment_advice(capital)
     if not advice_df.empty:
-        # 定義背景顏色對應
+        # 定義背景顏色對應 (7 級量子力場配色)
         def style_signal(val):
             if not isinstance(val, str): return ""
-            if "🔴" in val: return "background-color: #4a0e0e; color: #ffcccc;"
-            if "🟠" in val: return "background-color: #4a2d0e; color: #ffebcc;"
-            if "🟡" in val: return "background-color: #4a4a0e; color: #ffffcc;"
-            if "🔵" in val: return "background-color: #0e2d4a; color: #cce0ff;"
-            if "🟢" in val: return "background-color: #0e4a0e; color: #ccffcc;"
+            if "💎" in val: return "background-color: #4a004a; color: #ffccff; font-weight: bold;" # Purple/Gold
+            if "🚀" in val: return "background-color: #4a0e0e; color: #ffcccc;" # Deep Red
+            if "📈" in val: return "background-color: #4a2d0e; color: #ffebcc;" # Light Red
+            if "⚖️" in val: return "background-color: #4a4a0e; color: #ffffcc;" # Yellow
+            if "📉" in val: return "background-color: #0e2d4a; color: #cce0ff;" # Light Blue
+            if "⚠️" in val: return "background-color: #0e4a0e; color: #ccffcc;" # Green
+            if "💀" in val: return "background-color: #002200; color: #88ff88; font-weight: bold;" # Deep Green/Black
             return ""
 
         styled_df = advice_df.style.applymap(style_signal, subset=["操作訊號"])
