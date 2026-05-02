@@ -315,10 +315,17 @@ def main():
 
     # ── 5) 摘要 + 失敗清單寫檔 ───────────────────────────────
     elapsed = time.time() - t0
-    logger.info("\n" + "=" * 65)
-    logger.info(f"  補抓完成！總耗時 {elapsed:.1f} 秒")
-    logger.info(f"  成功：{len(successes):,}  失敗：{len(failures):,}")
     logger.info("=" * 65)
+    
+    # ── 6) 自動同步至 Trinity 健康度矩陣 ─────────────────────────
+    if successes and not args.dry_run:
+        try:
+            from sync_trinity_db import sync_health_matrix
+            logger.info("正在將最新補抓結果同步至全系統健康度矩陣...")
+            sync_health_matrix()
+            logger.info("✅ 健康度矩陣同步完成。")
+        except Exception as e:
+            logger.warning(f"自動同步失敗（不影響補抓）：{e}")
 
     if failures and not args.dry_run:
         FAILURE_JSON.parent.mkdir(parents=True, exist_ok=True)
