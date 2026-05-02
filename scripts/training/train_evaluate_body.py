@@ -1,22 +1,7 @@
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor", "models", "utils"]:
-    p = str(base_dir / sub)
-    if p not in sys.path: sys.path.append(p)
-if str(base_dir) not in sys.path: sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor", "models", "utils"]:
-    p = str(base_dir / sub)
-    if p not in sys.path: sys.path.append(p)
-if str(base_dir) not in sys.path: sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import core.path_setup  # noqa: F401
 """
 train_evaluate.py — Purged Walk-Forward Cross-Validation 訓練 + 評估
 資料來源：PostgreSQL 17（透過 data_pipeline.build_daily_frame）
@@ -832,7 +817,37 @@ def main():
         out_path = MODEL_DIR / f"ensemble_{stock_id}.pkl"
         joblib.dump(final_model, out_path)
         logger.info(f"  最終模型已儲存：{out_path}")
-        
+
+        # ── 模型版本封存（P3-2：Versioning + Rollback）──────
+        try:
+            from core.model_metadata import (
+                ModelMetadata, fingerprint_features, get_git_hash,
+                get_package_versions, save_metadata,
+            )
+            m = wf_result.get("meta_metrics", {}) or {}
+            train_end = df.index.max() if hasattr(df.index, "max") else None
+            metadata = ModelMetadata(
+                stock_id=stock_id,
+                model_path=str(out_path),
+                train_end_date=str(train_end)[:10] if train_end is not None else "",
+                feature_count=len(golden_features),
+                feature_fingerprint=fingerprint_features(list(golden_features)),
+                git_hash=get_git_hash(),
+                oof_da=float(m.get("directional_accuracy", 0)) or None,
+                oof_sharpe=float(m.get("sharpe", 0)) or None,
+                oof_ic=float(m.get("ic", 0)) or None,
+                horizon_days=int(HORIZON) if isinstance(HORIZON, int) else None,
+                calibration_method="OOF-isotonic (meta_ensemble.calibrate)",
+                calibrator_cv="OOF",
+                package_versions=get_package_versions(),
+                notes=f"WF train_window={WF_CONFIG.get('train_window')}, "
+                      f"step_days={WF_CONFIG.get('step_days')}, "
+                      f"embargo_days={WF_CONFIG.get('embargo_days')}",
+            )
+            save_metadata(metadata, archive_dir=MODEL_DIR / "archive")
+        except Exception as _meta_err:
+            logger.warning(f"  模型 metadata 封存失敗（不影響主流程）：{_meta_err}")
+
         # ── 更新效能註冊表 ──────────────────────────────────
         update_metrics_registry(stock_id, wf_result["meta_metrics"])
 
