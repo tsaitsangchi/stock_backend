@@ -1,9 +1,8 @@
 from __future__ import annotations
 import sys
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import core.path_setup  # noqa: F401
 """
 predict.py — 每日推論 Pipeline
 台股收盤後（每日凌晨或收盤後自動執行）：
@@ -51,7 +50,7 @@ def load_ensemble(stock_id: str, path: Optional[Path] = None):
     if not path.exists():
         # Fallback to general final model if specific one doesn't exist
         path = MODEL_DIR / "ensemble_final.pkl"
-        
+
     if not path.exists():
         raise FileNotFoundError(
             f"找不到股票 {stock_id} 的模型，請先執行 train_evaluate.py --stock-id {stock_id}"
@@ -59,6 +58,22 @@ def load_ensemble(stock_id: str, path: Optional[Path] = None):
     # [P3 修復] 使用 safe_load (File Locking) 避免與訓練進程衝突
     model = safe_load(path)
     logger.info(f"模型載入 (Safe)：{path}")
+
+    # [P3-2] 嘗試讀取對應 metadata 並附加到 model 物件，
+    # 供 run_prediction 在特徵工程後做 feature schema fingerprint 比對。
+    try:
+        from core.model_metadata import load_latest_metadata
+        meta = load_latest_metadata(stock_id, archive_dir=MODEL_DIR / "archive")
+        if meta is not None:
+            model._train_metadata = meta
+            logger.info(
+                f"  ↳ metadata: train_end={meta.train_end_date}, "
+                f"feature_count={meta.feature_count}, fp={meta.feature_fingerprint}, "
+                f"git={meta.git_hash}"
+            )
+    except Exception as _e:
+        logger.debug(f"metadata 讀取略過：{_e}")
+
     return model
 
 
