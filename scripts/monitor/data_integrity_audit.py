@@ -43,9 +43,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 class IntegrityAuditor:
-    def __init__(self, days_window: int = 60):
+    def __init__(self, days_window: int = 60, stock_ids: List[str] = None):
         self.days_window = days_window
-        self.stock_ids = list(STOCK_CONFIGS.keys())
+        if stock_ids is not None:
+            self.stock_ids = stock_ids
+        else:
+            try:
+                # 優先從資料庫讀取活耀標的
+                db_stocks = _query("SELECT stock_id FROM system_assets WHERE is_active = TRUE")
+                if not db_stocks.empty:
+                    self.stock_ids = db_stocks["stock_id"].tolist()
+                else:
+                    self.stock_ids = list(STOCK_CONFIGS.keys())
+            except:
+                self.stock_ids = list(STOCK_CONFIGS.keys())
+        
         self.expected_dates = self._get_expected_trading_days(days_window)
         
     def _get_expected_trading_days(self, days: int) -> List[date]:

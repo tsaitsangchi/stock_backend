@@ -6,6 +6,7 @@ for sub in ["fetchers", "pipeline", "training", "monitor", "models"]:
 sys.path.append(str(base_dir))
 
 from config import STOCK_CONFIGS, TIER_1_STOCKS
+from data_pipeline import _query
 
 import os
 import time
@@ -268,7 +269,15 @@ def main():
             perf_scores = get_performance_scores()
 
             # 排序標的：基於 Priority Score（降序）
-            all_sids     = list(STOCK_CONFIGS.keys())
+            # 優先從資料庫讀取 150 檔標的清單
+            try:
+                db_stocks = _query("SELECT stock_id FROM system_assets WHERE is_active = TRUE")
+                if not db_stocks.empty:
+                    all_sids = db_stocks["stock_id"].tolist()
+                else:
+                    all_sids = list(STOCK_CONFIGS.keys())
+            except:
+                all_sids = list(STOCK_CONFIGS.keys())
             sid_priorities = {sid: calculate_priority(sid, perf_scores) for sid in all_sids}
             sorted_targets = sorted(all_sids, key=lambda x: sid_priorities[x], reverse=True)
 
@@ -310,10 +319,13 @@ def main():
                         if time.time() - last_fail < retry_wait:
                             continue
                         is_anchor = sid in ANCHOR_STOCKS
-                        mode_str  = "DEEP (141-Fold)" if is_anchor else "PARETO (60-Fold)"
+                        s_name = STOCK_CONFIGS.get(sid, {}).get('name', sid)
+                        mode = "DEEP" if is_anchor else "PARETO"
+                        folds = "141" if is_anchor else "60"
+                        prio = sid_priorities[sid]
                         logger.info(
-                            f">>> 啟動 {sid} ({STOCK_CONFIGS[sid]['name']}) "
-                            f"| 模式: {mode_str} | 優先級: {sid_priorities[sid]:.1f}"
+                            f">>> 啟動 {sid} ({s_name}) "
+                            f"| 模式: {mode} ({folds}-Fold) | 優先級: {prio:.1f}"
                         )
 
                         # [P1 2.5] 若腳本存在才執行特徵庫更新

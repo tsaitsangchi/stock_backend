@@ -10,6 +10,7 @@ for sub in ["fetchers", "pipeline", "training", "monitor"]:
 sys.path.append(str(base_dir))
 
 from config import STOCK_CONFIGS
+from data_pipeline import _query
 
 # 路徑設定
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +26,15 @@ logging.basicConfig(
 logger = logging.getLogger("BatchPredict")
 
 def main():
-    stock_ids = list(STOCK_CONFIGS.keys())
+    # 優先從資料庫讀取 150 檔標的
+    try:
+        db_stocks = _query("SELECT stock_id FROM system_assets WHERE is_active = TRUE")
+        if not db_stocks.empty:
+            stock_ids = db_stocks["stock_id"].tolist()
+        else:
+            stock_ids = list(STOCK_CONFIGS.keys())
+    except:
+        stock_ids = list(STOCK_CONFIGS.keys())
     logger.info(f"=== 啟動全系統 {len(stock_ids)} 檔標的預測補齊任務 ===")
     total = len(stock_ids)
     success_count = 0
@@ -59,7 +68,17 @@ def main():
             fail_count += 1
 
     logger.info("============================================================")
-    logger.info(f"任務結束。成功: {success_count} | 失敗: {fail_count} | 跳過: {skip_count}")
+    
+    # ── 自動同步至 Trinity 投資建議矩陣 ─────────────────────────
+    if success_count > 0:
+        try:
+            from sync_trinity_db import sync_investment_recommendations
+            logger.info("正在將最新預測結果同步至全系統投資建議矩陣...")
+            sync_investment_recommendations()
+            logger.info("✅ 投資建議矩陣同步完成。")
+        except Exception as e:
+            logger.warning(f"自動同步失敗：{e}")
+    
     logger.info("============================================================")
 
 if __name__ == "__main__":
