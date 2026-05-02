@@ -222,17 +222,17 @@ def finmind_get(
                 attempt = 1
                 continue
 
-            # ── 400：參數錯誤，不重試 ──
-            if resp.status_code == 400:
-                if raise_on_batch_400 and is_batch:
-                    raise BatchNotSupportedError(
-                        f"[{dataset}] 批次請求（HTTP 400）被拒絕，可能帳號等級不足"
-                    )
-                logger.debug(
-                    f"[{dataset}] 400 Bad Request，跳過"
-                    f"（data_id={params.get('data_id')}，"
-                    f"start={params.get('start_date')}）"
+            # ── 403：權限不足（如資料集需付費） ──
+            if resp.status_code == 403:
+                logger.error(
+                    f"[{dataset}] HTTP 403 Forbidden: 權限不足或資料集需付費等級。"
+                    "請檢查 FinMind 帳號權限。跳過此請求。"
                 )
+                return []
+
+            # ── 401：Token 無效 ──
+            if resp.status_code == 401:
+                logger.error(f"[{dataset}] HTTP 401 Unauthorized: Token 可能已過期或無效。")
                 return []
 
             resp.raise_for_status()
@@ -359,6 +359,12 @@ async def finmind_get_async(
                     attempt = 1
                     continue
 
+                if resp.status == 403:
+                    logger.error(f"[async][{dataset}] HTTP 403 Forbidden: 權限不足。")
+                    return []
+                if resp.status == 401:
+                    logger.error(f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。")
+                    return []
                 if resp.status == 400:
                     if raise_on_batch_400 and is_batch:
                         raise BatchNotSupportedError(
