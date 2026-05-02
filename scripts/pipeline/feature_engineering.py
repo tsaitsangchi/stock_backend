@@ -1485,6 +1485,9 @@ def build_features(raw: pd.DataFrame, stock_id: str = DEFAULT_STOCK_ID, for_infe
          注入第四輪審查後新增的 7 組衍生因子（品質/還原價/放空/事件/期權/新聞/FRED）。
     """
     logger.info("=== 開始特徵工程 ===")
+    if len(raw) < 30:
+        logger.warning(f"  [{stock_id}] 交易日樣本過少 ({len(raw)}), 不足以進行特徵工程與訓練，跳過。")
+        return pd.DataFrame()
     df = raw.copy()
 
     df = add_technical_features(df);                 logger.info(f"  技術動能特徵完成，shape={df.shape}")

@@ -142,10 +142,17 @@ class XGBPredictor:
         if self.task == "classification" and self._const_class is not None:
             const_prob = 0.99 if self._const_class == 1 else 0.01
             return np.full(len(X), const_prob, dtype=float)
+        
+        # 魯棒對齊
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
         if self.task == "classification":
-            return self.model.predict_proba(X[self.feature_names])[:, 1]
+            return self.model.predict_proba(X_aligned[self.feature_names])[:, 1]
         else:
-            return self.model.predict(X[self.feature_names])
+            return self.model.predict(X_aligned[self.feature_names])
 
     def predict_score_cal(self, X: pd.DataFrame) -> np.ndarray:
         """
@@ -252,7 +259,18 @@ class XGBPredictor:
                 const_prob = 0.99 if self._const_class == 1 else 0.01
                 return np.full(len(X), const_prob, dtype=float)
             return np.zeros(len(X), dtype=float)
-        return self.model.predict(X[self.feature_names])
+        
+        if self.task == "classification":
+            # 優先回傳校準後的機率，確保語意對齊 [0, 1]
+            return self.predict_score_cal(X)
+        
+        # 魯棒對齊：確保輸入 X 包含模型所需的所有特徵
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
+        return self.model.predict(X_aligned[self.feature_names])
 
     def feature_importance(self) -> pd.Series:
         if self.model is None:
@@ -347,10 +365,17 @@ class LGBPredictor:
         if self.task == "classification" and self._const_class is not None:
             const_prob = 0.99 if self._const_class == 1 else 0.01
             return np.full(len(X), const_prob, dtype=float)
+            
+        # 魯棒對齊
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
         if self.task == "classification":
-            return self.model.predict_proba(X[self.feature_names])[:, 1]
+            return self.model.predict_proba(X_aligned[self.feature_names])[:, 1]
         else:
-            return self.model.predict(X[self.feature_names])
+            return self.model.predict(X_aligned[self.feature_names])
 
     def predict_score_cal(self, X: pd.DataFrame) -> np.ndarray:
         """Platt/Isotonic 校準後機率（同 XGBPredictor，若無校準器則回退原始值）。"""
@@ -423,7 +448,18 @@ class LGBPredictor:
                 const_prob = 0.99 if self._const_class == 1 else 0.01
                 return np.full(len(X), const_prob, dtype=float)
             return np.zeros(len(X), dtype=float)
-        return self.model.predict(X[self.feature_names])
+            
+        if self.task == "classification":
+            # 優先回傳校準後的機率
+            return self.predict_score_cal(X)
+            
+        # 魯棒對齊：確保輸入 X 包含模型所需的所有特徵
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
+        return self.model.predict(X_aligned[self.feature_names])
 
     def feature_importance(self) -> pd.Series:
         if self.model is None:
@@ -487,9 +523,19 @@ class CatPredictor:
             const_prob = 0.99 if self._const_class == 1 else 0.01
             return np.full(len(X), const_prob, dtype=float)
         
+        # 魯棒對齊
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
         if self.task == "classification":
-            return self.model.predict_proba(X[self.feature_names])[:, 1]
-        return self.model.predict(X[self.feature_names])
+            return self.model.predict_proba(X_aligned[self.feature_names])[:, 1]
+        return self.model.predict(X_aligned[self.feature_names])
+
+    def predict(self, X: pd.DataFrame, **kwargs) -> np.ndarray:
+        """集成介面統一調用"""
+        return self.predict_score(X)
 
     def feature_importance(self) -> pd.Series:
         if self.model is None: return pd.Series(dtype=float)
@@ -525,7 +571,13 @@ class ElasticNetPredictor:
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        X_tmp = X.fillna(X.median()).replace([np.inf, -np.inf], 0)
+        # 魯棒對齊
+        X_aligned = X.copy()
+        missing = [f for f in self.feature_names if f not in X_aligned.columns]
+        for m in missing:
+            X_aligned[m] = 0.0
+            
+        X_tmp = X_aligned[self.feature_names].fillna(0).replace([np.inf, -np.inf], 0)
         X_scaled = self.scaler.transform(X_tmp)
         if self.task == "classification":
             return self.model.predict_proba(X_scaled)[:, 1]
