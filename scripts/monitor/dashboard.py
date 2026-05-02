@@ -165,6 +165,14 @@ def load_investment_advice(capital: float):
         elif score > 0.6: rating = "🟢 高 (結構溢價)"
         else: rating = "🟡 中 (觀察中)"
         
+        # 操作訊號判斷 (P1 新增)
+        prob = float(row['prob_up'])
+        if prob > 0.8: signal = "🔴 強烈建議買進"
+        elif prob > 0.6: signal = "🟠 建議買進"
+        elif prob >= 0.4: signal = "🟡 建議持有"
+        elif prob > 0.2: signal = "🔵 建議賣出"
+        else: signal = "🟢 強烈建議賣出"
+        
         stock_name = STOCK_CONFIGS.get(sid, {}).get('name', '未知標的')
         
         # 物理分析說明：若權重為 0，則顯示攔截原因
@@ -175,6 +183,7 @@ def load_investment_advice(capital: float):
 
         results.append({
             "標的": f"{sid} {stock_name}",
+            "操作訊號": signal,
             "機率": f"{float(row['prob_up']):.1%}",
             "建議權重": f"{w:.1%}",
             "預計金額": f"{amount:,.0f} TWD",
@@ -187,6 +196,7 @@ def load_investment_advice(capital: float):
     cash_w = weights.get('CASH', 0)
     results.append({
         "標的": "💰 現金 (防禦端)",
+        "操作訊號": "🟡 建議持有",
         "機率": "-",
         "建議權重": f"{cash_w:.1%}",
         "預計金額": f"{capital * cash_w:,.0f} TWD",
@@ -434,12 +444,25 @@ with tab3:
     st.subheader("全系統投資建議矩陣 (100k Barbell Strategy)")
     advice_df = load_investment_advice(capital)
     if not advice_df.empty:
+        # 定義背景顏色對應
+        def style_signal(val):
+            if not isinstance(val, str): return ""
+            if "🔴" in val: return "background-color: #4a0e0e; color: #ffcccc;"
+            if "🟠" in val: return "background-color: #4a2d0e; color: #ffebcc;"
+            if "🟡" in val: return "background-color: #4a4a0e; color: #ffffcc;"
+            if "🔵" in val: return "background-color: #0e2d4a; color: #cce0ff;"
+            if "🟢" in val: return "background-color: #0e4a0e; color: #ccffcc;"
+            return ""
+
+        styled_df = advice_df.style.applymap(style_signal, subset=["操作訊號"])
+        
         st.dataframe(
-            advice_df,
+            styled_df,
             use_container_width=True,
             height=600,
             column_config={
                 "標的": st.column_config.TextColumn("標的 (名稱)", width="medium"),
+                "操作訊號": st.column_config.TextColumn("操作訊號", width="medium"),
                 "物理分析/建議": st.column_config.TextColumn("物理分析/建議 (Core v4.0)", width="large"),
                 "預計金額": st.column_config.TextColumn("預計金額", width="small"),
                 "建議股數": st.column_config.TextColumn("建議股數", width="small"),
