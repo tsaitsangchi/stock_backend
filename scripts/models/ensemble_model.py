@@ -11,6 +11,7 @@ Level-1 表格學習器，與 TFT 並列組成 Stacking Ensemble。
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional, Union
 
 import numpy as np
@@ -557,8 +558,8 @@ class SimpleMomentumModel:
         
         if target_col:
             mom = X[target_col].rolling(self.lookback).sum().fillna(0)
-            # 映射至 [0, 1] 機率空間 (Sigmoid 近似)
-            return 1 / (1 + np.exp(-mom * 5))
+            # 映射至 [0, 1] 機率空間 (Sigmoid 近似)，確保回傳 numpy array
+            return (1 / (1 + np.exp(-mom * 5))).values
         return np.full(len(X), 0.5)
 
     def feature_importance(self) -> pd.Series:
@@ -679,6 +680,8 @@ class StackingEnsemble:
             preds[name] = model.predict(feat_X)
         
         if tft_pred is not None:
+            if isinstance(tft_pred, (float, int, np.float64, np.float32)):
+                tft_pred = np.full(len(X), float(tft_pred))
             preds["tft"] = tft_pred
         
         # ── 動態加權 (Softmax weighting) ──────────────────────
@@ -700,8 +703,9 @@ class StackingEnsemble:
                 ensemble_prob += preds[name] * w[i]
             preds["ensemble"] = ensemble_prob
         else:
-            # 預設等權重
-            preds["ensemble"] = np.mean(list(preds.values()), axis=0)
+            # 預設等權重，確保結果為 numpy array
+            val_list = [np.array(v) for v in preds.values()]
+            preds["ensemble"] = np.mean(val_list, axis=0)
             
         return preds
 
@@ -898,7 +902,7 @@ class RegimeEnsemble:
             if p_low is not None and k in p_low: merged.loc[m_low] = p_low[k]
             if p_mid is not None and k in p_mid: merged.loc[m_mid] = p_mid[k]
             if p_high is not None and k in p_high: merged.loc[m_high] = p_high[k]
-            res[k] = merged.values
+            res[k] = merged.fillna(0.5).values
             
         return res
 
