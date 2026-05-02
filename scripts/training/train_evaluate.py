@@ -958,29 +958,29 @@ def main():
             from datetime import datetime
             
             # 設定實驗名稱 (依標的分類)
-            mlflow.set_experiment(f"Stock_Model_{stock_id}")
+            mlflow.set_experiment(f"個股模型_{stock_id}")
             
-            run_name = f"train_{stock_id}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+            run_name = f"訓練_{stock_id}_{datetime.now().strftime('%Y%m%d_%H%M')}"
             with mlflow.start_run(run_name=run_name):
                 # 紀錄參數
                 mlflow.log_params({
-                    "stock_id": stock_id,
-                    "train_start": args.start,
-                    "use_tft": use_tft,
-                    "feature_count": len(golden_features),
-                    "wf_train_window": WF_CONFIG["train_window"],
-                    "wf_step_days": WF_CONFIG["step_days"],
-                    "embargo_days": WF_CONFIG["embargo_days"]
+                    "股票代號": stock_id,
+                    "訓練起始日": args.start,
+                    "使用TFT模型": use_tft,
+                    "特徵數量": len(golden_features),
+                    "WF訓練窗口": WF_CONFIG["train_window"],
+                    "WF步進天數": WF_CONFIG["step_days"],
+                    "禁區天數": WF_CONFIG["embargo_days"]
                 })
                 
                 # 紀錄指標 (OOF 成果)
                 m = wf_result["meta_metrics"]
                 mlflow.log_metrics({
-                    "da": float(m.get("directional_accuracy", 0)),
-                    "ic": float(m.get("ic", 0)),
-                    "sharpe": float(m.get("sharpe", 0)),
-                    "avg_net_return": float(m.get("avg_net_return", 0)),
-                    "ev": float(m.get("expectancy", 0))
+                    "方向正確率(DA)": float(m.get("directional_accuracy", 0)),
+                    "相關係數(IC)": float(m.get("ic", 0)),
+                    "夏普比率(Sharpe)": float(m.get("sharpe", 0)),
+                    "平均淨報酬": float(m.get("avg_net_return", 0)),
+                    "預期價值(EV)": float(m.get("expectancy", 0))
                 })
                 
                 # 紀錄模型物件 (Versioning)
