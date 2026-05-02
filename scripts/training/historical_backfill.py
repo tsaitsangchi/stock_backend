@@ -269,7 +269,7 @@ UPSERT_SQL = """
         %(xgb_prob)s, %(lgb_prob)s, %(tft_prob)s,
         %(extreme_valuation)s, %(macro_shock)s, %(is_backfill)s
     )
-    ON CONFLICT (predict_date, stock_id, forecast_date) DO UPDATE SET
+    ON CONFLICT (predict_date, stock_id, forecast_date, day_offset) DO UPDATE SET
         day_offset        = EXCLUDED.day_offset,
         price_q10         = EXCLUDED.price_q10,
         price_q25         = EXCLUDED.price_q25,
