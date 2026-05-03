@@ -60,9 +60,10 @@ def objective(trial, X_tr, y_tr, X_va, y_va, model_type: str = "xgb") -> float:
             "n_jobs":            -1,
         }
         import lightgbm as lgb
-        model = lgb.LGBMRegressor(**params)
+        # [P2-FIX] LightGBM 新版將 verbose 移至建構子，並推薦使用 log_evaluation callback
+        model = lgb.LGBMRegressor(**params, verbose=-1)
         model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
-                  callbacks=[lgb.early_stopping(50)], verbose=-1)
+                  callbacks=[lgb.early_stopping(50), lgb.log_evaluation(period=0)])
         preds = model.predict(X_va)
 
     mse = float(np.mean((y_va - preds) ** 2))
@@ -87,6 +88,27 @@ def main():
     # 1. 載入資料
     raw = build_daily_frame(stock_id=args.stock_id, start_date=TRAIN_START_DATE)
     df  = build_features(raw, stock_id=args.stock_id)
+
+    # 4. 嚴格清理資料：移除特徵與標籤中的 NaN/Inf
+    # [修正] XGBoost 對 Label 中的 NaN 非常敏感
+    df = df.replace([np.inf, -np.inf], np.nan)
+    
+    # 確保目標欄位存在且無 NaN
+    target_col = "target_30d"
+    if target_col not in df.columns:
+        logger.error(f"❌ 找不到目標欄位 {target_col}")
+        return
+        
+    initial_len = len(df)
+    df = df.dropna(subset=[target_col])
+    df = df.dropna(axis=1, how='all') # 移除全空的特徵
+    df = df.fillna(0) # 其餘特徵補 0
+    
+    logger.info(f"=== 資料清理完成：{initial_len} -> {len(df)} 筆 ===")
+    
+    if len(df) < 100:
+        logger.warning(f"⚠️ {args.stock_id} 有效樣本過少 ({len(df)})，跳過調優。")
+        return
 
     all_features = get_all_features(args.stock_id)
     feat_cols = [c for c in all_features if c in df.columns]

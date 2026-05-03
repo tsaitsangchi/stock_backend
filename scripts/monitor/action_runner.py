@@ -8,9 +8,17 @@ from pathlib import Path
 scripts_dir = Path(__file__).resolve().parent.parent
 venv_python = str(scripts_dir.parent / "venv" / "bin" / "python3")
 
+# Setup logging to file and console
+log_path = scripts_dir / "outputs" / "action_runner.log"
+log_path.parent.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s'
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(log_path),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger("ActionRunner")
 
@@ -45,9 +53,13 @@ def task_predict():
         # 2. 審計
         run_command([venv_python, str(scripts_dir / "monitor" / "data_integrity_audit.py")], "預測完整度審計")
 
+def task_tune():
+    """全系統超參數重計與審計"""
+    run_command([venv_python, str(scripts_dir / "training" / "batch_tune.py")], "全系統超參數批次調優")
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python action_runner.py [data|model|predict]")
+        print("Usage: python action_runner.py [data|model|predict|tune]")
         sys.exit(1)
         
     task = sys.argv[1]
@@ -57,5 +69,7 @@ if __name__ == "__main__":
         task_model()
     elif task == "predict":
         task_predict()
+    elif task == "tune":
+        task_tune()
     else:
         logger.error(f"未知任務: {task}")

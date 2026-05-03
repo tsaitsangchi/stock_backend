@@ -121,24 +121,27 @@ def sync_investment_recommendations(total_capital: float = 100000.0):
         """)
     conn.commit()
 
-    # 從預測結果表提取最新建議，並關聯最新收盤價以計算股數
+    # 從預測結果表提取最新建議 (限制最近 7 天，避免推薦過期訊號)
     query = """
     WITH latest_pred AS (
         SELECT f.stock_id, f.predict_date, f.prob_up, f.current_close,
                RANK() OVER (PARTITION BY f.stock_id ORDER BY f.predict_date DESC) as rk
         FROM stock_forecast_daily f
+        WHERE f.day_offset = 30
+          AND f.predict_date >= (SELECT MAX(predict_date) FROM stock_forecast_daily) - INTERVAL '7 days'
     )
     SELECT * FROM latest_pred WHERE rk = 1
     ORDER BY prob_up DESC
     """
     df = _query(query)
     if df.empty:
-        logger.warning("尚無預測資料可同步。")
+        logger.warning("尚無最近 7 天的預測資料可同步。")
         conn.close()
         return
         
     # 1. 篩選最強前三支 (且必須具備看漲信號 prob_up > 0.55)
     top_picks = df[df["prob_up"] > 0.55].head(3).copy()
+    logger.info(f"符合建議門檻 (>0.55) 的標的數: {len(top_picks)}")
     
     if top_picks.empty:
         logger.info("⚠️ 目前無足夠強度的投資標的，建議全部保留現金。")
@@ -149,17 +152,30 @@ def sync_investment_recommendations(total_capital: float = 100000.0):
         total_excess = top_picks["excess_prob"].sum()
         top_picks["alloc_ratio"] = top_picks["excess_prob"] / total_excess
         top_picks["alloc_amount"] = top_picks["alloc_ratio"] * total_capital
+        
+        # 檢查 current_close 是否有效
+        top_picks["current_close"] = top_picks["current_close"].fillna(0)
+        
         # 計算股數 (取整數，無條件捨去以免超額)
-        top_picks["shares"] = (top_picks["alloc_amount"] / top_picks["current_close"]).apply(lambda x: int(x))
+        def calc_shares(row):
+            if row["current_close"] <= 0: return 0
+            return int(row["alloc_amount"] / row["current_close"])
+            
+        top_picks["shares"] = top_picks.apply(calc_shares, axis=1)
         # 修正實際金額
         top_picks["actual_amount"] = top_picks["shares"] * top_picks["current_close"]
+        logger.info(f"配置標的: {top_picks[['stock_id', 'prob_up', 'actual_amount']].to_dict('records')}")
 
     # 3. 遍歷所有最新預測並寫入
+    top_ids_set = set(top_picks["stock_id"].astype(str).tolist()) if not top_picks.empty else set()
+    
     for _, row in df.iterrows():
         sid = str(row["stock_id"])
         prob = float(row["prob_up"])
         p_date = row["predict_date"]
-        price = float(row["current_close"])
+        # 處理可能缺失的收盤價
+        price_val = row.get("current_close")
+        price = float(price_val) if pd.notnull(price_val) else 0.0
         
         # 信號分級
         if prob >= 0.8: level = "🚀 極致攻擊 (Strong Buy)"
@@ -168,17 +184,19 @@ def sync_investment_recommendations(total_capital: float = 100000.0):
         elif prob >= 0.45: level = "🌫️ 混沌中立 (Neutral)"
         else: level = "🧊 零度真空 (Avoid)"
         
-        # 判斷是否為前三名分配標的
+        # 建議倉位 (原有邏輯作為基準)
+        weight = max(0, (prob - 0.5) * 2 * 0.1)
+        
+        # 判斷是否為前三名分配標的，若是則將推薦權重對齊分配比例
         invest_amt = 0.0
         shares = 0
-        if not top_picks.empty and sid in top_picks["stock_id"].values:
-            match = top_picks[top_picks["stock_id"] == sid]
-            invest_amt = float(match["actual_amount"].iloc[0])
-            shares = int(match["shares"].iloc[0])
-            level = f"⭐ 核心配置 | {level}"
-
-        # 建議倉位 (原有邏輯保留)
-        weight = max(0, (prob - 0.5) * 2 * 0.1)
+        if sid in top_ids_set:
+            match = top_picks[top_picks["stock_id"].astype(str) == sid]
+            if not match.empty:
+                invest_amt = float(match["actual_amount"].iloc[0])
+                shares = int(match["shares"].iloc[0])
+                weight = float(match["alloc_ratio"].iloc[0])  # 對齊分配比例
+                level = f"⭐ 核心配置 | {level}"
         
         cur.execute("""
             INSERT INTO investment_recommendations (

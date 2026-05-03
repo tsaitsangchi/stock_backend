@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import os
 import json
+import subprocess
 from datetime import datetime, timedelta
 
 # Setup paths - dashboard is in scripts/monitor/
@@ -88,14 +89,35 @@ def load_health_matrix_db():
 @st.cache_data(ttl=5)
 def load_recommendations_db():
     query = """
-    SELECT r.*, s.name, s.industry
-    FROM investment_recommendations r
-    JOIN system_assets s ON r.stock_id = s.stock_id
-    WHERE r.prediction_date = (SELECT MAX(prediction_date) FROM investment_recommendations)
+    SELECT 
+        s.stock_id, s.name, s.industry,
+        COALESCE(r.signal_level, '⚪ 尚未產出') as signal_level,
+        COALESCE(r.prob_up, 0) as prob_up,
+        COALESCE(r.recommended_weight, 0) as recommended_weight,
+        r.prediction_date
+    FROM system_assets s
+    LEFT JOIN (
+        SELECT * FROM investment_recommendations 
+        WHERE prediction_date = (SELECT MAX(prediction_date) FROM investment_recommendations)
+    ) r ON s.stock_id = r.stock_id
+    WHERE s.is_active = TRUE
+    ORDER BY r.prob_up DESC NULLS LAST, s.stock_id ASC
     """
     df = _query(query)
     if not df.empty: df["stock_id"] = df["stock_id"].astype(str)
     return df
+
+@st.cache_data(ttl=60)
+def load_prediction_path(stock_id):
+    """載入指定個股未來 30 天的預測路徑"""
+    sql = f"""
+    SELECT day_offset, prob_up, pred_close, pred_ret 
+    FROM stock_forecast_daily 
+    WHERE stock_id = '{stock_id}' 
+      AND date = (SELECT MAX(date) FROM stock_forecast_daily WHERE stock_id = '{stock_id}')
+    ORDER BY day_offset ASC
+    """
+    return _query(sql)
 
 @st.cache_data(ttl=60)
 def load_today_predictions():
@@ -120,6 +142,37 @@ st.sidebar.subheader("系統監控")
 price_date = _query("SELECT MAX(date) FROM stock_price").iloc[0,0]
 st.sidebar.metric("最後資料日期", str(price_date) if price_date else "無資料")
 st.sidebar.metric("核心標的總數", len(all_stock_ids))
+
+# ─────────────────────────────────────────────
+# [新增] 系統維護中心 (功能鈕)
+# ─────────────────────────────────────────────
+st.sidebar.markdown("---")
+st.sidebar.subheader("🛠️ 系統維護中心")
+
+def run_action(task_name, cmd_arg):
+    try:
+        runner_path = current_dir / "action_runner.py"
+        venv_python = str(project_root / "venv" / "bin" / "python3")
+        # 使用 Popen 以免阻塞 UI，日誌會寫入 action_runner.log
+        subprocess.Popen([venv_python, str(runner_path), cmd_arg])
+        st.sidebar.success(f"🚀 {task_name} 已啟動！")
+        st.sidebar.caption("請至下方日誌導覽查看進度。")
+    except Exception as e:
+        st.sidebar.error(f"❌ 啟動失敗: {e}")
+
+if st.sidebar.button("📊 全系統資料完整與審計"):
+    run_action("資料審計", "data")
+
+if st.sidebar.button("🧪 全系統超參數重計與審計"):
+    run_action("超參數重計", "tune")
+
+if st.sidebar.button("🤖 全系統模型訓練完整與審計"):
+    run_action("模型訓練審計", "model")
+
+if st.sidebar.button("🎯 全系統預測股價完整與審計"):
+    run_action("預測股價審計", "predict")
+
+st.sidebar.markdown("---")
 
 # ─────────────────────────────────────────────
 # 主界面
@@ -148,7 +201,7 @@ with col4:
 st.markdown("---")
 
 # 第二排：核心矩陣
-tab1, tab2, tab3 = st.tabs(["💎 投資交易帳本", "🛡️ 健康度矩陣", "🚀 投資建議矩陣"])
+tab1, tab2, tab3, tab4 = st.tabs(["💎 投資交易帳本", "🛡️ 健康度矩陣", "🚀 投資建議矩陣", "📈 預測路徑分析"])
 
 with tab1:
     st.subheader("💎 專業投資交易帳本 (資料庫驅動)")
@@ -250,12 +303,57 @@ with tab3:
         })
         st.dataframe(recomm_df_disp[["股票", "產業分組", "訊號強度", "看漲機率", "建議權重", "預測日期"]], use_container_width=True)
 
+with tab4:
+    st.subheader("📈 個股 30 日預測路徑分析")
+    
+    col_sel, col_empty = st.columns([1, 2])
+    with col_sel:
+        target_sid = st.selectbox("選擇標的代號", all_stock_ids, format_func=lambda x: f"{x} {assets_df[assets_df['stock_id']==x]['name'].iloc[0] if x in assets_df['stock_id'].values else ''}")
+    
+    path_df = load_prediction_path(target_sid)
+    
+    if path_df.empty:
+        st.warning(f"⚠️ 找不到 {target_sid} 的近期預測路徑資料。請確保已執行 `auto_predict_manager.py`。")
+    else:
+        # 視覺化
+        st.markdown(f"#### 🔮 {target_sid} 未來 30 交易日趨勢演變")
+        
+        # 準備繪圖資料
+        chart_data = path_df.set_index("day_offset")[["prob_up"]]
+        chart_data.columns = ["看漲機率 (Probability)"]
+        
+        st.line_chart(chart_data)
+        
+        # 指標摘要
+        m1, m2, m3 = st.columns(3)
+        # 找出機率最高的那一天
+        peak_idx = path_df["prob_up"].idxmax()
+        peak_day = path_df.loc[peak_idx, "day_offset"]
+        peak_prob = path_df.loc[peak_idx, "prob_up"]
+        
+        with m1:
+            st.metric("🔥 機率爆發點", f"第 {int(peak_day)} 天", f"{peak_prob:.1%}")
+        with m2:
+            avg_prob = path_df["prob_up"].mean()
+            st.metric("📊 平均看漲強度", f"{avg_prob:.1%}")
+        with m3:
+            trend = "穩定向上" if path_df["prob_up"].iloc[-1] > path_df["prob_up"].iloc[0] else "震盪回檔"
+            st.metric("📈 趨勢評級", trend)
+        
+        # 若有預測價格，展示額外圖表
+        if "pred_ret" in path_df.columns and not path_df["pred_ret"].isnull().all():
+            st.markdown("#### 💰 預計累積報酬率曲線 (%)")
+            ret_data = path_df.set_index("day_offset")[["pred_ret"]].copy() * 100
+            ret_data.columns = ["累計預期報酬 (%)"]
+            st.area_chart(ret_data)
+
 st.markdown("---")
 st.subheader("📋 系統日誌導覽 (Log Navigator)")
 log_files = {
-    "自動訓練管理員": scripts_dir / "outputs" / "manager.log",
-    "自動預測管理器": scripts_dir / "outputs" / "predict_manager.log",
-    "數據完整度審計": scripts_dir / "outputs" / "audit_data_integrity.log",
+    "🛠️ 維護中心執行日誌": scripts_dir / "outputs" / "action_runner.log",
+    "🤖 自動訓練管理員": scripts_dir / "outputs" / "manager.log",
+    "🎯 自動預測管理器": scripts_dir / "outputs" / "predict_manager.log",
+    "📊 數據完整度審計": scripts_dir / "outputs" / "audit_data_integrity.log",
 }
 selected_log_name = st.selectbox("選擇欲查看的日誌", list(log_files.keys()))
 if log_files[selected_log_name].exists():
