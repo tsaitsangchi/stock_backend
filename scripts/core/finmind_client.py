@@ -224,10 +224,7 @@ def finmind_get(
 
             # ── 403：權限不足（如資料集需付費） ──
             if resp.status_code == 403:
-                logger.error(
-                    f"[{dataset}] HTTP 403 Forbidden: 權限不足或資料集需付費等級。"
-                    "請檢查 FinMind 帳號權限。跳過此請求。"
-                )
+                logger.warning(f"🚫 [Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
                 return []
 
             # ── 401：Token 無效 ──
@@ -360,7 +357,7 @@ async def finmind_get_async(
                     continue
 
                 if resp.status == 403:
-                    logger.error(f"[async][{dataset}] HTTP 403 Forbidden: 權限不足。")
+                    logger.warning(f"🚫 [async][Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
                     return []
                 if resp.status == 401:
                     logger.error(f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。")
