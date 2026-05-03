@@ -15,12 +15,12 @@ from dotenv import load_dotenv
 # ─────────────────────────────────────────────
 # 載入 .env（必須在所有 os.environ 存取之前）
 # ─────────────────────────────────────────────
-load_dotenv()
+BASE_DIR = Path(__file__).parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 # ─────────────────────────────────────────────
 # 路徑設定
 # ─────────────────────────────────────────────
-BASE_DIR   = Path(__file__).parent
 OUTPUT_DIR = BASE_DIR / "outputs"
 MODEL_DIR  = OUTPUT_DIR / "models"
 LOG_DIR    = OUTPUT_DIR / "logs"
@@ -637,7 +637,49 @@ TFT_PARAMS_CPU_OVERRIDE = {
 }
 
 # ─────────────────────────────────────────────
-# XGBoost 超參數
+# [新功能] 智能參數載入：優先讀取 Optuna 調優後的個股參數
+# ─────────────────────────────────────────────
+def get_best_params(stock_id: str) -> dict:
+    """
+    依據 stock_id 讀取最佳參數檔，若無則回傳預設值。
+    回傳格式：{"xgb": dict, "lgb": dict}
+    """
+    import joblib
+    param_file = OUTPUT_DIR / f"best_params_{stock_id}.pkl"
+    
+    # 預設參數基準
+    final_params = {
+        "xgb": XGB_PARAMS.copy(),
+        "lgb": LGB_PARAMS.copy()
+    }
+    
+    if param_file.exists():
+        try:
+            best = joblib.load(param_file)
+            # 支援舊版 (僅 xgb+lgb) 與新版封裝
+            if "xgb" in best:
+                final_params["xgb"].update(best["xgb"])
+            if "lgb" in best:
+                final_params["lgb"].update(best["lgb"])
+            
+            # 若 pkl 內容是扁平的 (例如調優腳本直接存 XGB params)
+            if "max_depth" in best and "xgb" not in best:
+                # 簡單啟發式判斷是給誰的
+                if "num_leaves" in best:
+                    final_params["lgb"].update(best)
+                else:
+                    final_params["xgb"].update(best)
+                    
+            import logging
+            logging.getLogger(__name__).info(f"✅ [{stock_id}] 已載入調優後最佳參數。")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"⚠️ [{stock_id}] 載入參數檔失敗：{e}")
+            
+    return final_params
+
+# ─────────────────────────────────────────────
+# XGBoost 預設參數 (Baseline)
 # ─────────────────────────────────────────────
 XGB_PARAMS = {
     "n_estimators":          1000,
@@ -756,9 +798,7 @@ INTERNATIONAL_WATCHLIST = _get_international_watchlist()
 # ─────────────────────────────────────────────
 PARETO_RATIO = 0.2  # 特徵層面：只保留前 20% 黃金特徵
 CONFIDENCE_THRESHOLD = 0.65  # 訊號層面：極端高信心門檻
-TIER_1_STOCKS = [
-    "1101"
-]
+# TIER_1_STOCKS 已在上方定義，此處不再重複
 
 # ─────────────────────────────────────────────
 # 生產系統穩定性設定 (System Stability)
