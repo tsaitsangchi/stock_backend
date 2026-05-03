@@ -441,7 +441,7 @@ def parse_args():
 def main():
     args = parse_args()
     tables = args.tables or [
-        "holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi"
+        "eight_banks", "futures_large_oi"
     ]
 
     logger.info("=" * 60)
