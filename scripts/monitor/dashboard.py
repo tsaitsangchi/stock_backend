@@ -132,7 +132,8 @@ def load_trade_ledger():
 # 側欄與核心資料載入
 # ─────────────────────────────────────────────
 assets_df = load_system_stocks()
-all_stock_ids = assets_df["stock_id"].tolist()
+recomm_df = load_recommendations_db()
+all_stock_ids = recomm_df["stock_id"].tolist() # SQL 已按 prob_up DESC 排序
 fresh_df = load_integrity_matrix(all_stock_ids)
 model_df = load_model_status(all_stock_ids)
 perf_df = load_performance_da(all_stock_ids)
@@ -250,7 +251,7 @@ with tab3:
     with col_info:
         st.info("💡 依據「系統核心思想」：資金將優先分配給訊號最強的前 3 支標的。若無買進訊號則保留現金。")
 
-    recomm_df = load_recommendations_db()
+    recomm_df = recomm_df # 使用頂層預載入的資料
     if recomm_df.empty:
         st.warning("⚠️ 目前尚無預測產出的投資建議。")
     else:
