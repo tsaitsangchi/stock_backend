@@ -68,6 +68,7 @@ def get_latest_feature_date(conn, stock_id: str):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stock-id", type=str, help="指定更新單一股票代號")
+    parser.add_argument("--force", action="store_true", help="強制重刷：忽略已存特徵，重新計算全量歷史")
     args = parser.parse_args()
 
     logger.info("=== Feature Store Update Started ===")
@@ -81,12 +82,14 @@ def main():
         for i, stock_id in enumerate(stock_ids, 1):
             latest_date_obj = get_latest_feature_date(conn, stock_id)
 
-            if latest_date_obj:
+            if latest_date_obj and not args.force:
                 fetch_start_date = (latest_date_obj - timedelta(days=250)).strftime("%Y-%m-%d")
                 latest_date_str  = latest_date_obj.strftime("%Y-%m-%d")
             else:
                 fetch_start_date = "2010-01-01"
                 latest_date_str  = "1900-01-01"
+                if args.force:
+                    logger.info(f"[{stock_id}] 強制重刷模式啟用...")
 
             logger.info(f"[{i}/{len(stock_ids)}] {stock_id} - Fetching from {fetch_start_date}")
 
@@ -106,7 +109,23 @@ def main():
                 logger.error(f"Failed to calculate features for {stock_id}: {e}")
                 continue
 
-            new_df = df[df.index > latest_date_str].copy()
+            # [P1-BUG] 處理特徵工程後可能回傳空 DF 的情況（例如資料筆數不足）
+            if df is None or df.empty:
+                logger.info(f"[{stock_id}] 特徵工程後無有效資料 (可能因筆數過少被過濾)。")
+                continue
+
+            # 確保索引為日期格式字串，避免 int64 與 str 比較引發 TypeError
+            # 如果 index 是 DatetimeIndex，可以直接與字串比較
+            try:
+                new_df = df[df.index > latest_date_str].copy()
+            except TypeError:
+                # 若索引不是日期格式（例如變成 RangeIndex），嘗試轉換或跳過
+                if "date" in df.columns:
+                    df = df.set_index("date")
+                    new_df = df[df.index.astype(str) > latest_date_str].copy()
+                else:
+                    logger.error(f"[{stock_id}] 索引格式錯誤且找不到 date 欄位，無法進行增量比較。")
+                    continue
 
             if new_df.empty:
                 logger.info(f"{stock_id} is already up to date.")

@@ -709,7 +709,15 @@ def apply_triple_barrier(close: pd.Series, horizon: int, pt: float, sl: float) -
         max_ret = (window.max() / price_i) - 1
         min_ret = (window.min() / price_i) - 1
         
-        if max_ret >= pt and (min_ret > -sl or np.where(window/price_i - 1 >= pt)[0][0] < np.where(window/price_i - 1 <= -sl)[0][0]):
+        # [P1-BUG] 修復 np.where()[0][0] 在無匹配時引發的 IndexError
+        pt_hits = np.where(window/price_i - 1 >= pt)[0]
+        sl_hits = np.where(window/price_i - 1 <= -sl)[0]
+        
+        # 決定哪一個障礙先被觸發
+        first_pt = pt_hits[0] if len(pt_hits) > 0 else np.inf
+        first_sl = sl_hits[0] if len(sl_hits) > 0 else np.inf
+        
+        if max_ret >= pt and first_pt < first_sl:
             labels.iloc[i] = 1
         elif min_ret <= -sl:
             labels.iloc[i] = -1

@@ -814,6 +814,43 @@ def load_block_trading(stock_id: str) -> pd.DataFrame:
 # 主合併函式
 # ─────────────────────────────────────────────
 
+def load_price_adj(stock_id: str = STOCK_ID) -> pd.DataFrame:
+    sql = """
+        SELECT date, close::float AS close_adj, open::float AS open_adj,
+               max::float AS high_adj, min::float AS low_adj,
+               trading_volume::bigint AS volume_adj
+        FROM price_adj WHERE stock_id = %s ORDER BY date
+    """
+    df = _query(sql, (stock_id,))
+    
+    if df.empty:
+        logger.warning(f"  [{stock_id}] price_adj 無資料，回退至 stock_price...")
+        sql_fallback = """
+            SELECT date, close::float AS close_adj, open::float AS open_adj,
+                   max::float AS high_adj, min::float AS low_adj,
+                   trading_volume::bigint AS volume_adj
+            FROM stock_price WHERE stock_id = %s ORDER BY date
+        """
+        df = _query(sql_fallback, (stock_id,))
+        
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_day_trading(stock_id: str = STOCK_ID) -> pd.DataFrame:
+    sql = "SELECT date, volume AS dt_volume, buy_amount AS dt_buy_amount, sell_amount AS dt_sell_amount FROM day_trading WHERE stock_id = %s ORDER BY date"
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+def load_price_limit(stock_id: str = STOCK_ID) -> pd.DataFrame:
+    sql = "SELECT date, limit_up, limit_down FROM price_limit WHERE stock_id = %s ORDER BY date"
+    df = _query(sql, (stock_id,))
+    if df.empty: return pd.DataFrame()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
 def build_daily_frame(
     stock_id:   str = STOCK_ID,
     start_date: Optional[str] = None,
@@ -851,6 +888,9 @@ def build_daily_frame(
         ("inst",           load_institutional(stock_id)),
         ("margin",         load_margin(stock_id)),
         ("shareholding",   load_shareholding(stock_id)),
+        ("price_adj",      load_price_adj(stock_id)),      # [New] 還原股價
+        ("day_trading",    load_day_trading(stock_id)),    # [New] 當沖資料
+        ("price_limit",    load_price_limit(stock_id)),    # [New] 漲跌停
         ("interest_rate",  load_interest_rate()),
         ("exchange_rate",  load_exchange_rate()),
         ("bond_yield",     load_bond_yield()),
@@ -881,6 +921,16 @@ def build_daily_frame(
             continue
         base = base.join(df, how="left", rsuffix=f"_{name}")
         logger.debug(f"  JOIN [{name}] → shape={base.shape}")
+
+    # [P1-BUG-FALLBACK] 若無還原股價資料（403 Forbidden），以原始股價作為 fallback
+    # 確保特徵工程中的 close_adj 指標不會失效
+    if "close_adj" not in base.columns:
+        logger.warning(f"[{stock_id}] 缺少還原股價資料，啟用原始股價 Fallback...")
+        base["close_adj"]  = base["close"]
+        base["open_adj"]   = base["open"]
+        base["high_adj"]   = base["high"]
+        base["low_adj"]    = base["low"]
+        base["volume_adj"] = base["volume"]
 
     # ── 季資料（財報/資產負債表）：reindex 前向填值 ─────────
     quarterly_sources = [

@@ -11,6 +11,7 @@ import subprocess
 import logging
 import json
 from datetime import datetime
+from typing import Union, Optional
 
 """
 auto_train_manager.py — 自動訓練管理員
@@ -48,13 +49,6 @@ CREATE TABLE IF NOT EXISTS auto_train_heartbeat (
 CREATE INDEX IF NOT EXISTS idx_heartbeat_ts ON auto_train_heartbeat (ts DESC);
 """
 
-# [P1 2.4] PID 追蹤目錄
-PID_DIR = OUTPUT_DIR / "pids"
-PID_DIR.mkdir(parents=True, exist_ok=True)
-
-ANCHOR_STOCKS      = ["2330", "2317", "2454"]
-SIXTH_WAVE_DRIVERS = ["2330", "2454", "3661", "2376", "2382", "6669"]
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -65,35 +59,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# [P1 2.4] PID 追蹤目錄
+DEFAULT_PID_DIR = OUTPUT_DIR / "pids"
+FALLBACK_PID_DIR = Path("/tmp/stock_pids")
+
+def ensure_pid_dir():
+    """確保 PID 目錄可用，若無權限則回退至 /tmp。"""
+    try:
+        DEFAULT_PID_DIR.mkdir(parents=True, exist_ok=True)
+        # 測試寫入權限
+        test_file = DEFAULT_PID_DIR / ".write_test"
+        test_file.write_text("test")
+        test_file.unlink()
+        return DEFAULT_PID_DIR
+    except (PermissionError, OSError):
+        if 'logger' in globals():
+            logger.warning(f"  [Perm] PID 目錄 {DEFAULT_PID_DIR} 無權限寫入，回退至 {FALLBACK_PID_DIR}")
+        FALLBACK_PID_DIR.mkdir(parents=True, exist_ok=True)
+        return FALLBACK_PID_DIR
+
+PID_DIR = ensure_pid_dir()
+
+ANCHOR_STOCKS      = ["2330", "2317", "2454"]
+SIXTH_WAVE_DRIVERS = ["2330", "2454", "3661", "2376", "2382", "6669"]
+
 
 # ─────────────────────────────────────────────
 # [P1 2.4] PID 檔案機制（取代 ps aux 脆弱解析）
 # ─────────────────────────────────────────────
 
-def get_running_trains() -> list[str]:
+def get_running_trains() -> dict[str, int]:
     """
-    讀取 PID 檔案，確認進程仍在運行。
-    自動清理已結束進程的 PID 檔案（殭屍 PID 清理）。
+    掃描 scripts/outputs/pids/ 目錄，檢查進程是否真的還在。
+    回傳 {stock_id: pid}。
     """
-    running = []
+    running = {}
+    if not PID_DIR.exists():
+        return running
+    
     for pid_file in PID_DIR.glob("*.pid"):
-        sid = pid_file.stem
+        stock_id = pid_file.stem
         try:
             pid = int(pid_file.read_text().strip())
-            os.kill(pid, 0)  # signal 0：只檢查進程是否存在，不發送任何訊號
-            running.append(sid)
-        except (ProcessLookupError, PermissionError):
-            # 進程已結束，清理 PID 檔案
-            pid_file.unlink(missing_ok=True)
-            logger.debug(f"[PID] 清理殭屍 PID 檔案：{pid_file.name}")
-        except ValueError:
-            pid_file.unlink(missing_ok=True)
-        except Exception as e:
-            logger.error(f"[PID] 檢查 {sid} 進程失敗：{e}")
-    return list(set(running))
+            # [P1-FIX] 增加權限與異常檢查，防止因 root 權限檔案導致崩潰
+            try:
+                os.kill(pid, 0)  # signal 0：只檢查進程是否存在
+                running[stock_id] = pid
+            except ProcessLookupError:
+                # 進程已消失，嘗試刪除過期 PID 檔
+                pid_file.unlink(missing_ok=True)
+            except PermissionError:
+                # [P0-SECURITY] 若無權限檢查該進程（如 root 啟動），視為不可控進程，保留鎖定但不加入管理員控制
+                logger.warning(f"  [Perm] 無權檢查進程 {pid} ({stock_id})，跳過。")
+                continue
+        except (ValueError, OSError) as e:
+            # 檔案損毀或權限不足無法讀取/刪除
+            logger.warning(f"  [PID] 處理檔案 {pid_file.name} 發生錯誤：{e}")
+            continue
+            
+    return running
 
 
-def check_finished_trains(running_before: list[str], running_now: list[str]) -> list[str]:
+def check_finished_trains(running_before: list[str], running_now: Union[list[str], dict[str, int]]) -> list[str]:
     """辨識剛結束的任務（在 before 中但不在 now 中）。"""
     return [sid for sid in running_before if sid not in running_now]
 
@@ -109,9 +136,11 @@ def get_task_status(sid: str) -> str:
         with open(log_path, "r") as f:
             last_lines = f.readlines()[-20:]
             content = "".join(last_lines)
-            if "SUCCESS" in content or "完成" in content or "metrics_registry" in content:
+            # [P1-BUG] 修正過於鬆散的關鍵字匹配。
+            # 原本匹配 "完成" 會誤判 "資料載入完成" 為成功。
+            if "訓練已全面完成" in content or "metrics_registry" in content or "Model saved to" in content:
                 return "SUCCESS"
-            if "跳過訓練" in content:
+            if "跳過訓練" in content or "資料量不足" in content:
                 return "SKIPPED"
             return "FAILED"
     except:
@@ -137,6 +166,8 @@ def write_heartbeat(running_ids: list, finished_ids: list, total: int) -> None:
     # 1) 檔案心跳（main caller / cron 可用 mtime 判斷活性）
     try:
         HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        # [Fix] 先刪除舊檔以避開權限問題
+        HEARTBEAT_FILE.unlink(missing_ok=True)
         HEARTBEAT_FILE.write_text(json.dumps(payload, ensure_ascii=False))
     except Exception as e:
         logger.debug(f"[heartbeat] 檔案寫入失敗：{e}")
@@ -163,16 +194,35 @@ def write_heartbeat(running_ids: list, finished_ids: list, total: int) -> None:
         logger.debug(f"[heartbeat] DB 寫入失敗（不影響主流程）：{e}")
 
 
-def launch_training(sid: str, cmd: list[str], log_path: Path):
-    """
-    啟動背景訓練進程，並記錄 PID 到追蹤目錄。
-    """
-    with open(log_path, "w") as f:
-        proc = subprocess.Popen(cmd, stdout=f, stderr=f, start_new_session=True)
-    # 寫入 PID 檔案
-    pid_file = PID_DIR / f"{sid}.pid"
-    pid_file.write_text(str(proc.pid))
-    logger.info(f"[PID] {sid} 訓練已啟動，PID={proc.pid}，記錄至 {pid_file}")
+def launch_training(stock_id: str, command: list[str], log_path: Path):
+    """啟動訓練進程並記錄 PID。"""
+    try:
+        # [Fix] 嘗試刪除舊日誌，確保有權限開啟新檔
+        log_path.unlink(missing_ok=True)
+        
+        with open(log_path, "w") as f:
+            proc = subprocess.Popen(
+                command,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        
+        # 寫入 PID 檔案
+        pid_file = PID_DIR / f"{stock_id}.pid"
+        try:
+            # [Fix] 先嘗試刪除舊檔，只要對目錄有權限即可刪除 root 建立的檔案
+            pid_file.unlink(missing_ok=True)
+            pid_file.write_text(str(proc.pid))
+            logger.info(f"  [PID] {stock_id} -> {proc.pid}")
+        except Exception as e:
+            logger.error(f"  [CRITICAL] 無法寫入 PID 檔案 {pid_file}: {e}")
+            # 雖然沒寫入 PID，但進程已啟動，我們還是記錄一下，但下輪循環可能無法追蹤它
+            
+        return proc.pid
+    except Exception as e:
+        logger.error(f"  [Launch] 啟動 {stock_id} 失敗: {e}")
+        return None
 
 
 # ─────────────────────────────────────────────
@@ -253,7 +303,8 @@ def main():
 
     while True:
         try:
-            running_now  = get_running_trains()
+            running_dict = get_running_trains()
+            running_now  = list(running_dict.keys())
             
             # --- [新功能] 處理剛結束的任務並更新失敗計數 ---
             if 'running_ids' in locals():
@@ -329,11 +380,22 @@ def main():
                         if feature_store_script.exists():
                             logger.info(f"[{sid}] 更新特徵庫…")
                             try:
-                                subprocess.run(
+                                # [P1-FIX] 檢查特徵庫更新結果
+                                res = subprocess.run(
                                     [VENV_PYTHON, str(feature_store_script), "--stock-id", sid],
-                                    check=True,
+                                    capture_output=True,
+                                    text=True,
                                     timeout=300,
                                 )
+                                # 檢查日誌中是否有 "樣本過少" 警告
+                                if "樣本過少" in res.stdout or "樣本過少" in res.stderr:
+                                    logger.warning(f"⚠️ [{sid}] 資料樣本不足，暫時跳過訓練。")
+                                    FAILURE_TRACKER[sid] = FAILURE_TRACKER.get(sid, {"retries": 0})
+                                    # 給予一定的懲罰性重試計數，以免立即重試
+                                    FAILURE_TRACKER[sid]["retries"] = 1 
+                                    FAILURE_TRACKER[sid]["last_fail"] = time.time()
+                                    continue
+                                    
                             except subprocess.TimeoutExpired:
                                 logger.warning(f"[{sid}] 特徵庫更新超時（5 分鐘），繼續訓練")
                             except subprocess.CalledProcessError as e:

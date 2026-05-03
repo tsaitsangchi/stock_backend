@@ -319,7 +319,7 @@ def run_walk_forward(
             importance = pd.Series(ens.model.feature_importances_, index=ens.feature_names)
             ens.combined_importance = lambda: {"mean": importance}
         else:
-            ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
+            ens = RegimeEnsemble(task="hybrid", stock_id=stock_id, vol_low=vol_low, vol_high=vol_high)
             ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
             raw_pred = ens.predict(X_te, tft_pred=tft_prob)
 
@@ -631,7 +631,7 @@ def train_final_model(
 
     vol_low = REGIME_CONFIG["vol_low"]
     vol_high = REGIME_CONFIG["vol_high"]
-    ens = RegimeEnsemble(task="hybrid", vol_low=vol_low, vol_high=vol_high)
+    ens = RegimeEnsemble(task="hybrid", stock_id=stock_id, vol_low=vol_low, vol_high=vol_high)
     ens.fit_level1(X_tr, y_tr_ret, X_va, y_va_ret)
     if meta_ensemble_from_cv is not None:
         pass
