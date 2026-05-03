@@ -327,19 +327,13 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
 
     total = 0
     while current_dt <= end_dt:
-        # 按月分塊，避免單次請求資料量過大
-        month_end = (
-            current_dt.replace(day=1) + timedelta(days=32)
-        ).replace(day=1) - timedelta(days=1)
-        chunk_end = min(month_end, end_dt)
-
-        s_str = current_dt.strftime("%Y-%m-%d")
-        e_str = chunk_end.strftime("%Y-%m-%d")
-
-        logger.info(f"  抓取 {s_str} ~ {e_str}…")
+        # [P0-FIX] 八大行庫資料量極大，FinMind 強制要求每次只能抓一天 (Status 400 if multiple days)
+        d_str = current_dt.strftime("%Y-%m-%d")
+        logger.info(f"  抓取 {d_str} (單日模式)…")
+        
         rows = finmind_get(
             "TaiwanStockGovernmentBankBuySell",
-            {"start_date": s_str, "end_date": e_str},
+            {"start_date": d_str, "end_date": d_str},
             delay,
         )
 
@@ -359,9 +353,8 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
             total += len(records)
             logger.info(f"    → 寫入 {len(records):,} 筆（累計 {total:,} 筆）")
 
-        # 推進至下一個分塊起點
-        # 防死循環：若分塊起迄同日且無資料，仍推進
-        current_dt = chunk_end + timedelta(days=1)
+        # 推進至隔日
+        current_dt += timedelta(days=1)
 
     logger.info(f"=== [eight_banks] 完成，累計 {total:,} 筆 ===")
 

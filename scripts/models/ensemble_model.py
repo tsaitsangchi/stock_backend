@@ -511,11 +511,32 @@ class CatPredictor:
                 return self
 
             self._const_class = None
-            self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
-            self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
+            try:
+                self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
+                self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
+            except Exception as e:
+                if "CUDA error" in str(e) or "out of memory" in str(e).lower():
+                    logger.warning(f"  [CatBoost] GPU 記憶體不足 ({e})，自動回退至 CPU 訓練…")
+                    p["task_type"] = "CPU"
+                    # 移除 GPU 特有參數（若有）
+                    p.pop("devices", None)
+                    self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
+                    self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
+                else:
+                    raise e
         else:
-            self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
-            self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
+            try:
+                self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
+                self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
+            except Exception as e:
+                if "CUDA error" in str(e) or "out of memory" in str(e).lower():
+                    logger.warning(f"  [CatBoost] GPU 記憶體不足 ({e})，自動回退至 CPU 訓練…")
+                    p["task_type"] = "CPU"
+                    p.pop("devices", None)
+                    self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
+                    self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
+                else:
+                    raise e
         return self
 
     def predict_score(self, X: pd.DataFrame) -> np.ndarray:
@@ -645,12 +666,21 @@ class StackingEnsemble:
         use_cat: bool = True,
         use_elastic: bool = True,
         use_mom: bool = True,
-        task: str = "classification"
+        task: str = "classification",
+        stock_id: str = None
     ):
         self.task = task
+        self.stock_id = stock_id
+        
+        # [新增] 載入個股最佳參數
+        custom_params = {"xgb": None, "lgb": None}
+        if stock_id:
+            from config import get_best_params
+            custom_params = get_best_params(stock_id)
+            
         self.models = {}
-        if use_xgb:     self.models["xgb"] = XGBPredictor(task=task)
-        if use_lgb:     self.models["lgb"] = LGBPredictor(task=task)
+        if use_xgb:     self.models["xgb"] = XGBPredictor(params=custom_params["xgb"], task=task)
+        if use_lgb:     self.models["lgb"] = LGBPredictor(params=custom_params["lgb"], task=task)
         if use_cat:     self.models["cat"] = CatPredictor(task=task)
         if use_elastic: self.models["elastic"] = ElasticNetPredictor()
         if use_mom:     self.models["mom"] = SimpleMomentumModel()
@@ -797,15 +827,16 @@ class RegimeEnsemble:
     分 Regime 訓練：依據 realised_vol_20d 切分三套 StackingEnsemble。
     預設以 20% 和 40% 做切分，解決高/中/低波動期特徵重要性截然不同的問題。
     """
-    def __init__(self, task: str = "classification", vol_low: float = 0.20, vol_high: float = 0.40):
+    def __init__(self, task: str = "classification", vol_low: float = 0.20, vol_high: float = 0.40, stock_id: str = None):
         self.task = task
+        self.stock_id = stock_id
         self.vol_low = vol_low
         self.vol_high = vol_high
         self.vol_col = "realized_vol_20d"
         
-        self.low_vol_model = StackingEnsemble(task)
-        self.mid_vol_model = StackingEnsemble(task)
-        self.high_vol_model = StackingEnsemble(task)
+        self.low_vol_model = StackingEnsemble(task=task, stock_id=stock_id)
+        self.mid_vol_model = StackingEnsemble(task=task, stock_id=stock_id)
+        self.high_vol_model = StackingEnsemble(task=task, stock_id=stock_id)
         self.feature_names = None
         
     def _split_mask(self, X: pd.DataFrame) -> tuple[pd.Series, pd.Series, pd.Series]:
