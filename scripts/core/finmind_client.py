@@ -227,6 +227,11 @@ def finmind_get(
                 logger.warning(f"🚫 [Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
                 return []
 
+            # ── 400：無效請求（通常為無資料或格式錯） ──
+            if resp.status_code == 400:
+                logger.warning(f"⚠️ [Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
+                return []
+
             # ── 401：Token 無效 ──
             if resp.status_code == 401:
                 logger.error(f"[{dataset}] HTTP 401 Unauthorized: Token 可能已過期或無效。")
@@ -363,10 +368,7 @@ async def finmind_get_async(
                     logger.error(f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。")
                     return []
                 if resp.status == 400:
-                    if raise_on_batch_400 and is_batch:
-                        raise BatchNotSupportedError(
-                            f"[async][{dataset}] 批次請求（HTTP 400）被拒絕"
-                        )
+                    logger.warning(f"⚠️ [async][Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
                     return []
 
                 resp.raise_for_status()
