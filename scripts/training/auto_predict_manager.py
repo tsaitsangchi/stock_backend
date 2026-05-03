@@ -40,7 +40,13 @@ HEARTBEAT_FILE = OUTPUT_DIR / "auto_predict.heartbeat"
 PID_FILE       = OUTPUT_DIR / "auto_predict.pid"
 LOG_FILE       = OUTPUT_DIR / "predict_manager.log"
 
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# [Fix] 嘗試刪除舊檔以避開權限問題
+try:
+    LOG_FILE.unlink(missing_ok=True)
+    PID_FILE.unlink(missing_ok=True)
+    HEARTBEAT_FILE.unlink(missing_ok=True)
+except Exception:
+    pass
 
 # ─────────────────────────────────────────────
 # 日誌設定
