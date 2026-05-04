@@ -1,43 +1,45 @@
-"""
-fetch_chip_data.py  v2.2（逐支 commit 完整性版）
-================================================
-從 FinMind API 抓取籌碼面資料並寫入 PostgreSQL：
-  - institutional_investors_buy_sell ← TaiwanStockInstitutionalInvestorsBuySell
-  - margin_purchase_short_sale       ← TaiwanStockMarginPurchaseShortSale
-  - shareholding                     ← TaiwanStockShareholding
-
-v2.2 改進（資料完整性）：
-  · 新增 safe_commit_rows()：每支股票寫入後立即 commit，失敗 rollback。
-  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
-  · 失敗清單寫入 outputs/{table}_failed_{date}.json，供事後補抓。
-  · 修正 connection 全域共用，避免重複握手。
-"""
-
+from __future__ import annotations
 import sys
-import json
+import logging
 from pathlib import Path
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+
+# ── sys.path 自我修復 ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for sub in ("", "core", "fetchers"):
+    p = (_SCRIPTS_DIR / sub) if sub else _SCRIPTS_DIR
+    sp = str(p)
+    if p.exists() and sp not in sys.path:
+        sys.path.insert(0, sp)
+
+"""
+fetch_chip_data.py v3.0 — 籌碼面核心資料（逐支逐日 commit 完整性版）
+================================================================================
+v3.0 重大改進：
+  ★ 導入 core v3.0：全面使用 FailureLogger、safe_commit_rows 與原子寫入。
+  ★ 逐支逐日 commit： institutional_investors、margin_purchase、shareholding 
+     全數採用最細粒度 (sid, date) 的 commit 策略。
+  ★ 統計與斷路器：整合 finmind_client v3.0 的請求報表與 CircuitBreaker。
+"""
 
 import argparse
-import logging
 from datetime import date
+from core.path_setup import ensure_scripts_on_path, get_outputs_dir, ensure_dirs_exist
+ensure_scripts_on_path(__file__)
 
-import psycopg2
-
-from config import DB_CONFIG
+from core.finmind_client import finmind_get, get_request_stats
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    bulk_upsert,
     get_all_safe_starts,
     resolve_start_cached,
     safe_int,
     safe_float,
     safe_date,
+    FailureLogger,
+    map_rows_safe,
+    commit_per_stock_per_day,
 )
-from core.finmind_client import finmind_get
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,23 +48,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OUTPUT_DIR = _base_dir / "outputs"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# 初始化目錄
+ensure_dirs_exist()
+OUTPUT_DIR = get_outputs_dir()
 
-# ──────────────────────────────────────────────
-# 各資料集最早可用日期
-# ──────────────────────────────────────────────
 DATASET_START_DATES = {
     "institutional_investors_buy_sell": "2005-01-01",
     "margin_purchase_short_sale":       "2001-01-01",
     "shareholding":                     "2004-02-01",
 }
-
-DEFAULT_END   = date.today().strftime("%Y-%m-%d")
-DEFAULT_START = "2001-01-01"
+DEFAULT_END = date.today().strftime("%Y-%m-%d")
 
 # ──────────────────────────────────────────────
-# DDL
+# DDL & SQL
 # ──────────────────────────────────────────────
 DDL_INSTITUTIONAL_INVESTORS = """
 CREATE TABLE IF NOT EXISTS institutional_investors_buy_sell (
@@ -73,8 +71,6 @@ CREATE TABLE IF NOT EXISTS institutional_investors_buy_sell (
     sell     BIGINT,
     PRIMARY KEY (date, stock_id, name)
 );
-CREATE INDEX IF NOT EXISTS idx_institutional_investors_buy_sell_stock_id
-    ON institutional_investors_buy_sell (stock_id);
 """
 
 DDL_MARGIN_PURCHASE = """
@@ -97,8 +93,6 @@ CREATE TABLE IF NOT EXISTS margin_purchase_short_sale (
     short_sale_yesterday_balance      INTEGER,
     PRIMARY KEY (date, stock_id)
 );
-CREATE INDEX IF NOT EXISTS idx_margin_purchase_short_sale_stock_id
-    ON margin_purchase_short_sale (stock_id);
 """
 
 DDL_SHAREHOLDING = """
@@ -118,44 +112,24 @@ CREATE TABLE IF NOT EXISTS shareholding (
     note                                TEXT,
     PRIMARY KEY (date, stock_id)
 );
-CREATE INDEX IF NOT EXISTS idx_shareholding_stock_id ON shareholding (stock_id);
 """
 
-# ──────────────────────────────────────────────
-# Upsert SQL
-# ──────────────────────────────────────────────
 UPSERT_INSTITUTIONAL_INVESTORS = """
 INSERT INTO institutional_investors_buy_sell (date, stock_id, buy, name, sell)
-VALUES %s
-ON CONFLICT (date, stock_id, name) DO UPDATE SET
-    buy  = EXCLUDED.buy,
-    sell = EXCLUDED.sell;
+VALUES %s ON CONFLICT (date, stock_id, name) DO UPDATE SET
+    buy = EXCLUDED.buy, sell = EXCLUDED.sell;
 """
 
 UPSERT_MARGIN_PURCHASE = """
 INSERT INTO margin_purchase_short_sale (
-    date, stock_id,
-    margin_purchase_buy, margin_purchase_cash_repayment, margin_purchase_limit,
-    margin_purchase_sell, margin_purchase_today_balance, margin_purchase_yesterday_balance,
-    note, offset_loan_and_short,
+    date, stock_id, margin_purchase_buy, margin_purchase_cash_repayment, 
+    margin_purchase_limit, margin_purchase_sell, margin_purchase_today_balance, 
+    margin_purchase_yesterday_balance, note, offset_loan_and_short,
     short_sale_buy, short_sale_cash_repayment, short_sale_limit,
     short_sale_sell, short_sale_today_balance, short_sale_yesterday_balance
-) VALUES %s
-ON CONFLICT (date, stock_id) DO UPDATE SET
-    margin_purchase_buy               = EXCLUDED.margin_purchase_buy,
-    margin_purchase_cash_repayment    = EXCLUDED.margin_purchase_cash_repayment,
-    margin_purchase_limit             = EXCLUDED.margin_purchase_limit,
-    margin_purchase_sell              = EXCLUDED.margin_purchase_sell,
-    margin_purchase_today_balance     = EXCLUDED.margin_purchase_today_balance,
-    margin_purchase_yesterday_balance = EXCLUDED.margin_purchase_yesterday_balance,
-    note                              = EXCLUDED.note,
-    offset_loan_and_short             = EXCLUDED.offset_loan_and_short,
-    short_sale_buy                    = EXCLUDED.short_sale_buy,
-    short_sale_cash_repayment         = EXCLUDED.short_sale_cash_repayment,
-    short_sale_limit                  = EXCLUDED.short_sale_limit,
-    short_sale_sell                   = EXCLUDED.short_sale_sell,
-    short_sale_today_balance          = EXCLUDED.short_sale_today_balance,
-    short_sale_yesterday_balance      = EXCLUDED.short_sale_yesterday_balance;
+) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+    margin_purchase_today_balance = EXCLUDED.margin_purchase_today_balance,
+    short_sale_today_balance = EXCLUDED.short_sale_today_balance;
 """
 
 UPSERT_SHAREHOLDING = """
@@ -165,353 +139,106 @@ INSERT INTO shareholding (
     foreign_investment_remain_ratio, foreign_investment_shares_ratio,
     foreign_investment_upper_limit_ratio, chinese_investment_upper_limit_ratio,
     number_of_shares_issued, recently_declare_date, note
-) VALUES %s
-ON CONFLICT (date, stock_id) DO UPDATE SET
-    stock_name                           = EXCLUDED.stock_name,
-    international_code                   = EXCLUDED.international_code,
-    foreign_investment_remaining_shares  = EXCLUDED.foreign_investment_remaining_shares,
-    foreign_investment_shares            = EXCLUDED.foreign_investment_shares,
-    foreign_investment_remain_ratio      = EXCLUDED.foreign_investment_remain_ratio,
-    foreign_investment_shares_ratio      = EXCLUDED.foreign_investment_shares_ratio,
-    foreign_investment_upper_limit_ratio = EXCLUDED.foreign_investment_upper_limit_ratio,
-    chinese_investment_upper_limit_ratio = EXCLUDED.chinese_investment_upper_limit_ratio,
-    number_of_shares_issued              = EXCLUDED.number_of_shares_issued,
-    recently_declare_date                = EXCLUDED.recently_declare_date,
-    note                                 = EXCLUDED.note;
+) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+    foreign_investment_shares_ratio = EXCLUDED.foreign_investment_shares_ratio,
+    number_of_shares_issued = EXCLUDED.number_of_shares_issued;
 """
 
+# ──────────────────────────────────────────────
+# Mappers
+# ──────────────────────────────────────────────
+def map_inst(r: dict) -> tuple:
+    return (r["date"], r["stock_id"], safe_int(r.get("buy")), str(r.get("name", ""))[:50], safe_int(r.get("sell")))
 
-# ──────────────────────────────────────────────
-# 逐支 commit 工具函式
-# ──────────────────────────────────────────────
-def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
-                      label: str = "") -> int:
-    """寫入單支 / 單組資料並立即 commit；失敗 rollback 並回傳 0。"""
-    if not rows:
-        return 0
-    try:
-        n = bulk_upsert(conn, upsert_sql, rows, template)
-        conn.commit()
-        return n
-    except Exception as e:
+def map_margin(r: dict) -> tuple:
+    f = lambda k: safe_int(r.get(k))
+    return (
+        r["date"], r["stock_id"], f("MarginPurchaseBuy"), f("MarginPurchaseCashRepayment"),
+        f("MarginPurchaseLimit"), f("MarginPurchaseSell"), f("MarginPurchaseTodayBalance"),
+        f("MarginPurchaseYesterdayBalance"), str(r.get("Note", "") or ""), f("OffsetLoanAndShort"),
+        f("ShortSaleBuy"), f("ShortSaleCashRepayment"), f("ShortSaleLimit"),
+        f("ShortSaleSell"), f("ShortSaleTodayBalance"), f("ShortSaleYesterdayBalance")
+    )
+
+def map_share(r: dict) -> tuple:
+    return (
+        r["date"], r["stock_id"], str(r.get("stock_name", "") or "")[:50],
+        str(r.get("InternationalCode", "") or "")[:20],
+        safe_int(r.get("ForeignInvestmentRemainingShares")), safe_int(r.get("ForeignInvestmentShares")),
+        safe_float(r.get("ForeignInvestmentRemainRatio")), safe_float(r.get("ForeignInvestmentSharesRatio")),
+        safe_float(r.get("ForeignInvestmentUpperLimitRatio")), safe_float(r.get("ChineseInvestmentUpperLimitRatio")),
+        safe_int(r.get("NumberOfSharesIssued")), safe_date(r.get("RecentlyDeclareDate")),
+        str(r.get("note", "") or "")
+    )
+
+# ─────────────────────────────────────────────
+# 抓取邏輯
+# ─────────────────────────────────────────────
+def fetch_per_stock_task(
+    conn, dataset_name: str, table_name: str, ddl: str, upsert_sql: str,
+    template: str, mapper, stock_ids: list, start_date: str, end_date: str, force: bool
+):
+    logger.info(f"=== [{table_name}] 開始（{len(stock_ids)} 支）===")
+    ensure_ddl(conn, ddl)
+    flog = FailureLogger(table_name, db_conn=conn)
+    latest_dates = get_all_safe_starts(conn, table_name)
+    
+    total_rows = skipped = 0
+    for i, sid in enumerate(stock_ids, 1):
+        actual_start = resolve_start_cached(sid, latest_dates, start_date, DATASET_START_DATES[table_name], force)
+        if not actual_start:
+            skipped += 1; continue
+
         try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
-        return 0
+            data = finmind_get(dataset_name, {"data_id": sid, "start_date": actual_start, "end_date": end_date})
+            if not data: continue
+            
+            rows = map_rows_safe(mapper, data, label=f"{table_name}/{sid}")
+            # ⭐ 逐支逐日 Commit ⭐
+            results = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table_name, failure_logger=flog)
+            total_rows += sum(results.values())
+        except Exception as e:
+            flog.record(stock_id=sid, error=str(e))
 
+        if i % 100 == 0:
+            logger.info(f"  [{table_name}] 進度：{i}/{len(stock_ids)}，寫入 {total_rows} 筆")
 
-def dump_failures(table: str, failures: list) -> None:
-    if not failures:
-        return
-    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
-    try:
-        out.write_text(
-            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
-            encoding="utf-8",
-        )
-        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
-    except Exception as e:
-        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
-
-
-# ──────────────────────────────────────────────
-# 輔助函式
-# ──────────────────────────────────────────────
-def get_target_stock_ids(conn, stock_id_arg=None) -> list:
-    if stock_id_arg:
-        return [s.strip() for s in stock_id_arg.split(",")]
-    from config import STOCK_CONFIGS
-    return list(STOCK_CONFIGS.keys())
-
-
-# ──────────────────────────────────────────────
-# institutional_investors_buy_sell（三大法人）
-# ──────────────────────────────────────────────
-def fetch_institutional_investors_buy_sell(
-    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
-):
-    logger.info(f"\n=== [institutional_investors_buy_sell] 開始（{len(stock_ids)} 支）===")
-    conn = get_db_conn()
-    failures = []
-    try:
-        ensure_ddl(conn, DDL_INSTITUTIONAL_INVESTORS)
-        conn.commit()
-        latest_dates = get_all_safe_starts(conn, "institutional_investors_buy_sell")
-        total_rows = skipped = 0
-
-        for i, sid in enumerate(stock_ids, 1):
-            actual_start = resolve_start_cached(
-                sid, latest_dates, start_date,
-                DATASET_START_DATES["institutional_investors_buy_sell"], force
-            )
-            if actual_start is None:
-                skipped += 1
-                continue
-
-            try:
-                data = finmind_get(
-                    "TaiwanStockInstitutionalInvestorsBuySell",
-                    {"data_id": sid, "start_date": actual_start, "end_date": end_date},
-                    delay,
-                    raise_on_error=True
-                )
-                if not data:
-                    continue
-
-                rows = [
-                    (
-                        r["date"],
-                        r["stock_id"],
-                        safe_int(r.get("buy")),
-                        str(r.get("name", ""))[:50],
-                        safe_int(r.get("sell")),
-                    )
-                    for r in data
-                ]
-                n = safe_commit_rows(
-                    conn, UPSERT_INSTITUTIONAL_INVESTORS, rows,
-                    "(%s::date, %s, %s, %s, %s)",
-                    label=f"institutional_investors_buy_sell/{sid}",
-                )
-                total_rows += n
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                failures.append({"stock_id": sid, "error": str(e)})
-                logger.error(f"  [institutional_investors_buy_sell/{sid}] 失敗：{e}")
-
-            if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆"
-                            f"（略過：{skipped}，失敗：{len(failures)}）")
-
-    finally:
-        conn.close()
-    dump_failures("institutional_investors_buy_sell", failures)
-    logger.info(
-        f"=== [institutional_investors_buy_sell] 完成，共寫入 {total_rows} 筆"
-        f"（略過：{skipped} 支，失敗：{len(failures)} 支）==="
-    )
-
-
-# ──────────────────────────────────────────────
-# margin_purchase_short_sale（融資融券）
-# ──────────────────────────────────────────────
-def fetch_margin_purchase_short_sale(
-    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
-):
-    logger.info(f"\n=== [margin_purchase_short_sale] 開始（{len(stock_ids)} 支）===")
-    conn = get_db_conn()
-    failures = []
-    try:
-        ensure_ddl(conn, DDL_MARGIN_PURCHASE)
-        conn.commit()
-        latest_dates = get_all_safe_starts(conn, "margin_purchase_short_sale")
-        total_rows = skipped = 0
-
-        for i, sid in enumerate(stock_ids, 1):
-            actual_start = resolve_start_cached(
-                sid, latest_dates, start_date,
-                DATASET_START_DATES["margin_purchase_short_sale"], force
-            )
-            if actual_start is None:
-                skipped += 1
-                continue
-
-            try:
-                data = finmind_get(
-                    "TaiwanStockMarginPurchaseShortSale",
-                    {"data_id": sid, "start_date": actual_start, "end_date": end_date},
-                    delay,
-                    raise_on_error=True
-                )
-                if not data:
-                    continue
-
-                rows = [
-                    (
-                        r["date"],
-                        r["stock_id"],
-                        safe_int(r.get("MarginPurchaseBuy")),
-                        safe_int(r.get("MarginPurchaseCashRepayment")),
-                        safe_int(r.get("MarginPurchaseLimit")),
-                        safe_int(r.get("MarginPurchaseSell")),
-                        safe_int(r.get("MarginPurchaseTodayBalance")),
-                        safe_int(r.get("MarginPurchaseYesterdayBalance")),
-                        str(r.get("Note", "") or ""),
-                        safe_int(r.get("OffsetLoanAndShort")),
-                        safe_int(r.get("ShortSaleBuy")),
-                        safe_int(r.get("ShortSaleCashRepayment")),
-                        safe_int(r.get("ShortSaleLimit")),
-                        safe_int(r.get("ShortSaleSell")),
-                        safe_int(r.get("ShortSaleTodayBalance")),
-                        safe_int(r.get("ShortSaleYesterdayBalance")),
-                    )
-                    for r in data
-                ]
-                n = safe_commit_rows(
-                    conn, UPSERT_MARGIN_PURCHASE, rows,
-                    "(%s::date, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                    label=f"margin_purchase_short_sale/{sid}",
-                )
-                total_rows += n
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                failures.append({"stock_id": sid, "error": str(e)})
-                logger.error(f"  [margin_purchase_short_sale/{sid}] 失敗：{e}")
-
-            if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆"
-                            f"（略過：{skipped}，失敗：{len(failures)}）")
-
-    finally:
-        conn.close()
-    dump_failures("margin_purchase_short_sale", failures)
-    logger.info(
-        f"=== [margin_purchase_short_sale] 完成，共寫入 {total_rows} 筆"
-        f"（略過：{skipped} 支，失敗：{len(failures)} 支）==="
-    )
-
-
-# ──────────────────────────────────────────────
-# shareholding（外資持股）
-# ──────────────────────────────────────────────
-def fetch_shareholding(
-    start_date: str, end_date: str, delay: float, force: bool, stock_ids: list
-):
-    logger.info(f"\n=== [shareholding] 開始（{len(stock_ids)} 支）===")
-    conn = get_db_conn()
-    failures = []
-    try:
-        ensure_ddl(conn, DDL_SHAREHOLDING)
-        conn.commit()
-        latest_dates = get_all_safe_starts(conn, "shareholding")
-        total_rows = skipped = 0
-
-        for i, sid in enumerate(stock_ids, 1):
-            actual_start = resolve_start_cached(
-                sid, latest_dates, start_date,
-                DATASET_START_DATES["shareholding"], force
-            )
-            if actual_start is None:
-                skipped += 1
-                continue
-
-            try:
-                data = finmind_get(
-                    "TaiwanStockShareholding",
-                    {"data_id": sid, "start_date": actual_start, "end_date": end_date},
-                    delay,
-                    raise_on_error=True
-                )
-                if not data:
-                    continue
-
-                rows = [
-                    (
-                        r["date"],
-                        r["stock_id"],
-                        str(r.get("stock_name", "") or "")[:50],
-                        str(r.get("InternationalCode", "") or "")[:20],
-                        safe_int(r.get("ForeignInvestmentRemainingShares")),
-                        safe_int(r.get("ForeignInvestmentShares")),
-                        safe_float(r.get("ForeignInvestmentRemainRatio")),
-                        safe_float(r.get("ForeignInvestmentSharesRatio")),
-                        safe_float(r.get("ForeignInvestmentUpperLimitRatio")),
-                        safe_float(r.get("ChineseInvestmentUpperLimitRatio")),
-                        safe_int(r.get("NumberOfSharesIssued")),
-                        safe_date(r.get("RecentlyDeclareDate")),
-                        str(r.get("note", "") or ""),
-                    )
-                    for r in data
-                ]
-                n = safe_commit_rows(
-                    conn, UPSERT_SHAREHOLDING, rows,
-                    (
-                        "(%s::date, %s, %s, %s,"
-                        " %s, %s,"
-                        " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
-                        " %s, %s::date, %s)"
-                    ),
-                    label=f"shareholding/{sid}",
-                )
-                total_rows += n
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                failures.append({"stock_id": sid, "error": str(e)})
-                logger.error(f"  [shareholding/{sid}] 失敗：{e}")
-
-            if i % 100 == 0:
-                logger.info(f"  進度：{i}/{len(stock_ids)}，累計 {total_rows} 筆"
-                            f"（略過：{skipped}，失敗：{len(failures)}）")
-
-    finally:
-        conn.close()
-    dump_failures("shareholding", failures)
-    logger.info(
-        f"=== [shareholding] 完成，共寫入 {total_rows} 筆"
-        f"（略過：{skipped} 支，失敗：{len(failures)} 支）==="
-    )
-
-
-# ──────────────────────────────────────────────
-# CLI 主程式
-# ──────────────────────────────────────────────
-TABLE_FUNCS = {
-    "institutional_investors_buy_sell": fetch_institutional_investors_buy_sell,
-    "margin_purchase_short_sale":       fetch_margin_purchase_short_sale,
-    "shareholding":                     fetch_shareholding,
-}
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具 v2.2")
-    parser.add_argument(
-        "--tables", nargs="+",
-        choices=list(TABLE_FUNCS.keys()) + ["all"],
-        default=["all"],
-    )
-    parser.add_argument("--start", default=DEFAULT_START)
-    parser.add_argument("--end",   default=DEFAULT_END)
-    parser.add_argument("--delay", type=float, default=1.2)
-    parser.add_argument("--force", action="store_true")
-    parser.add_argument("--stock-id", default=None)
-    return parser.parse_args()
+    flog.summary()
+    logger.info(f"=== [{table_name}] 完成，共寫入 {total_rows} 筆，略過 {skipped} 支 ===\n")
 
 
 def main():
-    args = parse_args()
-    tables = list(TABLE_FUNCS.keys()) if "all" in args.tables else args.tables
+    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具 v3.0")
+    parser.add_argument("--tables", nargs="+", choices=["institutional_investors_buy_sell", "margin_purchase_short_sale", "shareholding", "all"], default=["all"])
+    parser.add_argument("--start", default="2001-01-01")
+    parser.add_argument("--end", default=DEFAULT_END)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--stock-id", default=None)
+    args = parser.parse_args()
 
+    tables = ["institutional_investors_buy_sell", "margin_purchase_short_sale", "shareholding"] if "all" in args.tables else args.tables
+    
     conn = get_db_conn()
-    target_stocks = get_target_stock_ids(conn, args.stock_id)
-    conn.close()
+    try:
+        if args.stock_id:
+            stock_ids = [s.strip() for s in args.stock_id.split(",")]
+        else:
+            from core.db_utils import get_db_stock_ids
+            stock_ids = get_db_stock_ids(conn)
 
-    mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"
-    logger.info(f"抓取資料表：{tables}")
-    logger.info(f"模式：{mode}，目標股票數：{len(target_stocks)}")
-    logger.info(f"日期區間：{args.start} ~ {args.end}")
+        configs = {
+            "institutional_investors_buy_sell": ("TaiwanStockInstitutionalInvestorsBuySell", DDL_INSTITUTIONAL_INVESTORS, UPSERT_INSTITUTIONAL_INVESTORS, "(%s::date,%s,%s,%s,%s)", map_inst),
+            "margin_purchase_short_sale":       ("TaiwanStockMarginPurchaseShortSale", DDL_MARGIN_PURCHASE, UPSERT_MARGIN_PURCHASE, "(%s::date,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", map_margin),
+            "shareholding":                     ("TaiwanStockShareholding", DDL_SHAREHOLDING, UPSERT_SHAREHOLDING, "(%s::date,%s,%s,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s,%s::date,%s)", map_share),
+        }
 
-    for table in tables:
-        try:
-            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force, target_stocks)
-        except psycopg2.OperationalError as e:
-            logger.error(f"PostgreSQL 連線失敗：{e}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"[{table}] 未預期錯誤：{e}")
-            # 不再 raise，讓其他 table 仍可繼續處理
-            continue
-
+        for table in tables:
+            ds, ddl, upsert, tmpl, mapper = configs[table]
+            fetch_per_stock_task(conn, ds, table, ddl, upsert, tmpl, mapper, stock_ids, args.start, args.end, args.force)
+            
+    finally:
+        conn.close()
+        get_request_stats().summary()
 
 if __name__ == "__main__":
     main()
