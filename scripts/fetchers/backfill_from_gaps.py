@@ -104,10 +104,36 @@ FAILURE_JSON     = OUTPUT_DIR / "backfill_failures.json"
 SUCCESS_JSON     = OUTPUT_DIR / "backfill_successes.json"
 CHECKPOINT_JSON  = CHECKPOINT_DIR / "backfill.json"
 
-VENV_PYTHON = os.environ.get(
-    "VENV_PYTHON",
-    str(BASE_DIR.parent / "venv" / "bin" / "python3"),
-)
+def _detect_venv_python() -> str:
+    """
+    自動偵測 venv python，優先順序：
+      1. 環境變數 VENV_PYTHON（若有設且檔案存在）
+      2. sys.executable（目前正在使用的 python，多半就是 (venv) shell 啟用的那個）
+      3. {BASE_DIR}/venv/bin/python(3)
+      4. {BASE_DIR.parent}/venv/bin/python(3)
+      5. fallback：sys.executable
+    """
+    env_p = os.environ.get("VENV_PYTHON")
+    if env_p and Path(env_p).exists():
+        return env_p
+
+    cur = Path(sys.executable)
+    if cur.exists():
+        return str(cur)
+
+    for cand in [
+        BASE_DIR / "venv" / "bin" / "python3",
+        BASE_DIR / "venv" / "bin" / "python",
+        BASE_DIR.parent / "venv" / "bin" / "python3",
+        BASE_DIR.parent / "venv" / "bin" / "python",
+    ]:
+        if cand.exists():
+            return str(cand)
+
+    return sys.executable
+
+
+VENV_PYTHON = _detect_venv_python()
 
 
 # ─────────────────────────────────────────────
@@ -279,13 +305,19 @@ def run_fetcher(
     end: Optional[str] = None,
     dry_run: bool = False,
     timeout: int = 1800,
+    quiet: bool = False,
 ) -> tuple[bool, str, float]:
     """
     呼叫指定 fetcher 子腳本。
+
+    Parameters
+    ----------
+    quiet : True 時捕獲子腳本的 stdout/stderr 不直接印出（失敗時仍會印出最後 30 行）
+            False（預設）讓子腳本輸出直接顯示在主程式終端，方便即時觀察進度
+
     Returns (success, message, elapsed_sec)
     """
     script_path = SCRIPTS_DIR / "fetchers" / script
-    # fallback：scripts/script.py（舊路徑）
     if not script_path.exists():
         script_path = SCRIPTS_DIR / script
     if not script_path.exists():
@@ -305,14 +337,35 @@ def run_fetcher(
     logger.info(f"🚀 {pretty}")
     t0 = time.time()
     try:
-        subprocess.run(cmd, check=True, timeout=timeout)
-        return True, "ok", time.time() - t0
+        if quiet:
+            # 捕獲輸出；失敗時印出最後 30 行協助診斷
+            result = subprocess.run(
+                cmd, check=False, timeout=timeout,
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace",
+            )
+            elapsed = time.time() - t0
+            if result.returncode != 0:
+                tail_out = "\n".join((result.stdout or "").splitlines()[-30:])
+                tail_err = "\n".join((result.stderr or "").splitlines()[-30:])
+                if tail_out:
+                    logger.error(f"  ↳ stdout(last 30):\n{tail_out}")
+                if tail_err:
+                    logger.error(f"  ↳ stderr(last 30):\n{tail_err}")
+                return False, f"exit_code={result.returncode}", elapsed
+            return True, "ok", elapsed
+        else:
+            # 直接讓子腳本輸出顯示在主程式終端（可即時觀察進度）
+            subprocess.run(cmd, check=True, timeout=timeout)
+            return True, "ok", time.time() - t0
     except subprocess.TimeoutExpired:
         return False, f"timeout({timeout}s)", time.time() - t0
     except subprocess.CalledProcessError as e:
         return False, f"exit_code={e.returncode}", time.time() - t0
+    except FileNotFoundError as e:
+        return False, f"FileNotFound: {e}", time.time() - t0
     except Exception as e:
-        return False, str(e), time.time() - t0
+        return False, f"{type(e).__name__}: {e}", time.time() - t0
 
 
 # ─────────────────────────────────────────────
@@ -403,11 +456,11 @@ def build_work_units(filtered: list[dict], per_day: bool) -> list[dict]:
                     "table":    sub["table"],
                     "start":    sub["gap_start"],
                     "end":      sub["gap_end"],
-                    "tables":   [sub["table"]],   # 兼容舊 entry 結構
+                    "tables":   [sub["table"]],
                 })
         return days_units
 
-    # 一般模式：依 (script, stock_id) 分組，取該組最早 gap_start
+    # 一般模式：依 (script, stock_id) 分組，取該組最早 gap_start，tables 自動去重
     groups: dict[tuple[str, str], dict] = {}
     for g in filtered:
         meta = TABLE_TO_FETCHER[g["table"]]
@@ -420,16 +473,26 @@ def build_work_units(filtered: list[dict], per_day: bool) -> list[dict]:
                 "start":    g["gap_start"],
                 "end":      g.get("gap_end"),
                 "tables":   [g["table"]],
+                "_tbl_set": {g["table"]},
             }
         else:
-            groups[key]["tables"].append(g["table"])
+            # ★ 修正：tables 去重，避免同一個 table 出現多次
+            if g["table"] not in groups[key]["_tbl_set"]:
+                groups[key]["tables"].append(g["table"])
+                groups[key]["_tbl_set"].add(g["table"])
             if g["gap_start"] < groups[key]["start"]:
                 groups[key]["start"] = g["gap_start"]
             if g.get("gap_end") and (
                 groups[key]["end"] is None or g["gap_end"] > groups[key]["end"]
             ):
                 groups[key]["end"] = g["gap_end"]
-    return list(groups.values())
+
+    # 移除內部欄位 _tbl_set
+    out = []
+    for v in groups.values():
+        v.pop("_tbl_set", None)
+        out.append(v)
+    return out
 
 
 # ─────────────────────────────────────────────
@@ -453,13 +516,29 @@ def process_unit(
         end=unit.get("end"),
         dry_run=args.dry_run,
         timeout=args.timeout,
+        quiet=getattr(args, "quiet", False),
     )
+
+    # ★ 每個 unit 完成後立刻印出成功/失敗結果
+    status_icon = "✅" if ok else "❌"
+    sid_str = unit["stock_id"] or "MARKET"
+    if not args.dry_run:
+        logger.info(
+            f"  {status_icon} {unit['script']} | sid={sid_str} | "
+            f"start={unit['start']} | 耗時 {elapsed:.1f}s | {msg}"
+        )
+        # 子腳本耗時極短（<1s）警示：很可能是 import 失敗或無作用而靜默退出
+        if ok and elapsed < 1.0:
+            logger.warning(
+                f"  ⚠️  耗時僅 {elapsed*1000:.0f}ms，可能子腳本未真正執行抓取邏輯"
+                f"（請用 --quiet=False 或單獨手動跑該 fetcher 確認）"
+            )
 
     # 一個 fetcher 呼叫可能涵蓋多個 table，每個 table 獨立記錄
     out_entries = []
     for tbl in unit["tables"]:
         entry = {
-            "stock_id": unit["stock_id"] or "MARKET",
+            "stock_id": sid_str,
             "table":    tbl,
             "start":    unit["start"],
             "end":      unit.get("end") or unit["start"],
@@ -515,11 +594,26 @@ def main():
                         help="從上次 checkpoint 續做，跳過已成功的 unit")
     parser.add_argument("--parallel", type=int, default=1,
                         help="並行 fetcher 數（預設 1；建議 ≤4，受 FinMind 速率限制）")
+    parser.add_argument("--quiet", action="store_true",
+                        help="抑制 fetcher 子腳本的 stdout/stderr 輸出，"
+                             "失敗時才印出最後 30 行（預設關閉，子腳本輸出可即時顯示）")
     args = parser.parse_args()
 
     # ── 啟動時建立所有必要目錄 ──
     if _CORE_OK:
         ensure_dirs_exist()
+
+    # ── 驗證 VENV_PYTHON 存在（避免 27 ms 假成功）──
+    if not Path(VENV_PYTHON).exists():
+        logger.error(
+            f"VENV_PYTHON 不存在：{VENV_PYTHON}\n"
+            f"  請設定環境變數 VENV_PYTHON 指向正確的 python 路徑，例如：\n"
+            f"  export VENV_PYTHON={sys.executable}\n"
+            f"  或在 ~/.bashrc 內加上：\n"
+            f"  export VENV_PYTHON=$(which python)"
+        )
+        return 1
+    logger.info(f"VENV_PYTHON: {VENV_PYTHON}")
 
     t0 = time.time()
     logger.info("=" * 70)
