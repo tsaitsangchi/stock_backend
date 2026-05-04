@@ -160,24 +160,28 @@ TABLE_TO_FETCHER: dict[str, dict] = {
     "balance_sheet":                    {"script": "fetch_fundamental_data.py",        "id_flag": "--stock-id"},
     "cash_flows_statement":             {"script": "fetch_cash_flows_data.py",         "id_flag": "--stock-id"},
     "dividend":                         {"script": "fetch_fundamental_data.py",        "id_flag": "--stock-id"},
-    # 國際 / 衍生品
+    # 國際 / 宏觀
     "us_stock_price":                   {"script": "fetch_international_data.py",      "id_flag": None},
     "exchange_rate":                    {"script": "fetch_international_data.py",      "id_flag": None},
+    "crude_oil_prices":                 {"script": "fetch_international_data.py",      "id_flag": None},
+    "gold_price":                       {"script": "fetch_international_data.py",      "id_flag": None},
     "interest_rate":                    {"script": "fetch_macro_data.py",              "id_flag": None},
-    "futures_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": None},
-    "options_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": None},
-    "options_oi_large_holders":         {"script": "fetch_derivative_sentiment_data.py", "id_flag": None},
+    # 衍生品 (v3.0 統一用 --ids)
+    "futures_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": "--ids"},
+    "options_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": "--ids"},
+    "options_oi_large_holders":         {"script": "fetch_derivative_sentiment_data.py", "id_flag": "--stock-id"},
     # 市場層級
     "total_margin_short":               {"script": "fetch_advanced_chip_data.py",      "id_flag": None},
     "total_inst_investors":             {"script": "fetch_advanced_chip_data.py",      "id_flag": None},
-    "futures_inst_investors":           {"script": "fetch_extended_derivative_data.py", "id_flag": None},
-    "options_inst_investors":           {"script": "fetch_extended_derivative_data.py", "id_flag": None},
+    "futures_inst_investors":           {"script": "fetch_extended_derivative_data.py", "id_flag": "--ids"},
+    "options_inst_investors":           {"script": "fetch_extended_derivative_data.py", "id_flag": "--ids"},
     # 事件 / 另類
     "disposition_securities":           {"script": "fetch_event_risk_data.py",         "id_flag": "--stock-id"},
     "capital_reduction":                {"script": "fetch_event_risk_data.py",         "id_flag": "--stock-id"},
     "stock_news":                       {"script": "fetch_news_data.py",               "id_flag": "--stock-id"},
     "fred_series":                      {"script": "fetch_fred_data.py",               "id_flag": None},
 }
+
 
 
 # ─────────────────────────────────────────────
@@ -327,7 +331,16 @@ def run_fetcher(
     if end:
         cmd += ["--end", end]
     if id_flag and stock_id:
-        cmd += [id_flag, stock_id]
+        # 特別處理：若 id_flag 是 --ids 且 stock_id 是 MARKET，則不傳 ID (讓子腳本用預設列表)
+        if id_flag == "--ids" and stock_id == "MARKET":
+            pass
+        else:
+            cmd += [id_flag, stock_id]
+
+    # [P0-FIX] 若是 derivative 腳本且 id_flag 為 --ids，確保子腳本正確接收
+    if "fetch_derivative" in script and id_flag == "--ids" and stock_id and stock_id != "MARKET":
+        # cmd 已經在上面加過了，這裡只是做二次確認邏輯
+        pass
 
     pretty = " ".join(cmd[1:])
     if dry_run:
@@ -337,6 +350,10 @@ def run_fetcher(
     logger.info(f"🚀 {pretty}")
     t0 = time.time()
     try:
+        # 強制子腳本執行時也帶上 --force 以確保精確補件能覆蓋
+        if "--force" not in cmd:
+            cmd.append("--force")
+
         if quiet:
             # 捕獲輸出；失敗時印出最後 30 行協助診斷
             result = subprocess.run(

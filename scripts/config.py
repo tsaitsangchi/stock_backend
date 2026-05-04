@@ -101,8 +101,8 @@ TABLE_REGISTRY = {
     # 市場層級與國際
     "total_margin_short":              {"type": "market", "id_col": None, "lag": 1},
     "total_inst_investors":            {"type": "market", "id_col": None, "lag": 1},
-    "futures_inst_investors":          {"type": "market", "id_col": None, "lag": 1},
-    "options_inst_investors":          {"type": "market", "id_col": None, "lag": 1},
+    "futures_inst_investors":          {"type": "daily", "id_col": "futures_id", "lag": 1},
+    "options_inst_investors":          {"type": "daily", "id_col": "option_id", "lag": 1},
     "us_stock_price":                  {"type": "daily", "id_col": "stock_id", "lag": 1},
     "exchange_rate":                  {"type": "daily", "id_col": "currency", "lag": 1},
     "interest_rate":                  {"type": "daily", "id_col": "country", "lag": 7},
@@ -172,6 +172,17 @@ def calculate_net_return(gross_return: float, ticker: str) -> float:
                   FRICTION_CONFIG["securities_tax"] +
                   slippage * 2)
     return gross_return - total_cost
+
+# ─────────────────────────────────────────────
+# 衍生品監控配置 (Derivative Watchlist)
+# ─────────────────────────────────────────────
+# 用於資料完整性審計，確保期貨與選擇權關鍵標的納入自動補件範圍。
+DERIVATIVE_CONFIGS = {
+    "futures": ["TX", "MTX", "TE", "TF"],
+    "options": ["TXO", "TEO", "TFO"],
+    "currencies": ["USD", "JPY", "EUR", "CNY"],
+    "commodities": ["Brent", "WTI", "Gold"]
+}
 
 # ─────────────────────────────────────────────
 # 個股客製化配置 (Multi-Stock Framework)
