@@ -330,7 +330,7 @@ def fetch_market_full_dump(
     logger.info(f"[{table}] 抓取 {s if pass_dates else 'ALL'} ~ {end if pass_dates else ''}")
 
     try:
-        data = finmind_get(dataset, params, delay)
+        data = finmind_get(dataset, params, delay, raise_on_error=True)
     except Exception as e:
         logger.error(f"[{table}] API 失敗：{e}")
         return
@@ -439,6 +439,7 @@ def fetch_per_stock_full(
                     data = finmind_get(
                         dataset, {"start_date": seg_start, "end_date": seg_end},
                         delay, raise_on_batch_400=True,
+                        raise_on_error=True
                     )
                     total_api += 1
                     chunk_rows.extend([r for r in data if r.get("stock_id") in sids_set])
@@ -487,6 +488,7 @@ def fetch_per_stock_full(
                     data = finmind_get(
                         dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
                         delay,
+                        raise_on_error=True
                     )
                     total_api += 1
                     if not data:
