@@ -44,6 +44,7 @@ from core.db_utils import (
     map_rows_safe,
     commit_per_day,
     commit_per_stock_per_day,
+    dedup_rows,
 )
 
 logging.basicConfig(
@@ -244,6 +245,8 @@ def fetch_market_dataset(
         return
 
     rows = map_rows_safe(mapper, data, label=table)
+    # 市場層資料：去重 (date, name)
+    rows = dedup_rows(rows, (0, 1))
     # 市場層資料：逐日 commit
     results = commit_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
     logger.info(f"[{table}] 完成，共寫入 {sum(results.values())} 筆，橫跨 {len(results)} 天")
@@ -292,6 +295,12 @@ def fetch_per_stock_dataset(
                     data = finmind_get(dataset, {"start_date": seg_start, "end_date": seg_end}, raise_on_batch_400=True)
                     chunk_rows = map_rows_safe(mapper, [r for r in data if r.get("stock_id") in sids_set], label=table)
                     
+                    # ⭐ 主動去重 ⭐
+                    if table == "securities_lending":
+                        chunk_rows = dedup_rows(chunk_rows, (0, 1, 2)) # (date, stock_id, transaction_type)
+                    else:
+                        chunk_rows = dedup_rows(chunk_rows, (0, 1))    # (date, stock_id)
+
                     # ⭐ 逐支逐日 Commit (v3.0 最強規格) ⭐
                     commit_per_stock_per_day(conn, upsert_sql, chunk_rows, template, label_prefix=table, failure_logger=flog)
                 except BatchNotSupportedError:
@@ -309,6 +318,13 @@ def fetch_per_stock_dataset(
                     data = finmind_get(dataset, {"data_id": sid, "start_date": group_start, "end_date": end})
                     if not data: continue
                     s_rows = map_rows_safe(mapper, data, label=f"{table}/{sid}")
+                    
+                    # ⭐ 主動去重 ⭐
+                    if table == "securities_lending":
+                        s_rows = dedup_rows(s_rows, (0, 1, 2))
+                    else:
+                        s_rows = dedup_rows(s_rows, (0, 1))
+
                     # 逐日 commit (對該支股票而言)
                     commit_per_day(conn, upsert_sql, s_rows, template, label_prefix=f"{table}/{sid}", failure_logger=flog)
                 except Exception as e:

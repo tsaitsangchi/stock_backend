@@ -470,6 +470,10 @@ def finmind_get(
                 wait_until_quota_reset()
                 attempt = 1
                 continue
+            if code == 422:
+                logger.warning(f"⚠️ [Skip] 422 Unprocessable Entity: {dataset}. 標的可能不支援，已跳過。")
+                _global_stats.record_failure(dataset, "422")
+                return []
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次 HTTP {code} 錯誤：{e}")
         except Exception as exc:
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次異常：{exc}")
