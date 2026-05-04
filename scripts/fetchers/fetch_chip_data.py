@@ -39,6 +39,7 @@ from core.db_utils import (
     FailureLogger,
     map_rows_safe,
     commit_per_stock_per_day,
+    dedup_rows,
 )
 
 logging.basicConfig(
@@ -194,6 +195,13 @@ def fetch_per_stock_task(
             if not data: continue
             
             rows = map_rows_safe(mapper, data, label=f"{table_name}/{sid}")
+            
+            # ⭐ 主動去重 ⭐
+            if table_name == "institutional_investors_buy_sell":
+                rows = dedup_rows(rows, (0, 1, 3)) # (date, stock_id, name)
+            else:
+                rows = dedup_rows(rows, (0, 1))    # (date, stock_id)
+
             # ⭐ 逐支逐日 Commit ⭐
             results = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table_name, failure_logger=flog)
             total_rows += sum(results.values())

@@ -1,17 +1,18 @@
 import sys
+import logging
+import subprocess
+import json
+import argparse
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ["fetchers", "pipeline", "training", "monitor"]: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
-import sys
-from pathlib import Path
+
+_base_dir = Path(__file__).resolve().parent.parent
+_monitor_dir = _base_dir / "monitor"
+for p in [str(_base_dir), str(_monitor_dir)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 """
-fetch_missing_stocks_data.py — 自動補齊 config.py 中新增個股的歷史數據
+fetch_missing_stocks_data.py v3.0 — 自動補齊 config.py 中新增個股的歷史數據
 [v3 Trinity Edition]
 
 修改摘要：
@@ -20,15 +21,6 @@ fetch_missing_stocks_data.py — 自動補齊 config.py 中新增個股的歷史
 3. 智能補抓觸發：只要核心表 (price_adj, tech, fundamental) 任一出現嚴重缺漏，即觸發該標的的全量補抓。
 """
 
-import subprocess
-import sys
-import logging
-import psycopg2
-from pathlib import Path
-
-import json
-# 注入路徑並引入核心配置
-sys.path.append(str(Path(__file__).resolve().parent))
 from config import STOCK_CONFIGS, DB_CONFIG
 from data_integrity_audit import IntegrityAuditor
 
@@ -55,7 +47,7 @@ PER_STOCK_SCRIPTS_CONFIG = {
     "fetch_price_adj_data.py":    "--stock-id",
     "fetch_fundamental_data.py":  "--stock-id",
     "fetch_chip_data.py":         "--stock-id",
-    "fetch_derivative_data.py":   "--ids",
+    "fetch_derivative_data.py":   "--stock-id",  # v3.0 已統一
     "fetch_international_data.py": "--tickers",
     "fetch_advanced_chip_data.py": "--stock-id",
     "fetch_sponsor_chip_data.py":  "--stock-id",
@@ -67,6 +59,8 @@ PER_STOCK_SCRIPTS_CONFIG = {
 MACRO_SCRIPTS = [
     "fetch_macro_data.py",
     "fetch_fred_data.py",
+    "fetch_macro_fundamental_data.py",
+    "fetch_total_return_index.py",
     "fetch_extended_derivative_data.py",
     "fetch_derivative_sentiment_data.py"
 ]

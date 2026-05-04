@@ -518,13 +518,18 @@ class CatPredictor:
                 if "CUDA error" in str(e) or "out of memory" in str(e).lower():
                     logger.warning(f"  [CatBoost] GPU 記憶體不足 ({e})，自動回退至 CPU 訓練…")
                     p["task_type"] = "CPU"
-                    # 移除 GPU 特有參數（若有）
                     p.pop("devices", None)
                     self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
                     self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
                 else:
                     raise e
         else:
+            # [修正] 為回歸任務強制指定正確的 loss_function
+            if p.get("loss_function") == "Logloss":
+                p["loss_function"] = "RMSE"
+            if p.get("eval_metric") == "AUC":
+                p["eval_metric"] = "RMSE"
+            
             try:
                 self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
                 self.model.fit(X_train, y_train, eval_set=(X_val, y_val))

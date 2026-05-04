@@ -834,11 +834,11 @@ def map_rows_safe(mapper, data: Iterable[dict], label: str = "") -> list[tuple]:
 # ─────────────────────────────────────────────
 # 增量更新輔助（皆補上 rollback 容錯）
 # ─────────────────────────────────────────────
-def get_all_latest_dates(conn, table: str) -> dict[str, str]:
-    """查出所有股票的最新日期。回傳 { stock_id: "YYYY-MM-DD" }"""
+def get_all_latest_dates(conn, table: str, key_col: str = "stock_id") -> dict[str, str]:
+    """查出所有標的的最新日期。回傳 { id: "YYYY-MM-DD" }"""
     try:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT stock_id, MAX(date) FROM {table} GROUP BY stock_id")
+            cur.execute(f"SELECT {key_col}, MAX(date) FROM {table} GROUP BY {key_col}")
             return {
                 row[0]: row[1].strftime("%Y-%m-%d")
                 for row in cur.fetchall()
@@ -853,9 +853,9 @@ def get_all_latest_dates(conn, table: str) -> dict[str, str]:
 
 
 def get_all_safe_starts(
-    conn, table: str, window_days: int = 60, gap_interval: str = "1 day"
+    conn, table: str, window_days: int = 60, gap_interval: str = "1 day", key_col: str = "stock_id"
 ) -> dict[str, str]:
-    """智能偵測起始點，支援不同頻率（1 day, 1 month, 3 months）。"""
+    """智能偵測起始點，支援不同頻率。"""
     dow_filter = (
         "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
         if gap_interval == "1 day" else ""
@@ -864,27 +864,27 @@ def get_all_safe_starts(
     sql = f"""
     WITH gaps AS (
         SELECT
-            t1.stock_id,
+            t1.{key_col},
             MIN(t1.date + interval '{gap_interval}') as gap_start
         FROM {table} t1
         WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
           AND t1.date < CURRENT_DATE
           AND NOT EXISTS (
               SELECT 1 FROM {table} t2
-              WHERE t2.stock_id = t1.stock_id
+              WHERE t2.{key_col} = t1.{key_col}
                 AND t2.date = t1.date + interval '{gap_interval}'
           )
           {dow_filter}
-        GROUP BY t1.stock_id
+        GROUP BY t1.{key_col}
     ),
     max_dates AS (
-        SELECT stock_id, MAX(date) as last_date FROM {table} GROUP BY stock_id
+        SELECT {key_col}, MAX(date) as last_date FROM {table} GROUP BY {key_col}
     )
     SELECT
-        m.stock_id,
+        m.{key_col},
         COALESCE(g.gap_start, m.last_date + interval '{gap_interval}') as safe_start
     FROM max_dates m
-    LEFT JOIN gaps g ON m.stock_id = g.stock_id
+    LEFT JOIN gaps g ON m.{key_col} = g.{key_col}
     """
     try:
         with conn.cursor() as cur:
