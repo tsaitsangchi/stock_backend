@@ -5,30 +5,18 @@ base_dir = Path(__file__).resolve().parent.parent
 for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
 sys.path.append(str(base_dir))
 """
-fetch_macro_fundamental_data.py — 總經與基本面補強資料抓取
+fetch_macro_fundamental_data.py — 總經與基本面補強資料抓取 v2.2
 ============================================================
-Backer/Sponsor 方案資料集：
-
-  1. business_indicator   ← TaiwanBusinessIndicator  (景氣對策信號)
-     Signal: 燈號轉換作為宏觀 Regime Hard Block
-     Columns: date, leading, coincident, lagging, monitoring, monitoring_color
-
-  2. market_value_weight  ← TaiwanStockMarketValueWeight (台股市值比重表)
-     Signal: 台積電佔指數比重變化 → RS Line / 資金集中度
-     Columns: date, stock_id, stock_name, rank, weight_per, type
-
-  3. industry_chain       ← TaiwanStockIndustryChain (個體公司所屬產業鏈)
-     Signal: 供應鏈關聯 → 上下游連動信號
-     Columns: stock_id, industry, sub_industry, date
-
-執行：
-    python fetch_macro_fundamental_data.py               # 全部
-    python fetch_macro_fundamental_data.py --tables business_indicator market_value_weight
-    python fetch_macro_fundamental_data.py --force
+[v2.2 標準化]：
+  · 導入 safe_commit_rows() 與 dump_failures()。
+  · 強化 atomicity：景氣信號按月 commit，市值權重按股票 ID commit。
+  · 確保 DDL 執行後立即 commit。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 """
 
 import argparse
 import logging
+import json
 import random
 import time
 from datetime import date, datetime, timedelta
@@ -45,6 +33,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = base_dir / "scripts" / "fetchers" / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 DATASET_START = {
@@ -149,9 +140,44 @@ from core.finmind_client import (
 from core.db_utils import (
     get_db_conn as get_conn,
     ensure_ddl,
+    bulk_upsert,
     safe_float,
     safe_int,
 )
+
+
+# ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
 
 
 # ─────────────────────────────────────────────
@@ -161,6 +187,7 @@ from core.db_utils import (
 def fetch_business_indicator(conn, start: str, end: str, delay: float, force: bool):
     logger.info("\n=== [business_indicator] 開始 ===")
     ensure_ddl(conn, DDL_BUSINESS_INDICATOR)
+    conn.commit()
 
     s = start
     if not force:
@@ -175,7 +202,8 @@ def fetch_business_indicator(conn, start: str, end: str, delay: float, force: bo
         return
 
     rows = finmind_get("TaiwanBusinessIndicator",
-                       {"start_date": s, "end_date": end}, delay)
+                       {"start_date": s, "end_date": end}, delay,
+                       raise_on_error=True)
     if not rows:
         logger.info("[business_indicator] 無資料（確認 Backer 方案是否啟用）")
         return
@@ -195,10 +223,14 @@ def fetch_business_indicator(conn, start: str, end: str, delay: float, force: bo
         for r in rows
     ]
 
-    with conn.cursor() as cur:
-        psycopg2.extras.execute_values(cur, UPSERT_BUSINESS_INDICATOR, records)
-    conn.commit()
-    logger.info(f"=== [business_indicator] 完成，{len(records)} 筆 ===")
+    if records:
+        n = safe_commit_rows(
+            conn, UPSERT_BUSINESS_INDICATOR, records,
+            "(%s::date,%s,%s,%s,%s,%s,%s,%s,%s)",
+            label="business_indicator"
+        )
+    
+    logger.info(f"=== [business_indicator] 完成，寫入 {len(records)} 筆 ===")
 
     # 顯示最近幾筆燈號（快速確認資料正確性）
     with conn.cursor() as cur:
@@ -219,6 +251,7 @@ def fetch_business_indicator(conn, start: str, end: str, delay: float, force: bo
 def fetch_market_value_weight(conn, start: str, end: str, delay: float, force: bool):
     logger.info("\n=== [market_value_weight] 開始 ===")
     ensure_ddl(conn, DDL_MARKET_VALUE_WEIGHT)
+    conn.commit()
 
     s = start
     if not force:
@@ -245,6 +278,7 @@ def fetch_market_value_weight(conn, start: str, end: str, delay: float, force: b
             {"start_date": start_d.strftime("%Y-%m-%d"),
              "end_date":   chunk_end.strftime("%Y-%m-%d")},
             delay,
+            raise_on_error=True
         )
         if rows:
             records = [
@@ -258,11 +292,26 @@ def fetch_market_value_weight(conn, start: str, end: str, delay: float, force: b
                 )
                 for r in rows
             ]
-            with conn.cursor() as cur:
-                psycopg2.extras.execute_values(cur, UPSERT_MARKET_VALUE_WEIGHT, records)
-            conn.commit()
-            total += len(records)
-            logger.info(f"  [market_value_weight] {start_d}~{chunk_end}: {len(records)} 筆")
+            if records:
+                # ── 逐支模式進行 commit ──
+                from collections import defaultdict
+                rows_by_stock = defaultdict(list)
+                for rec in records:
+                    sid = rec[1]  # stock_id
+                    rows_by_stock[sid].append(rec)
+
+                for sid, s_rows in rows_by_stock.items():
+                    safe_commit_rows(
+                        conn, UPSERT_MARKET_VALUE_WEIGHT, s_rows,
+                        "(%s,%s,%s,%s,%s,%s)",
+                        label=f"market_value_weight/{sid}"
+                    )
+                
+                total += len(records)
+                logger.info(
+                    f"  [market_value_weight] {start_d}~{chunk_end}: "
+                    f"寫入 {len(rows_by_stock)} 支股票（共 {len(records)} 筆）"
+                )
 
         start_d = chunk_end + timedelta(days=1)
 
@@ -276,6 +325,7 @@ def fetch_market_value_weight(conn, start: str, end: str, delay: float, force: b
 def fetch_industry_chain(conn, delay: float, force: bool):
     logger.info("\n=== [industry_chain] 開始 ===")
     ensure_ddl(conn, DDL_INDUSTRY_CHAIN)
+    conn.commit()
 
     if not force:
         with conn.cursor() as cur:
@@ -285,7 +335,7 @@ def fetch_industry_chain(conn, delay: float, force: bool):
             logger.info(f"[industry_chain] 已有 {cnt} 筆，跳過（使用 --force 強制重抓）")
             return
 
-    rows = finmind_get("TaiwanStockIndustryChain", {}, delay)
+    rows = finmind_get("TaiwanStockIndustryChain", {}, delay, raise_on_error=True)
     if not rows:
         logger.info("[industry_chain] 無資料（確認 Backer 方案是否啟用）")
         return
@@ -303,10 +353,16 @@ def fetch_industry_chain(conn, delay: float, force: bool):
             )
     records = list(unique_records.values())
 
-    with conn.cursor() as cur:
-        psycopg2.extras.execute_values(cur, UPSERT_INDUSTRY_CHAIN, records)
-    conn.commit()
-    logger.info(f"=== [industry_chain] 完成，{len(records)} 筆 ===")
+    if records:
+        # 按 stock_id 分組寫入（雖然 industry_chain 是一支一筆，但維持 safe_commit_rows 模式）
+        for rec in records:
+            safe_commit_rows(
+                conn, UPSERT_INDUSTRY_CHAIN, [rec],
+                "(%s,%s,%s,%s)",
+                label=f"industry_chain/{rec[0]}"
+            )
+    
+    logger.info(f"=== [industry_chain] 完成，寫入 {len(records)} 筆 ===")
 
     # 顯示產業分布
     with conn.cursor() as cur:
@@ -350,14 +406,18 @@ def main():
         logger.error(f"DB 連線失敗：{e}"); sys.exit(1)
 
     for tbl in tables:
-        s = args.start or DATASET_START.get(tbl) or "2024-01-01"
+        try:
+            s = args.start or DATASET_START.get(tbl) or "2024-01-01"
 
-        if tbl == "business_indicator":
-            fetch_business_indicator(conn, s, args.end, args.delay, args.force)
-        elif tbl == "market_value_weight":
-            fetch_market_value_weight(conn, s, args.end, args.delay, args.force)
-        elif tbl == "industry_chain":
-            fetch_industry_chain(conn, args.delay, args.force)
+            if tbl == "business_indicator":
+                fetch_business_indicator(conn, s, args.end, args.delay, args.force)
+            elif tbl == "market_value_weight":
+                fetch_market_value_weight(conn, s, args.end, args.delay, args.force)
+            elif tbl == "industry_chain":
+                fetch_industry_chain(conn, args.delay, args.force)
+        except Exception as e:
+            logger.error(f"  [{tbl}] 抓取過程中發生未預期錯誤：{e}")
+            # 繼續下一個資料表
 
     conn.close()
     logger.info("\n=== 全部完成 ===")

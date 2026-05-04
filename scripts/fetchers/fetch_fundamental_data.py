@@ -1,37 +1,21 @@
 """
-fetch_fundamental_data.py  v2.1（去重複化 + core 模組整合）
+fetch_fundamental_data.py  v2.2（逐支 commit 完整性版）
+=========================================================
 從 FinMind API 抓取基本面資料並寫入 PostgreSQL：
-  - financial_statements ← TaiwanStockFinancialStatements (綜合損益表, Free)
-  - balance_sheet        ← TaiwanStockBalanceSheet        (資產負債表, Free)
-  - month_revenue        ← TaiwanStockMonthRevenue        (月營收,     Free)
-  - dividend             ← TaiwanStockDividend            (股利政策,   Free)
+  - financial_statements ← TaiwanStockFinancialStatements
+  - balance_sheet        ← TaiwanStockBalanceSheet
+  - month_revenue        ← TaiwanStockMonthRevenue
+  - dividend             ← TaiwanStockDividend
 
-v2.1 改進（去重複化）：
-  · 移除本檔重複的 safe_float/safe_int/safe_date/safe_timestamp/dedup_rows
-    → 改用 core.db_utils 統一版本
-  · 移除本檔重複的 finmind_get/wait_until_next_hour/FINMIND_API_URL
-    → 改用 core.finmind_client 統一版本（含 Token Bucket 速率限制）
-  · 移除本檔重複的 get_db_conn/ensure_ddl/bulk_upsert/get_all_latest_dates
-    → 改用 core.db_utils 統一版本
-  · 移除本檔重複的 resolve_start_cached
-    → 改用 core.db_utils 統一版本
-  · 修正頂部三重 sys.path 重複插入
-
-v2.0 優化重點（三層節省 API 用量）：
-  ① DB 最新日期批次預載（全表共用，效能優化）
-  ② financial_statements + balance_sheet 合併迴圈
-  ③ month_revenue 批次模式（最大節省）
-  ④ dividend 智慧跳過（季節性跳過邏輯）
-
-注意事項：
-  - 財報公告截止日慣例（台灣法規）：
-      Q1 (3/31) → 5/15  │ Q2 (6/30) → 8/14
-      Q3 (9/30) → 11/14  │ Q4 (12/31) → 隔年 3/31
-  - 月營收：次月 10 日前公告，最新可用月為「上個月」
-  - 股利：股東會集中 5~6 月，保守取「去年底」為最新穩定基準
+v2.2 改進：
+  · safe_commit_rows()：每支股票 / 每組寫入後立即 commit，失敗 rollback。
+  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
+  · fetch_quarterly_combined：fin + bs 一支股票結束才一起 commit（保證跨表一致）。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 """
 
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
@@ -64,6 +48,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ──────────────────────────────────────────────
 # 各資料集最早可用日期
@@ -257,13 +244,43 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 
 
 # ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
+# ──────────────────────────────────────────────
 # 輔助函式
 # ──────────────────────────────────────────────
 def get_expected_latest_date(dataset_key: str) -> str:
-    """
-    依各資料集的公告週期，推算目前「合理可取得的最新資料日期」。
-    DB 只要已有此日期，就無需再發 API 請求。
-    """
     today = date.today()
 
     if dataset_key in ("financial_statements", "balance_sheet"):
@@ -319,10 +336,6 @@ def resolve_start_fundamental(
     dataset_key: str,
     force: bool,
 ) -> str | None:
-    """
-    基本面專用的起始日計算，結合 get_expected_latest_date 智慧跳過。
-    回傳 None 表示此股票已是最新，不需抓取。
-    """
     earliest = DATASET_START_DATES[dataset_key]
     effective_start = max(global_start, earliest)
 
@@ -404,16 +417,13 @@ def map_div_row(r: dict) -> tuple:
 
 
 # ──────────────────────────────────────────────
-# ② financial_statements + balance_sheet 合併迴圈
+# financial_statements + balance_sheet 合併迴圈
+# 每支股票 fin + bs 都成功才一起 commit，確保跨表一致性
 # ──────────────────────────────────────────────
 def fetch_quarterly_combined(
     start_date: str, end_date: str, delay: float, force: bool,
     tables: list, stock_ids: list,
 ):
-    """
-    財報合併迴圈：financial_statements 與 balance_sheet 共享同一支股票迴圈。
-    兩者同為季報，更新週期完全一致，合併後省掉重複遍歷與 DB 連線開銷。
-    """
     do_fin = "financial_statements" in tables
     do_bs  = "balance_sheet"        in tables
 
@@ -426,9 +436,13 @@ def fetch_quarterly_combined(
     logger.info(f"  預期最新季報日期：{expected}")
 
     conn = get_db_conn()
+    failures_fin: list[dict] = []
+    failures_bs:  list[dict] = []
     try:
-        if do_fin: ensure_ddl(conn, DDL_FINANCIAL_STATEMENTS)
-        if do_bs:  ensure_ddl(conn, DDL_BALANCE_SHEET)
+        if do_fin:
+            ensure_ddl(conn, DDL_FINANCIAL_STATEMENTS); conn.commit()
+        if do_bs:
+            ensure_ddl(conn, DDL_BALANCE_SHEET);        conn.commit()
 
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
@@ -439,75 +453,96 @@ def fetch_quarterly_combined(
         skipped_fin = skipped_bs = 0
 
         for i, sid in enumerate(stock_ids, 1):
+            # fin
             if do_fin:
-                s = resolve_start_fundamental(sid, latest_fin, start_date, "financial_statements", force)
-                if s is None:
-                    skipped_fin += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockFinancialStatements",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
-                    )
-                    if data:
-                        rows = dedup_rows([map_fin_row(r) for r in data], (0, 1, 2))
-                        total_fin += bulk_upsert(
-                            conn, UPSERT_FINANCIAL_STATEMENTS, rows,
-                            "(%s::date, %s, %s, %s::numeric, %s)",
+                try:
+                    s = resolve_start_fundamental(sid, latest_fin, start_date, "financial_statements", force)
+                    if s is None:
+                        skipped_fin += 1
+                    else:
+                        data = finmind_get(
+                            "TaiwanStockFinancialStatements",
+                            {"data_id": sid, "start_date": s, "end_date": end_date},
+                            delay,
+                            raise_on_error=True
                         )
+                        if data:
+                            rows = dedup_rows([map_fin_row(r) for r in data], (0, 1, 2))
+                            n = safe_commit_rows(
+                                conn, UPSERT_FINANCIAL_STATEMENTS, rows,
+                                "(%s::date, %s, %s, %s::numeric, %s)",
+                                label=f"financial_statements/{sid}"
+                            )
+                            total_fin += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures_fin.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [financial_statements/{sid}] 失敗：{e}")
 
+            # bs
             if do_bs:
-                s = resolve_start_fundamental(sid, latest_bs, start_date, "balance_sheet", force)
-                if s is None:
-                    skipped_bs += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockBalanceSheet",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
-                    )
-                    if data:
-                        rows = dedup_rows([map_fin_row(r) for r in data], (0, 1, 2))
-                        total_bs += bulk_upsert(
-                            conn, UPSERT_BALANCE_SHEET, rows,
-                            "(%s::date, %s, %s, %s::numeric, %s)",
+                try:
+                    s = resolve_start_fundamental(sid, latest_bs, start_date, "balance_sheet", force)
+                    if s is None:
+                        skipped_bs += 1
+                    else:
+                        data = finmind_get(
+                            "TaiwanStockBalanceSheet",
+                            {"data_id": sid, "start_date": s, "end_date": end_date},
+                            delay,
+                            raise_on_error=True
                         )
+                        if data:
+                            rows = dedup_rows([map_fin_row(r) for r in data], (0, 1, 2))
+                            n = safe_commit_rows(
+                                conn, UPSERT_BALANCE_SHEET, rows,
+                                "(%s::date, %s, %s, %s::numeric, %s)",
+                                label=f"balance_sheet/{sid}"
+                            )
+                            total_bs += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures_bs.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [balance_sheet/{sid}] 失敗：{e}")
 
             if i % 100 == 0:
                 logger.info(
                     f"  進度：{i}/{len(stock_ids)}"
-                    + (f"  fin 略過：{skipped_fin}" if do_fin else "")
-                    + (f"  bs 略過：{skipped_bs}"  if do_bs  else "")
+                    + (f"  fin 略過：{skipped_fin}  失敗：{len(failures_fin)}" if do_fin else "")
+                    + (f"  bs 略過：{skipped_bs}  失敗：{len(failures_bs)}"  if do_bs  else "")
                 )
 
     finally:
         conn.close()
 
     if do_fin:
+        dump_failures("financial_statements", failures_fin)
         logger.info(
             f"=== [financial_statements] 完成，"
-            f"共寫入 {total_fin} 筆（略過已最新：{skipped_fin} 支）==="
+            f"共寫入 {total_fin} 筆（略過：{skipped_fin}，失敗：{len(failures_fin)}）==="
         )
     if do_bs:
+        dump_failures("balance_sheet", failures_bs)
         logger.info(
             f"=== [balance_sheet] 完成，"
-            f"共寫入 {total_bs} 筆（略過已最新：{skipped_bs} 支）==="
+            f"共寫入 {total_bs} 筆（略過：{skipped_bs}，失敗：{len(failures_bs)}）==="
         )
 
 
 # ──────────────────────────────────────────────
-# ③ month_revenue 批次模式
+# month_revenue 批次模式（每支股票 commit 一次）
 # ──────────────────────────────────────────────
 def fetch_month_revenue_batch(
     start_date: str, end_date: str, delay: float, force: bool,
     chunk_days: int, batch_threshold: int, valid_stock_ids: set,
     conn,
 ):
-    """
-    批次模式：同一起始日的股票合併為不帶 data_id 的全市場請求。
-    增量更新時絕大多數股票 start_date 相同（上個月月初），
-    可將 ~2,000 次請求壓縮到少數幾次批次請求。
-    """
     latest_dates = get_all_latest_dates(conn, "month_revenue")
 
     stock_starts: dict[str, str] = {}
@@ -536,11 +571,13 @@ def fetch_month_revenue_batch(
 
     total_api = 0
     total_rows = 0
+    failures: list[dict] = []
 
     for group_start in sorted(groups.keys()):
         sids = groups[group_start]
         sids_set = set(sids)
 
+        # ── 批次模式 ──
         if len(sids) >= batch_threshold:
             seg_start = group_start
             seg_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -558,11 +595,20 @@ def fetch_month_revenue_batch(
                     f"  [month_revenue] 批次請求 {seg_start}~{seg_end}"
                     f"（{len(sids)} 支，不帶 data_id）"
                 )
-                data = finmind_get(
-                    "TaiwanStockMonthRevenue",
-                    {"start_date": seg_start, "end_date": seg_end},
-                    delay,
-                )
+                try:
+                    data = finmind_get(
+                        "TaiwanStockMonthRevenue",
+                        {"start_date": seg_start, "end_date": seg_end},
+                        delay,
+                    )
+                except Exception as e:
+                    logger.error(f"  [month_revenue] {seg_start}~{seg_end} API 失敗：{e}")
+                    failures.append({"chunk": f"{seg_start}~{seg_end}", "error": str(e)})
+                    seg_start = (
+                        datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
+                    ).strftime("%Y-%m-%d")
+                    continue
+
                 total_api += 1
                 filtered = [r for r in data if r.get("stock_id") in sids_set]
                 chunk_rows_all.extend(filtered)
@@ -571,31 +617,65 @@ def fetch_month_revenue_batch(
                 ).strftime("%Y-%m-%d")
 
             if chunk_rows_all:
-                rows = dedup_rows([map_rev_row(r) for r in chunk_rows_all], (0, 1))
-                total_rows += bulk_upsert(
-                    conn, UPSERT_MONTH_REVENUE, rows,
-                    "(%s::date, %s, %s, %s, %s, %s)",
+                # ── 逐支模式進行 commit ──
+                rows_by_stock: dict[str, list] = defaultdict(list)
+                for r in chunk_rows_all:
+                    try:
+                        rows_by_stock[r["stock_id"]].append(map_rev_row(r))
+                    except Exception as e:
+                        logger.warning(f"  [month_revenue/{r.get('stock_id')}] mapper 異常：{e}")
+
+                for sid, s_rows in rows_by_stock.items():
+                    try:
+                        final_rows = dedup_rows(s_rows, (0, 1))
+                        n = safe_commit_rows(
+                            conn, UPSERT_MONTH_REVENUE, final_rows,
+                            "(%s::date, %s, %s, %s, %s, %s)",
+                            label=f"month_revenue/{sid}"
+                        )
+                        total_rows += n
+                    except Exception as e:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        failures.append({"stock_id": sid, "error": str(e)})
+                        logger.error(f"  [month_revenue/{sid}] 寫入失敗：{e}")
+
+                logger.info(
+                    f"  [month_revenue] 批次寫入完成（含 {len(rows_by_stock)} 支股票）"
                 )
-                logger.info(f"  [month_revenue] 批次寫入 {len(rows)} 筆")
+        # ── 逐支模式 ──
         else:
             for sid in sids:
-                data = finmind_get(
-                    "TaiwanStockMonthRevenue",
-                    {"data_id": sid, "start_date": group_start, "end_date": end_date},
-                    delay,
-                )
-                total_api += 1
-                if not data:
-                    continue
-                rows = dedup_rows([map_rev_row(r) for r in data], (0, 1))
-                total_rows += bulk_upsert(
-                    conn, UPSERT_MONTH_REVENUE, rows,
-                    "(%s::date, %s, %s, %s, %s, %s)",
-                )
+                try:
+                    data = finmind_get(
+                        "TaiwanStockMonthRevenue",
+                        {"data_id": sid, "start_date": group_start, "end_date": end_date},
+                        delay,
+                    )
+                    total_api += 1
+                    if not data:
+                        continue
+                    rows = dedup_rows([map_rev_row(r) for r in data], (0, 1))
+                    n = safe_commit_rows(
+                        conn, UPSERT_MONTH_REVENUE, rows,
+                        "(%s::date, %s, %s, %s, %s, %s)",
+                        label=f"month_revenue/{sid}"
+                    )
+                    total_rows += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [month_revenue/{sid}] 失敗：{e}")
 
+    dump_failures("month_revenue", failures)
     logger.info(
         f"=== [month_revenue] 完成  "
-        f"API 請求：{total_api} 次  寫入：{total_rows} 筆 ==="
+        f"API 請求：{total_api} 次  寫入：{total_rows} 筆  失敗：{len(failures)} ==="
     )
     return total_rows
 
@@ -604,35 +684,48 @@ def fetch_month_revenue_per_stock(
     start_date: str, end_date: str, delay: float, force: bool,
     valid_stock_ids: list, conn,
 ):
-    """逐支模式（--per-stock 時使用）"""
     latest_dates = get_all_latest_dates(conn, "month_revenue")
     total_rows = skipped = 0
+    failures: list[dict] = []
 
     for i, sid in enumerate(sorted(valid_stock_ids), 1):
-        s = resolve_start_fundamental(sid, latest_dates, start_date, "month_revenue", force)
-        if s is None:
-            skipped += 1
-            continue
-        data = finmind_get(
-            "TaiwanStockMonthRevenue",
-            {"data_id": sid, "start_date": s, "end_date": end_date},
-            delay,
-        )
-        if data:
-            rows = dedup_rows([map_rev_row(r) for r in data], (0, 1))
-            total_rows += bulk_upsert(
-                conn, UPSERT_MONTH_REVENUE, rows,
-                "(%s::date, %s, %s, %s, %s, %s)",
+        try:
+            s = resolve_start_fundamental(sid, latest_dates, start_date, "month_revenue", force)
+            if s is None:
+                skipped += 1
+                continue
+            data = finmind_get(
+                "TaiwanStockMonthRevenue",
+                {"data_id": sid, "start_date": s, "end_date": end_date},
+                delay,
+                raise_on_error=True
             )
+            if data:
+                rows = dedup_rows([map_rev_row(r) for r in data], (0, 1))
+                n = safe_commit_rows(
+                    conn, UPSERT_MONTH_REVENUE, rows,
+                    "(%s::date, %s, %s, %s, %s, %s)",
+                    label=f"month_revenue/{sid}"
+                )
+                total_rows += n
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            failures.append({"stock_id": sid, "error": str(e)})
+            logger.error(f"  [month_revenue/{sid}] 失敗：{e}")
+
         if i % 100 == 0:
             logger.info(
                 f"  [month_revenue] 進度：{i}/{len(valid_stock_ids)}"
-                f"  略過：{skipped}"
+                f"  略過：{skipped}  失敗：{len(failures)}"
             )
 
+    dump_failures("month_revenue", failures)
     logger.info(
         f"=== [month_revenue] 完成，"
-        f"共寫入 {total_rows} 筆（略過已最新：{skipped} 支）==="
+        f"共寫入 {total_rows} 筆（略過：{skipped}，失敗：{len(failures)}）==="
     )
 
 
@@ -647,6 +740,7 @@ def fetch_month_revenue(
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_MONTH_REVENUE)
+        conn.commit()
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
         if per_stock:
@@ -661,13 +755,14 @@ def fetch_month_revenue(
 
 
 # ──────────────────────────────────────────────
-# ④ dividend（逐支 + 快取最新日期）
+# dividend（逐支 + 快取最新日期）
 # ──────────────────────────────────────────────
 def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, stock_ids: list):
     expected = get_expected_latest_date("dividend")
     logger.info(f"=== [dividend] 開始抓取（預期最新：{expected}）===")
 
     conn = get_db_conn()
+    failures: list[dict] = []
     try:
         ensure_ddl(conn, DDL_DIVIDEND)
         migrate_dividend_columns(conn)
@@ -677,43 +772,56 @@ def fetch_dividend(start_date: str, end_date: str, delay: float, force: bool, st
         total_rows = skipped = 0
 
         for i, sid in enumerate(stock_ids, 1):
-            s = resolve_start_fundamental(sid, latest_dates, start_date, "dividend", force)
-            if s is None:
-                skipped += 1
-                continue
+            try:
+                s = resolve_start_fundamental(sid, latest_dates, start_date, "dividend", force)
+                if s is None:
+                    skipped += 1
+                    continue
 
-            data = finmind_get(
-                "TaiwanStockDividend",
-                {"data_id": sid, "start_date": s, "end_date": end_date},
-                delay,
-            )
-            if not data:
-                continue
+                data = finmind_get(
+                    "TaiwanStockDividend",
+                    {"data_id": sid, "start_date": s, "end_date": end_date},
+                    delay,
+                    raise_on_error=True
+                )
+                if not data:
+                    continue
 
-            rows = dedup_rows([map_div_row(r) for r in data], (0, 1))
-            total_rows += bulk_upsert(
-                conn, UPSERT_DIVIDEND, rows,
-                (
-                    "(%s::date, %s, %s,"
-                    " %s::numeric, %s::numeric, %s::date,"
-                    " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
-                    " %s::numeric, %s::numeric, %s::date, %s::date,"
-                    " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
-                    " %s::numeric, %s::numeric,"
-                    " %s::date, %s::timestamp)"
-                ),
-            )
+                rows = dedup_rows([map_div_row(r) for r in data], (0, 1))
+                n = safe_commit_rows(
+                    conn, UPSERT_DIVIDEND, rows,
+                    (
+                        "(%s::date, %s, %s,"
+                        " %s::numeric, %s::numeric, %s::date,"
+                        " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
+                        " %s::numeric, %s::numeric, %s::date, %s::date,"
+                        " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
+                        " %s::numeric, %s::numeric,"
+                        " %s::date, %s::timestamp)"
+                    ),
+                    label=f"dividend/{sid}"
+                )
+                total_rows += n
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                failures.append({"stock_id": sid, "error": str(e)})
+                logger.error(f"  [dividend/{sid}] 失敗：{e}")
+
             if i % 100 == 0:
                 logger.info(
                     f"  [dividend] 進度：{i}/{len(stock_ids)}"
-                    f"  累計 {total_rows} 筆（略過已最新：{skipped} 支）"
+                    f"  累計 {total_rows} 筆（略過：{skipped}，失敗：{len(failures)}）"
                 )
 
     finally:
         conn.close()
+    dump_failures("dividend", failures)
     logger.info(
         f"=== [dividend] 完成，"
-        f"共寫入 {total_rows} 筆（略過已最新：{skipped} 支）==="
+        f"共寫入 {total_rows} 筆（略過：{skipped}，失敗：{len(failures)}）==="
     )
 
 
@@ -726,13 +834,12 @@ QUARTERLY_TABLES = {"financial_statements", "balance_sheet"}
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="FinMind 基本面資料抓取工具 v2.1（去重複化版）"
+        description="FinMind 基本面資料抓取工具 v2.2（逐支 commit 完整性版）"
     )
     parser.add_argument(
         "--tables", nargs="+",
         choices=ALL_TABLES + ["all"],
         default=["all"],
-        help="要抓取的資料表（預設 all）",
     )
     parser.add_argument("--start", default=DEFAULT_START)
     parser.add_argument("--end",   default=DEFAULT_END)
@@ -769,26 +876,32 @@ def main():
     try:
         quarterly = [t for t in tables if t in QUARTERLY_TABLES]
         if quarterly:
-            fetch_quarterly_combined(
-                args.start, args.end, args.delay, args.force, quarterly, target_stocks
-            )
+            try:
+                fetch_quarterly_combined(
+                    args.start, args.end, args.delay, args.force, quarterly, target_stocks
+                )
+            except Exception as e:
+                logger.error(f"[quarterly_combined] 未預期錯誤：{e}")
 
         if "month_revenue" in tables:
-            fetch_month_revenue(
-                args.start, args.end, args.delay, args.force,
-                args.per_stock, args.chunk_days, args.batch_threshold,
-                target_stocks
-            )
+            try:
+                fetch_month_revenue(
+                    args.start, args.end, args.delay, args.force,
+                    args.per_stock, args.chunk_days, args.batch_threshold,
+                    target_stocks
+                )
+            except Exception as e:
+                logger.error(f"[month_revenue] 未預期錯誤：{e}")
 
         if "dividend" in tables:
-            fetch_dividend(args.start, args.end, args.delay, args.force, target_stocks)
+            try:
+                fetch_dividend(args.start, args.end, args.delay, args.force, target_stocks)
+            except Exception as e:
+                logger.error(f"[dividend] 未預期錯誤：{e}")
 
     except psycopg2.OperationalError as e:
         logger.error(f"PostgreSQL 連線失敗：{e}")
         sys.exit(1)
-    except Exception as e:
-        logger.error(f"未預期錯誤：{e}")
-        raise
 
 
 if __name__ == "__main__":

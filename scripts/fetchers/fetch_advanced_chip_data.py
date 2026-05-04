@@ -1,42 +1,17 @@
 from __future__ import annotations
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_advanced_chip_data.py — 進階籌碼與融資融券資料
-======================================================
-[新增] 補齊原 fetch_chip_data.py 沒抓的「市場層」與「放空」資料：
-
-  1. total_margin_short ← TaiwanStockTotalMarginPurchaseShortSale
-     資料範圍：2001-01-01 ~ now（Free）
-     用途：整體市場融資融券餘額。散戶恐慌指標、信用過熱指標。
-     非個股資料 → 以 name (融資/融券) 為 PK 的一部分。
-
-  2. total_inst_investors ← TaiwanStockTotalInstitutionalInvestors
-     資料範圍：2004-04-01 ~ now（Free）
-     用途：整體市場三大法人買賣金額（外資/投信/自營商）。
-           大盤主力資金方向，補強 institutional_investors_buy_sell（個股層）。
-
-  3. securities_lending ← TaiwanStockSecuritiesLending
-     資料範圍：2001-05-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：借券成交明細。機構放空的最直接證據（學術上的 short interest）。
-           借券量激增 = 大量機構押注下跌，是強烈反向 smart money 訊號。
-
-  4. daily_short_balance ← TaiwanDailyShortSaleBalances
-     資料範圍：2005-07-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：信用額度總量管制餘額表。融券 + SBL（借券放空）的完整放空圖像。
-
-  5. margin_short_suspension ← TaiwanStockMarginShortSaleSuspension
-     資料範圍：2015-01-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：暫停融券賣出表。被列入暫停常是軋空前兆，事件後 5-10 日報酬顯著為正。
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - retail_panic_index = total_margin_balance.pct_change(5)（負值越大越恐慌）
-  - sbl_short_intensity = sbl_short_sales / shares_outstanding
-  - short_squeeze_signal = (margin_short_suspension flag) AND (foreign_buy > 0)
-  - institutional_breadth = sum(三大法人買超天數，過去 5 日)
+fetch_advanced_chip_data.py — 進階籌碼與融資融券資料（逐支 commit 完整性版）
+================================================================================
+v2.2 改進：
+  · safe_commit_rows()：每支股票 / 每組寫入後立即 commit，失敗 rollback。
+  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 
 執行：
     python fetch_advanced_chip_data.py
@@ -70,6 +45,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 DATASET_START = {
     "total_margin_short":      "2001-01-01",
     "total_inst_investors":    "2004-04-01",
@@ -85,12 +63,12 @@ DEFAULT_END = date.today().strftime("%Y-%m-%d")
 DDL_TOTAL_MARGIN_SHORT = """
 CREATE TABLE IF NOT EXISTS total_margin_short (
     date          DATE,
-    name          VARCHAR(50),    -- 融資 / 融券
+    name          VARCHAR(50),
     today_balance BIGINT,
     yes_balance   BIGINT,
     buy           BIGINT,
     sell          BIGINT,
-    return_qty    BIGINT,         -- API 欄位 Return（避開 SQL 保留字）
+    return_qty    BIGINT,
     PRIMARY KEY (date, name)
 );
 CREATE INDEX IF NOT EXISTS idx_tms_date ON total_margin_short (date);
@@ -99,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_tms_date ON total_margin_short (date);
 DDL_TOTAL_INST = """
 CREATE TABLE IF NOT EXISTS total_inst_investors (
     date DATE,
-    name VARCHAR(100),  -- 外資、投信、自營商等
+    name VARCHAR(100),
     buy  BIGINT,
     sell BIGINT,
     PRIMARY KEY (date, name)
@@ -224,6 +202,41 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
     reason   = EXCLUDED.reason;
 """
 
+
+# ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
 # ─────────────────────────────────────────────
 # Mapper
 # ─────────────────────────────────────────────
@@ -284,6 +297,7 @@ def fetch_market_dataset(
     start: str, end: str, delay: float, force: bool,
 ):
     ensure_ddl(conn, ddl)
+    conn.commit()
     s = start
     if not force:
         safe_s = get_market_safe_start(conn, table)
@@ -294,20 +308,27 @@ def fetch_market_dataset(
             s = max(safe_s, DATASET_START[dataset_key])
     s = max(s, DATASET_START[dataset_key])
     logger.info(f"[{table}] 抓取 {s} ~ {end}")
-    data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay)
+    try:
+        data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay, raise_on_error=True)
+    except Exception as e:
+        logger.error(f"[{table}] API 失敗：{e}")
+        return
     if not data:
         logger.info(f"[{table}] 無新資料")
         return
     rows_map = {}
     for r in data:
-        mapped = mapper(r)
-        # 假設前 2 個欄位是 PK (date, name)
-        pk = mapped[:2]
-        rows_map[pk] = mapped
+        try:
+            mapped = mapper(r)
+            pk = mapped[:2]
+            rows_map[pk] = mapped
+        except Exception as e:
+            logger.warning(f"[{table}] mapper 異常筆，跳過：{e}")
 
     rows = list(rows_map.values())
-    n = bulk_upsert(conn, upsert_sql, rows, template)
+    n = safe_commit_rows(conn, upsert_sql, rows, template, label=table)
     logger.info(f"[{table}] 寫入 {n} 筆")
+
 
 def fetch_per_stock_dataset(
     conn, dataset: str, table: str, ddl: str,
@@ -316,8 +337,10 @@ def fetch_per_stock_dataset(
     delay: float, force: bool, use_batch: bool,
     batch_threshold: int = 20, chunk_days: int = 90,
 ):
-    """個股層資料：Sponsor 可不帶 data_id 批次抓全市場，否則逐支。"""
+    """個股層資料：Sponsor 可不帶 data_id 批次抓全市場，否則逐支。
+    無論批次或逐支，**每支股票寫入後立即 commit**，確保資料完整性。"""
     ensure_ddl(conn, ddl)
+    conn.commit()
     valid_set = set(stock_ids)
     latest_dates = get_all_safe_starts(conn, table)
 
@@ -342,11 +365,14 @@ def fetch_per_stock_dataset(
 
     total_api, total_rows = 0, 0
     batch_disabled = False
+    failures: list[dict] = []
+    pk_len = 3 if table == "securities_lending" else 2
 
     for group_start in sorted(groups.keys()):
         sids = groups[group_start]
         sids_set = set(sids)
 
+        # ── 批次模式 ──
         if use_batch and len(sids) >= batch_threshold and not batch_disabled:
             seg_start = group_start
             seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
@@ -364,6 +390,7 @@ def fetch_per_stock_dataset(
                     data = finmind_get(
                         dataset, {"start_date": seg_start, "end_date": seg_end},
                         delay, raise_on_batch_400=True,
+                        raise_on_error=True
                     )
                     total_api += 1
                     chunk_rows.extend([r for r in data if r.get("stock_id") in sids_set])
@@ -374,41 +401,81 @@ def fetch_per_stock_dataset(
                 logger.warning(f"  {e}；改逐支")
                 batch_disabled = True
                 chunk_rows = []
+            except Exception as e:
+                logger.error(f"  [{table}] 批次抓取失敗：{e}")
+                chunk_rows = []
+
             if chunk_rows:
-                # 批次去重：防止 ON CONFLICT DO UPDATE 同一 batch 內 PK 重複
-                rows_map = {}
+                # ── 逐支模式進行 commit ──
+                rows_by_stock: dict[str, list] = defaultdict(list)
                 for r in chunk_rows:
-                    mapped = mapper(r)
-                    # 判斷 PK 長度：securities_lending 是 3 (date, id, type)，其餘是 2 (date, id)
-                    pk_len = 3 if table == "securities_lending" else 2
-                    pk = mapped[:pk_len]
-                    rows_map[pk] = mapped
+                    sid = r.get("stock_id")
+                    if sid not in sids_set:
+                        continue
+                    try:
+                        rows_by_stock[sid].append(mapper(r))
+                    except Exception as e:
+                        logger.warning(f"  [{table}/{sid}] mapper 異常筆，跳過：{e}")
 
-                rows = list(rows_map.values())
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+                for sid, s_rows in rows_by_stock.items():
+                    try:
+                        rows_map = {}
+                        for row in s_rows:
+                            rows_map[row[:pk_len]] = row
+                        final_rows = list(rows_map.values())
+                        n = safe_commit_rows(
+                            conn, upsert_sql, final_rows, template,
+                            label=f"{table}/{sid}",
+                        )
+                        total_rows += n
+                    except Exception as e:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        failures.append({"stock_id": sid, "error": str(e)})
+                        logger.error(f"  [{table}/{sid}] 寫入失敗：{e}")
 
+                logger.info(
+                    f"  [{table}] 批次寫入完成（含 {len(rows_by_stock)} 支股票）"
+                )
+
+        # ── 逐支模式 ──
         if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
             for sid in sids:
-                data = finmind_get(
-                    dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
-                    delay,
-                )
-                total_api += 1
-                if not data:
-                    continue
-                # 逐支去重
-                rows_map = {}
-                for r in data:
-                    mapped = mapper(r)
-                    pk_len = 3 if table == "securities_lending" else 2
-                    pk = mapped[:pk_len]
-                    rows_map[pk] = mapped
+                try:
+                    data = finmind_get(
+                        dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
+                        delay,
+                        raise_on_error=True
+                    )
+                    total_api += 1
+                    if not data:
+                        continue
+                    rows_map = {}
+                    for r in data:
+                        try:
+                            mapped = mapper(r)
+                            rows_map[mapped[:pk_len]] = mapped
+                        except Exception as e:
+                            logger.warning(f"  [{table}/{sid}] mapper 異常筆，跳過：{e}")
 
-                rows = list(rows_map.values())
-                total_rows += bulk_upsert(conn, upsert_sql, rows, template)
+                    rows = list(rows_map.values())
+                    n = safe_commit_rows(
+                        conn, upsert_sql, rows, template,
+                        label=f"{table}/{sid}",
+                    )
+                    total_rows += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [{table}/{sid}] 失敗：{e}")
 
-    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows}")
+    dump_failures(table, failures)
+    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows} 失敗:{len(failures)}")
 
 # ─────────────────────────────────────────────
 # main
@@ -430,7 +497,6 @@ def main():
 
     conn = get_db_conn()
     try:
-        # 取得個股 list
         if args.stock_id:
             stock_ids = [s.strip() for s in args.stock_id.split(",")]
         else:

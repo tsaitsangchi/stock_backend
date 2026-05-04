@@ -1,56 +1,20 @@
 from __future__ import annotations
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_fred_data.py — FRED API 全球宏觀資料（FinMind 範圍外）
-================================================================
-[新增] 使用 St. Louis Fed FRED API 補齊 FinMind 沒有的關鍵宏觀指標。
-
-  資料源：FRED (Federal Reserve Economic Data)
-  https://fred.stlouisfed.org/docs/api/fred/
-  Endpoint: https://api.stlouisfed.org/fred/series/observations
-  認證：免費申請 API key（https://fredaccount.stlouisfed.org/）
-        填入 .env 的 FRED_API_KEY
-
-  抓取的 series（可在 config.FRED_SERIES_IDS 調整）：
-
-  ── 美國公債殖利率曲線（衰退預警）──
-    T10Y2Y  美國 10Y - 2Y 利差（最常用衰退指標，倒掛後 6-18 個月衰退）
-    T10Y3M  美國 10Y - 3M 利差（聯準會偏好的衰退指標）
-    T10YIE  美國 10 年期 BEI（市場通膨預期）
-
-  ── 風險偏好/恐慌指標 ──
-    VIXCLS  CBOE 波動率指數（VIX，全球恐慌指數）
-    BAMLH0A0HYM2  美國高收益債信用利差（信用緊縮預警）
-
-  ── 美元 / 流動性 ──
-    DTWEXBGS  美元指數（廣義 DXY，反映全球美元強弱）
-    M2SL      美國 M2 貨幣供給（流動性的真正指標，比 USD/TWD 強）
-    DGS10     10 年期國債殖利率（與台美利差計算 carry trade）
-    DGS2      2 年期國債殖利率
-    DGS3MO    3 個月國庫券殖利率
-
-  ── 美國景氣 ──
-    NAPMCI    ISM 製造業 PMI（與 SOX 高度相關，半導體景氣領先指標）
-    UMCSENT   密大消費者信心指數
-    INDPRO    工業生產指數
-    UNRATE    失業率
-    CPIAUCSL  美國 CPI（用於計算 real yield）
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - yield_curve_inverted   = (T10Y2Y < 0) flag
-  - vix_zscore_252         = VIX 對 252 日均值的 z-score
-  - real_yield_10y         = DGS10 - 10年通膨預期（CPIAUCSL YoY）
-  - dxy_momentum_60d       = DTWEXBGS.pct_change(60)
-  - m2_growth_yoy          = M2SL.pct_change(252)
-  - tw_us_carry_trade      = (TW 利率 - DGS2) × USD/TWD 動量
-  - pmi_cross_50           = NAPMCI 上穿/下穿 50 的事件特徵
+fetch_fred_data.py — FRED API 全球宏觀資料（逐 series commit 完整性版）
+=========================================================================
+v2.2 改進：
+  · safe_commit_rows()：每個 series 寫入後立即 commit，失敗 rollback。
+  · 主迴圈 try/except 後補上 conn.rollback()，避免 transaction 卡住。
+  · 失敗清單寫入 outputs/fred_failed_{date}.json。
 
 執行：
-    python fetch_fred_data.py                   # 全部增量
+    python fetch_fred_data.py
     python fetch_fred_data.py --series VIXCLS T10Y2Y
     python fetch_fred_data.py --force --start 2000-01-01
 """
@@ -73,24 +37,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 
-# 預設抓取的 series
 DEFAULT_FRED_SERIES = [
     # 殖利率曲線
     "T10Y2Y", "T10Y3M", "T10YIE",
     # 風險指標
     "VIXCLS", "BAMLH0A0HYM2",
-    # 美元/流動性
+    # 美元 / 流動性
     "DTWEXBGS", "M2SL",
     "DGS10", "DGS2", "DGS3MO",
     # 美國景氣
     "NAPMCI", "UMCSENT", "INDPRO", "UNRATE", "CPIAUCSL",
 ]
 
-# ─────────────────────────────────────────────
-# DDL
-# ─────────────────────────────────────────────
 DDL_FRED = """
 CREATE TABLE IF NOT EXISTS fred_series (
     series_id VARCHAR(50),
@@ -107,16 +70,47 @@ VALUES %s
 ON CONFLICT (series_id, date) DO UPDATE SET value = EXCLUDED.value;
 """
 
+
+# ─────────────────────────────────────────────
+# 逐 series commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"fred_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 個 series）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
 # ─────────────────────────────────────────────
 # 抓取邏輯
 # ─────────────────────────────────────────────
 def fred_get(series_id: str, api_key: str,
              start: str, end: str,
              max_retries: int = 3) -> list[dict]:
-    """
-    向 FRED API 請求單一 series 的觀測值。
-    失敗時指數退避重試（含 jitter）。
-    """
     params = {
         "series_id":         series_id,
         "api_key":           api_key,
@@ -132,7 +126,7 @@ def fred_get(series_id: str, api_key: str,
                     f"[{series_id}] HTTP {resp.status_code}：{resp.text[:200]}"
                 )
                 if resp.status_code == 429:
-                    time.sleep(60)  # rate limited
+                    time.sleep(60)
                     continue
                 return []
             data = resp.json()
@@ -148,6 +142,7 @@ def fred_get(series_id: str, api_key: str,
     logger.error(f"[{series_id}] 已重試 {max_retries} 次，放棄")
     return []
 
+
 def latest_date_for_series(conn, series_id: str) -> str | None:
     with conn.cursor() as cur:
         cur.execute(
@@ -159,8 +154,9 @@ def latest_date_for_series(conn, series_id: str) -> str | None:
             return row[0].strftime("%Y-%m-%d")
     return None
 
+
 def fetch_series(conn, series_id: str, api_key: str,
-                 start: str, end: str, force: bool, delay: float):
+                 start: str, end: str, force: bool, delay: float) -> int:
     s = start
     if not force:
         last = latest_date_for_series(conn, series_id)
@@ -168,29 +164,35 @@ def fetch_series(conn, series_id: str, api_key: str,
             next_d = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             if next_d > end:
                 logger.info(f"[{series_id}] 已最新（{last}），跳過")
-                return
+                return 0
             s = next_d
     logger.info(f"[{series_id}] 抓取 {s} ~ {end}")
 
     obs = fred_get(series_id, api_key, s, end)
     if not obs:
         logger.info(f"[{series_id}] 無新資料")
-        return
+        return 0
 
     rows = []
     for o in obs:
-        v = safe_float(o.get("value")) if o.get("value") != "." else None
-        if v is None:
-            continue  # FRED 用 "." 表示 NA
-        rows.append((series_id, o.get("date"), v))
+        try:
+            v = safe_float(o.get("value")) if o.get("value") != "." else None
+            if v is None:
+                continue
+            rows.append((series_id, o.get("date"), v))
+        except Exception as e:
+            logger.warning(f"  [{series_id}] mapper 異常筆，跳過：{e}")
 
     if rows:
-        bulk_upsert(conn, UPSERT_FRED, rows, "(%s, %s, %s)")
-        logger.info(f"[{series_id}] 寫入 {len(rows)} 筆")
+        n = safe_commit_rows(conn, UPSERT_FRED, rows, "(%s, %s, %s)", label=series_id)
+        logger.info(f"[{series_id}] 寫入 {n} 筆")
+        time.sleep(delay)
+        return n
     else:
         logger.info(f"[{series_id}] 全部為 NA，未寫入")
+        time.sleep(delay)
+        return 0
 
-    time.sleep(delay)
 
 # ─────────────────────────────────────────────
 # main
@@ -218,16 +220,25 @@ def main():
     logger.info(f"區間：{args.start} ~ {args.end}")
 
     conn = get_db_conn()
+    failures = []
     try:
         ensure_ddl(conn, DDL_FRED)
+        conn.commit()
         for sid in args.series:
             try:
                 fetch_series(conn, sid, api_key, args.start, args.end, args.force, args.delay)
             except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                failures.append({"series_id": sid, "error": str(e)})
                 logger.error(f"[{sid}] 失敗：{e}")
                 continue
     finally:
         conn.close()
+
+    dump_failures(failures)
     logger.info("全部完成")
 
 if __name__ == "__main__":
