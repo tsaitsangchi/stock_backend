@@ -47,8 +47,6 @@ PER_STOCK_SCRIPTS_CONFIG = {
     "fetch_price_adj_data.py":    "--stock-id",
     "fetch_fundamental_data.py":  "--stock-id",
     "fetch_chip_data.py":         "--stock-id",
-    "fetch_derivative_data.py":   "--stock-id",  # v3.0 已統一
-    "fetch_international_data.py": "--tickers",
     "fetch_advanced_chip_data.py": "--stock-id",
     "fetch_sponsor_chip_data.py":  "--stock-id",
     "fetch_event_risk_data.py":    "--stock-id",
@@ -62,7 +60,9 @@ MACRO_SCRIPTS = [
     "fetch_macro_fundamental_data.py",
     "fetch_total_return_index.py",
     "fetch_extended_derivative_data.py",
-    "fetch_derivative_sentiment_data.py"
+    "fetch_derivative_sentiment_data.py",
+    "fetch_derivative_data.py",
+    "fetch_international_data.py"
 ]
 
 def run_script(script_name: str, args: list[str] = []) -> bool:

@@ -136,8 +136,8 @@ def fetch_us_stock_price(conn, start, end, delay, force, tickers):
 def fetch_crude_oil_prices(conn, start, end, delay, force):
     logger.info("=== [crude_oil_prices] 開始 ===")
     ensure_ddl(conn, DDL_CRUDE_OIL_PRICES)
-    latest = get_all_safe_starts(conn, "crude_oil_prices")
-    flog = FailureLogger("crude_oil_prices", db_conn=conn)
+    latest = get_all_safe_starts(conn, "crude_oil_prices", key_col="name")
+    flog = FailureLogger("crude_oil", db_conn=conn)
     total_rows = 0
 
     for oid in CRUDE_OIL_IDS:
@@ -158,8 +158,9 @@ def fetch_crude_oil_prices(conn, start, end, delay, force):
 def fetch_gold_price(conn, start, end, delay, force):
     logger.info("=== [gold_price] 開始 ===")
     ensure_ddl(conn, DDL_GOLD_PRICE)
-    # gold_price 無 key，我們先當作 "GOLD" 品種來處理日期
-    latest = get_all_safe_starts(conn, "gold_price")
+    # gold_price 無 key，使用市場層級偵測
+    m_start = get_market_safe_start(conn, "gold_price")
+    latest = {"GOLD": m_start} if m_start else {}
     flog = FailureLogger("gold_price", db_conn=conn)
     
     s = resolve_start_cached("GOLD", latest, start, DATASET_START_DATES["gold_price"], force)
