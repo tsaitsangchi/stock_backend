@@ -1,46 +1,17 @@
 from __future__ import annotations
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_event_risk_data.py — 事件風險與股本變動資料
-====================================================
-[新增] 黑天鵝防護網與特徵跳變保護。
-       這些資料雖然事件稀疏，但對訓練資料的「乾淨度」與持倉前的風險檢查至關重要。
-
-  1. delisting ← TaiwanStockDelisting（Free，全市場一次抓）
-     用途：下市櫃名單。signal_filter 應在持倉前 hard block 已下市標的。
-
-  2. suspended ← TaiwanStockSuspended（Sponsor，全市場一次抓）
-     用途：暫停交易公告（含恢復時間）。同上，避免對暫停期間的資料做特徵運算。
-
-  3. capital_reduction ← TaiwanStockCapitalReductionReferencePrice（Free per-stock）
-     用途：減資恢復買賣參考價。沒抓的話，減資日的 OHLCV 會出現巨大跳動被
-           特徵工程誤識為信號。
-
-  4. split_price ← TaiwanStockSplitPrice（Free，全表一次抓）
-     用途：分割/反分割後參考價。同 capital_reduction 的特徵跳變保護。
-
-  5. trading_date ← TaiwanStockTradingDate（Free，全表一次抓）
-     用途：台股交易日表。feature_engineering 中所有 "shift(N)" 應該是「N 個交易日」
-           而非「N 個自然日」，這張表是日曆對齊的基礎。
-
-  6. market_value ← TaiwanStockMarketValue（Sponsor 批次最佳）
-     資料範圍：2004-01-01 ~ now
-     用途：個股每日市值。size factor（小市值 vs 大市值）— Fama-French 5-factor 之一。
-
-  7. disposition_securities ← TaiwanStockDispositionSecuritiesPeriod（Backer/Sponsor）
-     用途：處置股票公告。處置期間流動性受限，應作為持倉黑名單。
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - is_delisted        = stock_id 是否在 delisting 表內（hard block）
-  - is_suspended_today = 今天是否有暫停交易公告（hard block）
-  - in_disposition     = 處置期間內（限制持倉量）
-  - log_market_cap     = log(market_value)（size factor）
-  - market_cap_chg_30d = market_cap.pct_change(30)
-  - days_since_capital_reduction = 距上次減資的天數（事件衝擊衰減特徵）
+fetch_event_risk_data.py — 事件風險與股本變動（逐支 commit 完整性版）
+=====================================================================
+v2.2 改進：
+  · safe_commit_rows()：每支股票寫入後立即 commit，失敗 rollback。
+  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 
 執行：
     python fetch_event_risk_data.py
@@ -73,6 +44,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 DATASET_START = {
     "delisting":              "2001-01-01",
     "suspended":              "2011-10-06",
@@ -100,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_delisting_stock ON delisting (stock_id);
 DDL_SUSPENDED = """
 CREATE TABLE IF NOT EXISTS suspended (
     stock_id         VARCHAR(50),
-    date             DATE,           -- 暫停日期
+    date             DATE,
     suspension_time  VARCHAR(50),
     resumption_date  DATE,
     resumption_time  VARCHAR(50),
@@ -113,12 +87,12 @@ DDL_CAPITAL_REDUCTION = """
 CREATE TABLE IF NOT EXISTS capital_reduction (
     date                       DATE,
     stock_id                   VARCHAR(50),
-    closing_last_trading       NUMERIC(20,4),  -- ClosingPriceonTheLastTradingDay
-    post_reduction_ref         NUMERIC(20,4),  -- PostReductionReferencePrice
+    closing_last_trading       NUMERIC(20,4),
+    post_reduction_ref         NUMERIC(20,4),
     limit_up                   NUMERIC(20,4),
     limit_down                 NUMERIC(20,4),
-    opening_ref                NUMERIC(20,4),  -- OpeningReferencePrice
-    exright_ref                NUMERIC(20,4),  -- ExrightReferencePrice
+    opening_ref                NUMERIC(20,4),
+    exright_ref                NUMERIC(20,4),
     reason                     VARCHAR(500),
     PRIMARY KEY (date, stock_id)
 );
@@ -129,7 +103,7 @@ DDL_SPLIT_PRICE = """
 CREATE TABLE IF NOT EXISTS split_price (
     date          DATE,
     stock_id      VARCHAR(50),
-    type          VARCHAR(20),    -- 分割 / 反分割
+    type          VARCHAR(20),
     before_price  NUMERIC(20,4),
     after_price   NUMERIC(20,4),
     max_price     NUMERIC(20,4),
@@ -239,6 +213,41 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
     period_end      = EXCLUDED.period_end;
 """
 
+
+# ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
 # ─────────────────────────────────────────────
 # Mapper
 # ─────────────────────────────────────────────
@@ -294,17 +303,16 @@ def latest_market_date(conn, table: str) -> str | None:
             return row[0].strftime("%Y-%m-%d")
     return None
 
+
 def fetch_market_full_dump(
     conn, dataset: str, table: str, ddl: str,
     upsert_sql: str, template: str, mapper, dataset_key: str,
     start: str, end: str, delay: float, force: bool,
     pass_dates: bool = True,
 ):
-    """
-    全市場單次抓（不需 data_id）。delisting/suspended/split_price/trading_date/disposition 屬此類。
-    pass_dates=False 表示 API 不接受 start/end_date（如 TaiwanStockDelisting）。
-    """
+    """全市場單次抓 — 依 stock_id 分組逐支 commit。"""
     ensure_ddl(conn, ddl)
+    conn.commit()
     s = start
     if not force:
         last = latest_market_date(conn, table)
@@ -321,13 +329,57 @@ def fetch_market_full_dump(
         params = {"start_date": s, "end_date": end}
     logger.info(f"[{table}] 抓取 {s if pass_dates else 'ALL'} ~ {end if pass_dates else ''}")
 
-    data = finmind_get(dataset, params, delay)
+    try:
+        data = finmind_get(dataset, params, delay)
+    except Exception as e:
+        logger.error(f"[{table}] API 失敗：{e}")
+        return
     if not data:
         logger.info(f"[{table}] 無新資料")
         return
-    rows = [mapper(r) for r in data]
-    n = bulk_upsert(conn, upsert_sql, rows, template)
-    logger.info(f"[{table}] 寫入 {n} 筆")
+
+    # mapper 容錯
+    rows = []
+    for r in data:
+        try:
+            rows.append(mapper(r))
+        except Exception as e:
+            logger.warning(f"[{table}] mapper 異常筆，跳過：{e}")
+
+    if not rows:
+        return
+
+    # ── 逐支 commit ──
+    rows_by_stock: dict[str, list] = defaultdict(list)
+    for r in rows:
+        if len(r) > 1 and r[1]:
+            rows_by_stock[r[1]].append(r)
+        else:
+            rows_by_stock["MARKET"].append(r)
+
+    total_rows = 0
+    failures: list[dict] = []
+    for sid, s_rows in rows_by_stock.items():
+        try:
+            n = safe_commit_rows(
+                conn, upsert_sql, s_rows, template,
+                label=f"{table}/{sid}"
+            )
+            total_rows += n
+            if n == 0 and s_rows:
+                failures.append({"stock_id": sid, "rows": len(s_rows)})
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            failures.append({"stock_id": sid, "error": str(e)})
+            logger.error(f"  [{table}/{sid}] 寫入失敗：{e}")
+
+    dump_failures(table, failures)
+    logger.info(f"[{table}] 寫入完成（含 {len(rows_by_stock)} 組標的，"
+                f"共 {total_rows} 筆，失敗 {len(failures)}）")
+
 
 def fetch_per_stock_full(
     conn, dataset: str, table: str, ddl: str,
@@ -336,8 +388,9 @@ def fetch_per_stock_full(
     force: bool, use_batch: bool,
     batch_threshold: int = 20, chunk_days: int = 90,
 ):
-    """逐股或批次抓（market_value, capital_reduction）。"""
+    """逐股或批次抓（market_value, capital_reduction）— 每支寫入後 commit。"""
     ensure_ddl(conn, ddl)
+    conn.commit()
     valid_set = set(stock_ids)
     latest_dates = get_all_latest_dates(conn, table)
 
@@ -362,11 +415,13 @@ def fetch_per_stock_full(
 
     total_api, total_rows = 0, 0
     batch_disabled = False
+    failures: list[dict] = []
 
     for group_start in sorted(groups.keys()):
         sids = groups[group_start]
         sids_set = set(sids)
 
+        # ── 批次模式 ──
         if use_batch and len(sids) >= batch_threshold and not batch_disabled:
             seg_start = group_start
             seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
@@ -394,24 +449,69 @@ def fetch_per_stock_full(
                 logger.warning(f"  {e}；改逐支")
                 batch_disabled = True
                 chunk_rows = []
-            if chunk_rows:
-                rows = [mapper(r) for r in chunk_rows]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+            except Exception as e:
+                logger.error(f"  [{table}] 批次抓取失敗：{e}")
+                chunk_rows = []
 
+            if chunk_rows:
+                rows_by_stock: dict[str, list] = defaultdict(list)
+                for r in chunk_rows:
+                    try:
+                        rows_by_stock[r["stock_id"]].append(mapper(r))
+                    except Exception as e:
+                        logger.warning(f"  [{table}/{r.get('stock_id')}] mapper 異常筆，跳過：{e}")
+
+                for sid, s_rows in rows_by_stock.items():
+                    try:
+                        n = safe_commit_rows(
+                            conn, upsert_sql, s_rows, template,
+                            label=f"{table}/{sid}"
+                        )
+                        total_rows += n
+                    except Exception as e:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        failures.append({"stock_id": sid, "error": str(e)})
+                        logger.error(f"  [{table}/{sid}] 寫入失敗：{e}")
+
+                logger.info(
+                    f"  [{table}] 批次寫入完成（含 {len(rows_by_stock)} 支股票）"
+                )
+
+        # ── 逐支模式 ──
         if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
             for sid in sids:
-                data = finmind_get(
-                    dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
-                    delay,
-                )
-                total_api += 1
-                if not data:
-                    continue
-                rows = [mapper(r) for r in data]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
-    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows}")
+                try:
+                    data = finmind_get(
+                        dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
+                        delay,
+                    )
+                    total_api += 1
+                    if not data:
+                        continue
+                    rows = []
+                    for r in data:
+                        try:
+                            rows.append(mapper(r))
+                        except Exception as e:
+                            logger.warning(f"  [{table}/{sid}] mapper 異常筆，跳過：{e}")
+                    n = safe_commit_rows(
+                        conn, upsert_sql, rows, template,
+                        label=f"{table}/{sid}"
+                    )
+                    total_rows += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [{table}/{sid}] 失敗：{e}")
+
+    dump_failures(table, failures)
+    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows} 失敗:{len(failures)}")
 
 # ─────────────────────────────────────────────
 # main
@@ -438,7 +538,6 @@ def main():
         else:
             stock_ids = get_db_stock_ids(conn, types=("twse", "otc"))
 
-        # 全市場單次抓（無 stock_id）
         full_dump_configs = [
             ("delisting", "TaiwanStockDelisting", DDL_DELISTING,
              UPSERT_DELISTING, "(%s, %s, %s)", map_delisting, False),
@@ -455,12 +554,16 @@ def main():
         for key, dataset, ddl, upsert, tmpl, mapper, pass_dates in full_dump_configs:
             if key not in args.tables:
                 continue
-            fetch_market_full_dump(
-                conn, dataset, key, ddl, upsert, tmpl, mapper, key,
-                args.start, args.end, args.delay, args.force, pass_dates,
-            )
+            try:
+                fetch_market_full_dump(
+                    conn, dataset, key, ddl, upsert, tmpl, mapper, key,
+                    args.start, args.end, args.delay, args.force, pass_dates,
+                )
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                logger.error(f"[{key}] 未預期錯誤：{e}")
 
-        # 個股層批次抓
         per_stock_configs = [
             ("capital_reduction", "TaiwanStockCapitalReductionReferencePrice",
              DDL_CAPITAL_REDUCTION, UPSERT_CAPRED,
@@ -471,10 +574,15 @@ def main():
         for key, dataset, ddl, upsert, tmpl, mapper in per_stock_configs:
             if key not in args.tables:
                 continue
-            fetch_per_stock_full(
-                conn, dataset, key, ddl, upsert, tmpl, mapper, key,
-                stock_ids, args.start, args.end, args.delay, args.force, use_batch,
-            )
+            try:
+                fetch_per_stock_full(
+                    conn, dataset, key, ddl, upsert, tmpl, mapper, key,
+                    stock_ids, args.start, args.end, args.delay, args.force, use_batch,
+                )
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                logger.error(f"[{key}] 未預期錯誤：{e}")
     finally:
         conn.close()
     logger.info("全部完成")

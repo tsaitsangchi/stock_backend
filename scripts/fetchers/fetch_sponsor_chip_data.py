@@ -35,6 +35,7 @@ fetch_sponsor_chip_data.py — Sponsor 方案進階籌碼資料抓取
 
 import argparse
 import logging
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 
 import psycopg2
@@ -205,6 +206,7 @@ def fetch_holding_shares_per(conn, stock_ids, start, end, delay, force):
             "TaiwanStockHoldingSharesPer",
             {"data_id": sid, "start_date": s, "end_date": end},
             delay,
+            raise_on_error=True
         )
         if not rows:
             continue
@@ -258,6 +260,7 @@ def fetch_broker_trades(conn, stock_ids, start, end, delay, force):
                     "end_date":   chunk_e.strftime("%Y-%m-%d"),
                 },
                 delay,
+                raise_on_error=True
             )
             if rows:
                 # 彙總：同日、同股票、同券商的資料合併（去除價格分維度）
@@ -335,6 +338,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
             "TaiwanStockGovernmentBankBuySell",
             {"start_date": d_str, "end_date": d_str},
             delay,
+            raise_on_error=True
         )
 
         if rows:
@@ -348,10 +352,20 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
                     safe_int(r.get("sell")),
                 )
                 unique[(row[0], row[1])] = row
-            records = list(unique.values())
-            bulk_upsert(conn, UPSERT_EIGHT_BANKS, records, "(%s, %s, %s, %s)")
-            total += len(records)
-            logger.info(f"    → 寫入 {len(records):,} 筆（累計 {total:,} 筆）")
+            # ── 逐支模式進行 commit ──
+            rows_by_stock = defaultdict(list)
+            for rec in unique.values():
+                sid = rec[1]  # stock_id
+                rows_by_stock[sid].append(rec)
+
+            for sid, s_rows in rows_by_stock.items():
+                bulk_upsert(conn, UPSERT_EIGHT_BANKS, s_rows, "(%s, %s, %s, %s)")
+            
+            total += len(unique)
+            logger.info(
+                f"    → 寫入完成（含 {len(rows_by_stock)} 支股票，"
+                f"共 {len(unique):,} 筆；累計 {total:,} 筆）"
+            )
 
         # 推進至隔日
         current_dt += timedelta(days=1)
@@ -385,6 +399,7 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
         "TaiwanFuturesOpenInterestLargeTraders",
         {"start_date": s, "end_date": end},
         delay,
+        raise_on_error=True
     )
     if not rows:
         logger.info(
@@ -408,8 +423,17 @@ def fetch_futures_large_oi(conn, start, end, delay, force):
         )
         unique[(row[0], row[1], row[2])] = row
     records = list(unique.values())
-    bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, records, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)")
-    logger.info(f"=== [futures_large_oi] 完成，{len(records):,} 筆 ===")
+    if records:
+        # ── 逐項模式進行 commit ──
+        rows_by_contract = defaultdict(list)
+        for rec in records:
+            cc = rec[1]  # contract_code
+            rows_by_contract[cc].append(rec)
+
+        for cc, s_rows in rows_by_contract.items():
+            bulk_upsert(conn, UPSERT_FUTURES_LARGE_OI, s_rows, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)")
+        
+        logger.info(f"=== [futures_large_oi] 完成，寫入 {len(rows_by_contract)} 項商品（共 {len(records):,} 筆） ===")
 
 
 # ─────────────────────────────────────────────

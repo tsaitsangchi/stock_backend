@@ -5,34 +5,16 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_news_data.py — 個股相關新聞
+fetch_news_data.py — 個股相關新聞 v2.2
 ====================================
-[新增] TaiwanStockNews（Free tier，但 API 限制：每次只能抓單日單股）
-
-  資料集：TaiwanStockNews
-  範圍：依 FinMind 各源實際提供日期，多數可回溯至 2018 左右
-  欄位：date, stock_id, description, link, source, title
-
-  特殊限制：
-    - 一次 API 呼叫只能取「單一日期 + 單一 data_id」的新聞
-    - 若標的數 × 天數很大，配額會快速消耗
-    - Sponsor 配額 6000/hr，建議每日只抓「STOCK_CONFIGS 內的核心標的」
-      （約 10-30 支），歷史補抓限制在 30 天內
-
-衍生因子：
-  - news_intensity_5d  = 過去 5 日新聞數量（注意力因子）
-  - news_intensity_zscore = 對個股自身歷史的 z-score
-  - news_source_diversity = 不同新聞源數量（散布度）
-  - 進階：本地 NLP 模型對 title + description 做 sentiment scoring
-          → news_sentiment_score（需另建 NLP 推論服務）
-
-執行：
-    python fetch_news_data.py                              # 預設抓最近 30 天
-    python fetch_news_data.py --days 7                     # 最近 7 天
-    python fetch_news_data.py --stock-id 2330 --days 90    # 單股回溯 90 天
-    python fetch_news_data.py --force --start 2024-01-01   # 強制全量
+[v2.2 標準化]：
+  · 導入 safe_commit_rows() 與 dump_failures()。
+  · 強化 atomicity：逐日逐股 commit 新聞內容。
+  · 失敗清單寫入 outputs/stock_news_failed_{date}.json。
+  · 確保 DDL 執行後立即 commit。
 """
 
+import json
 import argparse
 import logging
 from datetime import date, datetime, timedelta
@@ -47,6 +29,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATASET_START = "2018-01-01"
 
@@ -87,28 +72,70 @@ def map_news(r: dict) -> tuple:
 
 # ─────────────────────────────────────────────
 # 抓取邏輯：API 限單日單股，逐日逐股 loop
+# ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
+# ─────────────────────────────────────────────
+# 抓取邏輯：API 限單日單股，逐日逐股 loop
 # ─────────────────────────────────────────────
 def fetch_news_for_stock(conn, stock_id: str, dates: list[str], delay: float):
     """對單一股票，依 dates 列表逐日抓新聞。"""
     total_rows = 0
     for d in dates:
-        data = finmind_get("TaiwanStockNews",
-                           {"data_id": stock_id, "start_date": d}, delay)
-        if not data:
-            continue
-        # 依 PK (date, stock_id, title) 去重
-        # 注意：PostgreSQL 'date' 欄位不含時間，故 Python PK 亦須截斷日期
-        seen = {}
-        for r in data:
-            row = map_news(r)
-            # row[0] 是日期，可能包含時間字串，須截斷為 YYYY-MM-DD
-            d_str = str(row[0])[:10]
-            pk = (d_str, row[1], row[2])
-            seen[pk] = row
-        rows = list(seen.values())
-        if rows:
-            bulk_upsert(conn, UPSERT_NEWS, rows, "(%s, %s, %s, %s, %s, %s)")
-            total_rows += len(rows)
+        try:
+            data = finmind_get("TaiwanStockNews",
+                               {"data_id": stock_id, "start_date": d}, delay,
+                               raise_on_error=True)
+            if not data:
+                continue
+            # 依 PK (date, stock_id, title) 去重
+            seen = {}
+            for r in data:
+                try:
+                    row = map_news(r)
+                    d_str = str(row[0])[:10]
+                    pk = (d_str, row[1], row[2])
+                    seen[pk] = row
+                except Exception:
+                    continue
+            rows = list(seen.values())
+            if rows:
+                n = safe_commit_rows(conn, UPSERT_NEWS, rows, "(%s, %s, %s, %s, %s, %s)", label=f"news/{stock_id}/{d}")
+                total_rows += n
+        except Exception as e:
+            logger.error(f"  [{stock_id}/{d}] 抓取或寫入失敗：{e}")
+            # 繼續下一日
     return total_rows
 
 def get_existing_dates(conn, stock_id: str) -> set[str]:
@@ -159,19 +186,30 @@ def main():
     logger.info(f"預估 API 次數：{len(stock_ids) * n_days}（單支 × 單日）")
 
     conn = get_db_conn()
+    failures = []
     try:
         ensure_ddl(conn, DDL_NEWS)
+        conn.commit()
         for sid in stock_ids:
-            existing = set() if args.force else get_existing_dates(conn, sid)
-            todo = [d for d in all_dates if d not in existing]
-            if not todo:
-                logger.info(f"[{sid}] 全部日期已存在，跳過")
-                continue
-            logger.info(f"[{sid}] 抓取 {len(todo)} 天（已存在 {len(existing)} 天）")
-            n = fetch_news_for_stock(conn, sid, todo, args.delay)
-            logger.info(f"[{sid}] 寫入 {n} 則新聞")
+            try:
+                existing = set() if args.force else get_existing_dates(conn, sid)
+                todo = [d for d in all_dates if d not in existing]
+                if not todo:
+                    logger.info(f"[{sid}] 全部日期已存在，跳過")
+                    continue
+                logger.info(f"[{sid}] 抓取 {len(todo)} 天（已存在 {len(existing)} 天）")
+                n = fetch_news_for_stock(conn, sid, todo, args.delay)
+                logger.info(f"[{sid}] 累計寫入 {n} 則新聞")
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                failures.append({"stock_id": sid, "error": str(e)})
+                logger.error(f"  [{sid}] 處理中發生錯誤：{e}")
+
     finally:
         conn.close()
+    
+    dump_failures("stock_news", failures)
     logger.info("全部完成")
 
 if __name__ == "__main__":

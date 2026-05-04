@@ -1,41 +1,23 @@
 from __future__ import annotations
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_cash_flows_data.py — 現金流量表 + 除權息結果（補齊財報三大表）
+fetch_cash_flows_data.py — 現金流量表 + 除權息結果（逐支 commit 完整性版）
 ======================================================================
-[新增] 第四輪審查指出的 P0 缺口：fetch_fundamental_data.py 只抓了綜合損益表
-       與資產負債表，現金流量表 (TaiwanStockCashFlowsStatement) 完全沒抓。
-       這影響 FCF Yield、Accruals、Cash Conversion 等高品質因子的計算。
-
-資料集（FinMind Free tier 即可使用）：
-  1. cash_flows_statement ← TaiwanStockCashFlowsStatement
-     資料範圍：2008-06-01 ~ now
-     欄位：date, stock_id, type, value, origin_name
-     公告週期：與綜合損益表同步（季公告，DATA_LAG = 45 天）
-
-  2. dividend_result ← TaiwanStockDividendResult
-     資料範圍：2003-05-01 ~ now
-     欄位：date, stock_id, before_price, after_price, stock_and_cache_dividend,
-           stock_or_cache_dividend, max_price, min_price, open_price, reference_price
-     用途：與 dividend (公告) 配套，記錄實際除權息的股價反應，可衍生
-           除權息蒸發率、填權息速度等特徵。
+v2.2 改進：
+  · safe_commit_rows()：每支股票寫入後立即 commit，失敗 rollback。
+  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 
 執行：
-    python fetch_cash_flows_data.py                       # 全部增量
+    python fetch_cash_flows_data.py
     python fetch_cash_flows_data.py --tables cash_flows_statement
     python fetch_cash_flows_data.py --stock-id 2330
     python fetch_cash_flows_data.py --force --start 2008-06-01
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - fcf_yield        = (operating_cash_flow - capex) / market_cap
-  - accruals         = (net_income - operating_cash_flow) / total_assets
-  - cash_conversion  = operating_cash_flow / net_income
-  - capex_intensity  = capex / revenue（半導體景氣判斷的關鍵）
-  - ex_div_evap_pct  = (before_price - after_price) / before_price - dividend_yield
 """
 
 import argparse
@@ -58,6 +40,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATASET_START = {
     "cash_flows_statement": "2008-06-01",
@@ -125,6 +110,41 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
     reference_price          = EXCLUDED.reference_price;
 """
 
+
+# ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
 # ─────────────────────────────────────────────
 # Mapper
 # ─────────────────────────────────────────────
@@ -176,7 +196,7 @@ def resolve_start(conn, table: str, stock_id: str, dataset_key: str,
     return max(next_day, earliest)
 
 # ─────────────────────────────────────────────
-# 抓取主邏輯（逐支股票，因兩個 dataset 都是稀疏季/事件資料）
+# 抓取主邏輯（逐支股票，每支寫入後立即 commit）
 # ─────────────────────────────────────────────
 def fetch_dataset_per_stock(
     conn, dataset: str, table: str, ddl: str,
@@ -185,27 +205,53 @@ def fetch_dataset_per_stock(
     delay: float, force: bool,
 ):
     ensure_ddl(conn, ddl)
+    conn.commit()
     logger.info(f"=== [{table}] 開始 ===")
     logger.info(f"  目標股票：{len(stock_ids)} 支")
 
+    template = (
+        "(%s, %s, %s, %s, %s)"
+        if table == "cash_flows_statement"
+        else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    )
+
     total_rows = 0
     skipped = 0
-    for sid in stock_ids:
-        s = resolve_start(conn, table, sid, dataset_key, start, force)
-        if s is None:
-            skipped += 1
-            continue
-        data = finmind_get(
-            dataset, {"data_id": sid, "start_date": s, "end_date": end}, delay
-        )
-        if not data:
-            continue
-        rows = [mapper(r) for r in data]
-        n = bulk_upsert(conn, upsert_sql, rows, "(%s, %s, %s, %s, %s)" if table == "cash_flows_statement"
-                        else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
-        total_rows += n
+    failures = []
 
-    logger.info(f"  已最新略過：{skipped} 支，新寫入：{total_rows} 筆")
+    for i, sid in enumerate(stock_ids, 1):
+        try:
+            s = resolve_start(conn, table, sid, dataset_key, start, force)
+            if s is None:
+                skipped += 1
+                continue
+            data = finmind_get(
+                dataset, {"data_id": sid, "start_date": s, "end_date": end}, delay,
+                raise_on_error=True
+            )
+            if not data:
+                continue
+            rows = [mapper(r) for r in data]
+            n = safe_commit_rows(conn, upsert_sql, rows, template,
+                                 label=f"{table}/{sid}")
+            total_rows += n
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            failures.append({"stock_id": sid, "error": str(e)})
+            logger.error(f"  [{table}/{sid}] 失敗：{e}")
+
+        if i % 100 == 0:
+            logger.info(f"  [{table}] 進度：{i}/{len(stock_ids)}，"
+                        f"累計 {total_rows} 筆（略過：{skipped}，失敗：{len(failures)}）")
+
+    dump_failures(table, failures)
+    logger.info(
+        f"  [{table}] 完成，共寫入 {total_rows} 筆"
+        f"（略過已最新：{skipped} 支，失敗：{len(failures)} 支）"
+    )
 
 # ─────────────────────────────────────────────
 # main

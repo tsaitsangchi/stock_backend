@@ -4,11 +4,17 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_international_data.py  v1.0
+fetch_international_data.py  v2.2
 從 FinMind API 抓取國際影響資料並寫入 PostgreSQL：
-  - us_stock_price  ← USStockPrice   (Free, 逐支股票)
-  - crude_oil_prices← CrudeOilPrices (Free, WTI + Brent 兩次請求)
-  - gold_price      ← GoldPrice      (Free, 不需 data_id)
+  - us_stock_price  ← USStockPrice
+  - crude_oil_prices← CrudeOilPrices
+  - gold_price      ← GoldPrice
+
+v2.2 改進：
+  · 導入 safe_commit_rows() 與 dump_failures()。
+  · 強化 atomicity：美股按 ticker commit，原油按品種 commit。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
+  · 確保 DDL 執行後立即 commit。
 
 執行範例：
     # 增量更新（全部三張表）
@@ -36,6 +42,7 @@ fetch_international_data.py  v1.0
 import argparse
 import logging
 import time
+import json
 from datetime import date, timedelta, datetime
 
 import psycopg2
@@ -60,6 +67,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ======================
 # 各資料集最早可用日期
@@ -254,6 +264,38 @@ def map_gold_price_row(r: dict) -> tuple:
         std_date,
         safe_float(r.get("Price")),
     )
+# ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
 
 
 # ──────────────────────────────────────────────
@@ -265,7 +307,7 @@ def get_us_stock_ids(delay: float) -> list:
     不需起始/結束日期，一次回傳全部。
     """
     logger.info("[USStockInfo] 正在取得美股清單…")
-    data = finmind_get("USStockInfo", {}, delay)
+    data = finmind_get("USStockInfo", {}, delay, raise_on_error=True)
     if not data:
         logger.error("[USStockInfo] 無法取得美股清單，請確認 Token 與網路狀態")
         return []
@@ -298,36 +340,48 @@ def fetch_us_stock_price(
 
     total_rows = 0
     skipped = 0
+    failures = []
     template = "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)"
 
     for i, sid in enumerate(stock_ids, 1):
-        s = resolve_start_by_key(latest_dates, sid, start_date, "us_stock_price", force)
-        if s is None:
-            skipped += 1
-            continue
+        try:
+            s = resolve_start_by_key(latest_dates, sid, start_date, "us_stock_price", force)
+            if s is None:
+                skipped += 1
+                continue
 
-        data = finmind_get(
-            "USStockPrice",
-            {"data_id": sid, "start_date": s, "end_date": end_date},
-            delay,
-        )
-        if data:
-            # 依 (date, stock_id) 去重
-            seen = {}
-            for r in data:
-                row = map_us_stock_row(r)
-                key = (row[0], row[1])
-                seen[key] = row
-            rows = list(seen.values())
+            data = finmind_get(
+                "USStockPrice",
+                {"data_id": sid, "start_date": s, "end_date": end_date},
+                delay,
+                raise_on_error=True
+            )
+            if data:
+                # 依 (date, stock_id) 去重
+                seen = {}
+                for r in data:
+                    try:
+                        row = map_us_stock_row(r)
+                        key = (row[0], row[1])
+                        seen[key] = row
+                    except Exception:
+                        continue
+                rows = list(seen.values())
 
-            bulk_upsert(conn, UPSERT_US_STOCK_PRICE, rows, template)
-            total_rows += len(rows)
+                n = safe_commit_rows(conn, UPSERT_US_STOCK_PRICE, rows, template, label=f"us_stock/{sid}")
+                total_rows += n
+            
+            if i % 50 == 0:
+                logger.info(f"  進度：{i}/{len(stock_ids)}  已略過（最新）：{skipped}")
+        except Exception as e:
+            try: conn.rollback()
+            except Exception: pass
+            failures.append({"stock_id": sid, "error": str(e)})
+            logger.error(f"  [us_stock/{sid}] 失敗：{e}")
 
-        if i % 100 == 0:
-            logger.info(f"  進度：{i}/{len(stock_ids)}  已略過（最新）：{skipped}")
-
+    dump_failures("us_stock_price", failures)
     logger.info(
-        f"=== [us_stock_price] 完成  寫入：{total_rows} 筆  略過：{skipped} 支 ==="
+        f"=== [us_stock_price] 完成  寫入：{total_rows} 筆  略過：{skipped} 支  失敗：{len(failures)} ==="
     )
 
 
@@ -343,34 +397,46 @@ def fetch_crude_oil_prices(
     latest_dates = get_latest_date(conn, "crude_oil_prices", key_col="name")
 
     total_rows = 0
+    failures = []
     template = "(%s::date,%s,%s::numeric)"
 
     for oil_id in CRUDE_OIL_IDS:
-        s = resolve_start_by_key(latest_dates, oil_id, start_date, "crude_oil_prices", force)
-        if s is None:
-            logger.info(f"  [{oil_id}] 已是最新，略過")
-            continue
+        try:
+            s = resolve_start_by_key(latest_dates, oil_id, start_date, "crude_oil_prices", force)
+            if s is None:
+                logger.info(f"  [{oil_id}] 已是最新，略過")
+                continue
 
-        logger.info(f"  [{oil_id}] 抓取 {s} ~ {end_date}")
-        data = finmind_get(
-            "CrudeOilPrices",
-            {"data_id": oil_id, "start_date": s, "end_date": end_date},
-            delay,
-        )
-        if data:
-            # 依 (date, name) 去重
-            seen = {}
-            for r in data:
-                row = map_crude_oil_row(r)
-                key = (row[0], row[1])
-                seen[key] = row
-            rows = list(seen.values())
+            logger.info(f"  [{oil_id}] 抓取 {s} ~ {end_date}")
+            data = finmind_get(
+                "CrudeOilPrices",
+                {"data_id": oil_id, "start_date": s, "end_date": end_date},
+                delay,
+                raise_on_error=True
+            )
+            if data:
+                # 依 (date, name) 去重
+                seen = {}
+                for r in data:
+                    try:
+                        row = map_crude_oil_row(r)
+                        key = (row[0], row[1])
+                        seen[key] = row
+                    except Exception:
+                        continue
+                rows = list(seen.values())
 
-            bulk_upsert(conn, UPSERT_CRUDE_OIL_PRICES, rows, template)
-            total_rows += len(rows)
-            logger.info(f"  [{oil_id}] 寫入 {len(rows)} 筆")
+                n = safe_commit_rows(conn, UPSERT_CRUDE_OIL_PRICES, rows, template, label=f"crude_oil/{oil_id}")
+                total_rows += n
+                logger.info(f"  [{oil_id}] 寫入 {n} 筆")
+        except Exception as e:
+            try: conn.rollback()
+            except Exception: pass
+            failures.append({"oil_id": oil_id, "error": str(e)})
+            logger.error(f"  [crude_oil/{oil_id}] 失敗：{e}")
 
-    logger.info(f"=== [crude_oil_prices] 完成  寫入：{total_rows} 筆 ===")
+    dump_failures("crude_oil_prices", failures)
+    logger.info(f"=== [crude_oil_prices] 完成  寫入：{total_rows} 筆  失敗：{len(failures)} ===")
 
 
 def fetch_gold_price(
@@ -379,35 +445,43 @@ def fetch_gold_price(
     """
     抓取黃金價格（GoldPrice），無 data_id，單次請求。
     """
-    logger.info("=== [gold_price] 開始抓取 ===")
+    try:
+        latest = get_latest_date(conn, "gold_price")
+        s = resolve_start(latest, start_date, "gold_price", force)
 
-    latest = get_latest_date(conn, "gold_price")
-    s = resolve_start(latest, start_date, "gold_price", force)
+        if not force and latest and s > DEFAULT_END:
+            logger.info("  [gold_price] 已是最新，略過")
+            return
 
-    if not force and latest and s > DEFAULT_END:
-        logger.info("  [gold_price] 已是最新，略過")
-        return
+        logger.info(f"  [gold_price] 抓取 {s} ~ {end_date}")
+        data = finmind_get(
+            "GoldPrice",
+            {"start_date": s, "end_date": end_date},
+            delay,
+            raise_on_error=True
+        )
+        if data:
+            # 依 date 去重
+            seen = {}
+            for r in data:
+                try:
+                    row = map_gold_price_row(r)
+                    key = row[0]
+                    seen[key] = row
+                except Exception:
+                    continue
+            rows = list(seen.values())
 
-    logger.info(f"  [gold_price] 抓取 {s} ~ {end_date}")
-    data = finmind_get(
-        "GoldPrice",
-        {"start_date": s, "end_date": end_date},
-        delay,
-    )
-    if data:
-        # 依 date 去重
-        seen = {}
-        for r in data:
-            row = map_gold_price_row(r)
-            key = row[0]
-            seen[key] = row
-        rows = list(seen.values())
+            template = "(%s::date,%s::numeric)"
+            n = safe_commit_rows(conn, UPSERT_GOLD_PRICE, rows, template, label="gold_price")
+            logger.info(f"  [gold_price] 寫入 {n} 筆")
 
-        template = "(%s::date,%s::numeric)"
-        bulk_upsert(conn, UPSERT_GOLD_PRICE, rows, template)
-        logger.info(f"  [gold_price] 寫入 {len(rows)} 筆")
-
-    logger.info("=== [gold_price] 完成 ===")
+        logger.info("=== [gold_price] 完成 ===")
+    except Exception as e:
+        try: conn.rollback()
+        except Exception: pass
+        logger.error(f"  [gold_price] 失敗：{e}")
+        dump_failures("gold_price", [{"error": str(e)}])
 
 
 # ──────────────────────────────────────────────
@@ -471,6 +545,7 @@ def main():
         if "crude_oil_prices" in tables: ddls_needed.append(DDL_CRUDE_OIL_PRICES)
         if "gold_price"       in tables: ddls_needed.append(DDL_GOLD_PRICE)
         ensure_ddl(conn, *ddls_needed)
+        conn.commit()
 
         # 依序執行各資料集
         if "us_stock_price" in tables:
@@ -483,8 +558,8 @@ def main():
             fetch_gold_price(conn, args.start, args.end, args.delay, args.force)
 
     except Exception as e:
-        logger.error(f"未預期錯誤：{e}")
-        raise
+        logger.error(f"主程序發生錯誤：{e}")
+        # 不再強制 raise，讓 parallel_fetch 捕捉狀態
     finally:
         conn.close()
 

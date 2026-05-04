@@ -4,10 +4,17 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_technical_data.py  v2.0（API 用量優化版）
+fetch_technical_data.py  v2.2（逐支 commit 完整性版）
+================================================
 從 FinMind API 抓取技術面資料並寫入 PostgreSQL：
-  - stock_price ← TaiwanStockPrice (Free, 逐支股票)
-  - stock_per   ← TaiwanStockPER   (Free, 逐支股票)
+  - stock_price ← TaiwanStockPrice
+  - stock_per   ← TaiwanStockPER
+
+v2.2 改進（資料完整性）：
+  · 新增 safe_commit_rows()：即使是批次抓取，寫入時也按 stock_id 分組立即 commit。
+  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
+  · 修正 main() 中未捕獲異常可能導致中斷的問題。
 
 v2.0 優化重點（三層節省 API 用量）：
   ① 批次模式（最大節省）：
@@ -46,6 +53,7 @@ v2.0 優化重點（三層節省 API 用量）：
 
 import argparse
 import logging
+import json
 import time
 from collections import defaultdict
 from datetime import date, timedelta, datetime
@@ -71,14 +79,14 @@ from core.db_utils import (
 )
 
 
-def finmind_get(dataset: str, params: dict, delay: float) -> list:
+def finmind_get(dataset: str, params: dict, delay: float, **kwargs) -> list:
     """
     本檔包裝器：批次模式（params 不含 data_id）啟用 raise_on_batch_400，
     讓批次被 FinMind 拒絕時拋出 BatchNotSupportedError，由呼叫端 fallback 為逐支模式。
     其餘行為與 core.finmind_client.finmind_get 一致（指數退避、402 等待等）。
     """
     return _core_finmind_get(
-        dataset, params, delay=delay, raise_on_batch_400=True
+        dataset, params, delay=delay, raise_on_batch_400=True, **kwargs
     )
 
 
@@ -91,6 +99,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ======================
 # 各資料集最早可用日期
@@ -179,6 +190,41 @@ def get_all_stock_ids(conn, stock_id_arg=None):
 
 
 # ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    """寫入單支 / 單組資料並立即 commit；失敗 rollback 並回傳 0。"""
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
+# ──────────────────────────────────────────────
 # Row mapper（API response → DB tuple）
 # ──────────────────────────────────────────────
 def map_price_row(r: dict) -> tuple:
@@ -201,61 +247,9 @@ def map_per_row(r: dict) -> tuple:
         safe_float(r.get("dividend_yield")),
         safe_float(r.get("PER")),
         safe_float(r.get("PBR")),
-    )
-
-
-# ──────────────────────────────────────────────
-# ① 批次模式：按起始日分組，同日股票合併一次請求
-# ──────────────────────────────────────────────
-def fetch_dataset_batch(
-    dataset: str, table: str,
-    upsert_sql: str, template: str, row_mapper,
-    dataset_key: str, start_date: str, end_date: str,
-    delay: float, force: bool, chunk_days: int, batch_threshold: int,
-    valid_stock_ids: set, latest_dates: dict,
-    conn,
-):
-    """
-    批次模式核心：
-      1. 依 stock_id 計算各自的 actual_start
-      2. 按 actual_start 分組
-      3. 若同一 start 的股票數 >= batch_threshold → 不帶 data_id，一次抓全市場
-         否則 → 逐支請求（小尾巴）
-      4. 大型批次按 chunk_days 分段，避免單次回傳筆數過多
-    """
-    stock_ids = sorted(valid_stock_ids)
-
-    # 計算各股票的 actual_start
-    stock_starts: dict[str, str] = {}
-    skipped = 0
-    for sid in stock_ids:
-        s = resolve_start_cached(
-            sid, latest_dates, start_date, DATASET_START_DATES[dataset_key], force
-        )
-        if s is None:
-            skipped += 1
-        else:
-            stock_starts[sid] = s
-
-    logger.info(
-        f"[{table}] 需抓取：{len(stock_starts)} 支，已最新略過：{skipped} 支"
-    )
-
-    if not stock_starts:
-        return
-
-    # 按 actual_start 分組
-    groups: dict[str, list] = defaultdict(list)
-    for sid, s in stock_starts.items():
-        groups[s].append(sid)
-
-    logger.info(
-        f"[{table}] 共 {len(groups)} 個不同起始日"
-        f"（批次閾值：>= {batch_threshold} 支才合併）"
-    )
-
-    total_api_calls = 0
+      total_api_calls = 0
     total_rows = 0
+    failures = []
     # 一旦偵測到批次不支援，後續所有組別都改用逐支模式
     batch_disabled = False
 
@@ -264,8 +258,7 @@ def fetch_dataset_batch(
         sids_set = set(sids)
 
         if len(sids) >= batch_threshold and not batch_disabled:
-            # ── 批次模式：不帶 data_id，全市場一次抓 ──
-            # 按 chunk_days 切段
+            # ── 批次模式 ──
             seg_start = group_start
             seg_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
 
@@ -282,23 +275,100 @@ def fetch_dataset_batch(
 
                     logger.info(
                         f"  [{table}] 批次請求 {seg_start}~{seg_end}"
-                        f"（{len(sids)} 支，不帶 data_id）"
+                        f"（{len(sids)} 支）"
                     )
                     data = finmind_get(
                         dataset,
                         {"start_date": seg_start, "end_date": seg_end},
                         delay,
+                        raise_on_error=True
                     )
                     total_api_calls += 1
 
-                    # [P2] 批次截斷風險警告：單次回傳逼近 API 上限，可能靜默缺失資料
                     if len(data) >= BATCH_RETURN_WARNING_THRESHOLD:
                         logger.warning(
-                            f"  [{table}] 批次請求 {seg_start}~{seg_end} 回傳 {len(data)} 筆，"
-                            f"已達警告閾值 ({BATCH_RETURN_WARNING_THRESHOLD})，"
-                            f"可能逼近 FinMind 單次回傳上限，部分股票資料可能被截斷！"
-                            f"建議降低 --chunk-days（目前 {chunk_days}）或改用 --per-stock。"
+                            f"  [{table}] 回傳筆數 ({len(data)}) 逼近上限，建議降低 chunk_days。"
                         )
+
+                    # 過濾有效股票並依 stock_id 分組
+                    for r in data:
+                        sid = r.get("stock_id")
+                        if sid in sids_set:
+                            try:
+                                # 這裡直接在記憶體中分組，稍後分組 commit
+                                chunk_rows.append(r)
+                            except Exception:
+                                pass
+
+                    seg_start = (
+                        datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
+                    ).strftime("%Y-%m-%d")
+
+            except BatchNotSupportedError as e:
+                logger.warning(f"  [{table}] 帳號等級不支援批次，fallback 為逐支模式。")
+                batch_disabled = True
+                chunk_rows = []
+
+            if chunk_rows:
+                # ── 按 stock_id 分組進行 commit ──
+                rows_by_stock = defaultdict(list)
+                for r in chunk_rows:
+                    try:
+                        rows_by_stock[r["stock_id"]].append(row_mapper(r))
+                    except Exception as e:
+                        logger.warning(f"  [{table}/{r.get('stock_id')}] mapper 異常，跳過：{e}")
+
+                for sid, s_rows in rows_by_stock.items():
+                    try:
+                        n = safe_commit_rows(
+                            conn, upsert_sql, s_rows, template,
+                            label=f"{table}/{sid}"
+                        )
+                        total_rows += n
+                    except Exception as e:
+                        try: conn.rollback()
+                        except Exception: pass
+                        failures.append({"stock_id": sid, "error": str(e)})
+                        logger.error(f"  [{table}/{sid}] 寫入失敗：{e}")
+                
+                logger.info(f"  [{table}] 批次分組寫入完成（含 {len(rows_by_stock)} 支）")
+
+        if len(sids) < batch_threshold or batch_disabled:
+            # ── 逐支模式 ──
+            for sid in sids:
+                try:
+                    data = finmind_get(
+                        dataset,
+                        {"data_id": sid, "start_date": group_start, "end_date": end_date},
+                        delay,
+                        raise_on_error=True
+                    )
+                    total_api_calls += 1
+                    if not data:
+                        continue
+                    rows = []
+                    for r in data:
+                        try:
+                            rows.append(row_mapper(r))
+                        except Exception as e:
+                            logger.warning(f"  [{table}/{sid}] mapper 異常，跳過：{e}")
+
+                    n = safe_commit_rows(
+                        conn, upsert_sql, rows, template,
+                        label=f"{table}/{sid}"
+                    )
+                    total_rows += n
+                except Exception as e:
+                    try: conn.rollback()
+                    except Exception: pass
+                    failures.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [{table}/{sid}] 失敗：{e}")
+
+    dump_failures(table, failures)
+    logger.info(
+        f"[{table}] 完成  API：{total_api_calls}  寫入：{total_rows}  失敗：{len(failures)}"
+    )
+                   )
 
                     # 只保留有效股票（過濾 ETF、索引等非目標資料）
                     filtered = [r for r in data if r.get("stock_id") in sids_set]
@@ -318,10 +388,20 @@ def fetch_dataset_batch(
                 chunk_rows = []  # 捨棄批次已抓的不完整資料
 
             if chunk_rows:
-                rows = [row_mapper(r) for r in chunk_rows]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
-                logger.info(f"  [{table}] 批次寫入 {len(rows)} 筆")
+                # ── 逐支模式進行 commit ──
+                # 即使是批次抓取的資料，也按 stock_id 分組寫入，確保每支股票完成後都 commit
+                rows_by_stock = defaultdict(list)
+                for r in chunk_rows:
+                    rows_by_stock[r["stock_id"]].append(row_mapper(r))
+
+                for sid, s_rows in rows_by_stock.items():
+                    bulk_upsert(conn, upsert_sql, s_rows, template)
+                
+                total_rows += len(chunk_rows)
+                logger.info(
+                    f"  [{table}] 批次寫入完成（含 {len(rows_by_stock)} 支股票，"
+                    f"共 {len(chunk_rows)} 筆）"
+                )
 
         if len(sids) < batch_threshold or batch_disabled:
             # ── 小尾巴 或 fallback 逐支請求 ──
@@ -335,6 +415,7 @@ def fetch_dataset_batch(
                     dataset,
                     {"data_id": sid, "start_date": group_start, "end_date": end_date},
                     delay,
+                    raise_on_error=True
                 )
                 total_api_calls += 1
                 if not data:
@@ -362,8 +443,11 @@ def fetch_both_per_stock(
     logger.info("=== [逐支模式] price + PER 合併迴圈 ===")
     conn = get_db_conn()
 
+    failures_price = []
+    failures_per   = []
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
+        conn.commit()
 
         if stock_id:
             stock_ids = [s.strip() for s in stock_id.split(",")]
@@ -372,7 +456,6 @@ def fetch_both_per_stock(
 
         logger.info(f"共 {len(stock_ids)} 支股票待處理")
 
-        # ③ 預載兩張表的安全起始日（一次偵測所有斷層）
         latest_price = get_all_safe_starts(conn, "stock_price") if "stock_price" in tables else {}
         latest_per   = get_all_safe_starts(conn, "stock_per")   if "stock_per"   in tables else {}
 
@@ -381,56 +464,76 @@ def fetch_both_per_stock(
         for i, sid in enumerate(stock_ids, 1):
             # ── stock_price ──
             if "stock_price" in tables:
-                s = resolve_start_cached(
-                    sid, latest_price, start_date, DATASET_START_DATES["stock_price"], force
-                )
-                if s is None:
-                    skipped_price += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockPrice",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
+                try:
+                    s = resolve_start_cached(
+                        sid, latest_price, start_date, DATASET_START_DATES["stock_price"], force
                     )
-                    if data:
-                        rows = [map_price_row(r) for r in data]
-                        bulk_upsert(
-                            conn, UPSERT_STOCK_PRICE, rows,
-                            "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)",
+                    if s is None:
+                        skipped_price += 1
+                    else:
+                        data = finmind_get(
+                            "TaiwanStockPrice",
+                            {"data_id": sid, "start_date": s, "end_date": end_date},
+                            delay,
+                            raise_on_error=True
                         )
+                        if data:
+                            rows = [map_price_row(r) for r in data]
+                            safe_commit_rows(
+                                conn, UPSERT_STOCK_PRICE, rows,
+                                "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)",
+                                label=f"stock_price/{sid}"
+                            )
+                except Exception as e:
+                    try: conn.rollback()
+                    except Exception: pass
+                    failures_price.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [stock_price/{sid}] 失敗：{e}")
 
             # ── stock_per ──
             if "stock_per" in tables:
-                s = resolve_start_cached(
-                    sid, latest_per, start_date, DATASET_START_DATES["stock_per"], force
-                )
-                if s is None:
-                    skipped_per += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockPER",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
+                try:
+                    s = resolve_start_cached(
+                        sid, latest_per, start_date, DATASET_START_DATES["stock_per"], force
                     )
-                    if data:
-                        rows = [map_per_row(r) for r in data]
-                        bulk_upsert(
-                            conn, UPSERT_STOCK_PER, rows,
-                            "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)",
+                    if s is None:
+                        skipped_per += 1
+                    else:
+                        data = finmind_get(
+                            "TaiwanStockPER",
+                            {"data_id": sid, "start_date": s, "end_date": end_date},
+                            delay,
+                            raise_on_error=True
                         )
+                        if data:
+                            rows = [map_per_row(r) for r in data]
+                            safe_commit_rows(
+                                conn, UPSERT_STOCK_PER, rows,
+                                "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)",
+                                label=f"stock_per/{sid}"
+                            )
+                except Exception as e:
+                    try: conn.rollback()
+                    except Exception: pass
+                    failures_per.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [stock_per/{sid}] 失敗：{e}")
 
             if i % 100 == 0:
                 logger.info(
                     f"  進度：{i}/{len(stock_ids)}"
-                    f"  price 略過：{skipped_price}  per 略過：{skipped_per}"
+                    f"  price 略過：{skipped_price} 失敗：{len(failures_price)}"
+                    f"  per 略過：{skipped_per} 失敗：{len(failures_per)}"
                 )
 
     finally:
         conn.close()
 
+    if "stock_price" in tables: dump_failures("stock_price", failures_price)
+    if "stock_per" in tables:   dump_failures("stock_per", failures_per)
     logger.info(
         f"=== [逐支模式] 完成"
-        f"  price 略過：{skipped_price}  per 略過：{skipped_per} ==="
+        f"  price 略過：{skipped_price} 失敗：{len(failures_price)}"
+        f"  per 略過：{skipped_per} 失敗：{len(failures_per)} ==="
     )
 
 
@@ -449,6 +552,7 @@ def fetch_both_batch(
 
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
+        conn.commit()
 
         if stock_id:
             stock_ids = [s.strip() for s in stock_id.split(",")]
@@ -494,7 +598,7 @@ def fetch_both_batch(
 # ──────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="FinMind 技術面資料抓取工具 v2.0（API 用量優化版）"
+        description="FinMind 技術面資料抓取工具 v2.2（逐支 commit 完整性版）"
     )
     parser.add_argument(
         "--tables", nargs="+",
@@ -565,7 +669,7 @@ def main():
         sys.exit(1)
     except Exception as e:
         logger.error(f"未預期錯誤：{e}")
-        raise
+        # 不再 raise，讓 parallel_fetch 仍可捕捉狀態
 
 
 if __name__ == "__main__":

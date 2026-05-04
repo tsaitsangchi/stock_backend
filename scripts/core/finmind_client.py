@@ -45,10 +45,13 @@ logger = logging.getLogger(__name__)
 # 自訂例外
 # ─────────────────────────────────────────────
 class BatchNotSupportedError(Exception):
-    """
-    批次請求（不帶 data_id）被 FinMind 拒絕。
-    呼叫端可捕捉此例外，自動 fallback 為逐支請求模式。
-    """
+    """批次請求（不帶 data_id）被 FinMind 拒絕。"""
+
+class FinMindError(Exception):
+    """FinMind API 存取錯誤（403, 400, 401 等）。"""
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 # ─────────────────────────────────────────────
@@ -180,6 +183,7 @@ def finmind_get(
     max_retries: int = 3,
     raise_on_batch_400: bool = False,
     use_rate_limiter: bool = True,
+    raise_on_error: bool = False,
 ) -> list:
     """
     統一的 FinMind API 同步請求函式（v2）。
@@ -198,6 +202,7 @@ def finmind_get(
     max_retries        : 非 402 錯誤的最大重試次數
     raise_on_batch_400 : True 時批次請求收到 400 拋出 BatchNotSupportedError
     use_rate_limiter   : True（預設）使用 Token Bucket；False 使用固定 sleep
+    raise_on_error     : True 時 403/400 拋出 FinMindError，以便外層捕捉紀錄
 
     Returns
     -------
@@ -225,11 +230,20 @@ def finmind_get(
             # ── 403：權限不足（如資料集需付費） ──
             if resp.status_code == 403:
                 logger.warning(f"🚫 [Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
+                if raise_on_error:
+                    raise FinMindError(f"403 Forbidden: {dataset}", status_code=403)
                 return []
 
             # ── 400：無效請求（通常為無資料或格式錯） ──
             if resp.status_code == 400:
-                logger.warning(f"⚠️ [Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
+                logger.warning(f"DEBUG: {dataset} 400, raise_on_batch={raise_on_batch_400}, is_batch={is_batch}")
+                if raise_on_batch_400 and is_batch:
+                    raise BatchNotSupportedError(
+                        f"[{dataset}] 批次請求被拒絕 (HTTP 400)"
+                    )
+                logger.warning(f"[V2.1-FIXED] ⚠️ [Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
+                if raise_on_error:
+                    raise FinMindError(f"400 Bad Request: {dataset}", status_code=400)
                 return []
 
             # ── 401：Token 無效 ──

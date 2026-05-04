@@ -4,16 +4,20 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_stock_info.py
+fetch_stock_info.py  v2.2
+=========================
 從 FinMind API 抓取 TaiwanStockInfo（台股總覽）並寫入 PostgreSQL stock_info 資料表。
 
-需求套件：
-    pip install requests psycopg2-binary
+v2.2 改進：
+  · 導入 safe_commit_rows() 與 dump_failures()。
+  · 強化 atomicity：逐支 commit 標的資訊。
+  · 失敗清單寫入 outputs/stock_info_failed_{date}.json。
 """
 
+import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import psycopg2
 
@@ -33,6 +37,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ======================
 # DDL（若資料表尚未存在則建立）
@@ -62,6 +69,38 @@ DO UPDATE SET
     date              = EXCLUDED.date;
 """
 
+# ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
 
 # ──────────────────────────────────────────────
 # 1. 抓取與轉換
@@ -107,15 +146,29 @@ def run_update(delay: float = 1.0) -> None:
         return
 
     conn = get_db_conn()
+    failures = []
     try:
         ensure_ddl(conn, CREATE_TABLE_SQL)
-        n = bulk_upsert(
-            conn, UPSERT_SQL, rows,
-            template="(%s, %s, %s, %s, %s::date)"
-        )
-        logger.info(f"完成，upsert {n} 筆")
+        conn.commit()
+
+        success_count = 0
+        for row in rows:
+            sid = row[0]
+            n = safe_commit_rows(
+                conn, UPSERT_SQL, [row],
+                template="(%s, %s, %s, %s, %s::date)",
+                label=f"stock_info/{sid}"
+            )
+            if n > 0:
+                success_count += n
+            else:
+                failures.append({"stock_id": sid, "error": "db_write_error"})
+
+        logger.info(f"完成，逐支寫入 {success_count} 筆標的資訊")
     finally:
         conn.close()
+
+    dump_failures("stock_info", failures)
 
 
 def main():

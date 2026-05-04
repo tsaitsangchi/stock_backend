@@ -5,43 +5,18 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_price_adj_data.py — 還原股價 + 當沖交易 + 漲跌停價
+fetch_price_adj_data.py — 還原股價 + 當沖交易 + 漲跌停價 v2.2
 ==========================================================
-[新增] 補齊三個技術面缺口：
-
-  1. price_adj ← TaiwanStockPriceAdj（**P0 關鍵**）
-     資料範圍：1994-10-01 ~ now
-     用途：除權息調整後股價，消除個股 log return 在除權息日的人為跳空。
-           目前 stock_price 是未調整價，特徵工程算 log return 會把除權息誤識為下跌。
-     批次模式：Sponsor 可不帶 data_id 一次抓全市場（極大節省 API 配額）
-
-  2. day_trading ← TaiwanStockDayTrading
-     資料範圍：2014-01-01 ~ now
-     用途：當沖比 = (BuyAmount + SellAmount) / 兩倍成交額。台股獨有的高頻情緒指標。
-           當沖比 > 30% 通常代表投機度過熱，可作為 regime 訊號。
-     批次模式：同上
-
-  3. price_limit ← TaiwanStockPriceLimit
-     資料範圍：2000-01-01 ~ now
-     用途：漲跌停價。可衍生「漲停強度」、「是否觸及漲停」等微觀結構特徵。
-           limit_up/limit_down 為 0 表示無漲跌幅限制（槓桿 ETF / 興櫃股），
-           可作為股票類型分類依據。
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - log_return_adj   = log(close_adj_t / close_adj_{t-1})  ← 真正的乾淨報酬率
-  - day_trading_pct  = (BuyAfterSale + SellAfterBuy) / total_volume
-  - touched_limit_up = 1 if max >= limit_up * 0.998 else 0
-  - limit_close_pct  = close / limit_up（漲幅佔上限的比例，動量強度）
-
-執行：
-    python fetch_price_adj_data.py                       # 全部，批次模式
-    python fetch_price_adj_data.py --tables price_adj    # 只抓還原價
-    python fetch_price_adj_data.py --per-stock           # 退回逐支模式
-    python fetch_price_adj_data.py --force --start 2010-01-01
+[v2.2 標準化]：
+  · 新增 safe_commit_rows() 與 dump_failures()。
+  · 強化 fetch_dataset_unified：批次或逐支寫入均按 stock_id 立即 commit。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
+  · 確保 DDL 執行後立即 commit 防止掛起。
 """
 
 import argparse
 import logging
+import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
@@ -64,6 +39,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATASET_START = {
     "price_adj":   "1994-10-01",
@@ -193,6 +171,40 @@ def map_price_limit(r: dict) -> tuple:
     )
 
 # ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
+# ─────────────────────────────────────────────
 # 通用批次抓取（與 fetch_technical_data.py 同邏輯）
 # ─────────────────────────────────────────────
 def fetch_dataset_unified(
@@ -207,6 +219,8 @@ def fetch_dataset_unified(
     （不帶 data_id，全市場一次抓），否則退回逐支。
     """
     ensure_ddl(conn, ddl)
+    conn.commit()
+    
     valid_set = set(stock_ids)
     latest_dates = get_all_latest_dates(conn, table)
 
@@ -227,13 +241,13 @@ def fetch_dataset_unified(
     if not stock_starts:
         return
 
-    # 分組：相同 start_date 的股票歸為一組
     groups: dict[str, list] = defaultdict(list)
     for sid, s in stock_starts.items():
         groups[s].append(sid)
 
     total_api = 0
     total_rows = 0
+    failures = []
     batch_disabled = False
 
     for group_start in sorted(groups.keys()):
@@ -241,10 +255,10 @@ def fetch_dataset_unified(
         sids_set = set(sids)
 
         if use_batch and len(sids) >= batch_threshold and not batch_disabled:
-            # 批次模式：按 chunk_days 切段
+            # 批次模式
             seg_start = group_start
             seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
-            chunk_rows = []
+            chunk_data = []
             try:
                 while True:
                     seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
@@ -258,42 +272,69 @@ def fetch_dataset_unified(
                     data = finmind_get(
                         dataset, {"start_date": seg_start, "end_date": seg_end},
                         delay, raise_on_batch_400=True,
+                        raise_on_error=True
                     )
                     total_api += 1
                     if len(data) >= BATCH_RETURN_WARNING_THRESHOLD:
-                        logger.warning(
-                            f"  [{table}] 批次回傳 {len(data)} 筆，可能逼近 API 上限"
-                        )
-                    chunk_rows.extend([r for r in data if r.get("stock_id") in sids_set])
+                        logger.warning(f"  [{table}] 回傳 {len(data)} 筆，可能逼近上限")
+                    
+                    for r in data:
+                        if r.get("stock_id") in sids_set:
+                            chunk_data.append(r)
+
                     seg_start = (
                         datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
                     ).strftime("%Y-%m-%d")
             except BatchNotSupportedError as e:
                 logger.warning(f"  {e}；改逐支模式")
                 batch_disabled = True
-                chunk_rows = []
+                chunk_data = []
 
-            if chunk_rows:
-                rows = [mapper(r) for r in chunk_rows]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
-                logger.info(f"  [{table}] 批次寫入 {len(rows)} 筆")
+            if chunk_data:
+                rows_by_stock = defaultdict(list)
+                for r in chunk_data:
+                    try:
+                        rows_by_stock[r["stock_id"]].append(mapper(r))
+                    except Exception as e:
+                        logger.warning(f"  [{table}/{r.get('stock_id')}] mapper 失敗：{e}")
+
+                for sid, s_rows in rows_by_stock.items():
+                    n = safe_commit_rows(conn, upsert_sql, s_rows, template, label=f"{table}/{sid}")
+                    if n > 0:
+                        total_rows += n
+                    else:
+                        failures.append({"stock_id": sid, "error": "db_write_error"})
+                logger.info(f"  [{table}] 批次寫入完成（含 {len(rows_by_stock)} 支）")
 
         if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
             # 逐支模式
             for sid in sids:
-                data = finmind_get(
-                    dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
-                    delay,
-                )
-                total_api += 1
-                if not data:
-                    continue
-                rows = [mapper(r) for r in data]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+                try:
+                    data = finmind_get(
+                        dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
+                        delay,
+                        raise_on_error=True
+                    )
+                    total_api += 1
+                    if not data:
+                        continue
+                    rows = []
+                    for r in data:
+                        try:
+                            rows.append(mapper(r))
+                        except Exception as e:
+                            logger.warning(f"  [{table}/{sid}] mapper 失敗：{e}")
+                    
+                    n = safe_commit_rows(conn, upsert_sql, rows, template, label=f"{table}/{sid}")
+                    total_rows += n
+                except Exception as e:
+                    try: conn.rollback()
+                    except Exception: pass
+                    failures.append({"stock_id": sid, "error": str(e)})
+                    logger.error(f"  [{table}/{sid}] 失敗：{e}")
 
-    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows} 筆")
+    dump_failures(table, failures)
+    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows} 失敗:{len(failures)}")
 
 # ─────────────────────────────────────────────
 # main

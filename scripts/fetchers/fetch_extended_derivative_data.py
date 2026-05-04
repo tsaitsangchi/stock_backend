@@ -1,47 +1,17 @@
 from __future__ import annotations
 import sys
+import json
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_extended_derivative_data.py — 期貨/選擇權 II + 各券商交易量 + 夜盤 II
+fetch_extended_derivative_data.py — 期貨/選擇權 II（逐支 commit 完整性版）
 ================================================================================
-[新增] 補齊衍生品的「人」維度資料：
-       原有 derivative_data 只有期貨/選擇權的 OHLCV，
-       原有 derivative_sentiment 只有 options_large_oi（OI 持倉結構）。
-       本檔補上「成交層」的三大法人方向 + 夜盤動向 + 各券商交易強度。
-
-  1. futures_inst_investors ← TaiwanFuturesInstitutionalInvestors
-     資料範圍：2018-06-05 ~ now（Free per-data_id，Sponsor 批次）
-     用途：期貨日盤三大法人多空成交與未平倉。常用 contract = TX、MTX、TJF。
-           外資期貨多單未平倉 = 對大盤的真實看法（與現貨買賣方向交叉驗證）。
-
-  2. options_inst_investors ← TaiwanOptionInstitutionalInvestors
-     資料範圍：2018-06-05 ~ now（Free per-data_id，Sponsor 批次）
-     用途：選擇權三大法人 call/put 多空成交。
-           外資 put 賣出（賣保險）vs put 買進（買保險）的差距是強烈情緒指標。
-
-  3. futures_inst_after_hours ← TaiwanFuturesInstitutionalInvestorsAfterHours（Sponsor）
-     資料範圍：2021-10-12 ~ now
-     用途：**夜盤反映外資真實意圖**（國際資金時段，雜訊低，比日盤乾淨）。
-
-  4. options_inst_after_hours ← TaiwanOptionInstitutionalInvestorsAfterHours（Sponsor）
-     資料範圍：2021-10-12 ~ now
-
-  5. futures_dealer_volume ← TaiwanFuturesDealerTradingVolumeDaily（Free）
-     資料範圍：2021-04-01 ~ now
-     用途：各券商每日期貨交易量。可建構「主力券商期貨持倉」特徵，
-           準確度遠高於只看法人總和。
-
-  6. options_dealer_volume ← TaiwanOptionDealerTradingVolumeDaily（Free）
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - foreign_futures_oi_chg    = 外資期貨 OI 日變化
-  - foreign_put_buy_intensity = 外資 put 買進金額 / put 總成交金額
-  - night_session_premium     = 夜盤外資多空偏向（與日盤對照）
-  - put_call_ratio_oi         = 全市場 put OI / call OI
-  - top_dealer_concentration  = 前 5 大券商成交量佔比
+v2.2 改進：
+  · safe_commit_rows()：每個商品 (futures_id / option_id) 寫入後立即 commit，失敗 rollback。
+  · 主迴圈以 try/except 包單一商品，單個失敗不影響其他商品。
+  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 
 執行：
     python fetch_extended_derivative_data.py
@@ -67,6 +37,9 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATASET_START = {
     "futures_inst_investors":   "2018-06-05",
@@ -234,6 +207,41 @@ ON CONFLICT (date, option_id, dealer_code, is_after_hour) DO UPDATE SET
     volume      = EXCLUDED.volume;
 """
 
+
+# ─────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ─────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+
 # ─────────────────────────────────────────────
 # Mapper
 # ─────────────────────────────────────────────
@@ -241,7 +249,7 @@ def _f(r, k): return safe_float(r.get(k))
 def _i(r, k): return safe_int(r.get(k))
 
 def map_fut_inst(r): return (
-    r["date"], r.get("futures_id") or r.get("name"),  # 部分 dataset 用 name
+    r["date"], r.get("futures_id") or r.get("name"),
     r.get("institutional_investors"),
     _i(r, "long_deal_volume"),  _f(r, "long_deal_amount"),
     _i(r, "short_deal_volume"), _f(r, "short_deal_amount"),
@@ -297,16 +305,16 @@ def latest_market_date(conn, table: str) -> str | None:
             return row[0].strftime("%Y-%m-%d")
     return None
 
+
 def fetch_market_dataset(
     conn, dataset: str, table: str, ddl: str,
     upsert_sql: str, template: str, mapper, dataset_key: str,
     start: str, end: str, delay: float, force: bool,
     chunk_days: int = 90,
 ):
-    """
-    Sponsor 可不帶 data_id 一次抓全期貨/選擇權，但回傳量大需分段。
-    """
+    """Sponsor 一次抓全期貨/選擇權，分段請求並依商品 id 逐支 commit。"""
     ensure_ddl(conn, ddl)
+    conn.commit()
     s = start
     if not force:
         last = latest_market_date(conn, table)
@@ -323,33 +331,73 @@ def fetch_market_dataset(
     seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
     total_rows = 0
     api_calls = 0
+    failures: list[dict] = []
 
-    try:
-        while True:
-            seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
-            if seg_start_dt > seg_end_dt:
-                break
-            seg_end = min(
-                (seg_start_dt + timedelta(days=chunk_days - 1)).strftime("%Y-%m-%d"),
-                end,
-            )
+    while True:
+        seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
+        if seg_start_dt > seg_end_dt:
+            break
+        seg_end = min(
+            (seg_start_dt + timedelta(days=chunk_days - 1)).strftime("%Y-%m-%d"),
+            end,
+        )
+
+        # API 呼叫獨立 try/except，單 chunk 失敗不影響整支 fetcher
+        try:
             data = finmind_get(
                 dataset, {"start_date": seg_start, "end_date": seg_end},
                 delay, raise_on_batch_400=True,
             )
-            api_calls += 1
-            if data:
-                rows = [mapper(r) for r in data]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+        except BatchNotSupportedError as e:
+            logger.error(f"[{table}] 帳號等級不支援批次：{e}")
+            return
+        except Exception as e:
+            logger.error(f"[{table}] {seg_start}~{seg_end} API 失敗：{e}")
+            failures.append({"chunk": f"{seg_start}~{seg_end}", "error": str(e)})
             seg_start = (
                 datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
-    except BatchNotSupportedError as e:
-        logger.error(f"[{table}] 帳號等級不支援批次：{e}")
-        return
+            continue
 
-    logger.info(f"[{table}] 完成 API:{api_calls} 寫入:{total_rows}")
+        api_calls += 1
+        if data:
+            rows = []
+            for r in data:
+                try:
+                    rows.append(mapper(r))
+                except Exception as e:
+                    logger.warning(f"  [{table}] mapper 異常筆，跳過：{e}")
+
+            # ── 依商品代號分組逐支 commit ──
+            rows_by_id: dict[str, list] = defaultdict(list)
+            for r in rows:
+                iid = r[1]
+                rows_by_id[iid].append(r)
+
+            for iid, s_rows in rows_by_id.items():
+                try:
+                    n = safe_commit_rows(
+                        conn, upsert_sql, s_rows, template,
+                        label=f"{table}/{iid}"
+                    )
+                    total_rows += n
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    failures.append({"id": iid, "chunk": f"{seg_start}~{seg_end}",
+                                     "error": str(e)})
+                    logger.error(f"  [{table}/{iid}] 寫入失敗：{e}")
+
+            logger.info(f"    → 寫入 {len(rows_by_id)} 支商品（共 {len(rows)} 筆）")
+
+        seg_start = (
+            datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
+        ).strftime("%Y-%m-%d")
+
+    dump_failures(table, failures)
+    logger.info(f"[{table}] 完成 API:{api_calls} 寫入:{total_rows} 失敗:{len(failures)}")
 
 # ─────────────────────────────────────────────
 # main
@@ -392,10 +440,15 @@ def main():
         for key, dataset, ddl, upsert, tmpl, mapper in configs:
             if key not in args.tables:
                 continue
-            fetch_market_dataset(
-                conn, dataset, key, ddl, upsert, tmpl, mapper, key,
-                args.start, args.end, args.delay, args.force, args.chunk_days,
-            )
+            try:
+                fetch_market_dataset(
+                    conn, dataset, key, ddl, upsert, tmpl, mapper, key,
+                    args.start, args.end, args.delay, args.force, args.chunk_days,
+                )
+            except Exception as e:
+                try: conn.rollback()
+                except Exception: pass
+                logger.error(f"[{key}] 未預期錯誤：{e}")
     finally:
         conn.close()
     logger.info("全部完成")
