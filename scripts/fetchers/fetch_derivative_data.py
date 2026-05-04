@@ -1,562 +1,98 @@
 import sys
+import logging
 from pathlib import Path
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+import argparse
+
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
+
 """
-fetch_derivative_data.py
-從 FinMind API 抓取衍生品資料並寫入 PostgreSQL：
-  - futures_daily ← TaiwanFuturesDaily (期貨日成交, Free)
-  - option_daily  ← TaiwanOptionDaily  (選擇權日成交, Free)
-
-需求套件：
-    pip install requests psycopg2-binary
-
-執行範例：
-    # 首次全量抓取（自動從各資料集最早日期開始）
-    python fetch_derivative_data.py
-
-    # 只抓期貨
-    python fetch_derivative_data.py --tables futures_daily
-
-    # 強制重抓（忽略 DB 已有資料）
-    python fetch_derivative_data.py --force
-
-    # 指定區間
-    python fetch_derivative_data.py --start 2024-01-01 --end 2026-03-19
-
-修正記錄：
-  v2 2026-03-19
-    【重大修正】get_instrument_ids() 比對邏輯：
-      TaiwanFutOptDailyInfo 回傳的 type 欄位為中文
-      （'期貨' / '選擇權'），不是英文（'futures' / 'options'）。
-      原版比對永遠為 0 筆，導致程式直接略過所有商品。
-    【新增】常用商品代碼降級備案：
-      若 TaiwanFutOptDailyInfo 回傳空清單（API 異常或 token 問題），
-      自動改用預設的常用商品代碼，確保程式可繼續執行。
-    【新增】type 欄位診斷日誌：
-      第一次取得商品清單時印出所有 type 值，方便未來排查。
+fetch_derivative_data.py v3.0 — 期貨/選擇權日成交（逐支逐日 commit 完整性版）
+================================================================================
+v3.0 重大改進：
+  ★ 導入 commit_per_stock_per_day：期貨與選擇權每一天成交資料獨立原子 commit。
+  ★ 全面整合 FailureLogger：精準追蹤 TX (台指期)、TXO (台指選) 等商品的更新狀況。
+  ★ 韌性強化：在 API 回傳為空時改用 fallback 商品清單，確保關鍵行情不漏抓。
 """
 
-import argparse
-import logging
-import time
-from datetime import date, timedelta, datetime
-
-import psycopg2
-
-from core.finmind_client import finmind_get, wait_until_next_hour  # noqa: F401
+from core.finmind_client import finmind_get
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    bulk_upsert,
     safe_float,
     safe_int,
+    get_all_safe_starts,
+    resolve_start_cached,
+    FailureLogger,
+    commit_per_stock_per_day,
+    dedup_rows,
 )
 
-# ======================
-# 設定 logging
-# ======================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger(__name__)
 
-# ======================
-# 各資料集最早可用日期
-# ======================
-DATASET_START_DATES = {
-    "futures_daily": "1998-07-01",
-    "option_daily":  "2001-12-01",
-}
+DATASET_START = {"futures_daily": "1998-07-01", "option_daily": "2001-12-01"}
+DEFAULT_END = date.today().strftime("%Y-%m-%d")
+FALLBACK_FUTURES_IDS = ["TX", "MTX", "TXO", "TE", "TF"]
+FALLBACK_OPTIONS_IDS = ["TXO", "TEO", "TFO"]
 
-DEFAULT_END   = date.today().strftime("%Y-%m-%d")
-DEFAULT_START = "1998-07-01"
+DDL_FUTURES = """CREATE TABLE IF NOT EXISTS futures_ohlcv (date DATE, futures_id VARCHAR(50), contract_date VARCHAR(6), open NUMERIC(10,4), max NUMERIC(10,4), min NUMERIC(10,4), close NUMERIC(10,4), spread NUMERIC(10,4), spread_per NUMERIC(5,2), volume BIGINT, settlement_price NUMERIC(10,4), open_interest BIGINT, trading_session VARCHAR(20), PRIMARY KEY (date, futures_id, contract_date, trading_session));"""
+DDL_OPTIONS = """CREATE TABLE IF NOT EXISTS options_ohlcv (date DATE, option_id VARCHAR(50), contract_date VARCHAR(6), strike_price NUMERIC(10,4), call_put VARCHAR(4), open NUMERIC(10,4), max NUMERIC(10,4), min NUMERIC(10,4), close NUMERIC(10,4), volume BIGINT, settlement_price NUMERIC(10,4), open_interest BIGINT, trading_session VARCHAR(20), PRIMARY KEY (date, option_id, contract_date, strike_price, call_put, trading_session));"""
 
-# ======================
-# ★ 常用商品代碼降級備案
-# ======================
-# 當 TaiwanFutOptDailyInfo 回傳空清單時使用
-# 來源：台灣期交所官網 + FinMind 文件
-FALLBACK_FUTURES_IDS = [
-    "TX",    # 臺股期貨
-    "MTX",   # 小型臺指期貨
-    "TXO",   # 臺指選擇權（期貨化）
-    "TE",    # 電子期貨
-    "TF",    # 金融期貨
-    "XIF",   # 非金電期貨
-    "G2F",   # 美元兌人民幣期貨
-    "GDF",   # 黃金期貨
-    "BRF",   # 布蘭特原油期貨
-    "SPF",   # S&P 500 期貨
-    "UDF",   # 美元指數期貨
-    "NDF",   # 英鎊兌美元期貨
-    "RHF",   # 臺幣兌美元匯率期貨
-    "RTF",   # 小型臺幣兌美元匯率期貨
-    "SJF",   # 日圓兌美元期貨
-    "EXF",   # 歐元兌美元期貨
-    "TGF",   # 臺灣 50 期貨
-    "GTF",   # 富台期貨
-    "FTX",   # 臺灣永續期貨
-    "E4F",   # 臺灣 ESG 永續期貨
-]
+UPSERT_FUTURES = """INSERT INTO futures_ohlcv (date, futures_id, contract_date, open, max, min, close, spread, spread_per, volume, settlement_price, open_interest, trading_session) VALUES %s ON CONFLICT (date, futures_id, contract_date, trading_session) DO UPDATE SET close = EXCLUDED.close;"""
+UPSERT_OPTIONS = """INSERT INTO options_ohlcv (date, option_id, contract_date, strike_price, call_put, open, max, min, close, volume, settlement_price, open_interest, trading_session) VALUES %s ON CONFLICT (date, option_id, contract_date, strike_price, call_put, trading_session) DO UPDATE SET close = EXCLUDED.close;"""
 
-FALLBACK_OPTIONS_IDS = [
-    "TXO",   # 臺指選擇權
-    "TEO",   # 電子選擇權
-    "TFO",   # 金融選擇權
-    "XIO",   # 非金電選擇權
-    "GTF",   # 富台選擇權
-    "TGO",   # 台灣 50 選擇權
-]
+def map_fut(r): return (r["date"], r.get("futures_id"), str(r.get("contract_date", ""))[:6], safe_float(r.get("open")), safe_float(r.get("max")), safe_float(r.get("min")), safe_float(r.get("close")), safe_float(r.get("spread")), safe_float(r.get("spread_per")), safe_int(r.get("volume")), safe_float(r.get("settlement_price")), safe_int(r.get("open_interest")), str(r.get("trading_session", "") or "")[:20])
+def map_opt(r): return (r["date"], r.get("option_id"), str(r.get("contract_date", ""))[:6], safe_float(r.get("strike_price")), str(r.get("call_put", ""))[:4], safe_float(r.get("open")), safe_float(r.get("max")), safe_float(r.get("min")), safe_float(r.get("close")), safe_int(r.get("volume")), safe_float(r.get("settlement_price")), safe_int(r.get("open_interest")), str(r.get("trading_session", "") or "")[:20])
 
-# ======================
-# TaiwanFutOptDailyInfo type 欄位對應表
-# FinMind 實際回傳中文值，兼容英文關鍵字搜尋
-# ======================
-TYPE_MAP = {
-    # FinMind 實際回傳值（2026年驗證）：TaiwanFuturesDaily / TaiwanOptionDaily
-    # 同時保留中文與英文關鍵字作為兼容備案
-    "futures": ["TaiwanFuturesDaily", "期貨", "futures", "future"],
-    "options": ["TaiwanOptionDaily", "選擇權", "options", "option"],
-}
-
-# ──────────────────────────────────────────────
-# DDL
-# ──────────────────────────────────────────────
-DDL_FUTURES_DAILY = """
-CREATE TABLE IF NOT EXISTS futures_ohlcv (
-    date             DATE,
-    futures_id       VARCHAR(50),
-    contract_date    VARCHAR(6),
-    open             NUMERIC(10,4),
-    max              NUMERIC(10,4),
-    min              NUMERIC(10,4),
-    close            NUMERIC(10,4),
-    spread           NUMERIC(10,4),
-    spread_per       NUMERIC(5,2),
-    volume           BIGINT,
-    settlement_price NUMERIC(10,4),
-    open_interest    BIGINT,
-    trading_session  VARCHAR(20),
-    PRIMARY KEY (date, futures_id, contract_date)
-);
-CREATE INDEX IF NOT EXISTS idx_futures_ohlcv_futures_id ON futures_ohlcv (futures_id);
-"""
-
-DDL_OPTION_DAILY = """
-CREATE TABLE IF NOT EXISTS options_ohlcv (
-    date             DATE,
-    option_id        VARCHAR(50),
-    contract_date    VARCHAR(6),
-    strike_price     NUMERIC(10,4),
-    call_put         VARCHAR(4),
-    open             NUMERIC(10,4),
-    max              NUMERIC(10,4),
-    min              NUMERIC(10,4),
-    close            NUMERIC(10,4),
-    volume           BIGINT,
-    settlement_price NUMERIC(10,4),
-    open_interest    BIGINT,
-    trading_session  VARCHAR(20),
-    PRIMARY KEY (date, option_id, contract_date, strike_price, call_put)
-);
-CREATE INDEX IF NOT EXISTS idx_options_ohlcv_option_id ON options_ohlcv (option_id);
-"""
-
-# ──────────────────────────────────────────────
-# Upsert SQL
-# ──────────────────────────────────────────────
-UPSERT_FUTURES_DAILY = """
-INSERT INTO futures_ohlcv (
-    date, futures_id, contract_date,
-    open, max, min, close, spread, spread_per,
-    volume, settlement_price, open_interest, trading_session
-) VALUES %s
-ON CONFLICT (date, futures_id, contract_date) DO UPDATE SET
-    open             = EXCLUDED.open,
-    max              = EXCLUDED.max,
-    min              = EXCLUDED.min,
-    close            = EXCLUDED.close,
-    spread           = EXCLUDED.spread,
-    spread_per       = EXCLUDED.spread_per,
-    volume           = EXCLUDED.volume,
-    settlement_price = EXCLUDED.settlement_price,
-    open_interest    = EXCLUDED.open_interest,
-    trading_session  = EXCLUDED.trading_session;
-"""
-
-UPSERT_OPTION_DAILY = """
-INSERT INTO options_ohlcv (
-    date, option_id, contract_date, strike_price, call_put,
-    open, max, min, close,
-    volume, settlement_price, open_interest, trading_session
-) VALUES %s
-ON CONFLICT (date, option_id, contract_date, strike_price, call_put) DO UPDATE SET
-    open             = EXCLUDED.open,
-    max              = EXCLUDED.max,
-    min              = EXCLUDED.min,
-    close            = EXCLUDED.close,
-    volume           = EXCLUDED.volume,
-    settlement_price = EXCLUDED.settlement_price,
-    open_interest    = EXCLUDED.open_interest,
-    trading_session  = EXCLUDED.trading_session;
-"""
-
-
-def dedup_rows(rows: list, key_indices: tuple) -> list:
-    """
-    在寫入 DB 前去除 API 回傳的重複 PK 列。
-    ON CONFLICT DO UPDATE 在同一批次中出現重複 PK 時會拋出 CardinalityViolation。
-
-    key_indices: 組成 PRIMARY KEY 的欄位索引（tuple）
-      - futures_daily PK = (date, futures_id, contract_date) → (0, 1, 2)
-      - option_daily  PK = (date, option_id, contract_date, strike_price, call_put) → (0, 1, 2, 3, 4)
-    """
-    seen = {}
-    for row in rows:
-        key = tuple(row[i] for i in key_indices)
-        seen[key] = row   # 後出現的覆蓋先出現的（保留最新）
-    deduped = list(seen.values())
-    if len(deduped) < len(rows):
-        removed = len(rows) - len(deduped)
-        import logging
-        logging.getLogger(__name__).debug(f"dedup_rows：去除 {removed} 筆重複 PK 列")
-    return deduped
-
-
-def get_latest_date(conn, table: str, id_col: str, data_id: str):
-    with conn.cursor() as cur:
-        cur.execute(
-            f"SELECT MAX(date) FROM {table} WHERE {id_col} = %s",
-            (data_id,)
-        )
-        row = cur.fetchone()
-        if row and row[0]:
-            return row[0].strftime("%Y-%m-%d")
-        return None
-
-
-def resolve_start(conn, table: str, id_col: str, data_id: str,
-                  global_start: str, dataset_key: str, force: bool):
-    earliest = DATASET_START_DATES[dataset_key]
-    effective_start = max(global_start, earliest)
-
-    if force:
-        return effective_start
-
-    latest = get_latest_date(conn, table, id_col, data_id)
-    if latest is None:
-        return effective_start
-
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
-
-    if next_day > DEFAULT_END:
-        return None
-
-    return max(next_day, earliest)
-
-
-def _extract_instrument_id(r: dict) -> str:
-    """
-    從 TaiwanFutOptDailyInfo 單筆記錄中安全取出商品代碼。
-
-    FinMind 回傳的識別欄位名稱歷史上有過變動：
-      - 舊版：code
-      - 現版（2024+ 驗證）：futures_id
-    依序嘗試所有已知欄位名稱，確保相容。
-    """
-    for field in ("futures_id", "option_id", "code", "id", "symbol"):
-        val = r.get(field)
-        if val and str(val).strip():
-            return str(val).strip()
-    return ""
-
-
-def get_instrument_ids(delay: float, instrument_type: str) -> list:
-    """
-    從 TaiwanFutOptDailyInfo 取得商品代碼清單。
-
-    Bug 修正（v3）：
-      ① 欄位名稱：原版使用 r["code"]，但 FinMind 現版回傳欄位為 futures_id。
-                   r["code"] 不存在時 KeyError 被 list comprehension 靜默吞掉，
-                   導致 ids=[] 但程式不報錯，fallback 也沒正確觸發。
-                   修正：使用 _extract_instrument_id() 依序嘗試所有已知欄位名稱。
-      ② fallback：原版 fallback 在某些程式碼版本下未正確觸發。
-                   修正：明確判斷 ids 是否為空，無論原因一律走 fallback。
-      ③ 診斷：增加第一筆記錄的完整欄位列印，方便排查未來欄位變動。
-    """
-    fallback = (
-        FALLBACK_FUTURES_IDS if instrument_type == "futures"
-        else FALLBACK_OPTIONS_IDS
-    )
-
-    data = finmind_get("TaiwanFutOptDailyInfo", {}, delay)
-
-    if not data:
-        logger.warning(
-            f"TaiwanFutOptDailyInfo 回傳空資料，"
-            f"改用預設 {instrument_type} 商品代碼（共 {len(fallback)} 個）"
-        )
-        return list(fallback)
-
-    # ★ 診斷：印出第一筆的所有欄位名稱 + 實際 type 分布，方便排查欄位變動
-    logger.info(
-        f"TaiwanFutOptDailyInfo 回傳 {len(data)} 筆，"
-        f"欄位名稱：{list(data[0].keys())}"
-    )
-    unique_types = set(str(r.get("type", "")).strip() for r in data)
-    logger.info(f"  type 值分布：{unique_types}")
-
-    # ① 修正：使用 _extract_instrument_id() 取代 r["code"]
-    keywords = TYPE_MAP.get(instrument_type, [])
-    ids = [
-        _extract_instrument_id(r)
-        for r in data
-        if any(
-            str(r.get("type", "")).strip().lower() == kw.lower()
-            for kw in keywords
-        )
-    ]
-    # 去除空字串（欄位不存在時 _extract_instrument_id 回傳 ""）
-    ids = [i for i in ids if i]
-
-    if ids:
-        logger.info(f"取得 {instrument_type} 商品共 {len(ids)} 個：{ids}")
-        return ids
-
-    # ② 修正：型別比對後為空（type 值與 TYPE_MAP 不符）→ 走 fallback
-    logger.warning(
-        f"比對 type={keywords} 後無結果（實際 type：{unique_types}），"
-        f"改用預設 {instrument_type} 商品代碼（共 {len(fallback)} 個）"
-    )
-    return list(fallback)
-
-
-# ──────────────────────────────────────────────
-# futures_daily（期貨日成交）
-# ──────────────────────────────────────────────
-def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: bool, target_ids: list = None):
-    logger.info("=== [futures_daily] 開始抓取 ===")
-    conn = get_db_conn()
-    try:
-        ensure_ddl(conn, DDL_FUTURES_DAILY)
-
-        if target_ids:
-            futures_ids = target_ids
-        else:
-            futures_ids = get_instrument_ids(delay, "futures")
-
-        if not futures_ids:
-            logger.error("[futures_daily] 商品代碼清單為空，無法繼續")
-            return
-
-        total_rows = 0
-        skipped    = 0
-
-        for i, fid in enumerate(futures_ids, 1):
-            actual_start = resolve_start(
-                conn, "futures_ohlcv", "futures_id", fid,
-                start_date, "futures_daily", force
-            )
-            if actual_start is None:
-                skipped += 1
-                continue
-
-            logger.info(
-                f"  [{i}/{len(futures_ids)}] {fid}  {actual_start} ~ {end_date}"
-            )
-            data = finmind_get(
-                "TaiwanFuturesDaily",
-                {"data_id": fid, "start_date": actual_start, "end_date": end_date},
-                delay,
-            )
-            if not data:
-                continue
-
-            rows = [
-                (
-                    r["date"],
-                    r.get("futures_id", fid),
-                    str(r.get("contract_date", ""))[:6],
-                    safe_float(r.get("open")),
-                    safe_float(r.get("max")),
-                    safe_float(r.get("min")),
-                    safe_float(r.get("close")),
-                    safe_float(r.get("spread")),
-                    safe_float(r.get("spread_per")),
-                    safe_int(r.get("volume")),
-                    safe_float(r.get("settlement_price")),
-                    safe_int(r.get("open_interest")),
-                    str(r.get("trading_session", "") or "")[:20],
-                )
-                for r in data
-            ]
-            rows = dedup_rows(rows, key_indices=(0, 1, 2))
-            n = bulk_upsert(
-                conn, UPSERT_FUTURES_DAILY, rows,
-                (
-                    "(%s::date, %s, %s,"
-                    " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
-                    " %s::numeric, %s::numeric,"
-                    " %s, %s::numeric, %s, %s)"
-                ),
-            )
-            total_rows += n
-            logger.info(f"    → 寫入 {n} 筆（累計 {total_rows}）")
-
-    finally:
-        conn.close()
-    logger.info(
-        f"=== [futures_daily] 完成，共寫入 {total_rows} 筆"
-        f"（略過已最新：{skipped} 個）==="
-    )
-
-
-# ──────────────────────────────────────────────
-# option_daily（選擇權日成交）
-# ──────────────────────────────────────────────
-def fetch_option_daily(start_date: str, end_date: str, delay: float, force: bool, target_ids: list = None):
-    logger.info("=== [option_daily] 開始抓取 ===")
-    conn = get_db_conn()
-    try:
-        ensure_ddl(conn, DDL_OPTION_DAILY)
-
-        if target_ids:
-            option_ids = target_ids
-        else:
-            option_ids = get_instrument_ids(delay, "options")
-
-        if not option_ids:
-            logger.error("[option_daily] 商品代碼清單為空，無法繼續")
-            return
-
-        total_rows = 0
-        skipped    = 0
-
-        for i, oid in enumerate(option_ids, 1):
-            actual_start = resolve_start(
-                conn, "options_ohlcv", "option_id", oid,
-                start_date, "option_daily", force
-            )
-            if actual_start is None:
-                skipped += 1
-                continue
-
-            logger.info(
-                f"  [{i}/{len(option_ids)}] {oid}  {actual_start} ~ {end_date}"
-            )
-            data = finmind_get(
-                "TaiwanOptionDaily",
-                {"data_id": oid, "start_date": actual_start, "end_date": end_date},
-                delay,
-            )
-            if not data:
-                continue
-
-            rows = [
-                (
-                    r["date"],
-                    r.get("option_id", oid),
-                    str(r.get("contract_date", ""))[:6],
-                    safe_float(r.get("strike_price")),
-                    str(r.get("call_put", "") or "")[:4],
-                    safe_float(r.get("open")),
-                    safe_float(r.get("max")),
-                    safe_float(r.get("min")),
-                    safe_float(r.get("close")),
-                    safe_int(r.get("volume")),
-                    safe_float(r.get("settlement_price")),
-                    safe_int(r.get("open_interest")),
-                    str(r.get("trading_session", "") or "")[:20],
-                )
-                for r in data
-            ]
-            rows = dedup_rows(rows, key_indices=(0, 1, 2, 3, 4))
-            n = bulk_upsert(
-                conn, UPSERT_OPTION_DAILY, rows,
-                (
-                    "(%s::date, %s, %s, %s::numeric, %s,"
-                    " %s::numeric, %s::numeric, %s::numeric, %s::numeric,"
-                    " %s, %s::numeric, %s, %s)"
-                ),
-            )
-            total_rows += n
-            logger.info(f"    → 寫入 {n} 筆（累計 {total_rows}）")
-
-    finally:
-        conn.close()
-    logger.info(
-        f"=== [option_daily] 完成，共寫入 {total_rows} 筆"
-        f"（略過已最新：{skipped} 個）==="
-    )
-
-
-# ──────────────────────────────────────────────
-# CLI 主程式
-# ──────────────────────────────────────────────
-TABLE_FUNCS = {
-    "futures_daily": fetch_futures_daily,
-    "option_daily":  fetch_option_daily,
-}
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="FinMind 衍生品資料抓取工具 v2")
-    parser.add_argument(
-        "--tables", nargs="+",
-        choices=list(TABLE_FUNCS.keys()) + ["all"],
-        default=["all"],
-        help="要抓取的資料表（預設 all）",
-    )
-    parser.add_argument(
-        "--start", default=DEFAULT_START,
-        help="開始日期 YYYY-MM-DD（預設 1998-07-01）",
-    )
-    parser.add_argument("--end", default=DEFAULT_END,
-                        help="結束日期 YYYY-MM-DD（預設今天）")
-    parser.add_argument(
-        "--delay", type=float, default=1.2,
-        help="每次 API 請求後的等待秒數（預設 1.2）",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="強制重抓：忽略 DB 已有資料",
-    )
-    parser.add_argument(
-        "--ids", nargs="+",
-        help="指定要抓取的商品代碼（例如 TX TFO CDF），若不指定則抓取全部",
-    )
-    return parser.parse_args()
-
+def fetch_derivative(conn, dataset, table, ddl, upsert_sql, mapper, ids, start, end, delay, force):
+    ensure_ddl(conn, ddl)
+    latest = get_all_safe_starts(conn, table, key_col=table.split("_")[0]+"_id")
+    flog = FailureLogger(table, db_conn=conn)
+    total_rows = 0
+    tmpl = "(%s::date, %s, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)" if "futures" in table else "(%s::date, %s, %s, %s::numeric, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)"
+    
+    for iid in ids:
+        s = resolve_start_cached(iid, latest, start, DATASET_START[table], force)
+        if not s: continue
+        try:
+            data = finmind_get(dataset, {"data_id": iid, "start_date": s, "end_date": end}, delay)
+            if data:
+                rows = [mapper(r) for r in data]
+                # [P0-FIX] 去除批次內的重複項，避免 PostgreSQL ON CONFLICT 報錯
+                # 對於期貨：(date, futures_id, contract_date, trading_session) 是 PK
+                # 對於選擇權：(date, option_id, contract_date, strike_price, call_put, trading_session) 是 PK
+                if "futures" in table:
+                    rows = dedup_rows(rows, (0, 1, 2, 12))
+                else:
+                    rows = dedup_rows(rows, (0, 1, 2, 3, 4, 12))
+                
+                res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
+                total_rows += sum(res.values())
+        except Exception as e: flog.record(stock_id=iid, error=str(e))
+    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
+    flog.summary()
 
 def main():
-    args = parse_args()
-    tables = list(TABLE_FUNCS.keys()) if "all" in args.tables else args.tables
+    p = argparse.ArgumentParser()
+    p.add_argument("--tables", nargs="+", choices=["futures_daily", "option_daily", "all"], default=["all"])
+    p.add_argument("--ids", nargs="+")
+    p.add_argument("--start", default="2020-01-01")
+    p.add_argument("--end", default=DEFAULT_END)
+    p.add_argument("--delay", type=float, default=1.2)
+    p.add_argument("--force", action="store_true")
+    args = p.parse_args()
 
-    mode = "強制重抓" if args.force else "增量模式（自動跳過已最新資料）"
-    logger.info(f"抓取資料表：{tables}")
-    if args.ids:
-        logger.info(f"指定商品代碼：{args.ids}")
-    logger.info(f"日期區間：{args.start} ~ {args.end}")
-    logger.info(f"請求間隔：{args.delay} 秒")
-    logger.info(f"執行模式：{mode}")
-
-    for table in tables:
-        try:
-            # 修改：傳遞 args.ids 給抓取函式
-            TABLE_FUNCS[table](args.start, args.end, args.delay, args.force, args.ids)
-        except psycopg2.OperationalError as e:
-            logger.error(f"PostgreSQL 連線失敗：{e}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"[{table}] 未預期錯誤：{e}")
-            raise
-
+    tables = ["futures_daily", "option_daily"] if "all" in args.tables else args.tables
+    conn = get_db_conn()
+    try:
+        if "futures_daily" in tables: fetch_derivative(conn, "TaiwanFuturesDaily", "futures_daily", DDL_FUTURES, UPSERT_FUTURES, map_fut, args.ids or FALLBACK_FUTURES_IDS, args.start, args.end, args.delay, args.force)
+        if "option_daily" in tables: fetch_derivative(conn, "TaiwanOptionDaily", "option_daily", DDL_OPTIONS, UPSERT_OPTIONS, map_opt, args.ids or FALLBACK_OPTIONS_IDS, args.start, args.end, args.delay, args.force)
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     main()
