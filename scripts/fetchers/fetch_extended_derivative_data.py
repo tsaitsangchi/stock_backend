@@ -57,7 +57,7 @@ UPSERT_OPT_INST = """INSERT INTO options_inst_investors VALUES %s ON CONFLICT (d
 def map_fut_inst(r): return (r["date"], r.get("futures_id") or r.get("name"), r.get("institutional_investors"), safe_int(r.get("long_deal_volume")), safe_float(r.get("long_deal_amount")), safe_int(r.get("short_deal_volume")), safe_float(r.get("short_deal_amount")), safe_int(r.get("long_open_interest_balance_volume")), safe_float(r.get("long_open_interest_balance_amount")), safe_int(r.get("short_open_interest_balance_volume")), safe_float(r.get("short_open_interest_balance_amount")))
 def map_opt_inst(r): return (r["date"], r.get("option_id") or r.get("name"), r.get("call_put"), r.get("institutional_investors"), safe_int(r.get("long_deal_volume")), safe_float(r.get("long_deal_amount")), safe_int(r.get("short_deal_volume")), safe_float(r.get("short_deal_amount")), safe_int(r.get("long_open_interest_balance_volume")), safe_float(r.get("long_open_interest_balance_amount")), safe_int(r.get("short_open_interest_balance_volume")), safe_float(r.get("short_open_interest_balance_amount")))
 
-def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay, force):
+def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay, force, target_ids=None):
     logger.info(f"=== [{table}] 開始 ===")
     ensure_ddl(conn, ddl)
     key_col = "futures_id" if "futures" in table else "option_id"
@@ -67,7 +67,14 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
     tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" if "futures" in table else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     
     try:
-        data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
+        if target_ids:
+            data = []
+            for tid in target_ids:
+                d = finmind_get(dataset, {"data_id": tid, "start_date": start, "end_date": end}, delay)
+                if d: data.extend(d)
+        else:
+            data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
+        
         if data:
             rows = [mapper(r) for r in data]
             # 去重：(date, id, investor)
@@ -83,6 +90,7 @@ def main():
     p.add_argument("--tables", nargs="+", choices=["futures_inst_investors", "options_inst_investors", "all"], default=["all"])
     p.add_argument("--start", default="2020-01-01")
     p.add_argument("--end", default=DEFAULT_END)
+    p.add_argument("--ids", help="指定標的 ID (例如 TX, MTX, TXO)，多筆用逗號分隔")
     p.add_argument("--delay", type=float, default=1.2)
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
@@ -90,8 +98,9 @@ def main():
     tables = ["futures_inst_investors", "options_inst_investors"] if "all" in args.tables else args.tables
     conn = get_db_conn()
     try:
-        if "futures_inst_investors" in tables: fetch_inst(conn, "TaiwanFuturesInstitutionalInvestors", "futures_inst_investors", DDL_FUT_INST, UPSERT_FUT_INST, map_fut_inst, args.start, args.end, args.delay, args.force)
-        if "options_inst_investors" in tables: fetch_inst(conn, "TaiwanOptionInstitutionalInvestors", "options_inst_investors", DDL_OPT_INST, UPSERT_OPT_INST, map_opt_inst, args.start, args.end, args.delay, args.force)
+        target_ids = [s.strip() for s in args.ids.split(",")] if args.ids else None
+        if "futures_inst_investors" in tables: fetch_inst(conn, "TaiwanFuturesInstitutionalInvestors", "futures_inst_investors", DDL_FUT_INST, UPSERT_FUT_INST, map_fut_inst, args.start, args.end, args.delay, args.force, target_ids)
+        if "options_inst_investors" in tables: fetch_inst(conn, "TaiwanOptionInstitutionalInvestors", "options_inst_investors", DDL_OPT_INST, UPSERT_OPT_INST, map_opt_inst, args.start, args.end, args.delay, args.force, target_ids)
     finally:
         conn.close()
 

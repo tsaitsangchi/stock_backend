@@ -36,7 +36,7 @@ import numpy as np
 
 # 注入路徑
 sys.path.append(str(Path(__file__).resolve().parent))
-from config import STOCK_CONFIGS, TABLE_REGISTRY, DATA_LAG_CONFIG
+from config import STOCK_CONFIGS, TABLE_REGISTRY, DATA_LAG_CONFIG, DERIVATIVE_CONFIGS
 from data_pipeline import _query
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -236,12 +236,33 @@ class IntegrityAuditor:
     def dump_gaps_json(self, output_path: str = "outputs/integrity_gaps.json"):
         """將偵測到的所有斷層匯出成 JSON，供 fetch_missing_stocks_data.py 讀取"""
         all_gaps = []
-        # 我們檢查核心日更表
-        daily_tables = [t for t, m in TABLE_REGISTRY.items() if m["type"] == "daily"]
+        # 我們檢查所有日更表與市場層級表
+        daily_tables = [t for t, m in TABLE_REGISTRY.items() if m["type"] in ("daily", "market")]
         
         logger.info(f"正在偵測斷層並匯出至 {output_path}...")
-        for sid in self.stock_ids:
-            for table in daily_tables:
+        for table in daily_tables:
+            reg = TABLE_REGISTRY[table]
+            id_col = reg.get("id_col")
+            
+            # 依據 id_col 決定審計標的清單
+            if id_col == "futures_id":
+                target_ids = DERIVATIVE_CONFIGS.get("futures", [])
+            elif id_col == "option_id":
+                target_ids = DERIVATIVE_CONFIGS.get("options", [])
+            elif id_col == "currency":
+                target_ids = DERIVATIVE_CONFIGS.get("currencies", [])
+            elif id_col == "name":
+                target_ids = DERIVATIVE_CONFIGS.get("commodities", [])
+            elif id_col == "stock_id":
+                target_ids = self.stock_ids
+            elif id_col is None:
+                # 市場層級或無 ID 欄位的表，傳入 MARKET 作為佔位符
+                target_ids = ["MARKET"]
+            else:
+                # 預設回退至 stock_ids
+                target_ids = self.stock_ids
+
+            for sid in target_ids:
                 gaps_df = self.audit_date_gaps(sid, table)
                 if not gaps_df.empty:
                     # 取第一個斷層的開始日作為補抓起點
