@@ -1,66 +1,50 @@
 from __future__ import annotations
 import sys
+import logging
 from pathlib import Path
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+
+# ── sys.path 自我修復 ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for sub in ("", "core", "fetchers"):
+    p = (_SCRIPTS_DIR / sub) if sub else _SCRIPTS_DIR
+    sp = str(p)
+    if p.exists() and sp not in sys.path:
+        sys.path.insert(0, sp)
+
 """
-fetch_advanced_chip_data.py — 進階籌碼與融資融券資料
-======================================================
-[新增] 補齊原 fetch_chip_data.py 沒抓的「市場層」與「放空」資料：
-
-  1. total_margin_short ← TaiwanStockTotalMarginPurchaseShortSale
-     資料範圍：2001-01-01 ~ now（Free）
-     用途：整體市場融資融券餘額。散戶恐慌指標、信用過熱指標。
-     非個股資料 → 以 name (融資/融券) 為 PK 的一部分。
-
-  2. total_inst_investors ← TaiwanStockTotalInstitutionalInvestors
-     資料範圍：2004-04-01 ~ now（Free）
-     用途：整體市場三大法人買賣金額（外資/投信/自營商）。
-           大盤主力資金方向，補強 institutional_investors_buy_sell（個股層）。
-
-  3. securities_lending ← TaiwanStockSecuritiesLending
-     資料範圍：2001-05-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：借券成交明細。機構放空的最直接證據（學術上的 short interest）。
-           借券量激增 = 大量機構押注下跌，是強烈反向 smart money 訊號。
-
-  4. daily_short_balance ← TaiwanDailyShortSaleBalances
-     資料範圍：2005-07-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：信用額度總量管制餘額表。融券 + SBL（借券放空）的完整放空圖像。
-
-  5. margin_short_suspension ← TaiwanStockMarginShortSaleSuspension
-     資料範圍：2015-01-01 ~ now（Free per stock，Sponsor 可批次）
-     用途：暫停融券賣出表。被列入暫停常是軋空前兆，事件後 5-10 日報酬顯著為正。
-
-衍生因子（建議在 feature_engineering.py 補上）：
-  - retail_panic_index = total_margin_balance.pct_change(5)（負值越大越恐慌）
-  - sbl_short_intensity = sbl_short_sales / shares_outstanding
-  - short_squeeze_signal = (margin_short_suspension flag) AND (foreign_buy > 0)
-  - institutional_breadth = sum(三大法人買超天數，過去 5 日)
-
-執行：
-    python fetch_advanced_chip_data.py
-    python fetch_advanced_chip_data.py --tables securities_lending daily_short_balance
-    python fetch_advanced_chip_data.py --stock-id 2330 --force
+fetch_advanced_chip_data.py v3.0 — 進階籌碼與融資融券（逐支逐日 commit 完整性版）
+================================================================================
+v3.0 重大改進：
+  ★ 整合 core v3.0：全面使用 FailureLogger、safe_commit_rows。
+  ★ 逐支逐日 commit：個股資料（SBL, DailyShort）採用最細粒度的 commit 策略。
+  ★ 斷路器與統計：整合 finmind_client v3.0 統計報表。
+  ★ 原子寫入：失敗清單採原子寫入，確保日誌完整。
 """
 
 import argparse
-import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from config import DB_CONFIG  # noqa: F401
-from core.finmind_client import finmind_get, BatchNotSupportedError
+from core.path_setup import ensure_scripts_on_path, get_outputs_dir, ensure_dirs_exist
+ensure_scripts_on_path(__file__)
+
+from core.finmind_client import finmind_get, BatchNotSupportedError, get_request_stats
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    bulk_upsert,
     safe_float,
     safe_int,
     get_db_stock_ids,
     get_all_safe_starts,
     get_market_safe_start,
     resolve_start_cached,
+    FailureLogger,
+    map_rows_safe,
+    commit_per_day,
+    commit_per_stock_per_day,
+    dedup_rows,
 )
 
 logging.basicConfig(
@@ -69,6 +53,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
+
+# 初始化目錄
+ensure_dirs_exist()
+OUTPUT_DIR = get_outputs_dir()
 
 DATASET_START = {
     "total_margin_short":      "2001-01-01",
@@ -80,31 +68,29 @@ DATASET_START = {
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
 
 # ─────────────────────────────────────────────
-# DDL
+# DDL & SQL
 # ─────────────────────────────────────────────
 DDL_TOTAL_MARGIN_SHORT = """
 CREATE TABLE IF NOT EXISTS total_margin_short (
     date          DATE,
-    name          VARCHAR(50),    -- 融資 / 融券
+    name          VARCHAR(50),
     today_balance BIGINT,
     yes_balance   BIGINT,
     buy           BIGINT,
     sell          BIGINT,
-    return_qty    BIGINT,         -- API 欄位 Return（避開 SQL 保留字）
+    return_qty    BIGINT,
     PRIMARY KEY (date, name)
 );
-CREATE INDEX IF NOT EXISTS idx_tms_date ON total_margin_short (date);
 """
 
 DDL_TOTAL_INST = """
 CREATE TABLE IF NOT EXISTS total_inst_investors (
     date DATE,
-    name VARCHAR(100),  -- 外資、投信、自營商等
+    name VARCHAR(100),
     buy  BIGINT,
     sell BIGINT,
     PRIMARY KEY (date, name)
 );
-CREATE INDEX IF NOT EXISTS idx_tii_date ON total_inst_investors (date);
 """
 
 DDL_SBL = """
@@ -119,7 +105,6 @@ CREATE TABLE IF NOT EXISTS securities_lending (
     original_lending_period INTEGER,
     PRIMARY KEY (date, stock_id, transaction_type)
 );
-CREATE INDEX IF NOT EXISTS idx_sbl_stock ON securities_lending (stock_id, date);
 """
 
 DDL_DAILY_SHORT = """
@@ -141,7 +126,6 @@ CREATE TABLE IF NOT EXISTS daily_short_balance (
     sbl_short_short_covering                   BIGINT,
     PRIMARY KEY (date, stock_id)
 );
-CREATE INDEX IF NOT EXISTS idx_dsb_stock ON daily_short_balance (stock_id, date);
 """
 
 DDL_MARGIN_SHORT_SUSPENSION = """
@@ -152,106 +136,70 @@ CREATE TABLE IF NOT EXISTS margin_short_suspension (
     reason   VARCHAR(500),
     PRIMARY KEY (date, stock_id)
 );
-CREATE INDEX IF NOT EXISTS idx_mss_stock ON margin_short_suspension (stock_id, date);
 """
 
-# ─────────────────────────────────────────────
-# Upsert SQL
-# ─────────────────────────────────────────────
 UPSERT_TOTAL_MARGIN_SHORT = """
 INSERT INTO total_margin_short (date, name, today_balance, yes_balance, buy, sell, return_qty)
-VALUES %s
-ON CONFLICT (date, name) DO UPDATE SET
-    today_balance = EXCLUDED.today_balance,
-    yes_balance   = EXCLUDED.yes_balance,
-    buy           = EXCLUDED.buy,
-    sell          = EXCLUDED.sell,
-    return_qty    = EXCLUDED.return_qty;
+VALUES %s ON CONFLICT (date, name) DO UPDATE SET
+    today_balance = EXCLUDED.today_balance, yes_balance = EXCLUDED.yes_balance,
+    buy = EXCLUDED.buy, sell = EXCLUDED.sell, return_qty = EXCLUDED.return_qty;
 """
 
 UPSERT_TOTAL_INST = """
 INSERT INTO total_inst_investors (date, name, buy, sell)
-VALUES %s
-ON CONFLICT (date, name) DO UPDATE SET
-    buy  = EXCLUDED.buy,
-    sell = EXCLUDED.sell;
+VALUES %s ON CONFLICT (date, name) DO UPDATE SET
+    buy = EXCLUDED.buy, sell = EXCLUDED.sell;
 """
 
 UPSERT_SBL = """
 INSERT INTO securities_lending (
     date, stock_id, transaction_type, volume, fee_rate, close,
     original_return_date, original_lending_period
-) VALUES %s
-ON CONFLICT (date, stock_id, transaction_type) DO UPDATE SET
-    volume                  = EXCLUDED.volume,
-    fee_rate                = EXCLUDED.fee_rate,
-    close                   = EXCLUDED.close,
-    original_return_date    = EXCLUDED.original_return_date,
+) VALUES %s ON CONFLICT (date, stock_id, transaction_type) DO UPDATE SET
+    volume = EXCLUDED.volume, fee_rate = EXCLUDED.fee_rate, close = EXCLUDED.close,
+    original_return_date = EXCLUDED.original_return_date,
     original_lending_period = EXCLUDED.original_lending_period;
 """
 
 UPSERT_DAILY_SHORT = """
 INSERT INTO daily_short_balance (
-    date, stock_id,
-    margin_short_prev_balance, margin_short_short_sales,
+    date, stock_id, margin_short_prev_balance, margin_short_short_sales,
     margin_short_short_covering, margin_short_stock_redemption,
     margin_short_current_balance, margin_short_quota,
     sbl_short_prev_balance, sbl_short_short_sales,
     sbl_short_returns, sbl_short_adjustments,
     sbl_short_current_balance, sbl_short_quota, sbl_short_short_covering
-) VALUES %s
-ON CONFLICT (date, stock_id) DO UPDATE SET
-    margin_short_prev_balance     = EXCLUDED.margin_short_prev_balance,
-    margin_short_short_sales      = EXCLUDED.margin_short_short_sales,
-    margin_short_short_covering   = EXCLUDED.margin_short_short_covering,
-    margin_short_stock_redemption = EXCLUDED.margin_short_stock_redemption,
-    margin_short_current_balance  = EXCLUDED.margin_short_current_balance,
-    margin_short_quota            = EXCLUDED.margin_short_quota,
-    sbl_short_prev_balance        = EXCLUDED.sbl_short_prev_balance,
-    sbl_short_short_sales         = EXCLUDED.sbl_short_short_sales,
-    sbl_short_returns             = EXCLUDED.sbl_short_returns,
-    sbl_short_adjustments         = EXCLUDED.sbl_short_adjustments,
-    sbl_short_current_balance     = EXCLUDED.sbl_short_current_balance,
-    sbl_short_quota               = EXCLUDED.sbl_short_quota,
-    sbl_short_short_covering      = EXCLUDED.sbl_short_short_covering;
+) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+    margin_short_prev_balance = EXCLUDED.margin_short_prev_balance,
+    margin_short_short_sales = EXCLUDED.margin_short_short_sales,
+    margin_short_current_balance = EXCLUDED.margin_short_current_balance,
+    sbl_short_current_balance = EXCLUDED.sbl_short_current_balance;
 """
 
 UPSERT_MARGIN_SHORT_SUSPENSION = """
 INSERT INTO margin_short_suspension (date, stock_id, end_date, reason)
-VALUES %s
-ON CONFLICT (date, stock_id) DO UPDATE SET
-    end_date = EXCLUDED.end_date,
-    reason   = EXCLUDED.reason;
+VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+    end_date = EXCLUDED.end_date, reason = EXCLUDED.reason;
 """
 
 # ─────────────────────────────────────────────
-# Mapper
+# Mappers
 # ─────────────────────────────────────────────
 def map_total_margin(r: dict) -> tuple:
     return (
         r["date"], r.get("name"),
-        safe_int(r.get("TodayBalance")),
-        safe_int(r.get("YesBalance")),
-        safe_int(r.get("buy")),
-        safe_int(r.get("sell")),
-        safe_int(r.get("Return")),
+        safe_int(r.get("TodayBalance")), safe_int(r.get("YesBalance")),
+        safe_int(r.get("buy")), safe_int(r.get("sell")), safe_int(r.get("Return")),
     )
 
 def map_total_inst(r: dict) -> tuple:
-    return (
-        r["date"], r.get("name"),
-        safe_int(r.get("buy")),
-        safe_int(r.get("sell")),
-    )
+    return (r["date"], r.get("name"), safe_int(r.get("buy")), safe_int(r.get("sell")))
 
 def map_sbl(r: dict) -> tuple:
     return (
-        r["date"], r["stock_id"],
-        r.get("transaction_type"),
-        safe_int(r.get("volume")),
-        safe_float(r.get("fee_rate")),
-        safe_float(r.get("close")),
-        r.get("original_return_date") or None,
+        r["date"], r["stock_id"], r.get("transaction_type"),
+        safe_int(r.get("volume")), safe_float(r.get("fee_rate")),
+        safe_float(r.get("close")), r.get("original_return_date") or None,
         safe_int(r.get("original_lending_period")),
     )
 
@@ -269,11 +217,7 @@ def map_daily_short(r: dict) -> tuple:
     )
 
 def map_margin_susp(r: dict) -> tuple:
-    return (
-        r["date"], r["stock_id"],
-        r.get("end_date") or None,
-        r.get("reason"),
-    )
+    return (r["date"], r["stock_id"], r.get("end_date") or None, r.get("reason"))
 
 # ─────────────────────────────────────────────
 # 抓取邏輯
@@ -281,198 +225,154 @@ def map_margin_susp(r: dict) -> tuple:
 def fetch_market_dataset(
     conn, dataset: str, table: str, ddl: str,
     upsert_sql: str, template: str, mapper, dataset_key: str,
-    start: str, end: str, delay: float, force: bool,
+    start: str, end: str, force: bool,
 ):
     ensure_ddl(conn, ddl)
+    flog = FailureLogger(table, db_conn=conn)
+
     s = start
     if not force:
         safe_s = get_market_safe_start(conn, table)
-        if safe_s:
-            if safe_s > end:
-                logger.info(f"[{table}] 已最新，跳過")
-                return
-            s = max(safe_s, DATASET_START[dataset_key])
-    s = max(s, DATASET_START[dataset_key])
+        if safe_s and safe_s > end:
+            logger.info(f"[{table}] 已最新")
+            return
+        if safe_s: s = max(safe_s, DATASET_START[dataset_key])
+
     logger.info(f"[{table}] 抓取 {s} ~ {end}")
-    data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay)
+    data = finmind_get(dataset, {"start_date": s, "end_date": end})
     if not data:
         logger.info(f"[{table}] 無新資料")
         return
-    rows_map = {}
-    for r in data:
-        mapped = mapper(r)
-        # 假設前 2 個欄位是 PK (date, name)
-        pk = mapped[:2]
-        rows_map[pk] = mapped
 
-    rows = list(rows_map.values())
-    n = bulk_upsert(conn, upsert_sql, rows, template)
-    logger.info(f"[{table}] 寫入 {n} 筆")
+    rows = map_rows_safe(mapper, data, label=table)
+    # 市場層資料：去重 (date, name)
+    rows = dedup_rows(rows, (0, 1))
+    # 市場層資料：逐日 commit
+    results = commit_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
+    logger.info(f"[{table}] 完成，共寫入 {sum(results.values())} 筆，橫跨 {len(results)} 天")
+    flog.summary()
+
 
 def fetch_per_stock_dataset(
     conn, dataset: str, table: str, ddl: str,
     upsert_sql: str, template: str, mapper, dataset_key: str,
     stock_ids: list[str], start: str, end: str,
-    delay: float, force: bool, use_batch: bool,
-    batch_threshold: int = 20, chunk_days: int = 90,
+    force: bool, use_batch: bool,
+    batch_threshold: int = 20, chunk_days: int = 60,
 ):
-    """個股層資料：Sponsor 可不帶 data_id 批次抓全市場，否則逐支。"""
     ensure_ddl(conn, ddl)
-    valid_set = set(stock_ids)
+    flog = FailureLogger(table, db_conn=conn)
     latest_dates = get_all_safe_starts(conn, table)
 
     stock_starts: dict[str, str] = {}
-    skipped = 0
     for sid in stock_ids:
-        s = resolve_start_cached(
-            sid, latest_dates, start, DATASET_START[dataset_key], force,
-        )
-        if s is None:
-            skipped += 1
-        else:
-            stock_starts[sid] = s
+        s = resolve_start_cached(sid, latest_dates, start, DATASET_START[dataset_key], force)
+        if s: stock_starts[sid] = s
 
-    logger.info(f"[{table}] 需抓取：{len(stock_starts)} 支，已最新略過：{skipped} 支")
     if not stock_starts:
+        logger.info(f"[{table}] 全數已最新")
         return
 
-    groups: dict[str, list] = defaultdict(list)
-    for sid, s in stock_starts.items():
-        groups[s].append(sid)
+    logger.info(f"[{table}] 待補抓：{len(stock_starts)} 支")
+    groups = defaultdict(list)
+    for sid, s in stock_starts.items(): groups[s].append(sid)
 
-    total_api, total_rows = 0, 0
     batch_disabled = False
-
     for group_start in sorted(groups.keys()):
         sids = groups[group_start]
         sids_set = set(sids)
 
+        # ── 批次模式 ──
         if use_batch and len(sids) >= batch_threshold and not batch_disabled:
             seg_start = group_start
-            seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
-            chunk_rows = []
-            try:
-                while True:
-                    seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
-                    if seg_start_dt > seg_end_dt:
-                        break
-                    seg_end = min(
-                        (seg_start_dt + timedelta(days=chunk_days - 1)).strftime("%Y-%m-%d"),
-                        end,
-                    )
-                    logger.info(f"  [{table}] 批次 {seg_start}~{seg_end}（{len(sids)} 支）")
-                    data = finmind_get(
-                        dataset, {"start_date": seg_start, "end_date": seg_end},
-                        delay, raise_on_batch_400=True,
-                    )
-                    total_api += 1
-                    chunk_rows.extend([r for r in data if r.get("stock_id") in sids_set])
-                    seg_start = (
-                        datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
-                    ).strftime("%Y-%m-%d")
-            except BatchNotSupportedError as e:
-                logger.warning(f"  {e}；改逐支")
-                batch_disabled = True
-                chunk_rows = []
-            if chunk_rows:
-                # 批次去重：防止 ON CONFLICT DO UPDATE 同一 batch 內 PK 重複
-                rows_map = {}
-                for r in chunk_rows:
-                    mapped = mapper(r)
-                    # 判斷 PK 長度：securities_lending 是 3 (date, id, type)，其餘是 2 (date, id)
-                    pk_len = 3 if table == "securities_lending" else 2
-                    pk = mapped[:pk_len]
-                    rows_map[pk] = mapped
+            while True:
+                seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
+                if seg_start_dt > datetime.strptime(end, "%Y-%m-%d"): break
+                seg_end = min((seg_start_dt + timedelta(days=chunk_days-1)).strftime("%Y-%m-%d"), end)
+                
+                try:
+                    logger.info(f"  [{table}] 批次 {seg_start}~{seg_end} ({len(sids)} 支)")
+                    data = finmind_get(dataset, {"start_date": seg_start, "end_date": seg_end}, raise_on_batch_400=True)
+                    chunk_rows = map_rows_safe(mapper, [r for r in data if r.get("stock_id") in sids_set], label=table)
+                    
+                    # ⭐ 主動去重 ⭐
+                    if table == "securities_lending":
+                        chunk_rows = dedup_rows(chunk_rows, (0, 1, 2)) # (date, stock_id, transaction_type)
+                    else:
+                        chunk_rows = dedup_rows(chunk_rows, (0, 1))    # (date, stock_id)
 
-                rows = list(rows_map.values())
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+                    # ⭐ 逐支逐日 Commit (v3.0 最強規格) ⭐
+                    commit_per_stock_per_day(conn, upsert_sql, chunk_rows, template, label_prefix=table, failure_logger=flog)
+                except BatchNotSupportedError:
+                    logger.warning(f"  [{table}] 不支援批次，轉為逐支模式")
+                    batch_disabled = True; break
+                except Exception as e:
+                    flog.record(stock_id="BATCH", error=f"{seg_start} 失敗: {e}")
 
-        if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
+                seg_start = (datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # ── 逐支模式 ──
+        if not use_batch or len(sids) < batch_threshold or batch_disabled:
             for sid in sids:
-                data = finmind_get(
-                    dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
-                    delay,
-                )
-                total_api += 1
-                if not data:
-                    continue
-                # 逐支去重
-                rows_map = {}
-                for r in data:
-                    mapped = mapper(r)
-                    pk_len = 3 if table == "securities_lending" else 2
-                    pk = mapped[:pk_len]
-                    rows_map[pk] = mapped
+                try:
+                    data = finmind_get(dataset, {"data_id": sid, "start_date": group_start, "end_date": end})
+                    if not data: continue
+                    s_rows = map_rows_safe(mapper, data, label=f"{table}/{sid}")
+                    
+                    # ⭐ 主動去重 ⭐
+                    if table == "securities_lending":
+                        s_rows = dedup_rows(s_rows, (0, 1, 2))
+                    else:
+                        s_rows = dedup_rows(s_rows, (0, 1))
 
-                rows = list(rows_map.values())
-                total_rows += bulk_upsert(conn, upsert_sql, rows, template)
+                    # 逐日 commit (對該支股票而言)
+                    commit_per_day(conn, upsert_sql, s_rows, template, label_prefix=f"{table}/{sid}", failure_logger=flog)
+                except Exception as e:
+                    flog.record(stock_id=sid, error=str(e))
 
-    logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows}")
+    flog.summary()
 
-# ─────────────────────────────────────────────
-# main
-# ─────────────────────────────────────────────
+
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+",
-                   choices=list(DATASET_START.keys()),
-                   default=list(DATASET_START.keys()))
-    p.add_argument("--stock-id", type=str, default=None)
-    p.add_argument("--start", type=str, default="2001-01-01")
-    p.add_argument("--end",   type=str, default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--per-stock", action="store_true")
-    args = p.parse_args()
-
-    use_batch = not args.per_stock
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tables", nargs="+", choices=list(DATASET_START.keys()), default=list(DATASET_START.keys()))
+    parser.add_argument("--stock-id", type=str)
+    parser.add_argument("--start", type=str, default="2001-01-01")
+    parser.add_argument("--end", type=str, default=DEFAULT_END)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--per-stock", action="store_true")
+    args = parser.parse_args()
 
     conn = get_db_conn()
     try:
-        # 取得個股 list
-        if args.stock_id:
-            stock_ids = [s.strip() for s in args.stock_id.split(",")]
-        else:
-            stock_ids = get_db_stock_ids(conn, types=("twse", "otc"))
-
-        # 1. 市場層資料（不需 stock_id）
+        stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
+        
+        # 1. 市場層
         if "total_margin_short" in args.tables:
-            fetch_market_dataset(
-                conn, "TaiwanStockTotalMarginPurchaseShortSale", "total_margin_short",
-                DDL_TOTAL_MARGIN_SHORT, UPSERT_TOTAL_MARGIN_SHORT,
-                "(%s, %s, %s, %s, %s, %s, %s)", map_total_margin,
-                "total_margin_short", args.start, args.end, args.delay, args.force,
-            )
+            fetch_market_dataset(conn, "TaiwanStockTotalMarginPurchaseShortSale", "total_margin_short", 
+                                 DDL_TOTAL_MARGIN_SHORT, UPSERT_TOTAL_MARGIN_SHORT, "(%s,%s,%s,%s,%s,%s,%s)", 
+                                 map_total_margin, "total_margin_short", args.start, args.end, args.force)
+        
         if "total_inst_investors" in args.tables:
-            fetch_market_dataset(
-                conn, "TaiwanStockTotalInstitutionalInvestors", "total_inst_investors",
-                DDL_TOTAL_INST, UPSERT_TOTAL_INST,
-                "(%s, %s, %s, %s)", map_total_inst,
-                "total_inst_investors", args.start, args.end, args.delay, args.force,
-            )
+            fetch_market_dataset(conn, "TaiwanStockTotalInstitutionalInvestors", "total_inst_investors",
+                                 DDL_TOTAL_INST, UPSERT_TOTAL_INST, "(%s,%s,%s,%s)", 
+                                 map_total_inst, "total_inst_investors", args.start, args.end, args.force)
 
-        # 2. 個股層資料（Sponsor 批次最佳）
-        per_stock_configs = [
-            ("securities_lending", "TaiwanStockSecuritiesLending", DDL_SBL,
-             UPSERT_SBL, "(%s, %s, %s, %s, %s, %s, %s, %s)", map_sbl),
-            ("daily_short_balance", "TaiwanDailyShortSaleBalances", DDL_DAILY_SHORT,
-             UPSERT_DAILY_SHORT,
-             "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", map_daily_short),
-            ("margin_short_suspension", "TaiwanStockMarginShortSaleSuspension",
-             DDL_MARGIN_SHORT_SUSPENSION, UPSERT_MARGIN_SHORT_SUSPENSION,
-             "(%s, %s, %s, %s)", map_margin_susp),
+        # 2. 個股層
+        configs = [
+            ("securities_lending", "TaiwanStockSecuritiesLending", DDL_SBL, UPSERT_SBL, "(%s,%s,%s,%s,%s,%s,%s,%s)", map_sbl),
+            ("daily_short_balance", "TaiwanDailyShortSaleBalances", DDL_DAILY_SHORT, UPSERT_DAILY_SHORT, 
+             "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", map_daily_short),
+            ("margin_short_suspension", "TaiwanStockMarginShortSaleSuspension", DDL_MARGIN_SHORT_SUSPENSION, 
+             UPSERT_MARGIN_SHORT_SUSPENSION, "(%s,%s,%s,%s)", map_margin_susp),
         ]
-        for key, dataset, ddl, upsert, tmpl, mapper in per_stock_configs:
-            if key not in args.tables:
-                continue
-            fetch_per_stock_dataset(
-                conn, dataset, key, ddl, upsert, tmpl, mapper, key,
-                stock_ids, args.start, args.end, args.delay, args.force, use_batch,
-            )
+        for key, ds, ddl, upsert, tmpl, mapper in configs:
+            if key in args.tables:
+                fetch_per_stock_dataset(conn, ds, key, ddl, upsert, tmpl, mapper, key, stock_ids, 
+                                        args.start, args.end, args.force, not args.per_stock)
     finally:
         conn.close()
-    logger.info("全部完成")
+        get_request_stats().summary()
 
 if __name__ == "__main__":
     main()

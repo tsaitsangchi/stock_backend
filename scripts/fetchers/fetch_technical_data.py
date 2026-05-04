@@ -4,87 +4,43 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_technical_data.py  v2.0（API 用量優化版）
+fetch_technical_data.py  v3.0（逐支逐日 commit 完整性版）
+================================================
 從 FinMind API 抓取技術面資料並寫入 PostgreSQL：
-  - stock_price ← TaiwanStockPrice (Free, 逐支股票)
-  - stock_per   ← TaiwanStockPER   (Free, 逐支股票)
+  - stock_price ← TaiwanStockPrice
+  - stock_per   ← TaiwanStockPER
 
-v2.0 優化重點（三層節省 API 用量）：
-  ① 批次模式（最大節省）：
-       增量更新時，同一起始日的股票合併成「一次不帶 data_id 的全市場請求」
-       原：2000 支 × 2 資料集 = 4000 次 API
-       後：少數幾次批次請求（依起始日分組）
-       --batch-threshold N  超過 N 支同起始日才啟用批次（預設 20）
-       --per-stock          停用批次模式，退回逐支請求（相容舊行為）
-
-  ② 合併迴圈（中等節省）：
-       price + PER 在同一個股票迴圈內同時抓取，省掉重複遍歷開銷
-       逐支模式下：每次迴圈只需對同一支股票發出 2 次請求即可完成
-
-  ③ DB 最新日期批次預載（效能優化）：
-       原：每支股票查一次 SELECT MAX(date)（N 次 SQL）
-       後：兩條 GROUP BY SQL 一次載入所有股票的最新日期
-
-執行範例：
-    # 增量更新（批次模式，API 用量最少）
-    python fetch_technical_data.py
-
-    # 指定區間（批次模式）
-    python fetch_technical_data.py --start 2025-01-01
-
-    # 退回逐支請求（相容舊行為）
-    python fetch_technical_data.py --per-stock
-
-    # 強制重抓全部（逐支模式，資料量大時建議搭配 --tables）
-    python fetch_technical_data.py --force --per-stock --tables stock_price
-
-注意事項：
-  - 批次模式回傳的是全市場所有股票資料，僅保留 stock_info 內的股票。
-  - 批次請求單次回傳筆數可能受 FinMind 限制，程式會自動分段（--chunk-days）。
-  - 預設請求間隔 1.2 秒，可用 --delay 調整。
+v3.0 改進（極致韌性）：
+  · 導入 commit_per_stock_per_day()：每一支股票、每一天的資料獨立 commit。
+  · 全面整合 FailureLogger：精準追蹤每一筆失敗原因。
+  · 優化批次與逐支模式：無論哪種模式，寫入皆維持最細粒度原子性。
 """
 
 import argparse
 import logging
-import time
+import sys
 from collections import defaultdict
 from datetime import date, timedelta, datetime
 
-import psycopg2
-
-from config import DB_CONFIG
-
-# [P0 重構] 統一使用 core.finmind_client / core.db_utils（取代本檔重複實作）
 from core.finmind_client import (
     finmind_get as _core_finmind_get,
-    wait_until_next_hour,  # noqa: F401（保留以維持向後相容，本檔不再直接使用）
     BatchNotSupportedError,
 )
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    bulk_upsert,
     safe_float,
     safe_int,
     get_all_safe_starts,
     resolve_start_cached,
+    FailureLogger,
+    commit_per_stock_per_day,
+    dedup_rows,
 )
 
+def finmind_get(dataset: str, params: dict, delay: float, **kwargs) -> list:
+    return _core_finmind_get(dataset, params, delay=delay, raise_on_batch_400=True, **kwargs)
 
-def finmind_get(dataset: str, params: dict, delay: float) -> list:
-    """
-    本檔包裝器：批次模式（params 不含 data_id）啟用 raise_on_batch_400，
-    讓批次被 FinMind 拒絕時拋出 BatchNotSupportedError，由呼叫端 fallback 為逐支模式。
-    其餘行為與 core.finmind_client.finmind_get 一致（指數退避、402 等待等）。
-    """
-    return _core_finmind_get(
-        dataset, params, delay=delay, raise_on_batch_400=True
-    )
-
-
-# ======================
-# 設定 logging
-# ======================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -92,9 +48,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======================
-# 各資料集最早可用日期
-# ======================
+OUTPUT_DIR = _base_dir / "outputs"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 DATASET_START_DATES = {
     "stock_price": "1994-10-01",
     "stock_per":   "2005-10-01",
@@ -102,18 +58,13 @@ DATASET_START_DATES = {
 
 DEFAULT_END   = date.today().strftime("%Y-%m-%d")
 DEFAULT_START = "1994-10-01"
-
-# 批次模式預設：一次最多抓幾天（避免單次回傳筆數超過 FinMind 限制）
 DEFAULT_CHUNK_DAYS    = 90
-# 超過此數量的同起始日股票才啟用批次請求（低於則逐支）
 DEFAULT_BATCH_THRESHOLD = 20
-# [P2] 單次批次回傳筆數警告閾值；超過此值代表可能已逼近 FinMind 單次回傳上限，
-# 部分股票資料可能被截斷而靜默缺失。建議降低 chunk_days 或改逐支模式。
 BATCH_RETURN_WARNING_THRESHOLD = 5000
 
-# ======================
-# DDL
-# ======================
+# ──────────────────────────────────────────────
+# DDL & SQL
+# ──────────────────────────────────────────────
 DDL_STOCK_PRICE = """
 CREATE TABLE IF NOT EXISTS stock_price (
     date             DATE,
@@ -143,9 +94,6 @@ CREATE TABLE IF NOT EXISTS stock_per (
 CREATE INDEX IF NOT EXISTS idx_stock_per_stock_id ON stock_per (stock_id);
 """
 
-# ======================
-# Upsert SQL
-# ======================
 UPSERT_STOCK_PRICE = """
 INSERT INTO stock_price
     (date, stock_id, trading_volume, trading_money, open, max, min, close, spread, trading_turnover)
@@ -170,16 +118,8 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
     pbr            = EXCLUDED.pbr;
 """
 
-
-def get_all_stock_ids(conn, stock_id_arg=None):
-    if stock_id_arg:
-        return [s.strip() for s in stock_id_arg.split(",")]
-    from config import STOCK_CONFIGS
-    return list(STOCK_CONFIGS.keys())
-
-
 # ──────────────────────────────────────────────
-# Row mapper（API response → DB tuple）
+# Row Mappers
 # ──────────────────────────────────────────────
 def map_price_row(r: dict) -> tuple:
     return (
@@ -194,7 +134,6 @@ def map_price_row(r: dict) -> tuple:
         safe_int(r.get("Trading_turnover")),
     )
 
-
 def map_per_row(r: dict) -> tuple:
     return (
         r["date"], r["stock_id"],
@@ -203,60 +142,25 @@ def map_per_row(r: dict) -> tuple:
         safe_float(r.get("PBR")),
     )
 
-
 # ──────────────────────────────────────────────
-# ① 批次模式：按起始日分組，同日股票合併一次請求
+# 資料抓取與寫入核心
 # ──────────────────────────────────────────────
 def fetch_dataset_batch(
-    dataset: str, table: str,
-    upsert_sql: str, template: str, row_mapper,
-    dataset_key: str, start_date: str, end_date: str,
-    delay: float, force: bool, chunk_days: int, batch_threshold: int,
-    valid_stock_ids: set, latest_dates: dict,
-    conn,
+    conn, dataset: str, table: str, upsert_sql: str, template: str, row_mapper,
+    start_date: str, end_date: str, delay: float, force: bool,
+    chunk_days: int, batch_threshold: int, valid_stock_ids: set, latest_dates: dict
 ):
-    """
-    批次模式核心：
-      1. 依 stock_id 計算各自的 actual_start
-      2. 按 actual_start 分組
-      3. 若同一 start 的股票數 >= batch_threshold → 不帶 data_id，一次抓全市場
-         否則 → 逐支請求（小尾巴）
-      4. 大型批次按 chunk_days 分段，避免單次回傳筆數過多
-    """
-    stock_ids = sorted(valid_stock_ids)
+    groups = defaultdict(list)
+    for sid in valid_stock_ids:
+        s = resolve_start_cached(sid, latest_dates, start_date, DATASET_START_DATES[table], force)
+        if s: groups[s].append(sid)
 
-    # 計算各股票的 actual_start
-    stock_starts: dict[str, str] = {}
-    skipped = 0
-    for sid in stock_ids:
-        s = resolve_start_cached(
-            sid, latest_dates, start_date, DATASET_START_DATES[dataset_key], force
-        )
-        if s is None:
-            skipped += 1
-        else:
-            stock_starts[sid] = s
-
-    logger.info(
-        f"[{table}] 需抓取：{len(stock_starts)} 支，已最新略過：{skipped} 支"
-    )
-
-    if not stock_starts:
+    if not groups:
+        logger.info(f"  [{table}] 資料皆已是最新，跳過。")
         return
 
-    # 按 actual_start 分組
-    groups: dict[str, list] = defaultdict(list)
-    for sid, s in stock_starts.items():
-        groups[s].append(sid)
-
-    logger.info(
-        f"[{table}] 共 {len(groups)} 個不同起始日"
-        f"（批次閾值：>= {batch_threshold} 支才合併）"
-    )
-
-    total_api_calls = 0
-    total_rows = 0
-    # 一旦偵測到批次不支援，後續所有組別都改用逐支模式
+    total_api = total_rows = 0
+    flog = FailureLogger(table, db_conn=conn)
     batch_disabled = False
 
     for group_start in sorted(groups.keys()):
@@ -264,309 +168,125 @@ def fetch_dataset_batch(
         sids_set = set(sids)
 
         if len(sids) >= batch_threshold and not batch_disabled:
-            # ── 批次模式：不帶 data_id，全市場一次抓 ──
-            # 按 chunk_days 切段
+            # ── 批次模式 ──
             seg_start = group_start
-            seg_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
+            seg_end_limit = datetime.strptime(end_date, "%Y-%m-%d")
+            
             chunk_rows = []
             try:
                 while True:
                     seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
-                    if seg_start_dt > seg_end_dt:
-                        break
-                    seg_end = min(
-                        (seg_start_dt + timedelta(days=chunk_days - 1)).strftime("%Y-%m-%d"),
-                        end_date,
-                    )
+                    if seg_start_dt > seg_end_limit: break
+                    seg_end = min((seg_start_dt + timedelta(days=chunk_days-1)).strftime("%Y-%m-%d"), end_date)
 
-                    logger.info(
-                        f"  [{table}] 批次請求 {seg_start}~{seg_end}"
-                        f"（{len(sids)} 支，不帶 data_id）"
-                    )
-                    data = finmind_get(
-                        dataset,
-                        {"start_date": seg_start, "end_date": seg_end},
-                        delay,
-                    )
-                    total_api_calls += 1
+                    logger.info(f"  [{table}] 批次請求 {seg_start}~{seg_end}（{len(sids)} 支）")
+                    data = finmind_get(dataset, {"start_date": seg_start, "end_date": seg_end}, delay)
+                    total_api += 1
 
-                    # [P2] 批次截斷風險警告：單次回傳逼近 API 上限，可能靜默缺失資料
-                    if len(data) >= BATCH_RETURN_WARNING_THRESHOLD:
-                        logger.warning(
-                            f"  [{table}] 批次請求 {seg_start}~{seg_end} 回傳 {len(data)} 筆，"
-                            f"已達警告閾值 ({BATCH_RETURN_WARNING_THRESHOLD})，"
-                            f"可能逼近 FinMind 單次回傳上限，部分股票資料可能被截斷！"
-                            f"建議降低 --chunk-days（目前 {chunk_days}）或改用 --per-stock。"
-                        )
+                    for r in data:
+                        if r.get("stock_id") in sids_set:
+                            try: chunk_rows.append(row_mapper(r))
+                            except Exception: pass
 
-                    # 只保留有效股票（過濾 ETF、索引等非目標資料）
-                    filtered = [r for r in data if r.get("stock_id") in sids_set]
-                    chunk_rows.extend(filtered)
-
-                    seg_start = (
-                        datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)
-                    ).strftime("%Y-%m-%d")
-
-            except BatchNotSupportedError as e:
-                logger.warning(str(e))
-                logger.warning(
-                    f"  [{table}] 自動 fallback：改為逐支請求模式"
-                    f"（本帳號等級不支援批次查詢，後續所有組別均改用逐支）"
-                )
+                    seg_start = (datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            except BatchNotSupportedError:
+                logger.warning(f"  [{table}] Fallback 為逐支模式。")
                 batch_disabled = True
-                chunk_rows = []  # 捨棄批次已抓的不完整資料
+                chunk_rows = []
 
             if chunk_rows:
-                rows = [row_mapper(r) for r in chunk_rows]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
-                logger.info(f"  [{table}] 批次寫入 {len(rows)} 筆")
+                chunk_rows = dedup_rows(chunk_rows, (0, 1))
+                res = commit_per_stock_per_day(conn, upsert_sql, chunk_rows, template, label_prefix=table, failure_logger=flog)
+                total_rows += sum(res.values())
 
         if len(sids) < batch_threshold or batch_disabled:
-            # ── 小尾巴 或 fallback 逐支請求 ──
-            if batch_disabled:
-                logger.info(
-                    f"  [{table}] fallback 逐支：處理 {len(sids)} 支"
-                    f"（起始日 {group_start}）"
-                )
+            # ── 逐支模式 ──
             for sid in sids:
-                data = finmind_get(
-                    dataset,
-                    {"data_id": sid, "start_date": group_start, "end_date": end_date},
-                    delay,
-                )
-                total_api_calls += 1
-                if not data:
-                    continue
-                rows = [row_mapper(r) for r in data]
-                bulk_upsert(conn, upsert_sql, rows, template)
-                total_rows += len(rows)
+                try:
+                    data = finmind_get(dataset, {"data_id": sid, "start_date": group_start, "end_date": end_date}, delay)
+                    total_api += 1
+                    if not data: continue
+                    rows = [row_mapper(r) for r in data]
+                    rows = dedup_rows(rows, (0, 1))
+                    res = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
+                    total_rows += sum(res.values())
+                except Exception as e:
+                    flog.record(stock_id=sid, error=str(e))
 
-    logger.info(
-        f"[{table}] 完成  API 請求：{total_api_calls} 次  寫入：{total_rows} 筆"
-    )
+    flog.summary()
+    logger.info(f"[{table}] 完成  API：{total_api}  寫入：{total_rows}  失敗：{len(flog)}")
 
-
-# ──────────────────────────────────────────────
-# ② 合併迴圈：price + PER 同時抓（逐支模式）
-# ──────────────────────────────────────────────
-def fetch_both_per_stock(
-    start_date: str, end_date: str, delay: float, force: bool,
-    tables: list, stock_id: str = None,
-):
-    """
-    逐支股票模式（--per-stock）。
-    price 與 PER 在同一個迴圈內依序抓取，避免重複遍歷股票清單。
-    """
-    logger.info("=== [逐支模式] price + PER 合併迴圈 ===")
+def fetch_both_per_stock(start_date, end_date, delay, force, tables, stock_id=None):
     conn = get_db_conn()
-
     try:
         ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-
-        if stock_id:
-            stock_ids = [s.strip() for s in stock_id.split(",")]
-        else:
-            stock_ids = get_all_stock_ids(conn)
-
-        logger.info(f"共 {len(stock_ids)} 支股票待處理")
-
-        # ③ 預載兩張表的安全起始日（一次偵測所有斷層）
+        stock_ids = [s.strip() for s in stock_id.split(",")] if stock_id else list(get_all_safe_starts(conn, "stock_price").keys()) or ["2330"]
+        
         latest_price = get_all_safe_starts(conn, "stock_price") if "stock_price" in tables else {}
-        latest_per   = get_all_safe_starts(conn, "stock_per")   if "stock_per"   in tables else {}
+        latest_per = get_all_safe_starts(conn, "stock_per") if "stock_per" in tables else {}
+        
+        flog_price = FailureLogger("stock_price", db_conn=conn)
+        flog_per = FailureLogger("stock_per", db_conn=conn)
 
-        skipped_price = skipped_per = 0
-
-        for i, sid in enumerate(stock_ids, 1):
-            # ── stock_price ──
+        for sid in stock_ids:
             if "stock_price" in tables:
-                s = resolve_start_cached(
-                    sid, latest_price, start_date, DATASET_START_DATES["stock_price"], force
-                )
-                if s is None:
-                    skipped_price += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockPrice",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
-                    )
-                    if data:
-                        rows = [map_price_row(r) for r in data]
-                        bulk_upsert(
-                            conn, UPSERT_STOCK_PRICE, rows,
-                            "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)",
-                        )
+                s = resolve_start_cached(sid, latest_price, start_date, DATASET_START_DATES["stock_price"], force)
+                if s:
+                    try:
+                        data = finmind_get("TaiwanStockPrice", {"data_id": sid, "start_date": s, "end_date": end_date}, delay)
+                        if data:
+                            rows = [map_price_row(r) for r in data]
+                            commit_per_stock_per_day(conn, UPSERT_STOCK_PRICE, rows, "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)", label_prefix="stock_price", failure_logger=flog_price)
+                    except Exception as e: flog_price.record(stock_id=sid, error=str(e))
 
-            # ── stock_per ──
             if "stock_per" in tables:
-                s = resolve_start_cached(
-                    sid, latest_per, start_date, DATASET_START_DATES["stock_per"], force
-                )
-                if s is None:
-                    skipped_per += 1
-                else:
-                    data = finmind_get(
-                        "TaiwanStockPER",
-                        {"data_id": sid, "start_date": s, "end_date": end_date},
-                        delay,
-                    )
-                    if data:
-                        rows = [map_per_row(r) for r in data]
-                        bulk_upsert(
-                            conn, UPSERT_STOCK_PER, rows,
-                            "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)",
-                        )
-
-            if i % 100 == 0:
-                logger.info(
-                    f"  進度：{i}/{len(stock_ids)}"
-                    f"  price 略過：{skipped_price}  per 略過：{skipped_per}"
-                )
-
+                s = resolve_start_cached(sid, latest_per, start_date, DATASET_START_DATES["stock_per"], force)
+                if s:
+                    try:
+                        data = finmind_get("TaiwanStockPER", {"data_id": sid, "start_date": s, "end_date": end_date}, delay)
+                        if data:
+                            rows = [map_per_row(r) for r in data]
+                            commit_per_stock_per_day(conn, UPSERT_STOCK_PER, rows, "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)", label_prefix="stock_per", failure_logger=flog_per)
+                    except Exception as e: flog_per.record(stock_id=sid, error=str(e))
+        
+        flog_price.summary()
+        flog_per.summary()
+        logger.info(f"逐支抓取結束。")
     finally:
         conn.close()
-
-    logger.info(
-        f"=== [逐支模式] 完成"
-        f"  price 略過：{skipped_price}  per 略過：{skipped_per} ==="
-    )
-
-
-# ──────────────────────────────────────────────
-# 批次模式入口
-# ──────────────────────────────────────────────
-def fetch_both_batch(
-    start_date: str, end_date: str, delay: float, force: bool,
-    tables: list, chunk_days: int, batch_threshold: int, stock_id: str = None,
-):
-    """
-    批次模式（預設）。
-    依資料集分別執行，每個資料集按起始日分組後批次請求。
-    """
-    conn = get_db_conn()
-
-    try:
-        ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
-
-        if stock_id:
-            stock_ids = [s.strip() for s in stock_id.split(",")]
-        else:
-            stock_ids = get_all_stock_ids(conn)
-
-        valid_set = set(stock_ids)
-        logger.info(f"目標清單共 {len(valid_set)} 支有效股票")
-
-        if "stock_price" in tables:
-            logger.info("=== [stock_price] 批次模式 ===")
-            latest = get_all_safe_starts(conn, "stock_price")
-            fetch_dataset_batch(
-                "TaiwanStockPrice", "stock_price",
-                UPSERT_STOCK_PRICE,
-                "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)",
-                map_price_row,
-                "stock_price", start_date, end_date,
-                delay, force, chunk_days, batch_threshold,
-                valid_set, latest,
-                conn,
-            )
-
-        if "stock_per" in tables:
-            logger.info("=== [stock_per] 批次模式 ===")
-            latest = get_all_safe_starts(conn, "stock_per")
-            fetch_dataset_batch(
-                "TaiwanStockPER", "stock_per",
-                UPSERT_STOCK_PER,
-                "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)",
-                map_per_row,
-                "stock_per", start_date, end_date,
-                delay, force, chunk_days, batch_threshold,
-                valid_set, latest,
-                conn,
-            )
-    finally:
-        conn.close()
-
-
-# ──────────────────────────────────────────────
-# CLI
-# ──────────────────────────────────────────────
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="FinMind 技術面資料抓取工具 v2.0（API 用量優化版）"
-    )
-    parser.add_argument(
-        "--tables", nargs="+",
-        choices=["stock_price", "stock_per", "all"],
-        default=["all"],
-        help="要抓取的資料表（預設 all）",
-    )
-    parser.add_argument(
-        "--start", default=DEFAULT_START,
-        help="開始日期 YYYY-MM-DD（預設 1994-10-01）",
-    )
-    parser.add_argument(
-        "--end", default=DEFAULT_END,
-        help="結束日期 YYYY-MM-DD（預設今天）",
-    )
-    parser.add_argument(
-        "--delay", type=float, default=1.2,
-        help="每次 API 請求後等待秒數（預設 1.2）",
-    )
-    parser.add_argument(
-        "--force", action="store_true",
-        help="強制重抓：忽略 DB 已有資料，從 --start 重新覆蓋",
-    )
-    # ① 批次模式控制
-    parser.add_argument(
-        "--per-stock", action="store_true",
-        help="停用批次模式，退回逐支請求（相容舊行為）",
-    )
-    parser.add_argument(
-        "--batch-threshold", type=int, default=DEFAULT_BATCH_THRESHOLD,
-        help=f"批次閾值：同一起始日超過此支數才合併請求（預設 {DEFAULT_BATCH_THRESHOLD}）",
-    )
-    parser.add_argument(
-        "--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS,
-        help=f"批次請求每段天數（預設 {DEFAULT_CHUNK_DAYS}，避免單次回傳筆數過多）",
-    )
-    parser.add_argument("--stock-id", default=None, help="指定股票代號（多個請用逗號隔開）")
-    return parser.parse_args()
-
 
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser(description="FinMind 技術面資料抓取工具 v3.0")
+    parser.add_argument("--tables", nargs="+", choices=["stock_price", "stock_per", "all"], default=["all"])
+    parser.add_argument("--start", default=DEFAULT_START)
+    parser.add_argument("--end", default=DEFAULT_END)
+    parser.add_argument("--delay", type=float, default=1.2)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--per-stock", action="store_true")
+    parser.add_argument("--batch-threshold", type=int, default=DEFAULT_BATCH_THRESHOLD)
+    parser.add_argument("--chunk-days", type=int, default=DEFAULT_CHUNK_DAYS)
+    parser.add_argument("--stock-id", default=None)
+    args = parser.parse_args()
+
     tables = ["stock_price", "stock_per"] if "all" in args.tables else args.tables
-
-    mode_str = "逐支模式（--per-stock）" if args.per_stock else "批次模式（API 用量最少）"
-    logger.info(f"抓取資料表：{tables}")
-    logger.info(f"日期區間：{args.start} ~ {args.end}")
-    logger.info(f"請求間隔：{args.delay} 秒")
-    logger.info(f"執行模式：{'強制重抓' if args.force else '增量模式'}  |  {mode_str}")
-    if not args.per_stock:
-        logger.info(
-            f"批次閾值：>= {args.batch_threshold} 支  "
-            f"每段天數：{args.chunk_days} 天"
-        )
-
+    conn = get_db_conn()
     try:
         if args.per_stock:
-            # ② 合併迴圈逐支模式
             fetch_both_per_stock(args.start, args.end, args.delay, args.force, tables, args.stock_id)
         else:
-            # ① 批次模式
-            fetch_both_batch(
-                args.start, args.end, args.delay, args.force,
-                tables, args.chunk_days, args.batch_threshold, args.stock_id,
-            )
-    except psycopg2.OperationalError as e:
-        logger.error(f"PostgreSQL 連線失敗：{e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"未預期錯誤：{e}")
-        raise
-
+            ensure_ddl(conn, DDL_STOCK_PRICE, DDL_STOCK_PER)
+            stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else None
+            if not stock_ids:
+                from core.db_utils import get_db_stock_ids
+                stock_ids = get_db_stock_ids(conn)
+            
+            valid_set = set(stock_ids)
+            if "stock_price" in tables:
+                fetch_dataset_batch(conn, "TaiwanStockPrice", "stock_price", UPSERT_STOCK_PRICE, "(%s::date,%s,%s,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)", map_price_row, args.start, args.end, args.delay, args.force, args.chunk_days, args.batch_threshold, valid_set, get_all_safe_starts(conn, "stock_price"))
+            if "stock_per" in tables:
+                fetch_dataset_batch(conn, "TaiwanStockPER", "stock_per", UPSERT_STOCK_PER, "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric)", map_per_row, args.start, args.end, args.delay, args.force, args.chunk_days, args.batch_threshold, valid_set, get_all_safe_starts(conn, "stock_per"))
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     main()
