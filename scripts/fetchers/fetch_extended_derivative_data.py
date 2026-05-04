@@ -347,6 +347,7 @@ def fetch_market_dataset(
             data = finmind_get(
                 dataset, {"start_date": seg_start, "end_date": seg_end},
                 delay, raise_on_batch_400=True,
+                raise_on_error=True
             )
         except BatchNotSupportedError as e:
             logger.error(f"[{table}] 帳號等級不支援批次：{e}")

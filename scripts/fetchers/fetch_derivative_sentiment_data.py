@@ -227,6 +227,7 @@ def fetch_options_large_oi(conn, start: str, end: str, delay: float, force: bool
                 {"start_date": start_d.strftime("%Y-%m-%d"),
                  "end_date":   chunk_end.strftime("%Y-%m-%d")},
                 delay,
+                raise_on_error=True
             )
         except Exception as e:
             logger.error(f"  [options_large_oi] {start_d}~{chunk_end} API 失敗：{e}")
@@ -332,6 +333,7 @@ def fetch_fear_greed_index(conn, start: str, end: str, delay: float, force: bool
                 {"start_date": start_d.strftime("%Y-%m-%d"),
                  "end_date":   chunk_end.strftime("%Y-%m-%d")},
                 delay,
+                raise_on_error=True
             )
         except Exception as e:
             logger.error(f"  [fear_greed_index] {start_d}~{chunk_end} API 失敗：{e}")
@@ -403,6 +405,7 @@ def fetch_block_trading(conn, start: str, end: str, delay: float, force: bool):
                 {"start_date": start_d.strftime("%Y-%m-%d"),
                  "end_date":   chunk_end.strftime("%Y-%m-%d")},
                 delay,
+                raise_on_error=True
             )
         except Exception as e:
             logger.error(f"  [block_trading] {start_d}~{chunk_end} API 失敗：{e}")

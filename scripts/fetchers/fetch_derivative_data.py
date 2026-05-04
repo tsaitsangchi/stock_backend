@@ -246,7 +246,7 @@ def get_instrument_ids(delay: float, instrument_type: str) -> list:
     )
 
     try:
-        data = finmind_get("TaiwanFutOptDailyInfo", {}, delay)
+        data = finmind_get("TaiwanFutOptDailyInfo", {}, delay, raise_on_error=True)
     except Exception as e:
         logger.warning(f"TaiwanFutOptDailyInfo 取得失敗：{e}，改用 fallback")
         return list(fallback)
@@ -327,6 +327,7 @@ def fetch_futures_daily(start_date: str, end_date: str, delay: float, force: boo
                     "TaiwanFuturesDaily",
                     {"data_id": fid, "start_date": actual_start, "end_date": end_date},
                     delay,
+                    raise_on_error=True
                 )
                 if not data:
                     continue
@@ -421,6 +422,7 @@ def fetch_option_daily(start_date: str, end_date: str, delay: float, force: bool
                     "TaiwanOptionDaily",
                     {"data_id": oid, "start_date": actual_start, "end_date": end_date},
                     delay,
+                    raise_on_error=True
                 )
                 if not data:
                     continue
