@@ -109,7 +109,7 @@ def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
     """
     抓取台股總覽並去重轉換。
     """
-    data = finmind_get("TaiwanStockInfo", {}, delay)
+    data = finmind_get("TaiwanStockInfo", {}, delay, raise_on_error=True)
     if not data:
         return []
 

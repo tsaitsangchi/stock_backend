@@ -100,7 +100,7 @@ def finmind_get(dataset: str, data_id: str = None, start: str = None, end: str =
     if data_id: params["data_id"] = data_id
     if start:   params["start_date"] = start
     if end:     params["end_date"] = end
-    data = _core_finmind_get(dataset, params)
+    data = _core_finmind_get(dataset, params, raise_on_error=True)
     return pd.DataFrame(data)
 
 def main():
