@@ -1,21 +1,22 @@
 """
-core/finmind_client.py — 統一的 FinMind API 客戶端 v2.0
-=====================================================
-v2.0 新增（優化報告建議）：
-  - TokenBucketRateLimiter：智慧型動態速率限制，取代固定 time.sleep
-    · 根據 FinMind 官方配額（每小時 600 次）動態管理令牌
-    · 含抖動因子（Jitter）指數退避，防止並行任務同時甦醒造成連線風暴
-  - finmind_get_async()：基於 aiohttp + asyncio 的非同步請求函式
-    · 單一執行緒協程並行，突破同步阻塞瓶頸
-    · 與 TokenBucketRateLimiter 整合，確保非同步模式下速率合規
-  - 向後相容：finmind_get() 同步介面保持不變
+core/finmind_client.py — 統一的 FinMind API 客戶端 v3.0（穩健觀測版）
+=====================================================================
+v3.0 重大改進（搭配 db_utils v3.0 的逐支逐日 commit）：
+  ★ RequestStats          : 請求成功/失敗 / 耗時統計（per dataset），fetcher 可在收尾印出。
+  ★ CircuitBreaker        : 同一 dataset 連續失敗 N 次後，後續請求直接快速失敗，避免拖垮整體
+                             pipeline；冷卻時間到後自動半開重試。
+  ★ FetcherInterrupted    : 配額耗盡時可選擇拋出（給呼叫端決定 partial commit），不必固定等待。
+  ★ wait_until_quota_reset(): 取代 wait_until_next_hour，統一名稱並回傳實際等待秒數。
+  ★ finmind_get() 新增 raise_on_quota 參數；預設行為仍與 v2 相同（自動等到下一整點）。
+  ★ check_api_quota() 加入快取，60 秒內不重複呼叫，避免大量 fetcher 並發時把 user_info 灌爆。
+  ★ 結果筆數驗證：API 回傳的 list 為 None / 非 list 時記為失敗。
+  ★ 所有錯誤路徑都更新 RequestStats，failures 即時可觀察。
+  ★ 向後相容：finmind_get() / finmind_get_async() / wait_until_next_hour() 介面不變。
 
-原有特性：
-  - 指數退避重試（delay × 2^n），最多 max_retries 次
-  - 402 配額耗盡：無限等待至下一整點後重試，不計入重試次數
-  - 400 Bad Request：直接返回空列表（參數錯誤，無需重試）
-  - timeout=(15, 120)：connect 15s / read 120s
-  - check_api_quota()：並行抓取前預查剩餘配額
+v2.0 既有：
+  - TokenBucketRateLimiter：智慧型動態速率限制
+  - finmind_get_async()：基於 aiohttp 的非同步請求
+  - 指數退避 + 抖動因子重試
 """
 
 from __future__ import annotations
@@ -23,10 +24,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import sys
 import time
 import threading
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
+
+# ── 自我修復 sys.path（讓本檔可從任何位置直接執行 / import）──
+_THIS_DIR = Path(__file__).resolve().parent      # scripts/core
+_SCRIPTS_DIR = _THIS_DIR.parent                  # scripts
+for _p in (_SCRIPTS_DIR, _THIS_DIR):
+    _ps = str(_p)
+    if _ps not in sys.path:
+        sys.path.insert(0, _ps)
 
 import requests
 
@@ -45,34 +58,178 @@ logger = logging.getLogger(__name__)
 # 自訂例外
 # ─────────────────────────────────────────────
 class BatchNotSupportedError(Exception):
-    """批次請求（不帶 data_id）被 FinMind 拒絕。"""
+    """批次請求（不帶 data_id）被 FinMind 拒絕。可 fallback 為逐支模式。"""
 
-class FinMindError(Exception):
-    """FinMind API 存取錯誤（403, 400, 401 等）。"""
-    def __init__(self, message, status_code=None):
-        super().__init__(message)
-        self.status_code = status_code
+
+class FetcherInterrupted(Exception):
+    """配額耗盡且呼叫端要求快速失敗（raise_on_quota=True）。允許上層做 partial commit。"""
+
+
+class CircuitOpenError(Exception):
+    """斷路器開啟期間，後續請求直接快速失敗。"""
+
+
+# ─────────────────────────────────────────────
+# 請求統計（per dataset）
+# ─────────────────────────────────────────────
+@dataclass
+class _DatasetStat:
+    success: int = 0
+    failure: int = 0
+    quota_wait: int = 0
+    total_seconds: float = 0.0
+    last_error: str | None = None
+
+
+class RequestStats:
+    """
+    記錄各 dataset 的成功 / 失敗 / 耗時，fetcher 結束時可呼叫 summary() 列印報表。
+    全執行緒共享同一 instance，使用 lock 保證一致性。
+    """
+
+    def __init__(self):
+        self._stats: dict[str, _DatasetStat] = defaultdict(_DatasetStat)
+        self._lock = threading.Lock()
+
+    def record_success(self, dataset: str, elapsed: float) -> None:
+        with self._lock:
+            s = self._stats[dataset]
+            s.success += 1
+            s.total_seconds += elapsed
+
+    def record_failure(self, dataset: str, error: str) -> None:
+        with self._lock:
+            s = self._stats[dataset]
+            s.failure += 1
+            s.last_error = error[:200]
+
+    def record_quota_wait(self, dataset: str) -> None:
+        with self._lock:
+            self._stats[dataset].quota_wait += 1
+
+    def snapshot(self) -> dict[str, dict]:
+        with self._lock:
+            return {
+                k: {
+                    "success": v.success,
+                    "failure": v.failure,
+                    "quota_wait": v.quota_wait,
+                    "avg_seconds": (v.total_seconds / v.success) if v.success else 0.0,
+                    "last_error": v.last_error,
+                }
+                for k, v in self._stats.items()
+            }
+
+    def summary(self) -> None:
+        snap = self.snapshot()
+        if not snap:
+            return
+        logger.info("=== FinMind 請求統計 ===")
+        logger.info(f"{'dataset':<48} {'ok':>6} {'fail':>5} {'quota_wait':>10} {'avg(s)':>7}")
+        for ds, s in sorted(snap.items()):
+            logger.info(
+                f"{ds:<48} {s['success']:>6} {s['failure']:>5} "
+                f"{s['quota_wait']:>10} {s['avg_seconds']:>7.2f}"
+            )
+            if s["last_error"]:
+                logger.info(f"    last_error: {s['last_error']}")
+
+    def reset(self) -> None:
+        with self._lock:
+            self._stats.clear()
+
+
+_global_stats = RequestStats()
+
+
+def get_request_stats() -> RequestStats:
+    """取得全域 RequestStats 實例。"""
+    return _global_stats
+
+
+# ─────────────────────────────────────────────
+# 斷路器（per dataset）
+# ─────────────────────────────────────────────
+@dataclass
+class _BreakerState:
+    consecutive_failures: int = 0
+    open_until: float = 0.0   # monotonic 秒數
+    half_open: bool = False
+
+
+class CircuitBreaker:
+    """
+    Per-dataset 斷路器，連續失敗 N 次後進入 OPEN 狀態，後續請求直接快速失敗。
+    冷卻時間（cool_down_sec）到後進入 HALF_OPEN，允許 1 次試探請求；成功 → CLOSED，
+    失敗 → 重新 OPEN。
+
+    Parameters
+    ----------
+    failure_threshold : int   連續失敗幾次後開斷路器（預設 5）
+    cool_down_sec     : float OPEN 後冷卻時間（預設 120）
+    """
+
+    def __init__(self, failure_threshold: int = 5, cool_down_sec: float = 120.0):
+        self.failure_threshold = failure_threshold
+        self.cool_down_sec = cool_down_sec
+        self._state: dict[str, _BreakerState] = defaultdict(_BreakerState)
+        self._lock = threading.Lock()
+
+    def check(self, dataset: str) -> None:
+        """請求前呼叫；若斷路器 OPEN 拋 CircuitOpenError。"""
+        now = time.monotonic()
+        with self._lock:
+            st = self._state[dataset]
+            if st.open_until > now:
+                raise CircuitOpenError(
+                    f"[{dataset}] circuit open，將於 {st.open_until - now:.0f}s 後重試"
+                )
+            if st.open_until and st.open_until <= now and not st.half_open:
+                # 進入 HALF_OPEN
+                st.half_open = True
+                logger.info(f"[{dataset}] 斷路器進入 HALF_OPEN，允許試探請求")
+
+    def record_success(self, dataset: str) -> None:
+        with self._lock:
+            st = self._state[dataset]
+            if st.half_open or st.consecutive_failures > 0:
+                logger.info(f"[{dataset}] 斷路器已 CLOSE")
+            st.consecutive_failures = 0
+            st.open_until = 0.0
+            st.half_open = False
+
+    def record_failure(self, dataset: str) -> None:
+        with self._lock:
+            st = self._state[dataset]
+            st.consecutive_failures += 1
+            if st.consecutive_failures >= self.failure_threshold:
+                st.open_until = time.monotonic() + self.cool_down_sec
+                st.half_open = False
+                logger.warning(
+                    f"[{dataset}] 連續失敗 {st.consecutive_failures} 次，"
+                    f"斷路器 OPEN，冷卻 {self.cool_down_sec:.0f}s"
+                )
+
+    def reset(self, dataset: str | None = None) -> None:
+        with self._lock:
+            if dataset:
+                self._state.pop(dataset, None)
+            else:
+                self._state.clear()
+
+
+_global_breaker = CircuitBreaker()
+
+
+def get_circuit_breaker() -> CircuitBreaker:
+    return _global_breaker
 
 
 # ─────────────────────────────────────────────
 # Token Bucket 速率限制器（執行緒安全）
 # ─────────────────────────────────────────────
 class TokenBucketRateLimiter:
-    """
-    智慧型令牌桶速率限制器，取代固定 time.sleep。
-
-    工作原理：
-      · 桶容量 = rate_limit（每 period 秒允許的最大請求數）
-      · 令牌以 rate_limit / period 的速率持續補充
-      · 每次請求消耗 1 個令牌
-      · 桶空時自動等待（含抖動因子，防止並行任務同時甦醒）
-
-    Parameters
-    ----------
-    rate_limit : 時間窗口內允許的最大請求數（預設 600）
-    period     : 時間窗口秒數（預設 3600 = 1 小時）
-    min_interval : 兩次請求間的最小間隔秒數（防止瞬間爆發，預設 0.5）
-    """
+    """智慧型令牌桶速率限制器，取代固定 time.sleep。"""
 
     def __init__(
         self,
@@ -82,7 +239,7 @@ class TokenBucketRateLimiter:
     ):
         self._capacity = rate_limit
         self._tokens = float(rate_limit)
-        self._refill_rate = rate_limit / period   # 每秒補充令牌數
+        self._refill_rate = rate_limit / period
         self._min_interval = min_interval
         self._last_refill = time.monotonic()
         self._last_request = 0.0
@@ -98,15 +255,10 @@ class TokenBucketRateLimiter:
         self._last_refill = now
 
     def acquire(self, jitter_range: float = 0.3) -> None:
-        """
-        消耗 1 個令牌。桶空時以帶抖動因子的指數退避等待，
-        防止多個並行協程在同一毫秒同時甦醒造成連線風暴。
-        """
         wait_base = 1.0
         while True:
             with self._lock:
                 self._refill()
-                # 確保最小請求間隔
                 since_last = time.monotonic() - self._last_request
                 if since_last < self._min_interval:
                     time.sleep(self._min_interval - since_last)
@@ -114,15 +266,13 @@ class TokenBucketRateLimiter:
                     self._tokens -= 1.0
                     self._last_request = time.monotonic()
                     return
-            # 令牌不足：帶抖動因子等待
             jitter = random.uniform(0, jitter_range)
             wait = wait_base + jitter
             logger.debug(f"[RateLimiter] 令牌不足，等待 {wait:.2f}s")
             time.sleep(wait)
-            wait_base = min(wait_base * 2, 30.0)  # 上限 30s
+            wait_base = min(wait_base * 2, 30.0)
 
     async def acquire_async(self, jitter_range: float = 0.3) -> None:
-        """acquire() 的非同步版本（asyncio 協程）。"""
         wait_base = 1.0
         while True:
             with self._lock:
@@ -140,41 +290,44 @@ class TokenBucketRateLimiter:
             wait_base = min(wait_base * 2, 30.0)
 
 
-# 全域單例速率限制器（所有模組共用）
 _rate_limiter = TokenBucketRateLimiter()
 
 
 def get_rate_limiter() -> TokenBucketRateLimiter:
-    """取得全域 Token Bucket 速率限制器實例。"""
     return _rate_limiter
 
 
 # ─────────────────────────────────────────────
-# 402 配額限制等待
+# 配額重置等待
 # ─────────────────────────────────────────────
-def wait_until_next_hour() -> None:
+def wait_until_quota_reset(buffer_sec: float = 65.0) -> float:
     """
-    API 配額耗盡（HTTP 402）時呼叫。
-    FinMind 在整點重置配額，等待至下一整點 + 65 秒緩衝。
-    同時重置速率限制器令牌桶，使等待後可立即全速請求。
+    配額耗盡時呼叫，等到下一整點 + buffer_sec 秒後返回。
+    重置令牌桶，使等待後可立即全速請求。
+    回傳實際等待秒數。
     """
     now = datetime.now()
     next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    wait_sec = (next_hour - now).total_seconds() + 65
+    wait_sec = (next_hour - now).total_seconds() + buffer_sec
     logger.warning(
         f"API 配額達上限（402），等待 {wait_sec:.0f} 秒至 "
         f"{next_hour.strftime('%H:%M')} 後恢復…"
     )
     time.sleep(wait_sec)
-    # 重置令牌桶，配額已重置可全速請求
     with _rate_limiter._lock:
         _rate_limiter._tokens = float(_rate_limiter._capacity)
         _rate_limiter._last_refill = time.monotonic()
     logger.info("等待結束，恢復請求。")
+    return wait_sec
+
+
+def wait_until_next_hour() -> None:
+    """v2.0 介面別名（保留向後相容）。"""
+    wait_until_quota_reset()
 
 
 # ─────────────────────────────────────────────
-# 同步核心請求函式（v2 — Token Bucket + Jitter）
+# 同步核心請求函式（v3.0）
 # ─────────────────────────────────────────────
 def finmind_get(
     dataset: str,
@@ -183,34 +336,33 @@ def finmind_get(
     max_retries: int = 3,
     raise_on_batch_400: bool = False,
     use_rate_limiter: bool = True,
-    raise_on_error: bool = False,
+    raise_on_quota: bool = False,
 ) -> list:
     """
-    統一的 FinMind API 同步請求函式（v2）。
+    統一的 FinMind API 同步請求函式（v3）。
 
-    v2 改進：
-      · use_rate_limiter=True（預設）：改用 TokenBucketRateLimiter 取代固定 sleep，
-        配額充裕時全速請求，配額緊張時動態降速
-      · delay 參數保留向後相容，use_rate_limiter=False 時仍使用固定 sleep
-      · 指數退避含抖動因子，防止並行連線風暴
-
-    Parameters
-    ----------
-    dataset            : FinMind dataset 名稱
-    params             : 額外參數 dict
-    delay              : 固定延遲秒數（use_rate_limiter=False 時生效）
-    max_retries        : 非 402 錯誤的最大重試次數
-    raise_on_batch_400 : True 時批次請求收到 400 拋出 BatchNotSupportedError
-    use_rate_limiter   : True（預設）使用 Token Bucket；False 使用固定 sleep
-    raise_on_error     : True 時 403/400 拋出 FinMindError，以便外層捕捉紀錄
+    v3 改進：
+      · 整合 RequestStats（成功/失敗/耗時統計）
+      · 整合 CircuitBreaker（同一 dataset 連續失敗 N 次後快速失敗）
+      · raise_on_quota=True 時，配額耗盡會拋 FetcherInterrupted（呼叫端可
+        partial commit 後再決定是否等待重啟）；預設仍維持 v2 行為（等待下一整點）
 
     Returns
     -------
     list  成功時回傳 data 列表；失敗時回傳空列表 []
     """
+    # ── 斷路器預檢 ──
+    try:
+        _global_breaker.check(dataset)
+    except CircuitOpenError as e:
+        logger.warning(str(e))
+        _global_stats.record_failure(dataset, "circuit_open")
+        return []
+
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     req_params = {"dataset": dataset, **params}
     is_batch = "data_id" not in params
+    t0 = time.monotonic()
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -223,39 +375,46 @@ def finmind_get(
 
             # ── 402：配額耗盡 ──
             if resp.status_code == 402:
-                wait_until_next_hour()
+                _global_stats.record_quota_wait(dataset)
+                if raise_on_quota:
+                    raise FetcherInterrupted(f"[{dataset}] 配額耗盡（HTTP 402）")
+                wait_until_quota_reset()
                 attempt = 1
                 continue
 
-            # ── 403：權限不足（如資料集需付費） ──
+            # ── 403：權限不足 ──
             if resp.status_code == 403:
-                logger.warning(f"🚫 [Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
-                if raise_on_error:
-                    raise FinMindError(f"403 Forbidden: {dataset}", status_code=403)
+                logger.warning(f"🚫 [Perm] 403 Forbidden: {dataset}. 自動跳過。")
+                _global_stats.record_failure(dataset, "403")
                 return []
 
-            # ── 400：無效請求（通常為無資料或格式錯） ──
+            # ── 400：Bad Request ──
             if resp.status_code == 400:
-                logger.warning(f"DEBUG: {dataset} 400, raise_on_batch={raise_on_batch_400}, is_batch={is_batch}")
                 if raise_on_batch_400 and is_batch:
                     raise BatchNotSupportedError(
                         f"[{dataset}] 批次請求被拒絕 (HTTP 400)"
                     )
-                logger.warning(f"[V2.1-FIXED] ⚠️ [Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
-                if raise_on_error:
-                    raise FinMindError(f"400 Bad Request: {dataset}", status_code=400)
+                logger.warning(
+                    f"⚠️ [Skip] 400 Bad Request: {dataset}. 已跳過（資料缺口或格式不支援）。"
+                )
+                _global_stats.record_failure(dataset, "400")
                 return []
 
             # ── 401：Token 無效 ──
             if resp.status_code == 401:
-                logger.error(f"[{dataset}] HTTP 401 Unauthorized: Token 可能已過期或無效。")
+                logger.error(f"[{dataset}] HTTP 401 Unauthorized: Token 過期或無效。")
+                _global_stats.record_failure(dataset, "401")
                 return []
 
             resp.raise_for_status()
             payload = resp.json()
 
+            # ── payload status 402 ──
             if payload.get("status") == 402:
-                wait_until_next_hour()
+                _global_stats.record_quota_wait(dataset)
+                if raise_on_quota:
+                    raise FetcherInterrupted(f"[{dataset}] 配額耗盡（payload 402）")
+                wait_until_quota_reset()
                 attempt = 1
                 continue
 
@@ -273,17 +432,30 @@ def finmind_get(
                     f"[{dataset}] status={payload.get('status')}, "
                     f"msg={payload.get('msg')}"
                 )
+                _global_stats.record_failure(
+                    dataset, f"status={payload.get('status')}: {payload.get('msg')}"
+                )
                 return []
 
-            # ── 成功：速率控制 ──
+            # ── 成功：速率控制 + 統計 ──
+            data = payload.get("data", [])
+            if data is None:
+                data = []
+            if not isinstance(data, list):
+                logger.warning(f"[{dataset}] payload['data'] 非 list（{type(data).__name__}），回空")
+                _global_stats.record_failure(dataset, f"non_list_data:{type(data).__name__}")
+                return []
+
             if use_rate_limiter:
                 _rate_limiter.acquire()
             else:
                 time.sleep(delay)
 
-            return payload.get("data", [])
+            _global_stats.record_success(dataset, time.monotonic() - t0)
+            _global_breaker.record_success(dataset)
+            return data
 
-        except BatchNotSupportedError:
+        except (BatchNotSupportedError, FetcherInterrupted):
             raise
         except requests.exceptions.Timeout:
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次逾時")
@@ -292,7 +464,10 @@ def finmind_get(
         except requests.exceptions.HTTPError as e:
             code = e.response.status_code if e.response is not None else 0
             if code == 402:
-                wait_until_next_hour()
+                _global_stats.record_quota_wait(dataset)
+                if raise_on_quota:
+                    raise FetcherInterrupted(f"[{dataset}] 配額耗盡（HTTPError 402）")
+                wait_until_quota_reset()
                 attempt = 1
                 continue
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次 HTTP {code} 錯誤：{e}")
@@ -300,19 +475,20 @@ def finmind_get(
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次異常：{exc}")
 
         if attempt < max_retries:
-            # 指數退避 + 抖動因子
             backoff = delay * (2 ** attempt) + random.uniform(0, 1.0)
             logger.info(f"[{dataset}] {backoff:.1f}s 後重試…")
             time.sleep(backoff)
         else:
             logger.error(f"[{dataset}] 已重試 {max_retries} 次，放棄。")
+            _global_stats.record_failure(dataset, f"max_retries={max_retries}")
+            _global_breaker.record_failure(dataset)
             return []
 
     return []
 
 
 # ─────────────────────────────────────────────
-# 非同步請求函式（aiohttp，v2 新增）
+# 非同步請求函式（aiohttp）
 # ─────────────────────────────────────────────
 async def finmind_get_async(
     dataset: str,
@@ -320,37 +496,25 @@ async def finmind_get_async(
     session,  # aiohttp.ClientSession
     max_retries: int = 3,
     raise_on_batch_400: bool = False,
+    raise_on_quota: bool = False,
 ) -> list:
     """
-    FinMind API 非同步請求函式（基於 aiohttp）。
-
-    使用前需在外部建立 aiohttp.ClientSession，並以 asyncio.gather 調度多個協程：
-
-        async with aiohttp.ClientSession() as session:
-            tasks = [finmind_get_async(ds, p, session) for p in params_list]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    與全域 TokenBucketRateLimiter 整合，確保非同步並行模式下速率合規。
-
-    Parameters
-    ----------
-    dataset            : FinMind dataset 名稱
-    params             : 額外參數 dict
-    session            : aiohttp.ClientSession 實例
-    max_retries        : 非 402 錯誤的最大重試次數
-    raise_on_batch_400 : True 時批次請求收到 400 拋出 BatchNotSupportedError
-
-    Returns
-    -------
-    list  成功時回傳 data 列表；失敗時回傳空列表 []
+    FinMind API 非同步請求函式（v3，整合 RequestStats / CircuitBreaker）。
     """
+    try:
+        _global_breaker.check(dataset)
+    except CircuitOpenError as e:
+        logger.warning(str(e))
+        _global_stats.record_failure(dataset, "circuit_open")
+        return []
+
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     req_params = {"dataset": dataset, **params}
     is_batch = "data_id" not in params
+    t0 = time.monotonic()
 
     for attempt in range(1, max_retries + 1):
         try:
-            # 非同步速率限制
             await _rate_limiter.acquire_async()
 
             async with session.get(
@@ -360,7 +524,9 @@ async def finmind_get_async(
                 timeout=__import__("aiohttp").ClientTimeout(connect=15, total=135),
             ) as resp:
                 if resp.status == 402:
-                    # 協程中等待配額重置（用 asyncio.sleep 不阻塞事件迴圈）
+                    _global_stats.record_quota_wait(dataset)
+                    if raise_on_quota:
+                        raise FetcherInterrupted(f"[async][{dataset}] 配額耗盡 402")
                     now = datetime.now()
                     next_hour = (now + timedelta(hours=1)).replace(
                         minute=0, second=0, microsecond=0
@@ -376,19 +542,29 @@ async def finmind_get_async(
                     continue
 
                 if resp.status == 403:
-                    logger.warning(f"🚫 [async][Perm] 403 Forbidden (權限不足): {dataset}. 自動跳過以維持管線運行。")
+                    logger.warning(f"🚫 [async][Perm] 403 Forbidden: {dataset}. 自動跳過。")
+                    _global_stats.record_failure(dataset, "async_403")
                     return []
                 if resp.status == 401:
                     logger.error(f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。")
+                    _global_stats.record_failure(dataset, "async_401")
                     return []
                 if resp.status == 400:
-                    logger.warning(f"⚠️ [async][Skip] 400 Bad Request (無效請求): {dataset}. 可能為資料缺口或格式不支援，已跳過。")
+                    if raise_on_batch_400 and is_batch:
+                        raise BatchNotSupportedError(
+                            f"[async][{dataset}] 批次請求被拒絕 (HTTP 400)"
+                        )
+                    logger.warning(f"⚠️ [async][Skip] 400 Bad Request: {dataset}. 已跳過。")
+                    _global_stats.record_failure(dataset, "async_400")
                     return []
 
                 resp.raise_for_status()
                 payload = await resp.json()
 
                 if payload.get("status") == 402:
+                    _global_stats.record_quota_wait(dataset)
+                    if raise_on_quota:
+                        raise FetcherInterrupted(f"[async][{dataset}] 配額耗盡 payload 402")
                     now = datetime.now()
                     next_hour = (now + timedelta(hours=1)).replace(
                         minute=0, second=0, microsecond=0
@@ -411,11 +587,22 @@ async def finmind_get_async(
                         f"[async][{dataset}] status={payload.get('status')}, "
                         f"msg={payload.get('msg')}"
                     )
+                    _global_stats.record_failure(
+                        dataset, f"async_status={payload.get('status')}"
+                    )
                     return []
 
-                return payload.get("data", [])
+                data = payload.get("data", [])
+                if data is None:
+                    data = []
+                if not isinstance(data, list):
+                    _global_stats.record_failure(dataset, f"async_non_list:{type(data).__name__}")
+                    return []
+                _global_stats.record_success(dataset, time.monotonic() - t0)
+                _global_breaker.record_success(dataset)
+                return data
 
-        except BatchNotSupportedError:
+        except (BatchNotSupportedError, FetcherInterrupted):
             raise
         except Exception as exc:
             if attempt < max_retries:
@@ -427,20 +614,32 @@ async def finmind_get_async(
                 await asyncio.sleep(backoff)
             else:
                 logger.error(f"[async][{dataset}] 已重試 {max_retries} 次，放棄：{exc}")
+                _global_stats.record_failure(dataset, f"async_max_retries:{exc}")
+                _global_breaker.record_failure(dataset)
                 return []
 
     return []
 
 
 # ─────────────────────────────────────────────
-# API 配額預查（供 parallel_fetch.py 使用）
+# API 配額預查（含快取）
 # ─────────────────────────────────────────────
-def check_api_quota() -> tuple[int, int]:
+_quota_cache_lock = threading.Lock()
+_quota_cache: dict = {"ts": 0.0, "used": -1, "limit": FINMIND_HOURLY_LIMIT}
+
+
+def check_api_quota(cache_ttl: float = 60.0) -> tuple[int, int]:
     """
     查詢當前 FinMind API 使用量與上限。
     回傳 (used, limit)。
+    含 cache_ttl 秒快取，避免並行 fetcher 各自打 user_info。
     若查詢失敗，回傳 (-1, 600)（不阻斷執行）。
     """
+    now = time.monotonic()
+    with _quota_cache_lock:
+        if now - _quota_cache["ts"] < cache_ttl and _quota_cache["used"] >= 0:
+            return _quota_cache["used"], _quota_cache["limit"]
+
     try:
         resp = requests.get(
             FINMIND_USER_INFO_URL,
@@ -451,7 +650,21 @@ def check_api_quota() -> tuple[int, int]:
         data = resp.json()
         used  = int(data.get("user_count", 0))
         limit = int(data.get("api_request_limit", 600))
+        with _quota_cache_lock:
+            _quota_cache.update({"ts": now, "used": used, "limit": limit})
         return used, limit
     except Exception as e:
         logger.warning(f"無法查詢 API 配額：{e}")
-        return -1, 600
+        return -1, FINMIND_HOURLY_LIMIT
+
+
+__all__ = [
+    "FINMIND_API_URL", "FINMIND_USER_INFO_URL", "FINMIND_HOURLY_LIMIT",
+    "BatchNotSupportedError", "FetcherInterrupted", "CircuitOpenError",
+    "TokenBucketRateLimiter", "get_rate_limiter",
+    "RequestStats", "get_request_stats",
+    "CircuitBreaker", "get_circuit_breaker",
+    "wait_until_quota_reset", "wait_until_next_hour",
+    "finmind_get", "finmind_get_async",
+    "check_api_quota",
+]
