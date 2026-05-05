@@ -89,7 +89,6 @@ TABLE_REGISTRY = {
     "securities_lending":              {"type": "daily", "id_col": "stock_id", "lag": 1},
     "daily_short_balance":             {"type": "daily", "id_col": "stock_id", "lag": 1},
     "eight_banks_buy_sell":            {"type": "daily", "id_col": "stock_id", "lag": 1},
-    "broker_trades":                   {"type": "daily", "id_col": "stock_id", "lag": 2}, # 分點資料通常較慢
     
     # 基本面 (月/季)
     "month_revenue":                   {"type": "monthly", "id_col": "stock_id", "lag": 40},
