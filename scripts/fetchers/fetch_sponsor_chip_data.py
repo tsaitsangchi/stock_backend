@@ -131,6 +131,11 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     ensure_ddl(conn, DDL_EIGHT_BANKS)
     flog = FailureLogger("eight_banks", db_conn=conn)
     
+    # ── 取得交易日清單 ──
+    with conn.cursor() as cur:
+        cur.execute("SELECT date FROM trading_date WHERE stock_id='OTCP' OR stock_id='TWSE'")
+        trading_days = {r[0] for r in cur.fetchall()}
+
     # ⭐ 自動尋找起始日 ⭐
     if not start and not force:
         with conn.cursor() as cur:
@@ -142,26 +147,26 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
             else:
                 start = DATASET_START["eight_banks"]
     
-    # ❗ 此 Dataset 強制「全市場」+「單日」抓取 ❗
     s_dt = datetime.strptime(start or DATASET_START["eight_banks"], "%Y-%m-%d").date()
     e_dt = datetime.strptime(end, "%Y-%m-%d").date()
     
     total_rows = 0
     curr = s_dt
     while curr <= e_dt:
+        if curr not in trading_days:
+            curr += timedelta(days=1)
+            continue
+            
         d_str = curr.strftime("%Y-%m-%d")
         try:
-            # ❗ 單日抓取，且不帶 end_date 以免 400 錯誤 ❗
+            # ❗ 單日抓取 ❗
             data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
             if data:
-                # ⭐ 本地彙總：同一天同一支股票可能有各家行庫資料，加總起來 ⭐
                 agg = defaultdict(lambda: [0, 0])
                 s_set = set(stock_ids) if stock_ids else None
-                
                 for r in data:
                     sid = r.get("stock_id")
-                    if s_set and sid not in s_set:
-                        continue
+                    if s_set and sid not in s_set: continue
                     k = (d_str, sid)
                     agg[k][0] += safe_int(r.get("buy", 0))
                     agg[k][1] += safe_int(r.get("sell", 0))
@@ -172,7 +177,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
                     res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
                     total_rows += sum(res.values())
         except Exception as e:
-            flog.record(date=d_str, error=f"Day {d_str} failed: {e}")
+            flog.record(date=d_str, error=str(e))
         
         curr += timedelta(days=1)
 
