@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 DATASET_START = {
     "holding_shares_per": "2014-01-01",
-    "broker_trades":      "2016-01-01",
     "eight_banks":        "2021-01-01",
     "futures_large_oi":   "2010-01-01",
 }
@@ -209,7 +208,7 @@ def main():
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
 
-    tables = ["holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi"] if "all" in args.tables else args.tables
+    tables = ["holding_shares_per", "eight_banks", "futures_large_oi"] if "all" in args.tables else args.tables
     conn = get_db_conn()
     try:
         from core.db_utils import get_db_stock_ids
