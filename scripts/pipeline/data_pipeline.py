@@ -786,7 +786,7 @@ def load_options_large_oi() -> pd.DataFrame:
         SELECT date, 
                SUM(CASE WHEN put_call = 'Call' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS call_top10_oi,
                SUM(CASE WHEN put_call = 'Put' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS put_top10_oi
-        FROM options_large_oi
+        FROM options_oi_large_holders
         WHERE option_id = 'TXO' AND contract_type = 'All'
         GROUP BY date
         ORDER BY date

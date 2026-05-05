@@ -64,21 +64,23 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
     latest = get_all_safe_starts(conn, table, key_col=key_col)
     flog = FailureLogger(table, db_conn=conn)
     total_rows = 0
-    tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" if "futures" in table else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" if "futures" in table else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     
     try:
-        if target_ids:
-            data = []
-            for tid in target_ids:
-                d = finmind_get(dataset, {"data_id": tid, "start_date": start, "end_date": end}, delay)
-                if d: data.extend(d)
-        else:
-            data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
+        # 衍生品籌碼 API (TaiwanFuturesInstitutionalInvestors / TaiwanOptionInstitutionalInvestors)
+        # 通常不支援 data_id 參數，或支援方式不同。建議一次抓整天，再於本地過濾。
+        data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
+        
+        if data and target_ids:
+            # 依據 target_ids 過濾
+            id_key = "futures_id" if "futures" in table else "option_id"
+            # 注意：API 回傳欄位名可能是 futures_id / option_id
+            data = [r for r in data if r.get(id_key) in target_ids]
         
         if data:
             rows = [mapper(r) for r in data]
             # 去重：(date, id, investor)
-            rows = dedup_rows(rows, (0, 1, 2) if "futures" in table else (0, 1, 3))
+            rows = dedup_rows(rows, (0, 1, 2) if "futures" in table else (0, 1, 2, 3))
             res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
             total_rows += sum(res.values())
     except Exception as e: flog.record(stock_id="market", error=str(e))

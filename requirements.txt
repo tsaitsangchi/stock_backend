@@ -43,6 +43,10 @@ shap>=0.44.0
 # 取代手寫 metrics_registry.json，正確的 model versioning 解決方案
 mlflow>=2.10.0
 
+# ── 超參數調優（tune_hyperparameters.py 必裝）──────────────
+# Optuna：tune_hyperparameters.py 用於 XGB / LGB 自動搜參
+optuna>=3.5.0
+
 # ── 資料漂移監控（[P3 啟用] 第三輪審查建議）────────────────
 # 取代手工 PSI 計算，提供更穩健的 reference distribution 比較
 evidently>=0.4.0

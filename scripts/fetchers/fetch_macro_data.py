@@ -49,12 +49,14 @@ UPSERT_BOND = """INSERT INTO bond_yield (date, bond_id, value) VALUES %s ON CONF
 # ──────────────────────────────────────────────
 # Fetchers
 # ──────────────────────────────────────────────
-def fetch_interest_rate(conn, start, end, delay, force):
+def fetch_interest_rate(conn, start, end, delay, force, target_ids=None):
     logger.info("=== [interest_rate] 開始 ===")
     latest = get_all_safe_starts(conn, "interest_rate", key_col="country")
     flog = FailureLogger("interest_rate", db_conn=conn)
     total_rows = 0
-    for country in ["FED", "BOJ", "ECB", "PBOC"]:
+    countries = target_ids if target_ids else ["FED", "BOJ", "ECB", "PBOC"]
+    for country in countries:
+        if country not in ["FED", "BOJ", "ECB", "PBOC"]: continue
         s = resolve_start_cached(country, latest, start, "2000-01-01", force)
         if not s: continue
         try:
@@ -68,12 +70,14 @@ def fetch_interest_rate(conn, start, end, delay, force):
     logger.info(f"  [interest_rate] 總共寫入 {total_rows} 筆")
     flog.summary()
 
-def fetch_exchange_rate(conn, start, end, delay, force):
+def fetch_exchange_rate(conn, start, end, delay, force, target_ids=None):
     logger.info("=== [exchange_rate] 開始 ===")
     latest = get_all_safe_starts(conn, "exchange_rate", key_col="currency")
     flog = FailureLogger("exchange_rate", db_conn=conn)
     total_rows = 0
-    for curr in ["USD", "JPY", "EUR"]:
+    currencies = target_ids if target_ids else ["USD", "JPY", "EUR"]
+    for curr in currencies:
+        if curr not in ["USD", "JPY", "EUR"]: continue
         s = resolve_start_cached(curr, latest, start, "2000-01-01", force)
         if not s: continue
         try:
@@ -87,12 +91,16 @@ def fetch_exchange_rate(conn, start, end, delay, force):
     logger.info(f"  [exchange_rate] 總共寫入 {total_rows} 筆")
     flog.summary()
 
-def fetch_bond_yield(conn, start, end, delay, force):
+def fetch_bond_yield(conn, start, end, delay, force, target_ids=None):
     logger.info("=== [bond_yield] 開始 ===")
     latest = get_all_safe_starts(conn, "bond_yield", key_col="bond_id")
     flog = FailureLogger("bond_yield", db_conn=conn)
     total_rows = 0
-    for bid, sid in [("United States 10-Year", "US10Y"), ("United States 2-Year", "US2Y")]:
+    all_bonds = [("United States 10-Year", "US10Y"), ("United States 2-Year", "US2Y")]
+    if target_ids:
+        all_bonds = [b for b in all_bonds if b[1] in target_ids]
+    
+    for bid, sid in all_bonds:
         s = resolve_start_cached(sid, latest, start, "2000-01-01", force)
         if not s: continue
         try:
@@ -111,15 +119,17 @@ def main():
     p.add_argument("--start", default="2010-01-01")
     p.add_argument("--end", default=date.today().strftime("%Y-%m-%d"))
     p.add_argument("--delay", type=float, default=1.2)
+    p.add_argument("--ids")
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
 
+    target_ids = args.ids.split(",") if args.ids else None
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_MACRO)
-        fetch_interest_rate(conn, args.start, args.end, args.delay, args.force)
-        fetch_exchange_rate(conn, args.start, args.end, args.delay, args.force)
-        fetch_bond_yield(conn, args.start, args.end, args.delay, args.force)
+        fetch_interest_rate(conn, args.start, args.end, args.delay, args.force, target_ids)
+        fetch_exchange_rate(conn, args.start, args.end, args.delay, args.force, target_ids)
+        fetch_bond_yield(conn, args.start, args.end, args.delay, args.force, target_ids)
     finally:
         conn.close()
 

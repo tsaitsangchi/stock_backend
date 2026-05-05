@@ -1,0 +1,6 @@
+Testing TaiwanStockBlockTradingDailyReport with {'dataset': 'TaiwanStockBlockTradingDailyReport', 'start_date': '2024-03-04', 'end_date': '2024-03-04', 'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoidHNhaXRzYW5nY2hpIiwiZW1haWwiOiJ0c2FpdHNhbmdjaGlAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6Mn0.JMYxXlrm0lnJ5KWSXrEQnrFJcSo3qIYSMm43RXHITHM'}...
+  Status: 200
+  Body: success
+Testing TaiwanStockBlockTrade with {'dataset': 'TaiwanStockBlockTrade', 'data_id': '2330', 'start_date': '2024-03-04', 'end_date': '2024-03-10', 'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoidHNhaXRzYW5nY2hpIiwiZW1haWwiOiJ0c2FpdHNhbmdjaGlAZ21haWwuY29tIiwidG9rZW5fdmVyc2lvbiI6Mn0.JMYxXlrm0lnJ5KWSXrEQnrFJcSo3qIYSMm43RXHITHM'}...
+  Status: 200
+  Body: success

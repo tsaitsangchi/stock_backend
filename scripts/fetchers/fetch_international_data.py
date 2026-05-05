@@ -26,9 +26,11 @@ from core.db_utils import (
     safe_float,
     safe_int,
     get_all_safe_starts,
+    get_market_safe_start,
     resolve_start_cached,
     FailureLogger,
     commit_per_stock_per_day,
+    commit_per_day,
     dedup_rows,
 )
 from config import INTERNATIONAL_WATCHLIST
@@ -109,10 +111,10 @@ def map_gold_price(r: dict) -> tuple:
 # ─────────────────────────────────────────────
 # Core Logic
 # ─────────────────────────────────────────────
-def fetch_us_stock_price(conn, start, end, delay, force, tickers):
+def fetch_us_stock_price(conn, start, end, delay, force, target_ids):
     logger.info("=== [us_stock_price] 開始 ===")
     ensure_ddl(conn, DDL_US_STOCK_PRICE)
-    stock_ids = tickers if tickers else INTERNATIONAL_WATCHLIST
+    stock_ids = target_ids if target_ids else INTERNATIONAL_WATCHLIST
     latest = get_all_safe_starts(conn, "us_stock_price")
     flog = FailureLogger("us_stock_price", db_conn=conn)
     total_rows = 0
@@ -171,17 +173,26 @@ def fetch_gold_price(conn, start, end, delay, force):
     try:
         data = finmind_get("GoldPrice", {"start_date": s, "end_date": end}, delay)
         if data:
-            # map_gold_price 返回 (date, "GOLD", price)
-            rows = [map_gold_price(r) for r in data]
-            rows = dedup_rows(rows, (0, 1)) # 以 (date, "GOLD") 去重
-            # SQL 只取 1, 3 欄位 (date, price)
-            UPSERT_GOLD_FIX = "INSERT INTO gold_price (date, price) VALUES (%s, %s) ON CONFLICT (date) DO UPDATE SET price = EXCLUDED.price"
-            rows_for_commit = [(r[0], r[0], r[2]) for r in rows] # (date, date, price)
-            res = commit_per_stock_per_day(conn, UPSERT_GOLD_FIX, rows_for_commit, "(%s::date, %s::numeric)", stock_index=0, label_prefix="gold_price", failure_logger=flog)
+            # map_gold_price 回傳 (date, "GOLD", price)；gold_price 表本身只有 (date, price)
+            # 因此這裡剝掉中間的 "GOLD" key，並改用 commit_per_day（市場層單值資料的正確語意）
+            rows_full = [map_gold_price(r) for r in data]
+            rows_full = dedup_rows(rows_full, (0, 1))
+            rows_for_commit = [(r[0], r[2]) for r in rows_full]  # (date, price)
+
+            UPSERT_GOLD = (
+                "INSERT INTO gold_price (date, price) VALUES %s "
+                "ON CONFLICT (date) DO UPDATE SET price = EXCLUDED.price"
+            )
+            res = commit_per_day(
+                conn, UPSERT_GOLD, rows_for_commit,
+                "(%s::date, %s::numeric)",
+                date_index=0, label_prefix="gold_price", failure_logger=flog,
+            )
             logger.info(f"  [gold_price] 寫入 {sum(res.values())} 筆")
     except Exception as e:
         flog.record(stock_id="GOLD", error=str(e))
     flog.summary()
+    logger.info("=== [gold_price] 完成 ===\n")
 
 def main():
     p = argparse.ArgumentParser()
@@ -189,14 +200,14 @@ def main():
     p.add_argument("--start", default=DEFAULT_START)
     p.add_argument("--end", default=DEFAULT_END)
     p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--tickers", nargs="+")
+    p.add_argument("--ids", nargs="+")
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
 
     tables = ["us_stock_price", "crude_oil_prices", "gold_price"] if "all" in args.tables else args.tables
     conn = get_db_conn()
     try:
-        if "us_stock_price" in tables: fetch_us_stock_price(conn, args.start, args.end, args.delay, args.force, args.tickers)
+        if "us_stock_price" in tables: fetch_us_stock_price(conn, args.start, args.end, args.delay, args.force, args.ids)
         if "crude_oil_prices" in tables: fetch_crude_oil_prices(conn, args.start, args.end, args.delay, args.force)
         if "gold_price" in tables: fetch_gold_price(conn, args.start, args.end, args.delay, args.force)
     finally:

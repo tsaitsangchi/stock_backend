@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 DATASET_START = {"futures_daily": "1998-07-01", "option_daily": "2001-12-01"}
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
-FALLBACK_FUTURES_IDS = ["TX", "MTX", "TXO", "TE", "TF"]
+FALLBACK_FUTURES_IDS = ["TX", "MTX", "TE", "TF"]
 FALLBACK_OPTIONS_IDS = ["TXO", "TEO", "TFO"]
 
 DDL_FUTURES = """CREATE TABLE IF NOT EXISTS futures_ohlcv (date DATE, futures_id VARCHAR(50), contract_date VARCHAR(6), open NUMERIC(10,4), max NUMERIC(10,4), min NUMERIC(10,4), close NUMERIC(10,4), spread NUMERIC(10,4), spread_per NUMERIC(5,2), volume BIGINT, settlement_price NUMERIC(10,4), open_interest BIGINT, trading_session VARCHAR(20), PRIMARY KEY (date, futures_id, contract_date, trading_session));"""
@@ -50,21 +50,20 @@ def map_opt(r): return (r["date"], r.get("option_id"), str(r.get("contract_date"
 
 def fetch_derivative(conn, dataset, table, ddl, upsert_sql, mapper, ids, start, end, delay, force):
     ensure_ddl(conn, ddl)
-    latest = get_all_safe_starts(conn, table, key_col=table.split("_")[0]+"_id")
+    # 確保使用正確的 ID 欄位名
+    id_col = "futures_id" if "futures" in table else "option_id"
+    latest = get_all_safe_starts(conn, table, key_col=id_col)
     flog = FailureLogger(table, db_conn=conn)
     total_rows = 0
     tmpl = "(%s::date, %s, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)" if "futures" in table else "(%s::date, %s, %s, %s::numeric, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)"
     
     for iid in ids:
-        s = resolve_start_cached(iid, latest, start, DATASET_START[table], force)
+        s = resolve_start_cached(iid, latest, start, DATASET_START.get(dataset, "2000-01-01"), force)
         if not s: continue
         try:
             data = finmind_get(dataset, {"data_id": iid, "start_date": s, "end_date": end}, delay)
             if data:
                 rows = [mapper(r) for r in data]
-                # [P0-FIX] 去除批次內的重複項，避免 PostgreSQL ON CONFLICT 報錯
-                # 對於期貨：(date, futures_id, contract_date, trading_session) 是 PK
-                # 對於選擇權：(date, option_id, contract_date, strike_price, call_put, trading_session) 是 PK
                 if "futures" in table:
                     rows = dedup_rows(rows, (0, 1, 2, 12))
                 else:
@@ -78,7 +77,7 @@ def fetch_derivative(conn, dataset, table, ddl, upsert_sql, mapper, ids, start, 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+", choices=["futures_daily", "option_daily", "all"], default=["all"])
+    p.add_argument("--tables", nargs="+", choices=["futures_ohlcv", "options_ohlcv", "all"], default=["all"])
     p.add_argument("--ids", nargs="+")
     p.add_argument("--start", default="2020-01-01")
     p.add_argument("--end", default=DEFAULT_END)
@@ -86,11 +85,13 @@ def main():
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
 
-    tables = ["futures_daily", "option_daily"] if "all" in args.tables else args.tables
+    tables = ["futures_ohlcv", "options_ohlcv"] if "all" in args.tables else args.tables
     conn = get_db_conn()
     try:
-        if "futures_daily" in tables: fetch_derivative(conn, "TaiwanFuturesDaily", "futures_daily", DDL_FUTURES, UPSERT_FUTURES, map_fut, args.ids or FALLBACK_FUTURES_IDS, args.start, args.end, args.delay, args.force)
-        if "option_daily" in tables: fetch_derivative(conn, "TaiwanOptionDaily", "option_daily", DDL_OPTIONS, UPSERT_OPTIONS, map_opt, args.ids or FALLBACK_OPTIONS_IDS, args.start, args.end, args.delay, args.force)
+        if "futures_ohlcv" in tables: 
+            fetch_derivative(conn, "TaiwanFuturesDaily", "futures_ohlcv", DDL_FUTURES, UPSERT_FUTURES, map_fut, args.ids or FALLBACK_FUTURES_IDS, args.start, args.end, args.delay, args.force)
+        if "options_ohlcv" in tables: 
+            fetch_derivative(conn, "TaiwanOptionDaily", "options_ohlcv", DDL_OPTIONS, UPSERT_OPTIONS, map_opt, args.ids or FALLBACK_OPTIONS_IDS, args.start, args.end, args.delay, args.force)
     finally:
         conn.close()
 
