@@ -736,7 +736,7 @@ def load_eight_banks(stock_id: str) -> pd.DataFrame:
     sql = """
         SELECT date, buy AS eight_banks_buy, sell AS eight_banks_sell,
                (buy - sell) AS eight_banks_net
-        FROM eight_banks
+        FROM eight_banks_buy_sell
         WHERE stock_id = %s
         ORDER BY date
     """
@@ -787,7 +787,7 @@ def load_options_large_oi() -> pd.DataFrame:
                SUM(CASE WHEN put_call = 'Call' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS call_top10_oi,
                SUM(CASE WHEN put_call = 'Put' THEN buy_top10_specific_open_interest ELSE 0 END)::float AS put_top10_oi
         FROM options_oi_large_holders
-        WHERE option_id = 'TXO' AND contract_type = 'All'
+        WHERE option_id = 'TXO' AND contract_type = 'all'
         GROUP BY date
         ORDER BY date
     """
