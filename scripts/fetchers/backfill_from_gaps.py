@@ -161,15 +161,15 @@ TABLE_TO_FETCHER: dict[str, dict] = {
     "cash_flows_statement":             {"script": "fetch_cash_flows_data.py",         "id_flag": "--stock-id"},
     "dividend":                         {"script": "fetch_fundamental_data.py",        "id_flag": "--stock-id"},
     # 國際 / 宏觀
-    "us_stock_price":                   {"script": "fetch_international_data.py",      "id_flag": None},
-    "exchange_rate":                    {"script": "fetch_international_data.py",      "id_flag": None},
+    "us_stock_price":                   {"script": "fetch_international_data.py",      "id_flag": "--ids"},
+    "exchange_rate":                    {"script": "fetch_macro_data.py",              "id_flag": "--ids"},
     "crude_oil_prices":                 {"script": "fetch_international_data.py",      "id_flag": None},
     "gold_price":                       {"script": "fetch_international_data.py",      "id_flag": None},
-    "interest_rate":                    {"script": "fetch_macro_data.py",              "id_flag": None},
+    "interest_rate":                    {"script": "fetch_macro_data.py",              "id_flag": "--ids"},
     # 衍生品 (v3.0 統一用 --ids)
     "futures_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": "--ids"},
     "options_ohlcv":                    {"script": "fetch_derivative_data.py",         "id_flag": "--ids"},
-    "options_oi_large_holders":         {"script": "fetch_derivative_sentiment_data.py", "id_flag": "--stock-id"},
+    "options_oi_large_holders":         {"script": "fetch_derivative_sentiment_data.py", "id_flag": "--ids"},
     # 市場層級
     "total_margin_short":               {"script": "fetch_advanced_chip_data.py",      "id_flag": None},
     "total_inst_investors":             {"script": "fetch_advanced_chip_data.py",      "id_flag": None},
@@ -179,7 +179,7 @@ TABLE_TO_FETCHER: dict[str, dict] = {
     "disposition_securities":           {"script": "fetch_event_risk_data.py",         "id_flag": "--stock-id"},
     "capital_reduction":                {"script": "fetch_event_risk_data.py",         "id_flag": "--stock-id"},
     "stock_news":                       {"script": "fetch_news_data.py",               "id_flag": "--stock-id"},
-    "fred_series":                      {"script": "fetch_fred_data.py",               "id_flag": None},
+    "fred_series":                      {"script": "fetch_fred_data.py",               "id_flag": "--ids"},
 }
 
 
@@ -472,7 +472,7 @@ def build_work_units(filtered: list[dict], per_day: bool) -> list[dict]:
                     "id_flag":  meta["id_flag"],
                     "table":    sub["table"],
                     "start":    sub["gap_start"],
-                    "end":      sub["gap_end"],
+                    "end":      sub.get("gap_end"),
                     "tables":   [sub["table"]],
                 })
         return days_units
@@ -614,6 +614,8 @@ def main():
     parser.add_argument("--quiet", action="store_true",
                         help="抑制 fetcher 子腳本的 stdout/stderr 輸出，"
                              "失敗時才印出最後 30 行（預設關閉，子腳本輸出可即時顯示）")
+    parser.add_argument("--derivative-only", action="store_true",
+                        help="只處理衍生品、宏觀與國際資料表")
     args = parser.parse_args()
 
     # ── 啟動時建立所有必要目錄 ──
@@ -663,10 +665,17 @@ def main():
 
     filtered: list[dict] = []
     skipped_unknown = 0
+    derivative_tables = {
+        "futures_ohlcv", "options_ohlcv", "options_oi_large_holders",
+        "futures_inst_investors", "options_inst_investors",
+        "exchange_rate", "interest_rate", "us_stock_price", "fred_series"
+    }
     for g in gaps:
         if g.get("gap_days", 0) < args.min_gap_days:
             continue
         if table_filter and g["table"] not in table_filter:
+            continue
+        if args.derivative_only and g["table"] not in derivative_tables:
             continue
         if stock_filter and g["stock_id"] not in stock_filter:
             continue

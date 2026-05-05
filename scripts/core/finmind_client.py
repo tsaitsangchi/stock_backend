@@ -337,6 +337,7 @@ def finmind_get(
     raise_on_batch_400: bool = False,
     use_rate_limiter: bool = True,
     raise_on_quota: bool = False,
+    raise_on_error: bool = False,
 ) -> list:
     """
     統一的 FinMind API 同步請求函式（v3）。
@@ -346,6 +347,8 @@ def finmind_get(
       · 整合 CircuitBreaker（同一 dataset 連續失敗 N 次後快速失敗）
       · raise_on_quota=True 時，配額耗盡會拋 FetcherInterrupted（呼叫端可
         partial commit 後再決定是否等待重啟）；預設仍維持 v2 行為（等待下一整點）
+      · raise_on_error=True 時，API 400/403/422 或逾時將拋出異常，
+        供呼叫端的 FailureLogger 擷取；預設為 False（維持舊版回傳空列表）。
 
     Returns
     -------
@@ -384,8 +387,11 @@ def finmind_get(
 
             # ── 403：權限不足 ──
             if resp.status_code == 403:
-                logger.warning(f"🚫 [Perm] 403 Forbidden: {dataset}. 自動跳過。")
+                msg = f"🚫 [Perm] 403 Forbidden: {dataset}. 自動跳過。"
+                logger.warning(msg)
                 _global_stats.record_failure(dataset, "403")
+                if raise_on_error:
+                    raise PermissionError(msg)
                 return []
 
             # ── 400：Bad Request ──
@@ -394,16 +400,20 @@ def finmind_get(
                     raise BatchNotSupportedError(
                         f"[{dataset}] 批次請求被拒絕 (HTTP 400)"
                     )
-                logger.warning(
-                    f"⚠️ [Skip] 400 Bad Request: {dataset}. 已跳過（資料缺口或格式不支援）。"
-                )
+                msg = f"⚠️ [Skip] 400 Bad Request: {dataset}. 已跳過（資料缺口或格式不支援）。"
+                logger.warning(msg)
                 _global_stats.record_failure(dataset, "400")
+                if raise_on_error:
+                    raise ValueError(msg)
                 return []
 
             # ── 401：Token 無效 ──
             if resp.status_code == 401:
-                logger.error(f"[{dataset}] HTTP 401 Unauthorized: Token 過期或無效。")
+                msg = f"[{dataset}] HTTP 401 Unauthorized: Token 過期或無效。"
+                logger.error(msg)
                 _global_stats.record_failure(dataset, "401")
+                if raise_on_error:
+                    raise ConnectionRefusedError(msg)
                 return []
 
             resp.raise_for_status()
@@ -428,13 +438,13 @@ def finmind_get(
                         f"[{dataset}] 批次請求被拒絕（status=400），"
                         f"msg={payload.get('msg')}"
                     )
-                logger.warning(
-                    f"[{dataset}] status={payload.get('status')}, "
-                    f"msg={payload.get('msg')}"
-                )
+                msg = f"[{dataset}] status={payload.get('status')}, msg={payload.get('msg')}"
+                logger.warning(msg)
                 _global_stats.record_failure(
                     dataset, f"status={payload.get('status')}: {payload.get('msg')}"
                 )
+                if raise_on_error:
+                    raise ValueError(msg)
                 return []
 
             # ── 成功：速率控制 + 統計 ──
@@ -471,10 +481,15 @@ def finmind_get(
                 attempt = 1
                 continue
             if code == 422:
-                logger.warning(f"⚠️ [Skip] 422 Unprocessable Entity: {dataset}. 標的可能不支援，已跳過。")
+                msg = f"⚠️ [Skip] 422 Unprocessable Entity: {dataset}. 標的可能不支援，已跳過。"
+                logger.warning(msg)
                 _global_stats.record_failure(dataset, "422")
+                if raise_on_error:
+                    raise ValueError(msg)
                 return []
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次 HTTP {code} 錯誤：{e}")
+            if raise_on_error and attempt == max_retries:
+                raise
         except Exception as exc:
             logger.warning(f"[{dataset}] 第 {attempt}/{max_retries} 次異常：{exc}")
 
@@ -483,9 +498,12 @@ def finmind_get(
             logger.info(f"[{dataset}] {backoff:.1f}s 後重試…")
             time.sleep(backoff)
         else:
-            logger.error(f"[{dataset}] 已重試 {max_retries} 次，放棄。")
+            msg = f"[{dataset}] 已重試 {max_retries} 次，放棄。"
+            logger.error(msg)
             _global_stats.record_failure(dataset, f"max_retries={max_retries}")
             _global_breaker.record_failure(dataset)
+            if raise_on_error:
+                raise RuntimeError(msg)
             return []
 
     return []
@@ -501,6 +519,7 @@ async def finmind_get_async(
     max_retries: int = 3,
     raise_on_batch_400: bool = False,
     raise_on_quota: bool = False,
+    raise_on_error: bool = False,
 ) -> list:
     """
     FinMind API 非同步請求函式（v3，整合 RequestStats / CircuitBreaker）。
@@ -546,20 +565,26 @@ async def finmind_get_async(
                     continue
 
                 if resp.status == 403:
-                    logger.warning(f"🚫 [async][Perm] 403 Forbidden: {dataset}. 自動跳過。")
+                    msg = f"🚫 [async][Perm] 403 Forbidden: {dataset}. 自動跳過。"
+                    logger.warning(msg)
                     _global_stats.record_failure(dataset, "async_403")
+                    if raise_on_error: raise PermissionError(msg)
                     return []
                 if resp.status == 401:
-                    logger.error(f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。")
+                    msg = f"[async][{dataset}] HTTP 401 Unauthorized: Token 無效。"
+                    logger.error(msg)
                     _global_stats.record_failure(dataset, "async_401")
+                    if raise_on_error: raise ConnectionRefusedError(msg)
                     return []
                 if resp.status == 400:
                     if raise_on_batch_400 and is_batch:
                         raise BatchNotSupportedError(
                             f"[async][{dataset}] 批次請求被拒絕 (HTTP 400)"
                         )
-                    logger.warning(f"⚠️ [async][Skip] 400 Bad Request: {dataset}. 已跳過。")
+                    msg = f"⚠️ [async][Skip] 400 Bad Request: {dataset}. 已跳過。"
+                    logger.warning(msg)
                     _global_stats.record_failure(dataset, "async_400")
+                    if raise_on_error: raise ValueError(msg)
                     return []
 
                 resp.raise_for_status()
@@ -587,13 +612,12 @@ async def finmind_get_async(
                         raise BatchNotSupportedError(
                             f"[async][{dataset}] 批次請求被拒絕 status=400"
                         )
-                    logger.warning(
-                        f"[async][{dataset}] status={payload.get('status')}, "
-                        f"msg={payload.get('msg')}"
-                    )
+                    msg = f"[async][{dataset}] status={payload.get('status')}, msg={payload.get('msg')}"
+                    logger.warning(msg)
                     _global_stats.record_failure(
                         dataset, f"async_status={payload.get('status')}"
                     )
+                    if raise_on_error: raise ValueError(msg)
                     return []
 
                 data = payload.get("data", [])
@@ -617,9 +641,11 @@ async def finmind_get_async(
                 )
                 await asyncio.sleep(backoff)
             else:
-                logger.error(f"[async][{dataset}] 已重試 {max_retries} 次，放棄：{exc}")
+                msg = f"[async][{dataset}] 已重試 {max_retries} 次，放棄：{exc}"
+                logger.error(msg)
                 _global_stats.record_failure(dataset, f"async_max_retries:{exc}")
                 _global_breaker.record_failure(dataset)
+                if raise_on_error: raise RuntimeError(msg)
                 return []
 
     return []

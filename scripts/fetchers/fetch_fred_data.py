@@ -54,7 +54,7 @@ def fred_get(series_id, api_key, start, end, max_retries=3):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--series", nargs="+", default=DEFAULT_FRED_SERIES)
+    p.add_argument("--ids", nargs="+", default=DEFAULT_FRED_SERIES)
     p.add_argument("--start", default="1990-01-01")
     p.add_argument("--end", default=date.today().strftime("%Y-%m-%d"))
     p.add_argument("--delay", type=float, default=0.5)
@@ -72,7 +72,7 @@ def main():
         latest = get_all_safe_starts(conn, "fred_series", key_col="series_id")
         flog = FailureLogger("fred_series", db_conn=conn)
         total_rows = 0
-        for sid in args.series:
+        for sid in args.ids:
             s = resolve_start_cached(sid, latest, args.start, "1990-01-01", args.force)
             if not s: continue
             try:

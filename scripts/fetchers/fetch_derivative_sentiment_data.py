@@ -105,7 +105,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tables", nargs="+", choices=["options_large_oi", "fear_greed_index", "block_trading", "all"], default=["all"])
-    p.add_argument("--stock_id")
+    p.add_argument("--ids")
     p.add_argument("--start", default="2021-01-01")
     p.add_argument("--end", default=DEFAULT_END)
     p.add_argument("--delay", type=float, default=1.2)
@@ -116,7 +116,7 @@ def main():
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_SENTIMENT)
-        stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
+        stock_ids = [s.strip() for s in args.ids.split(",")] if args.ids else get_db_stock_ids(conn)
         
         if "options_large_oi" in tables: fetch_sentiment(conn, "TaiwanOptionOpenInterestLargeTraders", "options_oi_large_holders", UPSERT_OPTIONS_LARGE_OI, map_opt_large, args.start, args.end, args.delay, args.force)
         if "fear_greed_index" in tables: fetch_sentiment(conn, "CnnFearGreedIndex", "fear_greed_index", UPSERT_FEAR_GREED, map_fg, args.start, args.end, args.delay, args.force)

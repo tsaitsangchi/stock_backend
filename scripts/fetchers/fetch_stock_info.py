@@ -25,9 +25,7 @@ from core.finmind_client import finmind_get, wait_until_next_hour
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    FailureLogger,
-    commit_per_group,
-    dedup_rows,
+    bulk_upsert,
 )
 
 # ======================
@@ -71,6 +69,38 @@ DO UPDATE SET
     date              = EXCLUDED.date;
 """
 
+# ──────────────────────────────────────────────
+# 逐支 commit 工具函式
+# ──────────────────────────────────────────────
+def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
+                      label: str = "") -> int:
+    if not rows:
+        return 0
+    try:
+        n = bulk_upsert(conn, upsert_sql, rows, template)
+        conn.commit()
+        return n
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
+        return 0
+
+
+def dump_failures(table: str, failures: list) -> None:
+    if not failures:
+        return
+    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
+    try:
+        out.write_text(
+            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
+    except Exception as e:
+        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
 
 # ──────────────────────────────────────────────
 # 1. 抓取與轉換
@@ -79,7 +109,7 @@ def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
     """
     抓取台股總覽並去重轉換。
     """
-    data = finmind_get("TaiwanStockInfo", {}, delay)
+    data = finmind_get("TaiwanStockInfo", {}, delay, raise_on_error=True)
     if not data:
         return []
 
@@ -116,26 +146,29 @@ def run_update(delay: float = 1.0) -> None:
         return
 
     conn = get_db_conn()
-    flog = FailureLogger("stock_info", db_conn=conn)
+    failures = []
     try:
         ensure_ddl(conn, CREATE_TABLE_SQL)
-        
-        # 去重：以 stock_id (0) 為 key
-        rows = dedup_rows(rows, (0,))
-        
-        res = commit_per_group(
-            conn, UPSERT_SQL, rows, 
-            template="(%s, %s, %s, %s, %s::date)",
-            group_key_fn=lambda r: r[0],
-            label_prefix="stock_info",
-            failure_logger=flog
-        )
+        conn.commit()
 
-        logger.info(f"完成，逐支寫入 {sum(res.values())} 筆標的資訊")
+        success_count = 0
+        for row in rows:
+            sid = row[0]
+            n = safe_commit_rows(
+                conn, UPSERT_SQL, [row],
+                template="(%s, %s, %s, %s, %s::date)",
+                label=f"stock_info/{sid}"
+            )
+            if n > 0:
+                success_count += n
+            else:
+                failures.append({"stock_id": sid, "error": "db_write_error"})
+
+        logger.info(f"完成，逐支寫入 {success_count} 筆標的資訊")
     finally:
         conn.close()
-    
-    flog.summary()
+
+    dump_failures("stock_info", failures)
 
 
 def main():

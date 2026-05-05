@@ -1376,7 +1376,12 @@ def add_extended_derivative_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_news_attention_features(df: pd.DataFrame) -> pd.DataFrame:
-    """新聞注意力：news_count → 5/20 日累積、z-score、注意力跳升 flag。"""
+    """新聞注意力：news_count → 5/20 日累積、z-score、注意力跳升 flag。
+
+    [v3.1 修正] 新增別名 news_intensity = news_intensity_zscore_252，
+    讓 signal_filter._eval_news (Hard block) / V3_REQUIRED 守門 / parallel_train 三處
+    全部都拿得到值。z-score 是最能代表「異常」的單一數字。
+    """
     if "news_count" not in df.columns:
         return df
     nc = df["news_count"].fillna(0).astype(float)
@@ -1386,6 +1391,8 @@ def add_news_attention_features(df: pd.DataFrame) -> pd.DataFrame:
     std_252  = nc.rolling(252).std()
     df["news_intensity_zscore_252"] = _safe_div(nc - mean_252, std_252)
     df["news_attention_spike"] = (df["news_intensity_zscore_252"] > 2).astype(float)
+    # [v3.1] signal_filter / V3_REQUIRED 統一使用簡稱 news_intensity
+    df["news_intensity"] = df["news_intensity_zscore_252"]
     return df
 
 
