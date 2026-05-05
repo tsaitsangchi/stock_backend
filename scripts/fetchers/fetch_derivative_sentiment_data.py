@@ -123,6 +123,8 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
             
             # 找出這批資料中最後一天的日期
             received_dates = sorted(list(set(r[0] for r in rows)))
+            logger.info(f"    -> 成功接收 {len(received_dates)} 天的資料 ({received_dates[0]} ~ {received_dates[-1]})")
+            
             last_date_str = received_dates[-1]
             last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
             
@@ -142,7 +144,13 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
             total_rows += sum(res.values())
             
             # ⭐ 下一次從最後一天的隔天開始 ⭐
-            curr = last_date + timedelta(days=1)
+            new_curr = last_date + timedelta(days=1)
+            
+            # 如果日期沒推進，強制跳一天避開無窮迴圈
+            if new_curr <= curr:
+                curr += timedelta(days=1)
+            else:
+                curr = new_curr
             
             # 如果最後一天已經超過 end，則結束
             if curr > e_dt:
