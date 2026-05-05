@@ -107,35 +107,47 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
     total_rows = 0
     curr = s_dt
     while curr <= e_dt:
-        if table == "options_oi_large_holders" and curr not in trading_days:
-            curr += timedelta(days=1)
-            continue
-            
         d_str = curr.strftime("%Y-%m-%d")
-        logger.info(f"  [{table}] 正在抓取 {d_str}...")
+        logger.info(f"  [{table}] 正在抓取自 {d_str} 起的資料塊...")
         try:
-            # 對於 options_large_oi，強制單日抓取
-            if table == "options_oi_large_holders":
-                data = finmind_get(dataset, {"start_date": d_str, "end_date": d_str}, delay)
-            else:
-                # 其他資料集 (如 fear_greed) 可能支援範圍，但為了保險也可逐日
-                data = finmind_get(dataset, {"start_date": d_str, "end_date": d_str}, delay)
+            # ⭐ 核心優化：不帶 end_date 可觸發快速度大量回傳 (約 200-300 天) ⭐
+            data = finmind_get(dataset, {"start_date": d_str}, delay)
+            
+            if not data:
+                # 若無資料，則跳過一天繼續
+                curr += timedelta(days=1)
+                continue
                 
-            if data:
-                rows = [mapper(r) for r in data]
-                if table == "fear_greed_index":
-                    rows = dedup_rows(rows, (0,))
-                    res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
-                else:
-                    rows = dedup_rows(rows, (0, 1, 2, 3))
-                    res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
-                total_rows += sum(res.values())
+            # 轉換資料
+            rows = [mapper(r) for r in data]
+            
+            # 找出這批資料中最後一天的日期
+            received_dates = sorted(list(set(r[0] for r in rows)))
+            last_date_str = received_dates[-1]
+            last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+            
+            # 寫入資料庫
+            if table == "fear_greed_index":
+                rows = dedup_rows(rows, (0,))
+                res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
+            else:
+                # 這裡的 dedup keys 需要根據 table 調整
+                # options_oi_large_holders: (date, option_id, put_call, contract_type)
+                rows = dedup_rows(rows, (0, 1, 2, 3))
+                res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
+            
+            total_rows += sum(res.values())
+            
+            # ⭐ 下一次從最後一天的隔天開始 ⭐
+            curr = last_date + timedelta(days=1)
+            
+            # 如果最後一天已經超過 end，則結束
+            if curr > e_dt:
+                break
+                
         except Exception as e:
             flog.record(date=d_str, error=str(e))
-        
-        # 如果是 fear_greed 且我們發現它其實支援範圍抓取，可以優化。
-        # 但目前為了穩定性，先統一逐日或小波段。
-        curr += timedelta(days=1)
+            curr += timedelta(days=1) # 出錯則跳過一天
 
     logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
     flog.summary()
