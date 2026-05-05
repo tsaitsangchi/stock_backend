@@ -131,9 +131,19 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     ensure_ddl(conn, DDL_EIGHT_BANKS)
     flog = FailureLogger("eight_banks", db_conn=conn)
     
+    # ⭐ 自動尋找起始日 ⭐
+    if not start and not force:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(date) FROM eight_banks_buy_sell")
+            max_d = cur.fetchone()[0]
+            if max_d:
+                start = (max_d + timedelta(days=1)).strftime("%Y-%m-%d")
+                logger.info(f"  [eight_banks] 自動從資料庫最新日期續傳：{start}")
+            else:
+                start = DATASET_START["eight_banks"]
+    
     # ❗ 此 Dataset 強制「全市場」+「單日」抓取 ❗
-    # 我們必須逐日請求，並在本地過濾/彙總
-    s_dt = datetime.strptime(start, "%Y-%m-%d").date()
+    s_dt = datetime.strptime(start or DATASET_START["eight_banks"], "%Y-%m-%d").date()
     e_dt = datetime.strptime(end, "%Y-%m-%d").date()
     
     total_rows = 0
@@ -145,8 +155,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
             data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
             if data:
                 # ⭐ 本地彙總：同一天同一支股票可能有各家行庫資料，加總起來 ⭐
-                # 同時進行本地過濾：只保留使用者要求的 stock_ids
-                agg = defaultdict(lambda: [0, 0]) # [buy, sell]
+                agg = defaultdict(lambda: [0, 0])
                 s_set = set(stock_ids) if stock_ids else None
                 
                 for r in data:
