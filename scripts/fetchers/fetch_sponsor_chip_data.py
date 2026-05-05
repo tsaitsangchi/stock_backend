@@ -126,26 +126,25 @@ def fetch_broker(conn, stock_ids, start, end, delay, force):
     logger.info(f"  [broker_trades] 總共寫入 {total_rows} 筆")
     flog.summary()
 
-def fetch_eight_banks(conn, start, end, delay, force):
-    logger.info("=== [eight_banks] 開始 (全市場) ===")
+def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
+    logger.info(f"=== [eight_banks] 開始 ({len(stock_ids)} 支) ===")
     ensure_ddl(conn, DDL_EIGHT_BANKS)
-    # 此 Dataset 不支援 data_id，必須逐日抓取全市場
-    s_dt = datetime.strptime(start, "%Y-%m-%d")
-    e_dt = datetime.strptime(end, "%Y-%m-%d")
+    latest = get_all_safe_starts(conn, "eight_banks_buy_sell")
     flog = FailureLogger("eight_banks", db_conn=conn)
     total_rows = 0
-    curr = s_dt
-    while curr <= e_dt:
-        d_str = curr.strftime("%Y-%m-%d")
+
+    for sid in stock_ids:
+        s = resolve_start_cached(sid, latest, start, DATASET_START["eight_banks"], force)
+        if not s: continue
         try:
-            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str, "end_date": d_str}, delay)
+            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"data_id": sid, "start_date": s, "end_date": end}, delay)
             if data:
                 rows = [map_eight_banks(r) for r in data]
-                rows = dedup_rows(rows, (0, 1)) # date, stock_id
-                res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
+                rows = dedup_rows(rows, (0, 1))
+                res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix=f"eight_banks/{sid}", failure_logger=flog)
                 total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=d_str, error=str(e))
-        curr += timedelta(days=1)
+        except Exception as e: flog.record(stock_id=sid, error=str(e))
+
     logger.info(f"  [eight_banks] 總共寫入 {total_rows} 筆")
     flog.summary()
 
@@ -180,7 +179,7 @@ def main():
         stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
         if "holding_shares_per" in tables: fetch_holding(conn, stock_ids, args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
         if "broker_trades" in tables: fetch_broker(conn, [args.stock_id] if args.stock_id else ["2330"], args.start or DATASET_START["broker_trades"], args.end, args.delay, args.force)
-        if "eight_banks" in tables: fetch_eight_banks(conn, args.start or DATASET_START["eight_banks"], args.end, args.delay, args.force)
+        if "eight_banks" in tables: fetch_eight_banks(conn, stock_ids, args.start or DATASET_START["eight_banks"], args.end, args.delay, args.force)
         if "futures_large_oi" in tables: fetch_futures_oi(conn, args.start or DATASET_START["futures_large_oi"], args.end, args.delay, args.force)
     finally:
         conn.close()
