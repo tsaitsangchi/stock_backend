@@ -216,7 +216,7 @@ def main():
         stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
         if "holding_shares_per" in tables: fetch_holding(conn, stock_ids, args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
         if "broker_trades" in tables: fetch_broker(conn, [args.stock_id] if args.stock_id else ["2330"], args.start or DATASET_START["broker_trades"], args.end, args.delay, args.force)
-        if "eight_banks" in tables: fetch_eight_banks(conn, stock_ids, args.start or DATASET_START["eight_banks"], args.end, args.delay, args.force)
+        if "eight_banks" in tables: fetch_eight_banks(conn, stock_ids, args.start, args.end, args.delay, args.force)
         if "futures_large_oi" in tables: fetch_futures_oi(conn, args.start or DATASET_START["futures_large_oi"], args.end, args.delay, args.force)
     finally:
         conn.close()
