@@ -373,7 +373,7 @@ def finmind_get(
                 FINMIND_API_URL,
                 headers=headers,
                 params=req_params,
-                timeout=(30, 300),
+                timeout=(60, 600),
             )
 
             # ── 402：配額耗盡 ──
@@ -544,7 +544,7 @@ async def finmind_get_async(
                 FINMIND_API_URL,
                 headers=headers,
                 params=req_params,
-                timeout=__import__("aiohttp").ClientTimeout(connect=30, total=330, sock_read=300),
+                timeout=__import__("aiohttp").ClientTimeout(connect=60, total=660, sock_read=600),
             ) as resp:
                 if resp.status == 402:
                     _global_stats.record_quota_wait(dataset)
