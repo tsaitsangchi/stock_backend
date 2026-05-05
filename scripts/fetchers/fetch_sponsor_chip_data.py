@@ -141,8 +141,8 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     while curr <= e_dt:
         d_str = curr.strftime("%Y-%m-%d")
         try:
-            # ❗ 單日抓取 ❗
-            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str, "end_date": d_str}, delay)
+            # ❗ 單日抓取，且不帶 end_date 以免 400 錯誤 ❗
+            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
             if data:
                 # ⭐ 本地彙總：同一天同一支股票可能有各家行庫資料，加總起來 ⭐
                 # 同時進行本地過濾：只保留使用者要求的 stock_ids
