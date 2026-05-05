@@ -84,22 +84,60 @@ def fetch_block_trading(conn, stock_ids, start, end, delay, force):
 def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay, force):
     logger.info(f"=== [{table}] 開始 ===")
     flog = FailureLogger(table, db_conn=conn)
-    try:
-        data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
-        if data:
-            rows = [mapper(r) for r in data]
-            if table == "fear_greed_index":
-                rows = dedup_rows(rows, (0,))
-                res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
-            elif table == "options_oi_large_holders":
-                rows = dedup_rows(rows, (0, 1, 2, 3))
-                res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
+    
+    # ── 取得交易日清單 ──
+    with conn.cursor() as cur:
+        cur.execute("SELECT date FROM trading_date")
+        trading_days = {r[0] for r in cur.fetchall()}
+
+    # ⭐ 自動尋找起始日 ⭐
+    if not start and not force:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT MAX(date) FROM {table}")
+            max_d = cur.fetchone()[0]
+            if max_d:
+                start = (max_d + timedelta(days=1)).strftime("%Y-%m-%d")
+                logger.info(f"  [{table}] 自動從資料庫最新日期續傳：{start}")
             else:
-                res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
+                start = DATASET_START.get(table, "2021-01-01")
+    
+    s_dt = datetime.strptime(start or DATASET_START.get(table, "2021-01-01"), "%Y-%m-%d").date()
+    e_dt = datetime.strptime(end, "%Y-%m-%d").date()
+    
+    total_rows = 0
+    curr = s_dt
+    while curr <= e_dt:
+        if table == "options_oi_large_holders" and curr not in trading_days:
+            curr += timedelta(days=1)
+            continue
             
-            if res:
-                logger.info(f"  [{table}] 寫入 {sum(res.values())} 筆")
-    except Exception as e: flog.record(stock_id="market", error=str(e))
+        d_str = curr.strftime("%Y-%m-%d")
+        logger.info(f"  [{table}] 正在抓取 {d_str}...")
+        try:
+            # 對於 options_large_oi，強制單日抓取
+            if table == "options_oi_large_holders":
+                data = finmind_get(dataset, {"start_date": d_str, "end_date": d_str}, delay)
+            else:
+                # 其他資料集 (如 fear_greed) 可能支援範圍，但為了保險也可逐日
+                data = finmind_get(dataset, {"start_date": d_str, "end_date": d_str}, delay)
+                
+            if data:
+                rows = [mapper(r) for r in data]
+                if table == "fear_greed_index":
+                    rows = dedup_rows(rows, (0,))
+                    res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
+                else:
+                    rows = dedup_rows(rows, (0, 1, 2, 3))
+                    res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
+                total_rows += sum(res.values())
+        except Exception as e:
+            flog.record(date=d_str, error=str(e))
+        
+        # 如果是 fear_greed 且我們發現它其實支援範圍抓取，可以優化。
+        # 但目前為了穩定性，先統一逐日或小波段。
+        curr += timedelta(days=1)
+
+    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
     flog.summary()
 
 def main():
