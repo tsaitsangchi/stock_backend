@@ -329,6 +329,16 @@ STOCK_CONFIGS = {
 }
 
 # ─────────────────────────────────────────────
+# 衍生性商品與總經標的配置 (Derivative & Macro)
+# ─────────────────────────────────────────────
+DERIVATIVE_CONFIGS = {
+    "futures":     ["TX", "MTX", "TE", "TF"],
+    "options":     ["TXO", "TEO", "TFO"],
+    "currencies":  ["USD", "JPY", "EUR"],
+    "commodities": ["WTI", "Brent", "GOLD"]
+}
+
+# ─────────────────────────────────────────────
 # 國際標的清單 (由各個股配置自動彙整)
 # ─────────────────────────────────────────────
 def _get_international_watchlist():
