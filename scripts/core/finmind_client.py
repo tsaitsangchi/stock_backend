@@ -49,7 +49,7 @@ FINMIND_API_URL = "https://api.finmindtrade.com/api/v4/data"
 FINMIND_USER_INFO_URL = "https://api.web.finmindtrade.com/v2/user_info"
 
 # FinMind 官方配額：每小時 600 次（含授權 Token）
-FINMIND_HOURLY_LIMIT = 600
+FINMIND_HOURLY_LIMIT = 6000
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ class TokenBucketRateLimiter:
                     return
             jitter = random.uniform(0, jitter_range)
             wait = wait_base + jitter
-            logger.debug(f"[RateLimiter] 令牌不足，等待 {wait:.2f}s")
+            logger.info(f"[RateLimiter] 令牌不足(剩餘 {self._tokens:.2f})，等待 {wait:.2f}s...")
             time.sleep(wait)
             wait_base = min(wait_base * 2, 30.0)
 
