@@ -127,23 +127,42 @@ def fetch_broker(conn, stock_ids, start, end, delay, force):
     flog.summary()
 
 def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
-    logger.info(f"=== [eight_banks] 開始 ({len(stock_ids)} 支) ===")
+    logger.info(f"=== [eight_banks] 開始 (過濾 {len(stock_ids)} 支) ===")
     ensure_ddl(conn, DDL_EIGHT_BANKS)
-    latest = get_all_safe_starts(conn, "eight_banks_buy_sell")
     flog = FailureLogger("eight_banks", db_conn=conn)
+    
+    # 由於此 Dataset 僅支援全市場抓取且不支援 data_id，我們採用「大時段抓取 + 本地過濾」
+    # 一次抓 30 天，減少請求次數
+    s_dt = datetime.strptime(start, "%Y-%m-%d").date()
+    e_dt = datetime.strptime(end, "%Y-%m-%d").date()
+    
     total_rows = 0
-
-    for sid in stock_ids:
-        s = resolve_start_cached(sid, latest, start, DATASET_START["eight_banks"], force)
-        if not s: continue
+    curr = s_dt
+    while curr <= e_dt:
+        c_e = min(curr + timedelta(days=30), e_dt)
+        c_s_str = curr.strftime("%Y-%m-%d")
+        c_e_str = c_e.strftime("%Y-%m-%d")
+        
         try:
-            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"data_id": sid, "start_date": s, "end_date": end}, delay)
+            # ❗ 不帶 data_id 以免 400 錯誤 ❗
+            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": c_s_str, "end_date": c_e_str}, delay)
             if data:
-                rows = [map_eight_banks(r) for r in data]
-                rows = dedup_rows(rows, (0, 1))
-                res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix=f"eight_banks/{sid}", failure_logger=flog)
-                total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=sid, error=str(e))
+                # ⭐ 本地過濾：只保留使用者要求的 stock_ids ⭐
+                if stock_ids:
+                    s_set = set(stock_ids)
+                    filtered_data = [r for r in data if r.get("stock_id") in s_set]
+                else:
+                    filtered_data = data
+                
+                if filtered_data:
+                    rows = [map_eight_banks(r) for r in filtered_data]
+                    rows = dedup_rows(rows, (0, 1))
+                    res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
+                    total_rows += sum(res.values())
+        except Exception as e:
+            flog.record(date=c_s_str, error=f"Batch {c_s_str}~{c_e_str} failed: {e}")
+        
+        curr = c_e + timedelta(days=1)
 
     logger.info(f"  [eight_banks] 總共寫入 {total_rows} 筆")
     flog.summary()
