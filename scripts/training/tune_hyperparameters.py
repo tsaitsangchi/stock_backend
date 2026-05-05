@@ -54,7 +54,7 @@ except ModuleNotFoundError:
     )
     sys.exit(127)
 
-from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, get_all_features
+from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, STOCK_CONFIGS, get_all_features
 
 # core v3.0 helpers
 from core.path_setup import get_outputs_dir, ensure_dirs_exist
@@ -191,38 +191,22 @@ def _summarize_study(name: str, study: optuna.Study) -> dict:
 # 主流程
 # ─────────────────────────────────────────────
 
-def main():
-    parser = argparse.ArgumentParser(description="Optuna 超參數調優 (v3.1)")
-    parser.add_argument("--stock-id", default="2330")
-    parser.add_argument("--trials", type=int, default=30)
-    parser.add_argument("--seed", type=int, default=42, help="Optuna sampler seed")
-    parser.add_argument("--horizon", type=int, default=HORIZON,
-                        help=f"目標 horizon（預設 config.HORIZON={HORIZON}）")
-    parser.add_argument("--val-window", type=int, default=252,
-                        help="驗證窗口長度（交易日，預設 252）")
-    parser.add_argument("--no-embargo", action="store_true",
-                        help="關閉 train/val 之間的 embargo 緩衝")
-    parser.add_argument("--skip-v3-guard", action="store_true",
-                        help="跳過 v3 因子守門（不建議）")
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    ensure_dirs_exist()
-
+def tune_one_stock(stock_id: str, args) -> int:
+    """對單支股票執行調優，回傳 0=成功 / 1=失敗 / 2=守門失敗。"""
     logger.info("=" * 65)
-    logger.info(f"  Optuna Hyperparameter Tuning v3.1 — {args.stock_id}")
+    logger.info(f"  Optuna Hyperparameter Tuning v3.1 — {stock_id}")
     logger.info(f"  trials={args.trials}  horizon={args.horizon}d  seed={args.seed}")
     logger.info("=" * 65)
 
     if not args.skip_v3_guard:
         try:
-            assert_v3_features_present(args.stock_id)
+            assert_v3_features_present(stock_id)
         except Exception as e:
             logger.error(f"v3 守門失敗：{e}")
             return 2
 
-    raw = build_daily_frame(stock_id=args.stock_id, start_date=TRAIN_START_DATE)
-    df  = build_features(raw, stock_id=args.stock_id)
+    raw = build_daily_frame(stock_id=stock_id, start_date=TRAIN_START_DATE)
+    df  = build_features(raw, stock_id=stock_id)
 
     df = df.replace([np.inf, -np.inf], np.nan)
 
@@ -242,10 +226,10 @@ def main():
     logger.info(f"資料清理完成：{initial_len} → {len(df)} 筆")
 
     if len(df) < 100:
-        logger.warning(f"⚠️ {args.stock_id} 有效樣本過少 ({len(df)})，跳過調優")
+        logger.warning(f"⚠️ {stock_id} 有效樣本過少 ({len(df)})，跳過調優")
         return 1
 
-    all_features = get_all_features(args.stock_id)
+    all_features = get_all_features(stock_id)
     feat_cols = [c for c in all_features if c in df.columns]
     X = df[feat_cols].fillna(0)
     y = df[target_col]
@@ -293,12 +277,12 @@ def main():
 
     out_dir = get_outputs_dir() / "tuning"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_pkl  = out_dir / f"best_params_{args.stock_id}.pkl"
-    out_json = out_dir / f"best_params_{args.stock_id}.json"
-    out_meta = out_dir / f"best_params_{args.stock_id}.metadata.json"
+    out_pkl  = out_dir / f"best_params_{stock_id}.pkl"
+    out_json = out_dir / f"best_params_{stock_id}.json"
+    out_meta = out_dir / f"best_params_{stock_id}.metadata.json"
 
     result = {
-        "stock_id":     args.stock_id,
+        "stock_id":     stock_id,
         "horizon":      args.horizon,
         "target_col":   target_col,
         "n_trials":     args.trials,
@@ -344,7 +328,7 @@ def main():
             f"LGB={lgb_summary.get('best_value')}"
         )
         meta = ModelMetadata(
-            stock_id=args.stock_id,
+            stock_id=stock_id,
             model_path=str(out_pkl.relative_to(out_dir.parent)),
             train_end_date=train_end_str,
             feature_count=len(feat_cols),
@@ -367,6 +351,68 @@ def main():
         logger.info(f"  Best LGB MSE: {study_lgb.best_value:.6f}  params: {study_lgb.best_params}")
     logger.info("=" * 65)
     return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Optuna 超參數調優 (v3.1)")
+    parser.add_argument("--stock-id", default="2330",
+                        help="單支股票 ID（與 --all-stocks 互斥）")
+    parser.add_argument("--all-stocks", action="store_true",
+                        help="對 STOCK_CONFIGS 所有股票批次調優（依序執行）")
+    parser.add_argument("--skip-existing", action="store_true",
+                        help="--all-stocks 模式下跳過已有 best_params_<id>.json 的股票")
+    parser.add_argument("--trials", type=int, default=30)
+    parser.add_argument("--seed", type=int, default=42, help="Optuna sampler seed")
+    parser.add_argument("--horizon", type=int, default=HORIZON,
+                        help=f"目標 horizon（預設 config.HORIZON={HORIZON}）")
+    parser.add_argument("--val-window", type=int, default=252,
+                        help="驗證窗口長度（交易日，預設 252）")
+    parser.add_argument("--no-embargo", action="store_true",
+                        help="關閉 train/val 之間的 embargo 緩衝")
+    parser.add_argument("--skip-v3-guard", action="store_true",
+                        help="跳過 v3 因子守門（不建議）")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    ensure_dirs_exist()
+
+    if args.all_stocks:
+        stock_ids = list(STOCK_CONFIGS.keys())
+        out_dir = get_outputs_dir() / "tuning"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        succeeded, failed, skipped = [], [], []
+        total = len(stock_ids)
+
+        for idx, sid in enumerate(stock_ids, 1):
+            if args.skip_existing and (out_dir / f"best_params_{sid}.json").exists():
+                logger.info(f"[{idx}/{total}] {sid} 已有結果，跳過")
+                skipped.append(sid)
+                continue
+
+            logger.info(f"\n{'='*65}")
+            logger.info(f"[{idx}/{total}] 開始處理 {sid}")
+            logger.info(f"{'='*65}")
+            try:
+                rc = tune_one_stock(sid, args)
+                if rc == 0:
+                    succeeded.append(sid)
+                else:
+                    failed.append(sid)
+            except Exception as e:
+                logger.error(f"[{sid}] 未預期錯誤：{e}", exc_info=True)
+                failed.append(sid)
+
+        logger.info("\n" + "=" * 65)
+        logger.info(f"  批次調優完成：成功={len(succeeded)}  失敗={len(failed)}  跳過={len(skipped)}")
+        if failed:
+            logger.warning(f"  失敗清單：{failed}")
+        logger.info("=" * 65)
+        return 0 if not failed else 1
+
+    else:
+        return tune_one_stock(args.stock_id, args)
 
 
 if __name__ == "__main__":
