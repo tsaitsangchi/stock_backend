@@ -158,6 +158,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
             continue
             
         d_str = curr.strftime("%Y-%m-%d")
+        logger.info(f"  [eight_banks] 正在抓取 {d_str} (全市場)...")
         try:
             # ❗ 單日抓取 ❗
             data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
