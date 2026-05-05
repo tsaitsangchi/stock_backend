@@ -130,9 +130,12 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
             if table == "fear_greed_index":
                 rows = dedup_rows(rows, (0,))
                 res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
+            elif table == "options_oi_large_holders":
+                # ⭐ 核心優化：使用 commit_per_day 進行大塊寫入，避免一筆一筆 commit ⭐
+                rows = dedup_rows(rows, (0, 1, 2, 3))
+                tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                res = commit_per_day(conn, upsert_sql, rows, tmpl, date_index=0, label_prefix=table, failure_logger=flog)
             else:
-                # 這裡的 dedup keys 需要根據 table 調整
-                # options_oi_large_holders: (date, option_id, put_call, contract_type)
                 rows = dedup_rows(rows, (0, 1, 2, 3))
                 res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
             
