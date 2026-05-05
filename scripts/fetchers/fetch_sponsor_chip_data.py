@@ -133,7 +133,7 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     
     # ── 取得交易日清單 ──
     with conn.cursor() as cur:
-        cur.execute("SELECT date FROM trading_date WHERE stock_id='OTCP' OR stock_id='TWSE'")
+        cur.execute("SELECT date FROM trading_date")
         trading_days = {r[0] for r in cur.fetchall()}
 
     # ⭐ 自動尋找起始日 ⭐
