@@ -479,13 +479,15 @@ class LGBPredictor:
 # ─────────────────────────────────────────────
 
 class CatPredictor:
-    def __init__(self, params: dict = None, task: str = "classification"):
-        from config import CATBOOST_PARAMS
+    def __init__(self, params: dict = None, task: str = "classification", stock_id: str = "generic"):
+        from config import CATBOOST_PARAMS, LOG_DIR
         self.params = params or CATBOOST_PARAMS.copy()
         self.task = task
         self.model = None
         self.feature_names: list[str] = []
         self._const_class: Optional[int] = None
+        # [修復] 為每個模型指定獨立的暫存目錄，解決並行訓練時的 CatBoostError
+        self.train_dir = str(LOG_DIR / f"catboost_info_{stock_id}_{task}")
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series,
             X_val: pd.DataFrame, y_val: pd.Series) -> "CatPredictor":
@@ -512,14 +514,24 @@ class CatPredictor:
 
             self._const_class = None
             try:
-                self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
+                self.model = CatBoostClassifier(
+                    **p, 
+                    early_stopping_rounds=es, 
+                    verbose=100,
+                    train_dir=self.train_dir
+                )
                 self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
             except Exception as e:
                 if "CUDA error" in str(e) or "out of memory" in str(e).lower():
                     logger.warning(f"  [CatBoost] GPU 記憶體不足 ({e})，自動回退至 CPU 訓練…")
                     p["task_type"] = "CPU"
                     p.pop("devices", None)
-                    self.model = CatBoostClassifier(**p, early_stopping_rounds=es, verbose=100)
+                    self.model = CatBoostClassifier(
+                        **p, 
+                        early_stopping_rounds=es, 
+                        verbose=100,
+                        train_dir=self.train_dir
+                    )
                     self.model.fit(X_train, y_tr_bin, eval_set=(X_val, y_va_bin))
                 else:
                     raise e
@@ -531,14 +543,24 @@ class CatPredictor:
                 p["eval_metric"] = "RMSE"
             
             try:
-                self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
+                self.model = CatBoostRegressor(
+                    **p, 
+                    early_stopping_rounds=es, 
+                    verbose=100,
+                    train_dir=self.train_dir
+                )
                 self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
             except Exception as e:
                 if "CUDA error" in str(e) or "out of memory" in str(e).lower():
                     logger.warning(f"  [CatBoost] GPU 記憶體不足 ({e})，自動回退至 CPU 訓練…")
                     p["task_type"] = "CPU"
                     p.pop("devices", None)
-                    self.model = CatBoostRegressor(**p, early_stopping_rounds=es, verbose=100)
+                    self.model = CatBoostRegressor(
+                        **p, 
+                        early_stopping_rounds=es, 
+                        verbose=100,
+                        train_dir=self.train_dir
+                    )
                     self.model.fit(X_train, y_train, eval_set=(X_val, y_val))
                 else:
                     raise e
@@ -588,15 +610,28 @@ class ElasticNetPredictor:
             self.model = Ridge(alpha=1.0)
         self.scaler = StandardScaler()
         self.feature_names = []
+        self._const_prob: Optional[float] = None
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series, *args, **kwargs):
         self.feature_names = X_train.columns.tolist()
+        
+        # [修復] 單一類別防護：如果 y_train 只有一種結果，LogisticRegression 會報錯
+        unique_y = np.unique(y_train)
+        if len(unique_y) < 2:
+            self._const_prob = float(unique_y[0])
+            logger.warning(f"  [ElasticNet] 訓練集只有單一類別 ({self._const_prob})，切換至常數預測模式")
+            return self
+            
+        self._const_prob = None
         X_tmp = X_train.fillna(X_train.median()).replace([np.inf, -np.inf], 0)
         X_scaled = self.scaler.fit_transform(X_tmp)
         self.model.fit(X_scaled, y_train)
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
+        if self._const_prob is not None:
+            return np.full(len(X), self._const_prob)
+            
         # 魯棒對齊
         X_aligned = X.copy()
         missing = [f for f in self.feature_names if f not in X_aligned.columns]
@@ -686,7 +721,7 @@ class StackingEnsemble:
         self.models = {}
         if use_xgb:     self.models["xgb"] = XGBPredictor(params=custom_params["xgb"], task=task)
         if use_lgb:     self.models["lgb"] = LGBPredictor(params=custom_params["lgb"], task=task)
-        if use_cat:     self.models["cat"] = CatPredictor(task=task)
+        if use_cat:     self.models["cat"] = CatPredictor(task=task, stock_id=stock_id)
         if use_elastic: self.models["elastic"] = ElasticNetPredictor()
         if use_mom:     self.models["mom"] = SimpleMomentumModel()
         
