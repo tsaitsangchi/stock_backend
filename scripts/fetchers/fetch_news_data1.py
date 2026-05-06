@@ -88,7 +88,7 @@ def main():
     conn = get_db_conn()
     try:
         ensure_ddl(conn, DDL_NEWS)
-        stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
+        stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else list(STOCK_CONFIGS.keys())
         
         end_dt = datetime.strptime(args.end, "%Y-%m-%d")
         start_dt = datetime.strptime(args.start, "%Y-%m-%d") if args.start else (end_dt - timedelta(days=args.days))
