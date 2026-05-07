@@ -762,8 +762,7 @@ CATBOOST_PARAMS = {
     "random_seed":       42,
     "bootstrap_type":    "Bernoulli",
     "subsample":         0.8,
-    "task_type":         "GPU",     # 正式啟用 RTX 4060 加速
-    "devices":           "0",       # 使用第一張顯卡
+    "task_type":         "CPU",     # 改為 CPU 以確保並行訓練穩定性
     "early_stopping_rounds": 50,
 }
 

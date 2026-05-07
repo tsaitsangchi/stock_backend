@@ -11,11 +11,11 @@ from core.finmind_client import FINMIND_TOKEN
 def check_options_large_oi():
     dataset = "TaiwanOptionOpenInterestLargeTraders"
     # 測試 2018-01-01 (使用 Header)
-    url = f"https://api.finmindtrade.com/api/v4/data?dataset={dataset}&start_date=2018-01-01"
+    url = f"https://api.finmindtrade.com/api/v4/data?dataset={dataset}&start_date=2018-01-02"
     headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     
     try:
-        print(f"Fetching {dataset} for 2018-01-01 (Using Header)...")
+        print(f"Fetching {dataset} for 2018-01-02 (Using Header)...")
         t0 = time.time()
         resp = requests.get(url, headers=headers)
         elapsed = time.time() - t0
