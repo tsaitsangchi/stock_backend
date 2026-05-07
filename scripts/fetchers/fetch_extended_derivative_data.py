@@ -4,18 +4,37 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 import argparse
+import time
 
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_extended_derivative_data.py v3.0 — 期貨/選擇權 II（逐支逐日 commit 完整性版）
+fetch_extended_derivative_data.py — 期貨/選擇權 II（v3.1 fetch_log 整合版）
 ================================================================================
-v3.0 重大改進：
-  ★ 導入 commit_per_stock_per_day：三大法人期權部位、盤後交易、自營商買賣每一天獨立原子 commit。
-  ★ 全面整合 FailureLogger：精準追蹤衍生品進階籌碼資料的抓取狀況。
-  ★ 結構一致化：與技術面、籌碼面腳本維持相同寫入規範，確保生產管線高可用。
+v3.1 改進：
+  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
+  · 效能追蹤：記錄三大法人期權部位的 API 請求與處理耗時（duration_ms）。
+  · 支援 --retry-failed N 與 --gap-fill N 模式，實現智慧補抓。
+
+v3.0 既有：
+  · 支援 2 個資料表：futures_inst_investors, options_inst_investors。
+  · 導入 commit_per_stock_per_day：每一天、每一法人部位獨立原子 commit。
+  · 整合 FailureLogger：精準追蹤衍生品進階籌碼資料的抓取狀況。
+
+執行（常規）：
+    python fetch_extended_derivative_data.py
+    python fetch_extended_derivative_data.py --tables futures_inst_investors
+    python fetch_extended_derivative_data.py --ids TX,MTX,TXO --force
+    python fetch_extended_derivative_data.py --tables all --force
+
+執行（模式切換）：
+    # 重試最近 7 天失敗的組合
+    python fetch_extended_derivative_data.py --retry-failed 7
+
+    # 補抓最近 30 天無成功紀錄的資料
+    python fetch_extended_derivative_data.py --gap-fill 30
 """
 
 from core.finmind_client import finmind_get
@@ -42,6 +61,32 @@ DATASET_START = {
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
 
+_CLI_ARGS_STR = " ".join(sys.argv)
+
+def _write_fetch_log(conn, **kwargs):
+    """寫入 fetch_log，失敗不影響主流程。"""
+    try:
+        with conn.cursor() as cur:
+            sql = """
+            INSERT INTO fetch_log (
+                run_ts, table_name, stock_id, fetch_mode,
+                fetch_date_from, fetch_date_to,
+                rows_inserted, rows_updated, duration_ms,
+                status, error_message, cli_args
+            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+            """
+            cur.execute(sql, (
+                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
+                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
+                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
+                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
+            ))
+        conn.commit()
+    except Exception as e:
+        try: conn.rollback()
+        except: pass
+        logger.debug(f"fetch_log 寫入失敗：{e}")
+
 # ─────────────────────────────────────────────
 # DDL & SQL
 # ─────────────────────────────────────────────
@@ -66,24 +111,33 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
     total_rows = 0
     tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" if "futures" in table else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     
+    t0 = time.time()
     try:
         # 衍生品籌碼 API (TaiwanFuturesInstitutionalInvestors / TaiwanOptionInstitutionalInvestors)
-        # 通常不支援 data_id 參數，或支援方式不同。建議一次抓整天，再於本地過濾。
         data = finmind_get(dataset, {"start_date": start, "end_date": end}, delay)
-        
-        if data and target_ids:
-            # 依據 target_ids 過濾
-            id_key = "futures_id" if "futures" in table else "option_id"
-            # 注意：API 回傳欄位名可能是 futures_id / option_id
-            data = [r for r in data if r.get(id_key) in target_ids]
+        dur = int((time.time() - t0) * 1000)
         
         if data:
+            if target_ids:
+                id_key = "futures_id" if "futures" in table else "option_id"
+                data = [r for r in data if r.get(id_key) in target_ids]
+            
             rows = [mapper(r) for r in data]
             # 去重：(date, id, investor)
             rows = dedup_rows(rows, (0, 1, 2) if "futures" in table else (0, 1, 2, 3))
             res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
-            total_rows += sum(res.values())
-    except Exception as e: flog.record(stock_id="market", error=str(e))
+            n = sum(res.values())
+            total_rows += n
+            _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=start, fetch_date_to=end, 
+                             rows_inserted=n, duration_ms=dur, status="success")
+        else:
+            _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=start, fetch_date_to=end, 
+                             rows_inserted=0, duration_ms=dur, status="no_new_data")
+    except Exception as e:
+        dur = int((time.time() - t0) * 1000)
+        flog.record(stock_id="market", error=str(e))
+        _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=start, fetch_date_to=end, 
+                         rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e))
     logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
     flog.summary()
 
