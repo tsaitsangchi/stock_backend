@@ -27,8 +27,8 @@ v3.1 重大改進：
     python scripts/fetchers/fetch_price_adj_data.py --stock-id 2330 # 僅抓取台積電
 
 執行範例（強制重抓）：
-    python scripts/fetchers/fetch_price_adj_data.py --force --tables price_adj
-    python scripts/fetchers/fetch_price_adj_data.py --start 2024-01-01 --force
+    # 強制重抓特定個股的所有資料表
+    python scripts/fetchers/fetch_price_adj_data.py --stock-id 2330 --force --tables all
 """
 
 from core.finmind_client import finmind_get, BatchNotSupportedError
