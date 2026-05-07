@@ -27,6 +27,7 @@ v3.0 既有：
     python fetch_derivative_sentiment_data.py
     python fetch_derivative_sentiment_data.py --tables fear_greed_index
     python fetch_derivative_sentiment_data.py --ids 2330 --tables block_trading --force
+    python fetch_derivative_sentiment_data.py --ids 2330 --tables all --force
     python fetch_derivative_sentiment_data.py --tables all --force
 
 執行（模式切換）：
