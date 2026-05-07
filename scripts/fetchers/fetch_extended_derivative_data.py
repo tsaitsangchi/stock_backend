@@ -27,6 +27,7 @@ v3.0 既有：
     python fetch_extended_derivative_data.py
     python fetch_extended_derivative_data.py --tables futures_inst_investors
     python fetch_extended_derivative_data.py --ids TX,MTX,TXO --force
+    python fetch_extended_derivative_data.py --ids TX,MTX,TXO --tables all --force
     python fetch_extended_derivative_data.py --tables all --force
 
 執行（模式切換）：
