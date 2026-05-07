@@ -111,17 +111,25 @@ async def close_asyncpg_pool() -> None:
 # ─────────────────────────────────────────────
 DDL_FETCH_LOG = """
 CREATE TABLE IF NOT EXISTS fetch_log (
-    id SERIAL PRIMARY KEY,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    table_name VARCHAR(50),
-    stock_id VARCHAR(50),
-    start_date DATE,
-    end_date DATE,
-    rows_count INTEGER,
-    status VARCHAR(20),
-    error_msg TEXT
+    id               BIGSERIAL    PRIMARY KEY,
+    run_ts           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    table_name       VARCHAR(64)  NOT NULL,
+    stock_id         VARCHAR(20),
+    fetch_mode       VARCHAR(16),
+    fetch_date_from  DATE,
+    fetch_date_to    DATE,
+    rows_inserted    INTEGER,
+    rows_updated     INTEGER,
+    duration_ms      INTEGER,
+    status           VARCHAR(16)  NOT NULL,
+    error_message    TEXT,
+    api_quota_left   INTEGER,
+    cli_args         TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_fetch_log_table ON fetch_log (table_name, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_table_ts  ON fetch_log(table_name, run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_stock_ts  ON fetch_log(stock_id,   run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_status_ts ON fetch_log(status,     run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup    ON fetch_log(table_name, stock_id, run_ts DESC);
 """
 
 
@@ -151,10 +159,14 @@ def log_fetch_result(
     status: str,
     error_msg: str = None,
 ) -> None:
-    """將抓取結果記錄至 fetch_log（含 rollback 容錯）。"""
+    """將抓取結果記錄至 fetch_log（向後相容介面）。"""
     sql = """
-    INSERT INTO fetch_log (table_name, stock_id, start_date, end_date, rows_count, status, error_msg)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO fetch_log (
+        run_ts, table_name, stock_id, 
+        fetch_date_from, fetch_date_to, 
+        rows_inserted, rows_updated,
+        status, error_message
+    ) VALUES (NOW(), %s, %s, %s, %s, %s, 0, %s, %s)
     """
     try:
         with conn.cursor() as cur:

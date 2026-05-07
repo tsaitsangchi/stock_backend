@@ -1,26 +1,48 @@
 from __future__ import annotations
 import sys
 import json
+import time
 from pathlib import Path
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_advanced_chip_data.py — 進階籌碼與融資融券資料（逐支 commit 完整性版）
+fetch_advanced_chip_data.py — 進階籌碼與融資融券資料（v2.3 fetch_log 整合版）
 ================================================================================
-v2.2 改進：
-  · 支援 5 個資料表：total_margin_short, total_inst_investors, securities_lending,
-    daily_short_balance, margin_short_suspension。
+v2.3 改進：
+  · 每次 fetch 操作（市場層級或個股層級）都寫入 fetch_log，
+    供 monitor.update_daily_status / data_integrity_audit / dashboard 取用。
+  · 新增 --retry-failed N：依 fetch_log 找近 N 天最後狀態為 failed 的
+    (table, stock_id) 對，只重抓這些。
+  · 新增 --gap-fill N：依 fetch_log 找近 N 天「沒有 success 紀錄」的
+    (table, stock_id) 對，只補這些。
+  · fetch_log 寫入是 best-effort，失敗不影響主流程（會印 warning）。
+  · cli_args 完整保存執行命令，便於追溯。
+
+v2.2 既有：
+  · 支援 5 個資料表：total_margin_short, total_inst_investors,
+    securities_lending, daily_short_balance, margin_short_suspension。
   · safe_commit_rows()：每支股票 / 每組寫入後立即 commit，失敗 rollback。
   · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
   · 失敗清單寫入 outputs/{table}_failed_{date}.json。
 
-執行：
+執行（沿用原版）：
     python fetch_advanced_chip_data.py
     python fetch_advanced_chip_data.py --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension
     python fetch_advanced_chip_data.py --stock-id 2330 --force
     python fetch_advanced_chip_data.py --stock-id 2330 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
     python fetch_advanced_chip_data.py --stock-id 2330,2454 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
+
+v2.3 新增執行模式：
+    # 重試最近 7 天最後狀態仍為 failed 的所有 (table, stock) 組合
+    python fetch_advanced_chip_data.py --retry-failed 7
+
+    # 補抓最近 30 天沒有任何 success 紀錄的 (table, stock) 組合
+    python fetch_advanced_chip_data.py --gap-fill 30
+
+    # 只針對特定表做 retry/gap-fill
+    python fetch_advanced_chip_data.py --retry-failed 7 --tables securities_lending daily_short_balance
+    python fetch_advanced_chip_data.py --gap-fill 14 --tables securities_lending
 """
 
 import argparse
@@ -61,8 +83,53 @@ DATASET_START = {
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
 
+# 哪些表是「市場層級」（無 stock_id）
+MARKET_LEVEL_TABLES = {"total_margin_short", "total_inst_investors"}
+PER_STOCK_TABLES = set(DATASET_START.keys()) - MARKET_LEVEL_TABLES
+
+# CLI 命令字串（給 fetch_log 紀錄）
+_CLI_ARGS_STR = " ".join(sys.argv)
+
 # ─────────────────────────────────────────────
-# DDL
+# DDL：fetch_log（與 monitor/init_monitoring_schema.py 一致）
+# 若該腳本未先執行，這裡也會 idempotent 建好
+# ─────────────────────────────────────────────
+DDL_FETCH_LOG = """
+CREATE TABLE IF NOT EXISTS fetch_log (
+    id               BIGSERIAL    PRIMARY KEY,
+    run_ts           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    table_name       VARCHAR(64)  NOT NULL,
+    stock_id         VARCHAR(20),
+    fetch_mode       VARCHAR(16),
+    fetch_date_from  DATE,
+    fetch_date_to    DATE,
+    rows_inserted    INTEGER,
+    rows_updated     INTEGER,
+    duration_ms      INTEGER,
+    status           VARCHAR(16)  NOT NULL,
+    error_message    TEXT,
+    api_quota_left   INTEGER,
+    cli_args         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_table_ts  ON fetch_log(table_name, run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_stock_ts  ON fetch_log(stock_id,   run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_status_ts ON fetch_log(status,     run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup    ON fetch_log(table_name, stock_id, run_ts DESC);
+"""
+
+INSERT_FETCH_LOG = """
+INSERT INTO fetch_log (
+    run_ts, table_name, stock_id, fetch_mode,
+    fetch_date_from, fetch_date_to,
+    rows_inserted, rows_updated, duration_ms,
+    status, error_message, api_quota_left, cli_args
+) VALUES (
+    NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+);
+"""
+
+# ─────────────────────────────────────────────
+# 業務 DDL（沿用原版）
 # ─────────────────────────────────────────────
 DDL_TOTAL_MARGIN_SHORT = """
 CREATE TABLE IF NOT EXISTS total_margin_short (
@@ -138,7 +205,7 @@ CREATE INDEX IF NOT EXISTS idx_mss_stock ON margin_short_suspension (stock_id, d
 """
 
 # ─────────────────────────────────────────────
-# Upsert SQL
+# Upsert SQL（沿用原版）
 # ─────────────────────────────────────────────
 UPSERT_TOTAL_MARGIN_SHORT = """
 INSERT INTO total_margin_short (date, name, today_balance, yes_balance, buy, sell, return_qty)
@@ -207,8 +274,56 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 """
 
 
+# ═════════════════════════════════════════════
+# fetch_log 寫入工具（best-effort，失敗不影響主流程）
+# ═════════════════════════════════════════════
+def _ensure_fetch_log_table(conn) -> None:
+    """確保 fetch_log 表存在（idempotent）。"""
+    try:
+        ensure_ddl(conn, DDL_FETCH_LOG)
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.warning(f"[fetch_log] ensure DDL 失敗（將跳過所有日誌寫入）：{e}")
+
+
+def _write_fetch_log(
+    conn,
+    *,
+    table_name: str,
+    stock_id: str | None,
+    fetch_mode: str,
+    fetch_date_from: str | None,
+    fetch_date_to: str | None,
+    rows_inserted: int,
+    duration_ms: int,
+    status: str,
+    error_message: str | None = None,
+    api_quota_left: int | None = None,
+) -> None:
+    """寫一筆到 fetch_log。任何失敗都吞掉並 warn，不影響主流程。"""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(INSERT_FETCH_LOG, (
+                table_name, stock_id, fetch_mode,
+                fetch_date_from, fetch_date_to,
+                rows_inserted, 0, duration_ms,
+                status, error_message, api_quota_left, _CLI_ARGS_STR,
+            ))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.warning(f"[fetch_log] 寫入失敗（不影響主流程）：{e}")
+
+
 # ─────────────────────────────────────────────
-# 逐支 commit 工具函式
+# 逐支 commit 工具函式（沿用原版）
 # ─────────────────────────────────────────────
 def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
                       label: str = "") -> int:
@@ -242,7 +357,7 @@ def dump_failures(table: str, failures: list) -> None:
 
 
 # ─────────────────────────────────────────────
-# Mapper
+# Mapper（沿用原版）
 # ─────────────────────────────────────────────
 def map_total_margin(r: dict) -> tuple:
     return (
@@ -292,9 +407,9 @@ def map_margin_susp(r: dict) -> tuple:
         r.get("reason"),
     )
 
-# ─────────────────────────────────────────────
-# 抓取邏輯
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
+# 抓取邏輯（含 fetch_log 整合）
+# ═════════════════════════════════════════════
 def fetch_market_dataset(
     conn, dataset: str, table: str, ddl: str,
     upsert_sql: str, template: str, mapper, dataset_key: str,
@@ -308,18 +423,42 @@ def fetch_market_dataset(
         if safe_s:
             if safe_s > end:
                 logger.info(f"[{table}] 已最新，跳過")
+                _write_fetch_log(
+                    conn, table_name=table, stock_id=None, fetch_mode="market",
+                    fetch_date_from=None, fetch_date_to=None,
+                    rows_inserted=0, duration_ms=0,
+                    status="skipped", error_message="up_to_date",
+                )
                 return
             s = max(safe_s, DATASET_START[dataset_key])
     s = max(s, DATASET_START[dataset_key])
     logger.info(f"[{table}] 抓取 {s} ~ {end}")
+
+    t0 = time.time()
     try:
         data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay, raise_on_error=True)
     except Exception as e:
+        duration_ms = int((time.time() - t0) * 1000)
         logger.error(f"[{table}] API 失敗：{e}")
+        _write_fetch_log(
+            conn, table_name=table, stock_id=None, fetch_mode="market",
+            fetch_date_from=s, fetch_date_to=end,
+            rows_inserted=0, duration_ms=duration_ms,
+            status="failed", error_message=str(e),
+        )
         return
+
     if not data:
+        duration_ms = int((time.time() - t0) * 1000)
         logger.info(f"[{table}] 無新資料")
+        _write_fetch_log(
+            conn, table_name=table, stock_id=None, fetch_mode="market",
+            fetch_date_from=s, fetch_date_to=end,
+            rows_inserted=0, duration_ms=duration_ms,
+            status="no_new_data",
+        )
         return
+
     rows_map = {}
     for r in data:
         try:
@@ -331,7 +470,15 @@ def fetch_market_dataset(
 
     rows = list(rows_map.values())
     n = safe_commit_rows(conn, upsert_sql, rows, template, label=table)
-    logger.info(f"[{table}] 寫入 {n} 筆")
+    duration_ms = int((time.time() - t0) * 1000)
+    status = "success" if n > 0 else ("partial" if rows else "no_new_data")
+    logger.info(f"[{table}] 寫入 {n} 筆（{duration_ms} ms）")
+    _write_fetch_log(
+        conn, table_name=table, stock_id=None, fetch_mode="market",
+        fetch_date_from=s, fetch_date_to=end,
+        rows_inserted=n, duration_ms=duration_ms,
+        status=status,
+    )
 
 
 def fetch_per_stock_dataset(
@@ -340,9 +487,10 @@ def fetch_per_stock_dataset(
     stock_ids: list[str], start: str, end: str,
     delay: float, force: bool, use_batch: bool,
     batch_threshold: int = 20, chunk_days: int = 90,
+    fetch_mode_override: str | None = None,
 ):
     """個股層資料：Sponsor 可不帶 data_id 批次抓全市場，否則逐支。
-    無論批次或逐支，**每支股票寫入後立即 commit**，確保資料完整性。"""
+    無論批次或逐支，**每支股票寫入後立即 commit**，並於 fetch_log 記錄。"""
     ensure_ddl(conn, ddl)
     conn.commit()
     valid_set = set(stock_ids)
@@ -356,6 +504,14 @@ def fetch_per_stock_dataset(
         )
         if s is None:
             skipped += 1
+            # skipped 也記一筆，作為「今天 audit 看到此股已是最新」的證據
+            _write_fetch_log(
+                conn, table_name=table, stock_id=sid,
+                fetch_mode=fetch_mode_override or "per_stock",
+                fetch_date_from=None, fetch_date_to=None,
+                rows_inserted=0, duration_ms=0,
+                status="skipped", error_message="up_to_date",
+            )
         else:
             stock_starts[sid] = s
 
@@ -377,10 +533,14 @@ def fetch_per_stock_dataset(
         sids_set = set(sids)
 
         # ── 批次模式 ──
+        used_batch = False
         if use_batch and len(sids) >= batch_threshold and not batch_disabled:
+            used_batch = True
             seg_start = group_start
             seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
             chunk_rows = []
+            t_batch_0 = time.time()
+            batch_failed_msg: str | None = None
             try:
                 while True:
                     seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
@@ -404,13 +564,18 @@ def fetch_per_stock_dataset(
             except BatchNotSupportedError as e:
                 logger.warning(f"  {e}；改逐支")
                 batch_disabled = True
+                used_batch = False
                 chunk_rows = []
             except Exception as e:
+                batch_failed_msg = str(e)
                 logger.error(f"  [{table}] 批次抓取失敗：{e}")
                 chunk_rows = []
 
+            batch_duration_ms = int((time.time() - t_batch_0) * 1000)
+            avg_dur = batch_duration_ms // max(len(sids), 1)
+
             if chunk_rows:
-                # ── 逐支模式進行 commit ──
+                # ── 逐支 commit + 逐支寫 fetch_log ──
                 rows_by_stock: dict[str, list] = defaultdict(list)
                 for r in chunk_rows:
                     sid = r.get("stock_id")
@@ -421,7 +586,19 @@ def fetch_per_stock_dataset(
                     except Exception as e:
                         logger.warning(f"  [{table}/{sid}] mapper 異常筆，跳過：{e}")
 
-                for sid, s_rows in rows_by_stock.items():
+                # 每一支 batch 內被請求的股票都產出 1 筆 fetch_log
+                for sid in sids:
+                    s_rows = rows_by_stock.get(sid, [])
+                    if not s_rows:
+                        # 在 batch 範圍內但 API 沒回該股 → 視為 no_new_data
+                        _write_fetch_log(
+                            conn, table_name=table, stock_id=sid,
+                            fetch_mode=fetch_mode_override or "batch",
+                            fetch_date_from=group_start, fetch_date_to=end,
+                            rows_inserted=0, duration_ms=avg_dur,
+                            status="no_new_data",
+                        )
+                        continue
                     try:
                         rows_map = {}
                         for row in s_rows:
@@ -432,6 +609,13 @@ def fetch_per_stock_dataset(
                             label=f"{table}/{sid}",
                         )
                         total_rows += n
+                        _write_fetch_log(
+                            conn, table_name=table, stock_id=sid,
+                            fetch_mode=fetch_mode_override or "batch",
+                            fetch_date_from=group_start, fetch_date_to=end,
+                            rows_inserted=n, duration_ms=avg_dur,
+                            status="success" if n > 0 else "partial",
+                        )
                     except Exception as e:
                         try:
                             conn.rollback()
@@ -439,14 +623,35 @@ def fetch_per_stock_dataset(
                             pass
                         failures.append({"stock_id": sid, "error": str(e)})
                         logger.error(f"  [{table}/{sid}] 寫入失敗：{e}")
+                        _write_fetch_log(
+                            conn, table_name=table, stock_id=sid,
+                            fetch_mode=fetch_mode_override or "batch",
+                            fetch_date_from=group_start, fetch_date_to=end,
+                            rows_inserted=0, duration_ms=avg_dur,
+                            status="failed", error_message=str(e),
+                        )
 
                 logger.info(
                     f"  [{table}] 批次寫入完成（含 {len(rows_by_stock)} 支股票）"
                 )
+            elif batch_failed_msg:
+                # 批次整段失敗 → 該 group 全部標 failed
+                for sid in sids:
+                    _write_fetch_log(
+                        conn, table_name=table, stock_id=sid,
+                        fetch_mode=fetch_mode_override or "batch",
+                        fetch_date_from=group_start, fetch_date_to=end,
+                        rows_inserted=0, duration_ms=avg_dur,
+                        status="failed", error_message=batch_failed_msg,
+                    )
 
         # ── 逐支模式 ──
         if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
+            if used_batch:
+                # 已在 batch 區段處理過，避免重複
+                continue
             for sid in sids:
+                t_stock_0 = time.time()
                 try:
                     data = finmind_get(
                         dataset, {"data_id": sid, "start_date": group_start, "end_date": end},
@@ -455,6 +660,14 @@ def fetch_per_stock_dataset(
                     )
                     total_api += 1
                     if not data:
+                        dur = int((time.time() - t_stock_0) * 1000)
+                        _write_fetch_log(
+                            conn, table_name=table, stock_id=sid,
+                            fetch_mode=fetch_mode_override or "per_stock",
+                            fetch_date_from=group_start, fetch_date_to=end,
+                            rows_inserted=0, duration_ms=dur,
+                            status="no_new_data",
+                        )
                         continue
                     rows_map = {}
                     for r in data:
@@ -470,6 +683,14 @@ def fetch_per_stock_dataset(
                         label=f"{table}/{sid}",
                     )
                     total_rows += n
+                    dur = int((time.time() - t_stock_0) * 1000)
+                    _write_fetch_log(
+                        conn, table_name=table, stock_id=sid,
+                        fetch_mode=fetch_mode_override or "per_stock",
+                        fetch_date_from=group_start, fetch_date_to=end,
+                        rows_inserted=n, duration_ms=dur,
+                        status="success" if n > 0 else "partial",
+                    )
                 except Exception as e:
                     try:
                         conn.rollback()
@@ -477,13 +698,175 @@ def fetch_per_stock_dataset(
                         pass
                     failures.append({"stock_id": sid, "error": str(e)})
                     logger.error(f"  [{table}/{sid}] 失敗：{e}")
+                    dur = int((time.time() - t_stock_0) * 1000)
+                    _write_fetch_log(
+                        conn, table_name=table, stock_id=sid,
+                        fetch_mode=fetch_mode_override or "per_stock",
+                        fetch_date_from=group_start, fetch_date_to=end,
+                        rows_inserted=0, duration_ms=dur,
+                        status="failed", error_message=str(e),
+                    )
 
     dump_failures(table, failures)
     logger.info(f"[{table}] 完成 API:{total_api} 寫入:{total_rows} 失敗:{len(failures)}")
 
-# ─────────────────────────────────────────────
+
+# ═════════════════════════════════════════════
+# 依 fetch_log 反推目標：retry-failed / gap-fill
+# ═════════════════════════════════════════════
+def query_failed_targets(
+    conn, days: int, target_tables: list[str],
+) -> dict[str, list[str | None]]:
+    """
+    找出近 N 天 status='failed' 的 (table_name, stock_id) 對，且**最近一筆**
+    狀態仍為 failed（即還沒被後續成功覆蓋）。
+
+    回傳：{table_name: [stock_id, ...]}，市場層級表的 stock_id 為 None。
+    """
+    targets: dict[str, list[str | None]] = defaultdict(list)
+    sql = """
+    WITH recent AS (
+        SELECT table_name, stock_id, status, run_ts,
+               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
+        FROM fetch_log
+        WHERE table_name = ANY(%s)
+          AND run_ts > NOW() - (%s || ' days')::interval
+    )
+    SELECT table_name, stock_id
+    FROM recent
+    WHERE rn = 1 AND status = 'failed';
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (target_tables, str(days)))
+            for tbl, sid in cur.fetchall():
+                targets[tbl].append(sid)
+    except Exception as e:
+        logger.error(f"[retry-failed] 查詢 fetch_log 失敗：{e}")
+        return {}
+
+    for tbl in targets:
+        n = len(targets[tbl])
+        sample = [s for s in targets[tbl] if s is not None][:5]
+        logger.info(f"  [retry-failed/{tbl}] {n} 個目標"
+                    + (f"，例：{sample}" if sample else "（市場層級）"))
+    return targets
+
+
+def query_gap_targets(
+    conn, days: int, target_tables: list[str], all_stock_ids: list[str],
+) -> dict[str, list[str | None]]:
+    """
+    找出近 N 天「沒有 success 紀錄」的 (table_name, stock_id) 對。
+
+    對市場層級表：若整段時間內沒有任何 success → 整張表回 stock_id=None
+    對個股層級表：對 all_stock_ids 中每支股，若無 success → 加入清單
+    """
+    targets: dict[str, list[str | None]] = defaultdict(list)
+
+    for tbl in target_tables:
+        if tbl in MARKET_LEVEL_TABLES:
+            sql = """
+            SELECT 1 FROM fetch_log
+            WHERE table_name = %s AND status = 'success'
+              AND run_ts > NOW() - (%s || ' days')::interval
+            LIMIT 1;
+            """
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (tbl, str(days)))
+                    if cur.fetchone() is None:
+                        targets[tbl].append(None)
+            except Exception as e:
+                logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+        else:
+            # 個股層：找出 all_stock_ids 中近 N 天無 success 紀錄者
+            sql = """
+            SELECT DISTINCT stock_id FROM fetch_log
+            WHERE table_name = %s AND status = 'success'
+              AND run_ts > NOW() - (%s || ' days')::interval
+              AND stock_id = ANY(%s);
+            """
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (tbl, str(days), all_stock_ids))
+                    have_success = {row[0] for row in cur.fetchall()}
+                missing = [sid for sid in all_stock_ids if sid not in have_success]
+                targets[tbl].extend(missing)
+            except Exception as e:
+                logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+
+    for tbl, lst in targets.items():
+        sample = [s for s in lst if s is not None][:5]
+        logger.info(f"  [gap-fill/{tbl}] {len(lst)} 個目標"
+                    + (f"，例：{sample}" if sample else "（市場層級）"))
+    return targets
+
+
+# ═════════════════════════════════════════════
+# 表名映射回 (dataset, ddl, upsert, template, mapper)，給 retry/gap-fill 用
+# ═════════════════════════════════════════════
+def _config_for_table(table: str):
+    table_configs = {
+        "total_margin_short": (
+            "TaiwanStockTotalMarginPurchaseShortSale", DDL_TOTAL_MARGIN_SHORT,
+            UPSERT_TOTAL_MARGIN_SHORT, "(%s, %s, %s, %s, %s, %s, %s)",
+            map_total_margin,
+        ),
+        "total_inst_investors": (
+            "TaiwanStockTotalInstitutionalInvestors", DDL_TOTAL_INST,
+            UPSERT_TOTAL_INST, "(%s, %s, %s, %s)", map_total_inst,
+        ),
+        "securities_lending": (
+            "TaiwanStockSecuritiesLending", DDL_SBL,
+            UPSERT_SBL, "(%s, %s, %s, %s, %s, %s, %s, %s)", map_sbl,
+        ),
+        "daily_short_balance": (
+            "TaiwanDailyShortSaleBalances", DDL_DAILY_SHORT,
+            UPSERT_DAILY_SHORT,
+            "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            map_daily_short,
+        ),
+        "margin_short_suspension": (
+            "TaiwanStockMarginShortSaleSuspension", DDL_MARGIN_SHORT_SUSPENSION,
+            UPSERT_MARGIN_SHORT_SUSPENSION, "(%s, %s, %s, %s)", map_margin_susp,
+        ),
+    }
+    return table_configs[table]
+
+
+def _run_targeted(
+    conn, targets: dict[str, list[str | None]], args, fetch_mode: str,
+) -> None:
+    """retry-failed / gap-fill 共用執行器：強制 force=True。"""
+    use_batch = not args.per_stock
+    for tbl, sids in targets.items():
+        if not sids:
+            continue
+        dataset, ddl, upsert, tmpl, mapper = _config_for_table(tbl)
+
+        if tbl in MARKET_LEVEL_TABLES:
+            # 市場層級：sids = [None] 即代表此表需要重抓
+            fetch_market_dataset(
+                conn, dataset, tbl, ddl, upsert, tmpl, mapper, tbl,
+                args.start, args.end, args.delay, force=True,
+            )
+        else:
+            # 個股層級：只跑指定的股票清單
+            real_sids = [s for s in sids if s is not None]
+            if not real_sids:
+                continue
+            fetch_per_stock_dataset(
+                conn, dataset, tbl, ddl, upsert, tmpl, mapper, tbl,
+                real_sids, args.start, args.end, args.delay,
+                force=True, use_batch=use_batch,
+                fetch_mode_override=fetch_mode,
+            )
+
+
+# ═════════════════════════════════════════════
 # main
-# ─────────────────────────────────────────────
+# ═════════════════════════════════════════════
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tables", nargs="+",
@@ -495,17 +878,52 @@ def main():
     p.add_argument("--delay", type=float, default=1.2)
     p.add_argument("--force", action="store_true")
     p.add_argument("--per-stock", action="store_true")
+    # v2.3 新增
+    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS",
+                   help="重試 fetch_log 中近 N 天最後狀態為 failed 的 (table, stock) 對")
+    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS",
+                   help="補抓 fetch_log 中近 N 天無 success 紀錄的 (table, stock) 對")
     args = p.parse_args()
 
     use_batch = not args.per_stock
 
     conn = get_db_conn()
     try:
+        # 確保 fetch_log 表存在（best-effort）
+        _ensure_fetch_log_table(conn)
+
         if args.stock_id:
             stock_ids = [s.strip() for s in args.stock_id.split(",")]
         else:
             stock_ids = get_db_stock_ids(conn, types=("twse", "otc"))
 
+        # ─────────────────────────────────────────
+        # 模式 A：retry-failed（依 fetch_log 反推）
+        # ─────────────────────────────────────────
+        if args.retry_failed > 0:
+            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
+            targets = query_failed_targets(conn, args.retry_failed, args.tables)
+            if not targets:
+                logger.info("沒有找到需要重試的目標，結束。")
+                return
+            _run_targeted(conn, targets, args, fetch_mode="retry")
+            return
+
+        # ─────────────────────────────────────────
+        # 模式 B：gap-fill（依 fetch_log 反推）
+        # ─────────────────────────────────────────
+        if args.gap_fill > 0:
+            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
+            targets = query_gap_targets(conn, args.gap_fill, args.tables, stock_ids)
+            if not targets:
+                logger.info("沒有找到需要補抓的目標，結束。")
+                return
+            _run_targeted(conn, targets, args, fetch_mode="gap_fill")
+            return
+
+        # ─────────────────────────────────────────
+        # 模式 C：常規（沿用原版邏輯）
+        # ─────────────────────────────────────────
         # 1. 市場層資料（不需 stock_id）
         if "total_margin_short" in args.tables:
             fetch_market_dataset(
@@ -543,6 +961,7 @@ def main():
     finally:
         conn.close()
     logger.info("全部完成")
+
 
 if __name__ == "__main__":
     main()
