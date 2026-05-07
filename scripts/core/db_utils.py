@@ -262,6 +262,38 @@ def write_model_log(
         logger.debug(f"model_training_log 寫入失敗（不影響主流程）：{e}")
 
 
+def write_predict_log(
+    conn,
+    status: str,
+    stock_id: str = "ALL",
+    stocks_processed: int = 0,
+    predictions_count: int = 0,
+    duration_ms: int = 0,
+    error_message: str = None,
+) -> None:
+    """將預測腳本執行狀況記錄至 predict_log"""
+    sql = """
+    INSERT INTO predict_log (
+        run_ts, stock_id, status, stocks_processed, 
+        predictions_count, duration_ms, error_message, cli_args
+    ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s)
+    """
+    cli_args = " ".join(sys.argv)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                stock_id, status, stocks_processed,
+                predictions_count, duration_ms, error_message, cli_args
+            ))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug(f"predict_log 寫入失敗（不影響主流程）：{e}")
+
+
 # ─────────────────────────────────────────────
 # 同步批次 Upsert（psycopg2）— v2.0 介面（強化 rollback）
 # ─────────────────────────────────────────────

@@ -224,7 +224,23 @@ CREATE INDEX IF NOT EXISTS idx_sh_stock    ON signal_history(stock_id, date DESC
 COMMENT ON TABLE signal_history IS '每股每天的最終決策（post-filter），3 個月後可做反事實分析';
 """
 
-# 5. stock_daily_status — 每日健康狀態（聚合視圖）
+# 5. predict_log — 預測執行日誌
+DDL_PREDICT_LOG = """
+CREATE TABLE IF NOT EXISTS predict_log (
+    id                  SERIAL       PRIMARY KEY,
+    run_ts              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    stock_id            VARCHAR(20),                            -- 特定股票或 'ALL'
+    status              VARCHAR(16)  NOT NULL,                 -- success / failed
+    stocks_processed    INTEGER,
+    predictions_count   INTEGER,
+    duration_ms         INTEGER,
+    error_message       TEXT,
+    cli_args            TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_predict_log_ts ON predict_log(run_ts DESC);
+"""
+
+# 6. stock_daily_status — 每日健康狀態（聚合視圖）
 DDL_STOCK_DAILY_STATUS = """
 CREATE TABLE IF NOT EXISTS stock_daily_status (
     date                    DATE         NOT NULL,
@@ -260,6 +276,7 @@ TABLES = [
     ("model_training_log",    DDL_MODEL_TRAINING_LOG,    "事件 │ 訓練"),
     ("prediction_output",     DDL_PREDICTION_OUTPUT,     "事件 │ 預測 (pre-filter)"),
     ("signal_history",        DDL_SIGNAL_HISTORY,        "事件 │ 訊號 (post-filter)"),
+    ("predict_log",           DDL_PREDICT_LOG,           "事件 │ 預測日誌"),
     ("stock_daily_status",    DDL_STOCK_DAILY_STATUS,    "狀態 │ 每日聚合"),
 ]
 

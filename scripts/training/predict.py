@@ -22,6 +22,7 @@ predict.py — 每日推論 Pipeline
 import argparse
 import json
 import logging
+import time
 from datetime import date, datetime
 from typing import Optional, List
 
@@ -38,6 +39,7 @@ from feature_engineering import build_features, build_features_with_medium_term
 from signal_filter import SignalFilter, FilterResult
 
 from utils.model_loader import safe_load
+from core.db_utils import get_db_conn, write_predict_log
 
 logger = logging.getLogger(__name__)
 
@@ -677,6 +679,8 @@ def main():
 
     args = parse_args()
     logger.info("=== TSMC 30 天趨勢預測 — 推論開始 ===")
+    t0 = time.time()
+
 
     # 資料層
     from data_pipeline import load_features_from_store
@@ -718,6 +722,22 @@ def main():
         logger.info(f"JSON 已儲存：{out_path}")
 
     logger.info("=== 推論完成 ===")
+    
+    # ── 寫入執行日誌 (predict_log) ───────────
+    try:
+        conn = get_db_conn()
+        duration_ms = int((time.time() - t0) * 1000)
+        write_predict_log(
+            conn,
+            status="success",
+            stock_id=args.stock_id,
+            stocks_processed=1,
+            predictions_count=len(report.get("daily_forecast", [])),
+            duration_ms=duration_ms
+        )
+        conn.close()
+    except Exception as _log_err:
+        logger.debug(f"predict_log 寫入失敗：{_log_err}")
 
 
 if __name__ == "__main__":
