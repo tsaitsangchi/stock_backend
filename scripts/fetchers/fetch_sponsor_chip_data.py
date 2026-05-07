@@ -23,7 +23,8 @@ v3.1 重大改進：
 
 執行範例（常規）：
     python scripts/fetchers/fetch_sponsor_chip_data.py                # 抓取所有進階籌碼資料
-    python scripts/fetchers/fetch_sponsor_chip_data.py --tables eight_banks # 僅抓取八大行庫
+    # 八大行庫：FinMind 限制每次只回傳單日資料，程式自動逐日抓取
+    python scripts/fetchers/fetch_sponsor_chip_data.py --tables eight_banks
 
 執行範例（指定標的）：
     python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --tables holding_shares_per
@@ -165,18 +166,17 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
         _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "skipped", error_message="up_to_date")
         return
 
+    # ⚠️ FinMind 限制：TaiwanStockGovernmentBankBuySell 不支援 end_date
+    # 每次只能抓單日全市場資料，以 start_date 逐日請求
     s_set = set(stock_ids) if stock_ids else None
     total_rows = 0
     curr = s_dt
     while curr <= e_dt:
-        chunk_end = min(curr + timedelta(days=EIGHT_BANKS_CHUNK_DAYS - 1), e_dt)
-        s_str = curr.strftime("%Y-%m-%d")
-        e_str = chunk_end.strftime("%Y-%m-%d")
-        logger.info(f"  [eight_banks] 批次 {s_str} ~ {e_str}")
-        
+        d_str = curr.strftime("%Y-%m-%d")
         start_time = time.time()
         try:
-            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": s_str, "end_date": e_str}, delay)
+            # 僅傳 start_date，不傳 end_date
+            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
             duration_ms = int((time.time() - start_time) * 1000)
             if data:
                 agg = defaultdict(lambda: [0, 0])
@@ -193,16 +193,18 @@ def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
                     res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
                     n = sum(res.values())
                     total_rows += n
-                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "success", rows_inserted=n, fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
+                    if n > 0:
+                        logger.info(f"  [eight_banks] {d_str} 寫入 {n} 筆")
+                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "success", rows_inserted=n, fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
                 else:
-                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
+                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
             else:
-                _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
+                _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            flog.record(date=f"{s_str}~{e_str}", error=str(e))
-            _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "failed", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms, error_message=str(e))
-        curr = chunk_end + timedelta(days=1)
+            flog.record(date=d_str, error=str(e))
+            _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "failed", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms, error_message=str(e))
+        curr += timedelta(days=1)
 
     logger.info(f"  [eight_banks] 總共寫入 {total_rows} 筆")
     flog.summary()
