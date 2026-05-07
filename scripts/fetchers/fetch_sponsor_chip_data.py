@@ -27,8 +27,14 @@ v3.1 重大改進：
 
 執行範例（指定標的）：
     python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --tables holding_shares_per
-    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330,2317 --force
-    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --force --tables all
+    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330,2317 --force --tables holding_shares_per
+    # 單一標的強制重抓（不含八大行庫，因其為全市場資料集，不支援個股篩選）
+    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --force --tables holding_shares_per futures_large_oi
+
+執行範例（全市場資料）：
+    # 八大行庫必須使用全市場模式抓取（本地再過濾）
+    python scripts/fetchers/fetch_sponsor_chip_data.py --tables eight_banks
+    python scripts/fetchers/fetch_sponsor_chip_data.py --tables eight_banks --start 2024-01-01 --force
 
 執行範例（期貨）：
     python scripts/fetchers/fetch_sponsor_chip_data.py --tables futures_large_oi
