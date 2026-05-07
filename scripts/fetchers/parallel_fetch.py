@@ -82,7 +82,7 @@ PHASE_2 = [
 ]
 
 DEFAULT_MAX_WORKERS = 8
-MAX_SCRIPT_TIMEOUT = 3 * 3600
+MAX_SCRIPT_TIMEOUT = 12 * 3600  # 初始全量補抓建議 12 小時
 API_QUOTA_MIN = 100
 _CLI_ARGS_STR = " ".join(sys.argv)
 
