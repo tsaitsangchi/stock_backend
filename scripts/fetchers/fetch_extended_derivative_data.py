@@ -112,20 +112,22 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
     total_rows = 0
     tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)" if "futures" in table else "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     
-    # 將大時間跨度切分成年度區塊抓取
+    # 由於此 API 在區塊抓取時僅回傳最後一天，必須改為逐日抓取
     s_dt = datetime.strptime(start, "%Y-%m-%d").date()
     e_dt = datetime.strptime(end, "%Y-%m-%d").date()
     
     curr = s_dt
     while curr <= e_dt:
-        chunk_end = min(curr + timedelta(days=365), e_dt)
-        s_str = curr.strftime("%Y-%m-%d")
-        e_str = chunk_end.strftime("%Y-%m-%d")
-        logger.info(f"  [{table}] 正在抓取 {s_str} ~ {e_str}...")
+        if curr.weekday() >= 5: # 跳過週末
+            curr += timedelta(days=1)
+            continue
+            
+        d_str = curr.strftime("%Y-%m-%d")
+        logger.info(f"  [{table}] 正在抓取 {d_str}...")
         
         t0 = time.time()
         try:
-            data = finmind_get(dataset, {"start_date": s_str, "end_date": e_str}, delay)
+            data = finmind_get(dataset, {"start_date": d_str, "end_date": d_str}, delay)
             dur = int((time.time() - t0) * 1000)
             
             if data:
@@ -138,18 +140,21 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
                 res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=s_str, fetch_date_to=e_str, 
+                _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=d_str, fetch_date_to=d_str, 
                                  rows_inserted=n, duration_ms=dur, status="success")
             else:
-                _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=s_str, fetch_date_to=e_str, 
+                _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=d_str, fetch_date_to=d_str, 
                                  rows_inserted=0, duration_ms=dur, status="no_new_data")
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(stock_id="market", error=str(e))
-            _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=s_str, fetch_date_to=e_str, 
+            _write_fetch_log(conn, table_name=table, stock_id="ALL", fetch_date_from=d_str, fetch_date_to=d_str, 
                              rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e))
         
-        curr = chunk_end + timedelta(days=1)
+        curr += timedelta(days=1)
+
+    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
+    flog.summary()
 
     logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
     flog.summary()
