@@ -1,21 +1,36 @@
 import sys
 import logging
+import time
+import json
 from pathlib import Path
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 import argparse
 
+# ── sys.path 自我修復 ──
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_sponsor_chip_data.py v3.0 — Sponsor 進階籌碼（逐支逐日 commit 完整性版）
+fetch_sponsor_chip_data.py v3.1 — 進階籌碼資料（監控整合標準版）
 ================================================================================
-v3.0 重大改進：
-  ★ 導入 commit_per_stock_per_day：分點買賣、持股分級、八大行庫、期貨部位每一天獨立 commit。
-  ★ 針對 broker_trades（海量數據）優化：確保在長時抓取中每一天的進度都即時落盤。
-  ★ 全面整合 FailureLogger：精準捕捉 Sponsor 方案各資料集的抓取異常。
+v3.1 重大改進：
+  · 整合 fetch_log v3.1：針對大戶持股、券商分點、八大行庫等任務記錄完整監控日誌。
+  · 效能監控：精準追蹤 API 請求與資料處理的耗時（duration_ms）。
+  · 狀態追蹤：支援 success, failed, no_new_data, skipped 等標準化狀態。
+  · 速度優化：維持八大行庫的月批次抓取機制，顯著提升同步效率。
+
+執行範例（常規）：
+    python scripts/fetchers/fetch_sponsor_chip_data.py                # 抓取所有進階籌碼資料
+    python scripts/fetchers/fetch_sponsor_chip_data.py --tables eight_banks # 僅抓取八大行庫
+
+執行範例（指定標的）：
+    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --tables holding_shares_per
+    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330,2317 --force
+
+執行範例（期貨）：
+    python scripts/fetchers/fetch_sponsor_chip_data.py --tables futures_large_oi
 """
 
 from core.finmind_client import finmind_get
@@ -31,7 +46,11 @@ from core.db_utils import (
     dedup_rows,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
+logging.basicConfig(
+    level=logging.INFO, 
+    format="%(asctime)s [%(levelname)s] %(message)s", 
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 logger = logging.getLogger(__name__)
 
 DATASET_START = {
@@ -40,6 +59,21 @@ DATASET_START = {
     "futures_large_oi":   "2010-01-01",
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
+_CLI_ARGS_STR = " ".join(sys.argv)
+
+def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
+    """v3.1 標準化日誌寫入"""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO fetch_log (
+                    run_ts, table_name, stock_id, status, rows_inserted, 
+                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"無法寫入 fetch_log: {e}")
 
 # ─────────────────────────────────────────────
 # DDL & SQL
@@ -62,7 +96,6 @@ def map_holding(r: dict) -> tuple:
     return (r["date"], r["stock_id"], lv, safe_int(r.get("people")), safe_float(r.get("percent")), r.get("unit", lv))
 
 def map_broker(r: dict) -> tuple:
-    # 注意：BrokerTrades 需要按 (date, stock_id, broker_id) 彙總，因為原始 API 可能按價格拆分
     return (r["date"], r["stock_id"], str(r.get("securities_trader_id", "")), r.get("securities_trader", ""), safe_int(r.get("buy")), safe_int(r.get("sell")))
 
 def map_eight_banks(r: dict) -> tuple:
@@ -82,15 +115,28 @@ def fetch_holding(conn, stock_ids, start, end, delay, force):
     total_rows = 0
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START["holding_shares_per"], force)
-        if not s: continue
+        if not s:
+            _write_fetch_log(conn, "holding_shares_per", sid, "skipped", error_message="up_to_date")
+            continue
+        
+        start_time = time.time()
         try:
             data = finmind_get("TaiwanStockHoldingSharesPer", {"data_id": sid, "start_date": s, "end_date": end}, delay)
+            duration_ms = int((time.time() - start_time) * 1000)
             if data:
                 rows = [map_holding(r) for r in data]
                 rows = dedup_rows(rows, (0, 1, 2))
                 res = commit_per_stock_per_day(conn, UPSERT_HOLDING, rows, "(%s, %s, %s, %s, %s, %s)", label_prefix="holding", failure_logger=flog)
-                total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=sid, error=str(e))
+                n = sum(res.values())
+                total_rows += n
+                _write_fetch_log(conn, "holding_shares_per", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms)
+            else:
+                _write_fetch_log(conn, "holding_shares_per", sid, "no_new_data", fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms)
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            flog.record(stock_id=sid, error=str(e))
+            _write_fetch_log(conn, "holding_shares_per", sid, "failed", fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e))
+            
     logger.info(f"  [holding_shares_per] 總共寫入 {total_rows} 筆")
     flog.summary()
 
@@ -101,15 +147,24 @@ def fetch_broker(conn, stock_ids, start, end, delay, force):
     flog = FailureLogger("broker_trades", db_conn=conn)
     total_rows = 0
     for sid in stock_ids:
-        s_dt = datetime.strptime(resolve_start_cached(sid, latest, start, DATASET_START["broker_trades"], force) or end, "%Y-%m-%d").date()
+        s_raw = resolve_start_cached(sid, latest, start, DATASET_START["holding_shares_per"], force)
+        if not s_raw:
+            _write_fetch_log(conn, "broker_trades", sid, "skipped", error_message="up_to_date")
+            continue
+            
+        s_dt = datetime.strptime(s_raw, "%Y-%m-%d").date()
         e_dt = datetime.strptime(end, "%Y-%m-%d").date()
+        
         while s_dt <= e_dt:
-            # 分點資料一次抓 30 天，避免資料過大
             c_e = min(s_dt + timedelta(days=29), e_dt)
+            f_from = s_dt.strftime("%Y-%m-%d")
+            f_to = c_e.strftime("%Y-%m-%d")
+            
+            start_time = time.time()
             try:
-                data = finmind_get("TaiwanStockTradingDailyReport", {"data_id": sid, "start_date": s_dt.strftime("%Y-%m-%d"), "end_date": c_e.strftime("%Y-%m-%d")}, delay)
+                data = finmind_get("TaiwanStockTradingDailyReport", {"data_id": sid, "start_date": f_from, "end_date": f_to}, delay)
+                duration_ms = int((time.time() - start_time) * 1000)
                 if data:
-                    # 彙總同日同券商
                     agg = defaultdict(lambda: [0, 0, ""])
                     for r in data:
                         k = (r["date"], sid, str(r.get("securities_trader_id", "")))
@@ -119,67 +174,81 @@ def fetch_broker(conn, stock_ids, start, end, delay, force):
                     rows = [(k[0], k[1], k[2], v[2], v[0], v[1]) for k, v in agg.items()]
                     rows = dedup_rows(rows, (0, 1, 2))
                     res = commit_per_stock_per_day(conn, UPSERT_BROKER, rows, "(%s, %s, %s, %s, %s, %s)", label_prefix="broker", failure_logger=flog)
-                    total_rows += sum(res.values())
-            except Exception as e: flog.record(stock_id=sid, error=str(e))
+                    n = sum(res.values())
+                    total_rows += n
+                    _write_fetch_log(conn, "broker_trades", sid, "success", rows_inserted=n, fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms)
+                else:
+                    _write_fetch_log(conn, "broker_trades", sid, "no_new_data", fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms)
+            except Exception as e:
+                duration_ms = int((time.time() - start_time) * 1000)
+                flog.record(stock_id=sid, error=str(e))
+                _write_fetch_log(conn, "broker_trades", sid, "failed", fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms, error_message=str(e))
             s_dt = c_e + timedelta(days=1)
+            
     logger.info(f"  [broker_trades] 總共寫入 {total_rows} 筆")
     flog.summary()
+
+EIGHT_BANKS_CHUNK_DAYS = 30 
 
 def fetch_eight_banks(conn, stock_ids, start, end, delay, force):
     logger.info(f"=== [eight_banks] 開始 (過濾 {len(stock_ids)} 支) ===")
     ensure_ddl(conn, DDL_EIGHT_BANKS)
     flog = FailureLogger("eight_banks", db_conn=conn)
-    
-    # ── 取得交易日清單 ──
-    with conn.cursor() as cur:
-        cur.execute("SELECT date FROM trading_date")
-        trading_days = {r[0] for r in cur.fetchall()}
 
-    # ⭐ 自動尋找起始日 ⭐
     if not start and not force:
         with conn.cursor() as cur:
             cur.execute("SELECT MAX(date) FROM eight_banks_buy_sell")
             max_d = cur.fetchone()[0]
             if max_d:
                 start = (max_d + timedelta(days=1)).strftime("%Y-%m-%d")
-                logger.info(f"  [eight_banks] 自動從資料庫最新日期續傳：{start}")
             else:
                 start = DATASET_START["eight_banks"]
-    
+
     s_dt = datetime.strptime(start or DATASET_START["eight_banks"], "%Y-%m-%d").date()
     e_dt = datetime.strptime(end, "%Y-%m-%d").date()
-    
+    if s_dt > e_dt:
+        logger.info(f"  [eight_banks] 資料已是最新的。")
+        _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "skipped", error_message="up_to_date")
+        return
+
+    s_set = set(stock_ids) if stock_ids else None
     total_rows = 0
     curr = s_dt
     while curr <= e_dt:
-        if curr not in trading_days:
-            curr += timedelta(days=1)
-            continue
-            
-        d_str = curr.strftime("%Y-%m-%d")
-        logger.info(f"  [eight_banks] 正在抓取 {d_str} (全市場)...")
+        chunk_end = min(curr + timedelta(days=EIGHT_BANKS_CHUNK_DAYS - 1), e_dt)
+        s_str = curr.strftime("%Y-%m-%d")
+        e_str = chunk_end.strftime("%Y-%m-%d")
+        logger.info(f"  [eight_banks] 批次 {s_str} ~ {e_str}")
+        
+        start_time = time.time()
         try:
-            # ❗ 單日抓取 ❗
-            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": d_str}, delay)
+            data = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": s_str, "end_date": e_str}, delay)
+            duration_ms = int((time.time() - start_time) * 1000)
             if data:
                 agg = defaultdict(lambda: [0, 0])
-                s_set = set(stock_ids) if stock_ids else None
                 for r in data:
                     sid = r.get("stock_id")
                     if s_set and sid not in s_set: continue
-                    k = (d_str, sid)
+                    k = (r["date"], sid)
                     agg[k][0] += safe_int(r.get("buy", 0))
                     agg[k][1] += safe_int(r.get("sell", 0))
-                
+
                 if agg:
                     rows = [(k[0], k[1], v[0], v[1]) for k, v in agg.items()]
                     rows = dedup_rows(rows, (0, 1))
                     res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
-                    total_rows += sum(res.values())
+                    n = sum(res.values())
+                    total_rows += n
+                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "success", rows_inserted=n, fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
+                else:
+                    _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
+            else:
+                _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "no_new_data", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms)
         except Exception as e:
-            flog.record(date=d_str, error=str(e))
-        
-        curr += timedelta(days=1)
+            duration_ms = int((time.time() - start_time) * 1000)
+            flog.record(date=f"{s_str}~{e_str}", error=str(e))
+            _write_fetch_log(conn, "eight_banks_buy_sell", "ALL", "failed", fetch_date_from=s_str, fetch_date_to=e_str, duration_ms=duration_ms, error_message=str(e))
+        curr = chunk_end + timedelta(days=1)
 
     logger.info(f"  [eight_banks] 總共寫入 {total_rows} 筆")
     flog.summary()
@@ -188,18 +257,27 @@ def fetch_futures_oi(conn, start, end, delay, force):
     logger.info("=== [futures_large_oi] 開始 ===")
     ensure_ddl(conn, DDL_FUTURES_LARGE_OI)
     flog = FailureLogger("futures_large_oi", db_conn=conn)
+    start_time = time.time()
     try:
         data = finmind_get("TaiwanFuturesOpenInterestLargeTraders", {"start_date": start, "end_date": end}, delay)
+        duration_ms = int((time.time() - start_time) * 1000)
         if data:
             rows = [map_futures_oi(r) for r in data]
             rows = dedup_rows(rows, (0, 1, 2))
             res = commit_per_stock_per_day(conn, UPSERT_FUTURES_LARGE_OI, rows, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)", stock_index=1, label_prefix="futures", failure_logger=flog)
-            logger.info(f"  [futures_large_oi] 寫入 {sum(res.values())} 筆")
-    except Exception as e: flog.record(stock_id="futures", error=str(e))
+            n = sum(res.values())
+            logger.info(f"  [futures_large_oi] 寫入 {n} 筆")
+            _write_fetch_log(conn, "futures_large_oi", "FUTURES", "success", rows_inserted=n, fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
+        else:
+            _write_fetch_log(conn, "futures_large_oi", "FUTURES", "no_new_data", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+        flog.record(stock_id="futures", error=str(e))
+        _write_fetch_log(conn, "futures_large_oi", "FUTURES", "failed", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e))
     flog.summary()
 
 def main():
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(description="進階籌碼資料抓取 (v3.1 — 監控整合標準版)")
     p.add_argument("--tables", nargs="+", choices=["holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi", "all"], default=["all"])
     p.add_argument("--stock-id", default=None)
     p.add_argument("--start", default=None)
@@ -214,7 +292,7 @@ def main():
         from core.db_utils import get_db_stock_ids
         stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
         if "holding_shares_per" in tables: fetch_holding(conn, stock_ids, args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
-        if "broker_trades" in tables: fetch_broker(conn, [args.stock_id] if args.stock_id else ["2330"], args.start or DATASET_START["broker_trades"], args.end, args.delay, args.force)
+        if "broker_trades" in tables: fetch_broker(conn, [args.stock_id] if args.stock_id else ["2330"], args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
         if "eight_banks" in tables: fetch_eight_banks(conn, stock_ids, args.start, args.end, args.delay, args.force)
         if "futures_large_oi" in tables: fetch_futures_oi(conn, args.start or DATASET_START["futures_large_oi"], args.end, args.delay, args.force)
     finally:
