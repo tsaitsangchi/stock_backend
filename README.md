@@ -37,6 +37,31 @@ tsmc_predictor/
 
 ---
 
+## 模型訓練與核心程式 (Model Training Pipeline)
+
+本系統的模型訓練管線高度模組化，涵蓋了從特徵工程到推論的完整生命週期。主要訓練程式位於 `scripts/training/` 與 `scripts/models/` 目錄下：
+
+### 1. 特徵工程與分析 (Feature Engineering)
+*   **`update_feature_store.py` (特徵產生程式)**：特徵工程核心。從資料庫撈取原始資料，計算技術、籌碼、基本面等逾百項特徵與目標變數（未來報酬率），並存入 Feature Store。
+*   **`feature_analysis.py`**：特徵重要性分析。計算 Information Coefficient (IC) 與 IC IR，過濾雜訊並識別出具備穩定預測力的「強健因子 (Robust Factors)」。
+
+### 2. 模型訓練與評估 (Model Training & Evaluation)
+*   **`train_evaluate.py` & `train_evaluate_body.py` (模型產生與評估)**：單檔股票訓練進入點。執行 Purged Walk-Forward Cross Validation（滾動式交叉驗證）防止數據洩漏，計算評估指標並儲存模型權重 (Artifacts)。
+*   **`parallel_train.py` (並行化全市場訓練)**：多進程訓練管理員。將訓練工作分配至多個 CPU 核心，平行處理 150 檔核心標的，大幅縮短全市場重訓時間。
+
+### 3. 模型架構與演算法 (Model Architectures)
+*   **`ensemble_model.py` (集成學習架構)**：定義主力預測模型。融合 LightGBM, XGBoost, CatBoost 等梯度提升樹（Stacking/Blending），並根據近期表現動態調整權重。
+*   **`tft_model.py` (深度學習時序架構)**：實作 Temporal Fusion Transformer (TFT)，專門處理具備時間序列與靜態事件標記的複雜關聯。
+
+### 4. 超參數優化與回填 (Tuning & Backfill)
+*   **`tune_hyperparameters.py`**：利用 Optuna 框架自動化尋找每檔股票模型的最佳超參數組合。
+*   **`historical_backfill.py`**：歷史預測回填。當模型大幅更新時，重新計算歷史數據的預測軌跡，產生無偏差的回測資料庫。
+
+### 5. 預測產出 (Prediction)
+*   **`predict.py` (推論程式)**：每日收盤後自動執行。載入最新特徵與模型，產出未來的看漲機率與預期報酬區間，寫回資料庫供儀表板展示。
+
+---
+
 ## PostgreSQL 資料表對應
 
 ### PostgreSQL 效能優化：
