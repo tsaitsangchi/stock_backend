@@ -4,18 +4,22 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 import argparse
+import time
 
 _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_cash_flows_data.py v3.0 — 現金流量表 + 除權息結果（逐支逐日 commit 完整性版）
+fetch_cash_flows_data.py v3.1 — 現金流量表 + 除權息結果（v3.1 fetch_log 整合版）
 ================================================================================
-v3.0 重大改進：
-  ★ 導入 commit_per_stock_per_day：每一對 (sid, date) 的現金流量科目或除權息結果獨立原子寫入。
-  ★ 全面整合 FailureLogger：精準追蹤 150 支股票在漫長的基本面補抓過程中的健康度。
-  ★ 結構規範化：移除本地冗餘工具，全面對接 core v3.0 標準化寫入規範。
+v3.1 改進：
+  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
+  · 支援 --retry-failed 與 --gap-fill 模式（比照 advanced_chip）。
+
+v3.0 既有：
+  · 導入 commit_per_stock_per_day：每一對 (sid, date) 獨立原子寫入。
+  · 全面整合 FailureLogger：精準追蹤健康度。
 """
 
 from core.finmind_client import finmind_get
@@ -37,6 +41,34 @@ DATASET_START = {
     "dividend_result":      "2003-05-01",
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
+
+_CLI_ARGS_STR = " ".join(sys.argv)
+
+def _write_fetch_log(conn, **kwargs):
+    """寫入 fetch_log，失敗不影響主流程。"""
+    from core.db_utils import DDL_FETCH_LOG
+    try:
+        with conn.cursor() as cur:
+            # 確保欄位名稱與新版 db_utils / monitoring 一致
+            sql = """
+            INSERT INTO fetch_log (
+                run_ts, table_name, stock_id, fetch_mode,
+                fetch_date_from, fetch_date_to,
+                rows_inserted, rows_updated, duration_ms,
+                status, error_message, cli_args
+            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+            """
+            cur.execute(sql, (
+                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
+                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
+                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
+                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
+            ))
+        conn.commit()
+    except Exception as e:
+        try: conn.rollback()
+        except: pass
+        logger.debug(f"fetch_log 寫入失敗：{e}")
 
 # ─────────────────────────────────────────────
 # DDL & SQL
@@ -68,14 +100,29 @@ def fetch_dataset(conn, dataset, table, ddl, upsert_sql, mapper, dataset_key, st
 
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START[dataset_key], force)
-        if not s: continue
+        if not s:
+            _write_fetch_log(conn, table_name=table, stock_id=sid, status="skipped", error_message="up_to_date")
+            continue
+        
+        t0 = time.time()
         try:
             data = finmind_get(dataset, {"data_id": sid, "start_date": s, "end_date": end}, delay)
+            dur = int((time.time() - t0) * 1000)
             if data:
                 rows = [mapper(r) for r in data]
                 res = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
-                total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=sid, error=str(e))
+                n = sum(res.values())
+                total_rows += n
+                _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_date_from=s, fetch_date_to=end, 
+                                 rows_inserted=n, duration_ms=dur, status="success")
+            else:
+                _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_date_from=s, fetch_date_to=end, 
+                                 rows_inserted=0, duration_ms=dur, status="no_new_data")
+        except Exception as e:
+            dur = int((time.time() - t0) * 1000)
+            flog.record(stock_id=sid, error=str(e))
+            _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_date_from=s, fetch_date_to=end, 
+                             rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e))
     logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
     flog.summary()
 
