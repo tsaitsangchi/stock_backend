@@ -28,6 +28,9 @@ v3.1 重大改進：
 
     # 強制重抓市值權重歷史資料
     ./venv/bin/python scripts/fetchers/fetch_macro_fundamental_data.py --tables market_value_weight --start 2024-01-01 --force
+
+    # 強制更新所有資料表（從預設起始日開始全量重抓）
+    ./venv/bin/python scripts/fetchers/fetch_macro_fundamental_data.py --tables all --force
 """
 
 from core.finmind_client import finmind_get
