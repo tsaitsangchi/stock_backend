@@ -1,7 +1,9 @@
 """
-tune_hyperparameters.py — 使用 Optuna 為特定個股尋找最佳超參數 v3.1
-================================================================
+tune_hyperparameters.py v3.1 — 使用 Optuna 為特定個股尋找最佳超參數 (監控整合標準版)
+====================================================================================
 v3.1 改進（在 v3.0 基礎上）：
+  ★ 整合 fetch_log v3.1：針對每個股票的超參數最佳化寫入標準化監控紀錄。
+  ★ 效能監控：精確記錄每檔股票調優運算的 duration_ms 與命令參數 (cli_args)。
   ★ XGB / LGB 的 n_estimators 500 → 1000（搭配 ES 仍會早停，無代價）
   ★ LGB early_stopping(50, verbose=False) — 抑制每 trial 的雜訊輸出
 
@@ -18,9 +20,10 @@ v3.0 改進（與 core v3.0 helpers / 系統檢核報告 P3-2 / WF_CONFIG 對齊
   ★ 收尾 log Optuna 統計：completed / pruned / failed counts、best_trial.duration
 
 執行：
-    python tune_hyperparameters.py
-    python tune_hyperparameters.py --stock-id 2330 --trials 50 --horizon 5
-    python tune_hyperparameters.py --no-embargo
+    python scripts/training/tune_hyperparameters.py
+    python scripts/training/tune_hyperparameters.py --stock-id 2330 --trials 50 --horizon 5
+    python scripts/training/tune_hyperparameters.py --all-stocks
+    python scripts/training/tune_hyperparameters.py --no-embargo
 """
 
 from __future__ import annotations
@@ -58,12 +61,32 @@ from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, STOCK_CONFIGS, get_all_
 
 # core v3.0 helpers
 from core.path_setup import get_outputs_dir, ensure_dirs_exist
+from core.db_utils import get_db_conn
 from core.model_metadata import ModelMetadata, atomic_write_json
 
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features
 
 logger = logging.getLogger(__name__)
+
+# v3.1 CLI args 全域儲存
+_CLI_ARGS_STR = " ".join(sys.argv[1:])
+
+def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
+    """v3.1 標準化日誌寫入"""
+    try:
+        if conn is None:
+            return
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO fetch_log (
+                    run_ts, table_name, stock_id, status, rows_inserted, 
+                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"無法寫入 fetch_log: {e}")
 
 
 # ─────────────────────────────────────────────
@@ -354,7 +377,7 @@ def tune_one_stock(stock_id: str, args) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Optuna 超參數調優 (v3.1)")
+    parser = argparse.ArgumentParser(description="Optuna 超參數調優 (v3.1 — 監控整合標準版)")
     parser.add_argument("--stock-id", default="2330",
                         help="單支股票 ID（與 --all-stocks 互斥）")
     parser.add_argument("--all-stocks", action="store_true",
@@ -377,42 +400,73 @@ def main():
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     ensure_dirs_exist()
 
-    if args.all_stocks:
-        stock_ids = list(STOCK_CONFIGS.keys())
-        out_dir = get_outputs_dir() / "tuning"
-        out_dir.mkdir(parents=True, exist_ok=True)
+    conn = get_db_conn()
 
-        succeeded, failed, skipped = [], [], []
-        total = len(stock_ids)
+    try:
+        if args.all_stocks:
+            stock_ids = list(STOCK_CONFIGS.keys())
+            out_dir = get_outputs_dir() / "tuning"
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-        for idx, sid in enumerate(stock_ids, 1):
-            if args.skip_existing and (out_dir / f"best_params_{sid}.json").exists():
-                logger.info(f"[{idx}/{total}] {sid} 已有結果，跳過")
-                skipped.append(sid)
-                continue
+            succeeded, failed, skipped = [], [], []
+            total = len(stock_ids)
 
-            logger.info(f"\n{'='*65}")
-            logger.info(f"[{idx}/{total}] 開始處理 {sid}")
-            logger.info(f"{'='*65}")
+            for idx, sid in enumerate(stock_ids, 1):
+                if args.skip_existing and (out_dir / f"best_params_{sid}.json").exists():
+                    logger.info(f"[{idx}/{total}] {sid} 已有結果，跳過")
+                    skipped.append(sid)
+                    _write_fetch_log(conn, "tune_hyperparameters", sid, "no_new_data", duration_ms=0)
+                    continue
+
+                logger.info(f"\n{'='*65}")
+                logger.info(f"[{idx}/{total}] 開始處理 {sid}")
+                logger.info(f"{'='*65}")
+                
+                _t_start = time.time()
+                try:
+                    rc = tune_one_stock(sid, args)
+                    duration_ms = int((time.time() - _t_start) * 1000)
+                    if rc == 0:
+                        succeeded.append(sid)
+                        _write_fetch_log(conn, "tune_hyperparameters", sid, "success", duration_ms=duration_ms)
+                    else:
+                        failed.append(sid)
+                        _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=f"Return code {rc}")
+                except Exception as e:
+                    duration_ms = int((time.time() - _t_start) * 1000)
+                    logger.error(f"[{sid}] 未預期錯誤：{e}", exc_info=True)
+                    failed.append(sid)
+                    _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=str(e))
+
+            logger.info("\n" + "=" * 65)
+            logger.info(f"  批次調優完成：成功={len(succeeded)}  失敗={len(failed)}  跳過={len(skipped)}")
+            if failed:
+                logger.warning(f"  失敗清單：{failed}")
+            logger.info("=" * 65)
+            return 0 if not failed else 1
+
+        else:
+            sid = args.stock_id
+            _t_start = time.time()
             try:
                 rc = tune_one_stock(sid, args)
+                duration_ms = int((time.time() - _t_start) * 1000)
                 if rc == 0:
-                    succeeded.append(sid)
+                    _write_fetch_log(conn, "tune_hyperparameters", sid, "success", duration_ms=duration_ms)
                 else:
-                    failed.append(sid)
+                    _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=f"Return code {rc}")
+                return rc
             except Exception as e:
-                logger.error(f"[{sid}] 未預期錯誤：{e}", exc_info=True)
-                failed.append(sid)
+                duration_ms = int((time.time() - _t_start) * 1000)
+                _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=str(e))
+                raise e
 
-        logger.info("\n" + "=" * 65)
-        logger.info(f"  批次調優完成：成功={len(succeeded)}  失敗={len(failed)}  跳過={len(skipped)}")
-        if failed:
-            logger.warning(f"  失敗清單：{failed}")
-        logger.info("=" * 65)
-        return 0 if not failed else 1
-
-    else:
-        return tune_one_stock(args.stock_id, args)
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
