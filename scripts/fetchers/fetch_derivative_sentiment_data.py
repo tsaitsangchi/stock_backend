@@ -146,10 +146,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
     logger.info(f"=== [{table}] 開始 ===")
     flog = FailureLogger(table, db_conn=conn)
     
-    # ── 取得交易日清單 ──
-    with conn.cursor() as cur:
-        cur.execute("SELECT date FROM trading_date")
-        trading_days = {r[0] for r in cur.fetchall()}
+
 
     # ⭐ 自動尋找起始日 ⭐
     if not start and not force:

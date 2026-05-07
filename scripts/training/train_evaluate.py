@@ -79,6 +79,7 @@ from data_pipeline import build_daily_frame
 from feature_engineering import build_features, build_features_with_medium_term
 from models.ensemble_model import RegimeEnsemble
 from feature_analysis import FactorAnalyzer, print_factor_report
+from core.db_utils import get_db_conn, write_model_log
 
 # ── 全域 Warning 過濾（第三方套件雜訊）────────────────────────────────────
 import warnings as _warnings
@@ -999,8 +1000,30 @@ def main():
                 mlflow.sklearn.log_model(final_model, f"ensemble_{stock_id}")
                 logger.info(f"  MLflow 追蹤完成：Run Name = {run_name}")
                 
+                # ── 寫入資料庫 model_training_log (v3.1) ──────────
+                try:
+                    conn = get_db_conn()
+                    write_model_log(
+                        conn,
+                        run_id=run_name,
+                        stock_id=stock_id,
+                        job_type="training",
+                        status="success",
+                        started_at=datetime.fromtimestamp(t0),
+                        finished_at=datetime.now(),
+                        duration_sec=int(time.time() - t0),
+                        feature_count=len(golden_features),
+                        oof_da=float(m.get("directional_accuracy", 0)),
+                        oof_ic=float(m.get("ic", 0)),
+                        error_message=None
+                    )
+                    conn.close()
+                except Exception as _db_err:
+                    logger.warning(f"  資料庫 model_log 紀錄失敗：{_db_err}")
+                
         except Exception as e:
             logger.warning(f"  MLflow 紀錄失敗 (請檢查 mlflow 是否安裝): {e}")
+
 
     logger.info("\n=== 訓練完成 ===")
 

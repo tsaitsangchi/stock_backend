@@ -61,8 +61,10 @@ from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, STOCK_CONFIGS, get_all_
 
 # core v3.0 helpers
 from core.path_setup import get_outputs_dir, ensure_dirs_exist
-from core.db_utils import get_db_conn
+from core.db_utils import get_db_conn, write_model_log
 from core.model_metadata import ModelMetadata, atomic_write_json
+import uuid
+
 
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features
@@ -71,23 +73,6 @@ logger = logging.getLogger(__name__)
 
 # v3.1 CLI args 全域儲存
 _CLI_ARGS_STR = " ".join(sys.argv[1:])
-
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
-    """v3.1 標準化日誌寫入"""
-    try:
-        if conn is None:
-            return
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 
 # ─────────────────────────────────────────────
 # v3 因子守門（與 P0-5 / parallel_train 對齊）
@@ -415,28 +400,35 @@ def main():
                 if args.skip_existing and (out_dir / f"best_params_{sid}.json").exists():
                     logger.info(f"[{idx}/{total}] {sid} 已有結果，跳過")
                     skipped.append(sid)
-                    _write_fetch_log(conn, "tune_hyperparameters", sid, "no_new_data", duration_ms=0)
+                    # Skip doesn't need a full model log, or we can log it as 'skipped'
                     continue
+
 
                 logger.info(f"\n{'='*65}")
                 logger.info(f"[{idx}/{total}] 開始處理 {sid}")
                 logger.info(f"{'='*65}")
                 
                 _t_start = time.time()
+                started_at = datetime.now()
+                run_id = f"tune_{sid}_{started_at.strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
                 try:
                     rc = tune_one_stock(sid, args)
-                    duration_ms = int((time.time() - _t_start) * 1000)
+                    finished_at = datetime.now()
+                    duration_sec = int(time.time() - _t_start)
                     if rc == 0:
                         succeeded.append(sid)
-                        _write_fetch_log(conn, "tune_hyperparameters", sid, "success", duration_ms=duration_ms)
+                        write_model_log(conn, run_id, sid, "tuning", "success", started_at, finished_at, duration_sec)
                     else:
                         failed.append(sid)
-                        _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=f"Return code {rc}")
+                        write_model_log(conn, run_id, sid, "tuning", "failed", started_at, finished_at, duration_sec, error_message=f"Return code {rc}")
+
                 except Exception as e:
-                    duration_ms = int((time.time() - _t_start) * 1000)
+                    finished_at = datetime.now()
+                    duration_sec = int(time.time() - _t_start)
                     logger.error(f"[{sid}] 未預期錯誤：{e}", exc_info=True)
                     failed.append(sid)
-                    _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=str(e))
+                    write_model_log(conn, run_id, sid, "tuning", "failed", started_at, finished_at, duration_sec, error_message=str(e))
+
 
             logger.info("\n" + "=" * 65)
             logger.info(f"  批次調優完成：成功={len(succeeded)}  失敗={len(failed)}  跳過={len(skipped)}")
@@ -448,18 +440,23 @@ def main():
         else:
             sid = args.stock_id
             _t_start = time.time()
+            started_at = datetime.now()
+            run_id = f"tune_{sid}_{started_at.strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
             try:
                 rc = tune_one_stock(sid, args)
-                duration_ms = int((time.time() - _t_start) * 1000)
+                finished_at = datetime.now()
+                duration_sec = int(time.time() - _t_start)
                 if rc == 0:
-                    _write_fetch_log(conn, "tune_hyperparameters", sid, "success", duration_ms=duration_ms)
+                    write_model_log(conn, run_id, sid, "tuning", "success", started_at, finished_at, duration_sec)
                 else:
-                    _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=f"Return code {rc}")
+                    write_model_log(conn, run_id, sid, "tuning", "failed", started_at, finished_at, duration_sec, error_message=f"Return code {rc}")
                 return rc
             except Exception as e:
-                duration_ms = int((time.time() - _t_start) * 1000)
-                _write_fetch_log(conn, "tune_hyperparameters", sid, "failed", duration_ms=duration_ms, error_message=str(e))
+                finished_at = datetime.now()
+                duration_sec = int(time.time() - _t_start)
+                write_model_log(conn, run_id, sid, "tuning", "failed", started_at, finished_at, duration_sec, error_message=str(e))
                 raise e
+
 
     finally:
         if conn:

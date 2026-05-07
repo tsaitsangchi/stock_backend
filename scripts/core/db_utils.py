@@ -180,6 +180,88 @@ def log_fetch_result(
         logger.debug(f"fetch_log 寫入失敗（不影響主流程）：{e}")
 
 
+def write_feature_log(
+    conn,
+    stock_id: str,
+    feature_count: int,
+    rows_processed: int,
+    nan_filled: int,
+    inf_cleared: int,
+    duration_ms: int,
+    status: str,
+    error_message: str = None,
+) -> None:
+    """將特徵工程結果記錄至 feature_log"""
+    sql = """
+    INSERT INTO feature_log (
+        run_ts, stock_id, feature_count, rows_processed, 
+        nan_filled, inf_cleared, duration_ms, status, error_message, cli_args
+    ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                stock_id, feature_count, rows_processed, nan_filled, inf_cleared,
+                duration_ms, status, error_message, " ".join(sys.argv)
+            ))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug(f"feature_log 寫入失敗（不影響主流程）：{e}")
+
+
+def write_model_log(
+    conn,
+    run_id: str,
+    stock_id: str,
+    job_type: str,
+    status: str,
+    started_at: datetime = None,
+    finished_at: datetime = None,
+    duration_sec: int = None,
+    feature_count: int = None,
+    oof_da: float = None,
+    oof_ic: float = None,
+    hyperparams: dict = None,
+    error_message: str = None,
+) -> None:
+    """將模型訓練或調參結果記錄至 model_training_log"""
+    sql = """
+    INSERT INTO model_training_log (
+        run_id, stock_id, job_type, status, 
+        started_at, finished_at, duration_sec,
+        feature_count, oof_da, oof_ic, hyperparams, error_message
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (run_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        finished_at = EXCLUDED.finished_at,
+        duration_sec = EXCLUDED.duration_sec,
+        oof_da = EXCLUDED.oof_da,
+        oof_ic = EXCLUDED.oof_ic,
+        hyperparams = EXCLUDED.hyperparams,
+        error_message = EXCLUDED.error_message
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                run_id, stock_id, job_type, status,
+                started_at, finished_at, duration_sec,
+                feature_count, oof_da, oof_ic, 
+                json.dumps(hyperparams) if hyperparams else None,
+                error_message
+            ))
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.debug(f"model_training_log 寫入失敗（不影響主流程）：{e}")
+
+
 # ─────────────────────────────────────────────
 # 同步批次 Upsert（psycopg2）— v2.0 介面（強化 rollback）
 # ─────────────────────────────────────────────

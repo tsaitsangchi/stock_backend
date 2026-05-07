@@ -95,11 +95,33 @@ COMMENT ON COLUMN fetch_log.fetch_mode  IS 'market=市場層級不需 stock_id�
 COMMENT ON COLUMN fetch_log.status      IS 'success/no_new_data/partial/failed/rate_limited/skipped';
 """
 
+# 1.5 feature_log — 特徵工程事件
+DDL_FEATURE_LOG = """
+CREATE TABLE IF NOT EXISTS feature_log (
+    id               BIGSERIAL    PRIMARY KEY,
+    run_ts           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    stock_id         VARCHAR(20)  NOT NULL,
+    feature_count    INTEGER      NOT NULL,
+    rows_processed   INTEGER      NOT NULL,
+    nan_filled       INTEGER,
+    inf_cleared      INTEGER,
+    duration_ms      INTEGER,
+    status           VARCHAR(16)  NOT NULL,                  -- success / failed
+    error_message    TEXT,
+    cli_args         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feature_log_stock_ts  ON feature_log(stock_id, run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_feature_log_status_ts ON feature_log(status, run_ts DESC);
+
+COMMENT ON TABLE feature_log IS '每次執行特徵更新時寫入一筆，追蹤資料清理與品質狀態';
+"""
+
 # 2. model_training_log — 訓練事件
 DDL_MODEL_TRAINING_LOG = """
 CREATE TABLE IF NOT EXISTS model_training_log (
-    run_id              VARCHAR(32)  PRIMARY KEY,             -- e.g. '2026-05-07_2330_a3f4b2'
+    run_id              VARCHAR(64)  PRIMARY KEY,             -- e.g. '2026-05-07_2330_a3f4b2'
     stock_id            VARCHAR(20)  NOT NULL,
+    job_type            VARCHAR(16)  NOT NULL,                 -- tuning / training / validation
     started_at          TIMESTAMPTZ  NOT NULL,
     finished_at         TIMESTAMPTZ,
     duration_sec        INTEGER,
@@ -107,6 +129,7 @@ CREATE TABLE IF NOT EXISTS model_training_log (
     -- 訓練設定
     git_commit_hash     VARCHAR(40),
     feature_count       INTEGER,                                -- 防 P0-5 重演（< 175 警告）
+    hyperparams         JSONB,                                  -- 最佳參數快照
     train_start_date    DATE,
     train_end_date      DATE,
     n_folds             INTEGER,
@@ -233,6 +256,7 @@ COMMENT ON TABLE stock_daily_status IS '每股每天的整條 pipeline 健康燈
 # ─────────────────────────────────────────────
 TABLES = [
     ("fetch_log",             DDL_FETCH_LOG,             "事件 │ 抓取"),
+    ("feature_log",           DDL_FEATURE_LOG,           "事件 │ 特徵工程"),
     ("model_training_log",    DDL_MODEL_TRAINING_LOG,    "事件 │ 訓練"),
     ("prediction_output",     DDL_PREDICTION_OUTPUT,     "事件 │ 預測 (pre-filter)"),
     ("signal_history",        DDL_SIGNAL_HISTORY,        "事件 │ 訊號 (post-filter)"),

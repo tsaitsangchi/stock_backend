@@ -53,6 +53,7 @@ from core.db_utils import (
     safe_commit_rows,
     is_conn_healthy,
     FailureLogger,
+    write_feature_log,
 )
 
 from data_pipeline import build_daily_frame
@@ -215,9 +216,9 @@ def process_one_stock(
     stock_id: str,
     force: bool,
     flog: FailureLogger,
-) -> tuple[bool, int]:
+) -> tuple[bool, int, int]:
     """
-    處理單一股票，回傳 (success, n_records_written)。
+    處理單一股票，回傳 (success, n_records_written, feature_count)。
 
     任何失敗都不會 raise；以 FailureLogger 即時落盤後 return False。
     每次寫入採 safe_commit_rows，崩潰前已 commit 的不會回滾。
@@ -242,17 +243,17 @@ def process_one_stock(
 
     if raw is None or raw.empty:
         logger.info(f"[{stock_id}] build_daily_frame 無資料，跳過")
-        return True, 0  # 視為「沒事可做」，不算失敗
+        return True, 0, 0  # 視為「沒事可做」，不算失敗
 
     try:
         df = build_features_with_medium_term(raw, stock_id=stock_id, for_inference=True)
     except Exception as e:
         flog.record(stock_id=stock_id, stage="build_features", error=str(e))
-        return False, 0
+        return False, 0, 0
 
     if df is None or df.empty:
         logger.info(f"[{stock_id}] 特徵工程後無有效資料，跳過")
-        return True, 0
+        return True, 0, 0
 
     # 3) 增量切片
     try:
@@ -265,17 +266,19 @@ def process_one_stock(
         else:
             flog.record(stock_id=stock_id, stage="slice",
                         error="索引非 date 且找不到 date 欄位")
-            return False, 0
+            return False, 0, 0
 
     if new_df.empty:
         logger.info(f"[{stock_id}] 已是最新")
-        return True, 0
+        return True, 0, len(df.columns)
+
+    feature_count = len(new_df.columns)
 
     # 4) 序列化（NaN/Inf 統一處理）
     records = serialize_records(new_df, stock_id)
     if not records:
         flog.record(stock_id=stock_id, stage="serialize", error="序列化後 0 筆")
-        return False, 0
+        return False, 0, feature_count
 
     # 5) safe_commit_rows：失敗自動 rollback，不擴散
     n = safe_commit_rows(
@@ -287,10 +290,10 @@ def process_one_stock(
     if n == 0:
         flog.record(stock_id=stock_id, stage="commit", rows=len(records),
                     error="safe_commit_rows returned 0 (rolled back)")
-        return False, 0
+        return False, 0, feature_count
 
     logger.info(f"[{stock_id}] ✅ 寫入 {n:,} 筆")
-    return True, n
+    return True, n, feature_count
 
 
 # ─────────────────────────────────────────────
@@ -357,22 +360,24 @@ def main():
 
             _t_start = time.time()
             try:
-                ok, n = process_one_stock(conn, stock_id, args.force, flog)
+                ok, n, feat_cnt = process_one_stock(conn, stock_id, args.force, flog)
                 duration_ms = int((time.time() - _t_start) * 1000)
                 
-                # 寫入 v3.1 fetch_log
+                # 寫入 v3.1 fetch_log (保留向後相容)
                 if ok:
                     status = "success" if n > 0 else "no_new_data"
                     _write_fetch_log(conn, "daily_features", stock_id, status, rows_inserted=n, duration_ms=duration_ms)
+                    write_feature_log(conn, stock_id, feat_cnt, n, 0, 0, duration_ms, status)
                 else:
-                    # 失敗時在 flog 裡已有紀錄，也補一筆 fetch_log
                     _write_fetch_log(conn, "daily_features", stock_id, "failed", duration_ms=duration_ms)
+                    write_feature_log(conn, stock_id, feat_cnt, n, 0, 0, duration_ms, "failed")
 
             except Exception as e:
                 duration_ms = int((time.time() - _t_start) * 1000)
-                # 防禦性外層保護：理論上 process_one_stock 內部都已捕獲
+                # 防禦性外層保護
                 flog.record(stock_id=stock_id, stage="outer", error=str(e))
                 _write_fetch_log(conn, "daily_features", stock_id, "failed", duration_ms=duration_ms, error_message=str(e))
+                write_feature_log(conn, stock_id, 0, 0, 0, 0, duration_ms, "failed", str(e))
                 ok, n = False, 0
 
             if ok:
