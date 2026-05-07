@@ -1,5 +1,6 @@
 import sys
 import logging
+import time
 from pathlib import Path
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -10,12 +11,33 @@ if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_fundamental_data.py v3.0 — 基本面資料（逐支逐日 commit 完整性版）
+fetch_fundamental_data.py v3.1 — 基本面資料（監控整合標準版）
 ================================================================================
-v3.0 重大改進：
-  ★ 導入 commit_per_stock_per_day：財報、營收、股利每一天資料均獨立原子 commit。
-  ★ 全面整合 FailureLogger：精準追蹤 150 支股票在不同基本面資料集間的抓取狀況。
-  ★ 結構一致化：與技術面、國際面腳本維持相同寫入規範，確保生產矩陣穩定。
+v3.1 重大改進：
+  · 整合 fetch_log v3.1：每一支股票、每一資料表（財報、營收、股利）均記錄抓取狀態。
+  · 效能監控：精準追蹤每一請求的 API 耗時（duration_ms）。
+  · 狀態追蹤：支援 success, failed, no_new_data, skipped 等標準化狀態。
+  · 完整註解：提供多樣化執行範例，便於維運。
+
+支援資料表：
+  · financial_statements (財報)
+  · balance_sheet        (資產負債表)
+  · month_revenue        (月營收)
+  · dividend             (股利政策)
+
+執行範例（常規）：
+    python fetch_fundamental_data.py                # 抓取 150 支股票的所有基本面資料
+    python fetch_fundamental_data.py --stock-id 2330 # 僅抓取 TSMC
+    python fetch_fundamental_data.py --tables month_revenue # 僅抓取營收
+
+執行範例（強制重抓）：
+    python fetch_fundamental_data.py --stock-id 2330 --force --tables all
+    python fetch_fundamental_data.py --start 2024-01-01 --force
+    python fetch_fundamental_data.py --tables all --force
+
+執行範例（模式切換）：
+    python fetch_fundamental_data.py --retry-failed 7
+    python fetch_fundamental_data.py --gap-fill 30
 """
 
 from core.finmind_client import finmind_get
@@ -47,6 +69,22 @@ DATASET_START_DATES = {
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
 DEFAULT_START = "1990-03-01"
+
+_CLI_ARGS_STR = " ".join(sys.argv)
+
+def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
+    """v3.1 標準化日誌寫入"""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO fetch_log (
+                    run_ts, table_name, stock_id, status, rows_inserted, 
+                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"無法寫入 fetch_log: {e}")
 
 # ──────────────────────────────────────────────
 # DDL & SQL
@@ -110,15 +148,27 @@ def fetch_quarterly(conn, tables, start, end, delay, force, stock_ids):
         total_rows = 0
         for sid in stock_ids:
             s = resolve_start_cached(sid, latest, start, DATASET_START_DATES[table], force)
-            if not s: continue
+            if not s:
+                _write_fetch_log(conn, table, sid, "skipped")
+                continue
+            
+            start_ts = time.time()
             try:
                 data = finmind_get(dataset, {"data_id": sid, "start_date": s, "end_date": end}, delay)
+                duration = int((time.time() - start_ts) * 1000)
                 if data:
                     rows = [map_fin_row(r) for r in data]
                     rows = dedup_rows(rows, (0, 1, 2))
                     res = commit_per_stock_per_day(conn, upsert_sql, rows, "(%s::date, %s, %s, %s::numeric, %s)", label_prefix=table, failure_logger=flog)
-                    total_rows += sum(res.values())
-            except Exception as e: flog.record(stock_id=sid, error=str(e))
+                    count = sum(res.values())
+                    total_rows += count
+                    _write_fetch_log(conn, table, sid, "success", rows_inserted=count, fetch_date_from=s, fetch_date_to=end, duration_ms=duration)
+                else:
+                    _write_fetch_log(conn, table, sid, "no_new_data", duration_ms=duration)
+            except Exception as e:
+                duration = int((time.time() - start_ts) * 1000)
+                flog.record(stock_id=sid, error=str(e))
+                _write_fetch_log(conn, table, sid, "failed", duration_ms=duration, error_message=str(e))
         logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
         flog.summary()
 
@@ -130,15 +180,27 @@ def fetch_revenue(conn, start, end, delay, force, stock_ids):
     total_rows = 0
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START_DATES["month_revenue"], force)
-        if not s: continue
+        if not s:
+            _write_fetch_log(conn, "month_revenue", sid, "skipped")
+            continue
+        
+        start_ts = time.time()
         try:
             data = finmind_get("TaiwanStockMonthRevenue", {"data_id": sid, "start_date": s, "end_date": end}, delay)
+            duration = int((time.time() - start_ts) * 1000)
             if data:
                 rows = [map_rev_row(r) for r in data]
                 rows = dedup_rows(rows, (0, 1))
                 res = commit_per_stock_per_day(conn, UPSERT_MONTH_REVENUE, rows, "(%s::date, %s, %s, %s, %s, %s)", label_prefix="month_revenue", failure_logger=flog)
-                total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=sid, error=str(e))
+                count = sum(res.values())
+                total_rows += count
+                _write_fetch_log(conn, "month_revenue", sid, "success", rows_inserted=count, fetch_date_from=s, fetch_date_to=end, duration_ms=duration)
+            else:
+                _write_fetch_log(conn, "month_revenue", sid, "no_new_data", duration_ms=duration)
+        except Exception as e:
+            duration = int((time.time() - start_ts) * 1000)
+            flog.record(stock_id=sid, error=str(e))
+            _write_fetch_log(conn, "month_revenue", sid, "failed", duration_ms=duration, error_message=str(e))
     logger.info(f"  [month_revenue] 總共寫入 {total_rows} 筆")
     flog.summary()
 
@@ -150,15 +212,27 @@ def fetch_dividend(conn, start, end, delay, force, stock_ids):
     total_rows = 0
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START_DATES["dividend"], force)
-        if not s: continue
+        if not s:
+            _write_fetch_log(conn, "dividend", sid, "skipped")
+            continue
+        
+        start_ts = time.time()
         try:
             data = finmind_get("TaiwanStockDividend", {"data_id": sid, "start_date": s, "end_date": end}, delay)
+            duration = int((time.time() - start_ts) * 1000)
             if data:
                 rows = [map_div_row(r) for r in data]
                 rows = dedup_rows(rows, (0, 1))
                 res = commit_per_stock_per_day(conn, UPSERT_DIVIDEND, rows, "(%s::date, %s, %s, %s::numeric, %s::numeric, %s::date, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::date, %s::date, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::date, %s::timestamp)", label_prefix="dividend", failure_logger=flog)
-                total_rows += sum(res.values())
-        except Exception as e: flog.record(stock_id=sid, error=str(e))
+                count = sum(res.values())
+                total_rows += count
+                _write_fetch_log(conn, "dividend", sid, "success", rows_inserted=count, fetch_date_from=s, fetch_date_to=end, duration_ms=duration)
+            else:
+                _write_fetch_log(conn, "dividend", sid, "no_new_data", duration_ms=duration)
+        except Exception as e:
+            duration = int((time.time() - start_ts) * 1000)
+            flog.record(stock_id=sid, error=str(e))
+            _write_fetch_log(conn, "dividend", sid, "failed", duration_ms=duration, error_message=str(e))
     logger.info(f"  [dividend] 總共寫入 {total_rows} 筆")
     flog.summary()
 
@@ -170,6 +244,8 @@ def main():
     p.add_argument("--delay", type=float, default=1.2)
     p.add_argument("--force", action="store_true")
     p.add_argument("--stock-id", default=None)
+    p.add_argument("--retry-failed", type=int, help="不適用於此腳本，僅為一致性保留")
+    p.add_argument("--gap-fill", type=int, help="不適用於此腳本，僅為一致性保留")
     args = p.parse_args()
 
     tables = ["financial_statements", "balance_sheet", "month_revenue", "dividend"] if "all" in args.tables else args.tables

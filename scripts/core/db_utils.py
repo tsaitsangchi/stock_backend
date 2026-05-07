@@ -1096,15 +1096,30 @@ def dedup_rows(rows: list, key_indices: tuple) -> list:
 
 
 def get_db_stock_ids(conn, types: tuple = ("twse", "otc")) -> list[str]:
-    """從 stock_info 取得所有指定類型的股票代號清單。"""
-    placeholders = ", ".join(["%s"] * len(types))
+    """
+    取得股票代號清單。
+    v3.1 優先序：
+      1. 從 stocks 資料表讀取 is_core = TRUE 的核心股票。
+      2. 若 stocks 表無資料或不存在，退而求其次從 stock_info 依類型讀取。
+    """
     try:
         with conn.cursor() as cur:
+            # 優先嘗試 stocks 表 (核心清單)
+            try:
+                cur.execute("SELECT stock_id FROM stocks WHERE is_core = TRUE ORDER BY stock_id")
+                rows = cur.fetchall()
+                if rows:
+                    return [row[0] for row in rows]
+            except Exception:
+                conn.rollback() # stocks 表可能尚未建立，忽略錯誤並進入 fallback
+            
+            # Fallback: 原有 stock_info 邏輯
+            placeholders = ", ".join(["%s"] * len(types))
             cur.execute(
                 f"SELECT stock_id FROM stock_info WHERE type IN ({placeholders}) ORDER BY stock_id",
                 types,
             )
-            return [row[0] for row in cur.fetchall()]
+            return [row[0] for row in rows] if (rows := cur.fetchall()) else []
     except Exception:
         try:
             conn.rollback()
