@@ -27,6 +27,7 @@ v3.0 既有：
     python fetch_derivative_data.py --tables futures_ohlcv options_ohlcv
     python fetch_derivative_data.py --ids TX MTX --force
     python fetch_derivative_data.py --ids TXO --tables options_ohlcv --force
+    python fetch_derivative_data.py --ids TX MTX TXO --tables all --force
 
 執行（模式切換）：
     # 重試最近 7 天失敗的組合
