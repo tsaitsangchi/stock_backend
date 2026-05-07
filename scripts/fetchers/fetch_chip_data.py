@@ -1,49 +1,34 @@
-from __future__ import annotations
+import argparse
+import time
+import json
 import sys
 import logging
 from pathlib import Path
+from datetime import date, datetime
 
 # ── sys.path 自我修復 ──
-_THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for sub in ("", "core", "fetchers"):
-    p = (_SCRIPTS_DIR / sub) if sub else _SCRIPTS_DIR
-    sp = str(p)
-    if p.exists() and sp not in sys.path:
-        sys.path.insert(0, sp)
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 
 """
-fetch_chip_data.py — 籌碼面核心資料（v3.1 fetch_log 整合版）
+fetch_chip_data.py v3.1 — 籌碼面核心資料（可觀察性監控版）
 ================================================================================
-v3.1 改進：
-  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
-  · 效能追蹤：記錄每支股票的 API 請求與寫入耗時（duration_ms）。
-  · 支援 --retry-failed N 與 --gap-fill N 模式，實現智慧補抓。
+v3.1 重大改進：
+  ★ 整合 fetch_log v3.1：每一支股票、每一資料表（三大法人、融資融券、借券）均記錄抓取狀態。
+  ★ 效能監控：精準追蹤每一請求的 API 耗時（duration_ms）。
+  ★ 狀態追蹤：支援 success, failed, no_new_data, skipped 等標準化狀態。
+  ★ 結構規範化：整合 FailureLogger 與原子性 commit 機制，確保數據完整性。
 
-v3.0 既有：
-  · 導入 core v3.0：全面使用 FailureLogger、safe_commit_rows 與原子寫入。
-  · 逐支逐日 commit：全數採用最細粒度 (sid, date) 的 commit 策略。
+執行範例（常規）：
+    python scripts/fetchers/fetch_chip_data.py                # 抓取 160 支核心標的的所有籌碼資料
+    python scripts/fetchers/fetch_chip_data.py --stock-id 2330 # 僅抓取台積電
+    python scripts/fetchers/fetch_chip_data.py --tables shareholding # 僅抓取借券資料
 
-執行（常規）：
-    python fetch_chip_data.py
-    python fetch_chip_data.py --tables institutional_investors_buy_sell shareholding
-    python fetch_chip_data.py --stock-id 2330 --force
-    python fetch_chip_data.py --stock-id 2330 --tables institutional_investors_buy_sell margin_purchase_short_sale shareholding --force
-    python fetch_chip_data.py --stock-id 2330,2454 --tables margin_purchase_short_sale --force
-
-執行（模式切換）：
-    # 重試最近 7 天失敗的組合
-    python fetch_chip_data.py --retry-failed 7
-
-    # 補抓最近 30 天無成功紀錄的資料
-    python fetch_chip_data.py --gap-fill 30
+執行範例（強制重抓）：
+    python scripts/fetchers/fetch_chip_data.py --stock-id 2330 --force --tables all
+    python scripts/fetchers/fetch_chip_data.py --tables all --force
 """
-
-import argparse
-import time
-from datetime import date
-from core.path_setup import ensure_scripts_on_path, get_outputs_dir, ensure_dirs_exist
-ensure_scripts_on_path(__file__)
 
 from core.finmind_client import finmind_get, get_request_stats
 from core.db_utils import (
@@ -67,42 +52,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 初始化目錄
-ensure_dirs_exist()
-OUTPUT_DIR = get_outputs_dir()
-
 DATASET_START_DATES = {
     "institutional_investors_buy_sell": "2005-01-01",
     "margin_purchase_short_sale":       "2001-01-01",
     "shareholding":                     "2004-02-01",
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
-
 _CLI_ARGS_STR = " ".join(sys.argv)
 
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
+def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
+    """v3.1 標準化日誌寫入"""
     try:
         with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
+            cur.execute("""
+                INSERT INTO fetch_log (
+                    run_ts, table_name, stock_id, status, rows_inserted, 
+                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
         conn.commit()
     except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
+        logger.warning(f"無法寫入 fetch_log: {e}")
 
 # ──────────────────────────────────────────────
 # DDL & SQL
@@ -161,8 +131,10 @@ CREATE TABLE IF NOT EXISTS shareholding (
 
 UPSERT_INSTITUTIONAL_INVESTORS = """
 INSERT INTO institutional_investors_buy_sell (date, stock_id, buy, name, sell)
-VALUES %s ON CONFLICT (date, stock_id, name) DO UPDATE SET
-    buy = EXCLUDED.buy, sell = EXCLUDED.sell;
+VALUES %s 
+ON CONFLICT (date, stock_id, name) DO UPDATE SET
+    buy = EXCLUDED.buy, 
+    sell = EXCLUDED.sell;
 """
 
 UPSERT_MARGIN_PURCHASE = """
@@ -172,7 +144,8 @@ INSERT INTO margin_purchase_short_sale (
     margin_purchase_yesterday_balance, note, offset_loan_and_short,
     short_sale_buy, short_sale_cash_repayment, short_sale_limit,
     short_sale_sell, short_sale_today_balance, short_sale_yesterday_balance
-) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+) VALUES %s 
+ON CONFLICT (date, stock_id) DO UPDATE SET
     margin_purchase_today_balance = EXCLUDED.margin_purchase_today_balance,
     short_sale_today_balance = EXCLUDED.short_sale_today_balance;
 """
@@ -184,7 +157,8 @@ INSERT INTO shareholding (
     foreign_investment_remain_ratio, foreign_investment_shares_ratio,
     foreign_investment_upper_limit_ratio, chinese_investment_upper_limit_ratio,
     number_of_shares_issued, recently_declare_date, note
-) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET
+) VALUES %s 
+ON CONFLICT (date, stock_id) DO UPDATE SET
     foreign_investment_shares_ratio = EXCLUDED.foreign_investment_shares_ratio,
     number_of_shares_issued = EXCLUDED.number_of_shares_issued;
 """
@@ -216,9 +190,6 @@ def map_share(r: dict) -> tuple:
         str(r.get("note", "") or "")
     )
 
-# ─────────────────────────────────────────────
-# 抓取邏輯
-# ─────────────────────────────────────────────
 def fetch_per_stock_task(
     conn, dataset_name: str, table_name: str, ddl: str, upsert_sql: str,
     template: str, mapper, stock_ids: list, start_date: str, end_date: str, force: bool
@@ -228,51 +199,45 @@ def fetch_per_stock_task(
     flog = FailureLogger(table_name, db_conn=conn)
     latest_dates = get_all_safe_starts(conn, table_name)
     
-    total_rows = skipped = 0
-    for i, sid in enumerate(stock_ids, 1):
+    total_rows = 0
+    for sid in stock_ids:
         actual_start = resolve_start_cached(sid, latest_dates, start_date, DATASET_START_DATES[table_name], force)
         if not actual_start:
-            _write_fetch_log(conn, table_name=table_name, stock_id=sid, status="skipped", error_message="up_to_date")
-            skipped += 1; continue
+            _write_fetch_log(conn, table_name, sid, "skipped", error_message="up_to_date")
+            continue
 
-        t0 = time.time()
+        start_time = time.time()
         try:
             data = finmind_get(dataset_name, {"data_id": sid, "start_date": actual_start, "end_date": end_date})
-            dur = int((time.time() - t0) * 1000)
+            duration_ms = int((time.time() - start_time) * 1000)
+            
             if not data:
-                _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
-                                 fetch_date_to=end_date, rows_inserted=0, duration_ms=dur, status="no_new_data")
+                _write_fetch_log(conn, table_name, sid, "no_new_data", fetch_date_from=actual_start, fetch_date_to=end_date, duration_ms=duration_ms)
                 continue
             
             rows = map_rows_safe(mapper, data, label=f"{table_name}/{sid}")
             
-            # ⭐ 主動去重 ⭐
             if table_name == "institutional_investors_buy_sell":
-                rows = dedup_rows(rows, (0, 1, 3)) # (date, stock_id, name)
+                rows = dedup_rows(rows, (0, 1, 3))
             else:
-                rows = dedup_rows(rows, (0, 1))    # (date, stock_id)
+                rows = dedup_rows(rows, (0, 1))
 
-            # ⭐ 逐支逐日 Commit ⭐
             results = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table_name, failure_logger=flog)
             n = sum(results.values())
             total_rows += n
-            _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
-                             fetch_date_to=end_date, rows_inserted=n, duration_ms=dur, status="success")
+            _write_fetch_log(conn, table_name, sid, "success", rows_inserted=n, fetch_date_from=actual_start, fetch_date_to=end_date, duration_ms=duration_ms)
+            
         except Exception as e:
-            dur = int((time.time() - t0) * 1000)
+            duration_ms = int((time.time() - start_time) * 1000)
             flog.record(stock_id=sid, error=str(e))
-            _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
-                             fetch_date_to=end_date, rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e))
-
-        if i % 100 == 0:
-            logger.info(f"  [{table_name}] 進度：{i}/{len(stock_ids)}，寫入 {total_rows} 筆")
+            _write_fetch_log(conn, table_name, sid, "failed", fetch_date_from=actual_start, fetch_date_to=end_date, duration_ms=duration_ms, error_message=str(e))
 
     flog.summary()
-    logger.info(f"=== [{table_name}] 完成，共寫入 {total_rows} 筆，略過 {skipped} 支 ===\n")
+    logger.info(f"=== [{table_name}] 完成，共寫入 {total_rows} 筆 ===\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具 v3.0")
+    parser = argparse.ArgumentParser(description="FinMind 籌碼面資料抓取工具 v3.1")
     parser.add_argument("--tables", nargs="+", choices=["institutional_investors_buy_sell", "margin_purchase_short_sale", "shareholding", "all"], default=["all"])
     parser.add_argument("--start", default="2001-01-01")
     parser.add_argument("--end", default=DEFAULT_END)
