@@ -1,30 +1,24 @@
 from __future__ import annotations
 """
-backfill_from_gaps.py v3.0 — 精確資料斷層補抓器（逐支逐日 commit 完整性版）
-==============================================================================
-讀取 outputs/integrity_gaps.json，按 (table, stock_id) 精確補抓資料斷層。
-搭配 core v3.0 的「逐支逐日 commit」設計，確保任何中斷都能保留已完成資料。
+backfill_from_gaps.py v3.1 — 精確資料斷層補抓器（監控整合標準版）
+================================================================================
+v3.1 重大改進：
+  · 整合 fetch_log v3.1：每個 (table, stock_id, gap) 獨立記錄 duration_ms 與 cli_args。
+  · 效能監控：精準追蹤每次子腳本執行耗時（duration_ms），便於分析補抓瓶頸。
+  · 狀態追蹤：支援 success, failed, skipped 等標準化狀態，與全管線一致。
+  · 配額防護：執行前自動檢查 FinMind API 配額，防止過度請求。
 
-v3.0 改進（與 core v3.0 完整對齊）：
-  ★ 改用 core.db_utils.FailureLogger / append_failure_json — 失敗即時原子落盤
-  ★ 改用 core.model_metadata.atomic_write_json — success/failure 清單 tmp+rename 寫入
-  ★ 改用 core.path_setup.get_outputs_dir / get_checkpoints_dir — 統一路徑
-  ★ 新增 --per-day 模式：每日獨立 fetcher 呼叫，達到 (table, stock_id, day) 最細粒度
-  ★ 新增 --resume 模式：讀取上次 successes，跳過已完成的 (table, stock_id, start)
-  ★ 新增 --parallel N 模式：並行執行 N 個 fetcher subprocess（仍受全域速率限制）
-  ★ 新增 checkpoint 檔（outputs/checkpoints/backfill.json）— 中斷時保留進度
-  ★ 每個 (table, stock_id, gap) 獨立寫 fetch_log，崩潰前的所有完成項都已落地
-  ★ 結尾印出統計摘要（成功/失敗/略過/平均耗時）
+執行範例（常規）：
+    python scripts/fetchers/backfill_from_gaps.py
+    python scripts/fetchers/backfill_from_gaps.py --tables stock_per,price_adj
+    python scripts/fetchers/backfill_from_gaps.py --stocks 2330,2317
 
-執行：
-    python backfill_from_gaps.py
-    python backfill_from_gaps.py --tables stock_per,price_adj
-    python backfill_from_gaps.py --stocks 2330,2317
-    python backfill_from_gaps.py --dry-run
-    python backfill_from_gaps.py --refresh-audit
-    python backfill_from_gaps.py --per-day                # 逐日呼叫（最細粒度）
-    python backfill_from_gaps.py --resume                 # 從上次 successes 續做
-    python backfill_from_gaps.py --parallel 4             # 4 條 fetcher 並行
+執行範例（進階）：
+    python scripts/fetchers/backfill_from_gaps.py --dry-run               # 試跑，不實際呼叫
+    python scripts/fetchers/backfill_from_gaps.py --refresh-audit         # 先重跑完整性審查
+    python scripts/fetchers/backfill_from_gaps.py --per-day               # 逐日呼叫（最細粒度）
+    python scripts/fetchers/backfill_from_gaps.py --resume                # 從上次中斷處續做
+    python scripts/fetchers/backfill_from_gaps.py --parallel 4            # 4 條 fetcher 並行
 """
 
 import sys
@@ -50,7 +44,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-# ── 載入 core v3.0 helpers ──
+# ── 載入 core v3.1 helpers ──
+_CLI_ARGS_STR = " ".join(sys.argv)
+
 try:
     from core.path_setup import (
         ensure_scripts_on_path,
@@ -62,7 +58,6 @@ try:
     from core.db_utils import (
         get_db_conn,
         ensure_ddl,
-        log_fetch_result,
         FailureLogger,
         append_failure_json,
         get_failure_log_path,
@@ -74,7 +69,7 @@ except Exception as _e:
     _CORE_OK = False
     logging.basicConfig(level=logging.INFO)
     logging.getLogger(__name__).warning(
-        f"無法載入 core v3.0 helpers，使用 fallback：{_e}"
+        f"無法載入 core v3.1 helpers，使用 fallback：{_e}"
     )
 
 logging.basicConfig(
@@ -386,28 +381,36 @@ def run_fetcher(
 
 
 # ─────────────────────────────────────────────
-# 寫入 fetch_log（per-entry 即時 commit）
+# 寫入 fetch_log（v3.1 標準，per-entry 即時 commit）
 # ─────────────────────────────────────────────
 def write_fetch_log(table_name: str, stock_id: Optional[str],
                     start: str, end: Optional[str],
-                    status: str, message: str) -> None:
-    """每筆 (table, stock_id, start, end) 獨立寫 fetch_log，立即 commit。"""
+                    status: str, message: str,
+                    duration_ms: int = 0) -> None:
+    """v3.1 標準化日誌寫入：每筆 (table, stock_id, gap) 獨立記錄耗時與狀態。"""
     if not _CORE_OK:
         return
     try:
         conn = get_db_conn()
         try:
-            ensure_ddl(conn)
-            log_fetch_result(
-                conn,
-                table_name=table_name,
-                stock_id=stock_id or "MARKET",
-                start_date=start,
-                end_date=end or date.today().strftime("%Y-%m-%d"),
-                rows_count=0,
-                status=status,
-                error_msg=message if status == "FAILED" else None,
-            )
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO fetch_log (
+                        run_ts, table_name, stock_id, status, rows_inserted,
+                        fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                    ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    table_name,
+                    stock_id or "MARKET",
+                    status.lower(),
+                    0,
+                    start,
+                    end or date.today().strftime("%Y-%m-%d"),
+                    duration_ms,
+                    message if status.upper() == "FAILED" else None,
+                    _CLI_ARGS_STR,
+                ))
+            conn.commit()
         finally:
             conn.close()
     except Exception as e:
@@ -562,13 +565,14 @@ def process_unit(
             "script":   unit["script"],
             "elapsed":  round(elapsed, 2),
         }
+        duration_ms = int(elapsed * 1000)
         if ok:
             counters["successes"] += 1
             if not args.dry_run:
                 append_success(entry)
                 update_checkpoint(ckpt, entry, "SUCCESS", msg)
                 write_fetch_log(tbl, unit["stock_id"], unit["start"],
-                                unit.get("end"), "SUCCESS", msg)
+                                unit.get("end"), "SUCCESS", msg, duration_ms)
         else:
             entry["error"] = msg
             counters["failures"] += 1
@@ -576,7 +580,7 @@ def process_unit(
                 append_failure(entry)
                 update_checkpoint(ckpt, entry, "FAILED", msg)
                 write_fetch_log(tbl, unit["stock_id"], unit["start"],
-                                unit.get("end"), "FAILED", msg)
+                                unit.get("end"), "FAILED", msg, duration_ms)
         out_entries.append(entry)
 
     return {"ok": ok, "entries": out_entries, "elapsed": elapsed}
@@ -586,7 +590,7 @@ def process_unit(
 # 主流程
 # ─────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="按 (table, stock_id) 精確補抓資料斷層 v3.0")
+    parser = argparse.ArgumentParser(description="精確資料斷層補抓器 (v3.1 — 監控整合標準版)")
     parser.add_argument("--json", default=str(DEFAULT_JSON),
                         help=f"integrity_gaps.json 路徑（預設 {DEFAULT_JSON}）")
     parser.add_argument("--tables", default=None,
