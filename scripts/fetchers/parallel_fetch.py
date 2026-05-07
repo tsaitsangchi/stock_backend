@@ -1,29 +1,15 @@
-"""
-parallel_fetch.py v3.0 — 並行資料抓取管理器（core v3.0 完整性對齊版）
-================================================================================
-同時啟動多個 fetch 腳本，大幅縮短每日更新時間。
-
-對齊 core v3.0 的「逐支逐日 commit」精神：
-本檔本身為 subprocess launcher，不直接寫資料表；真正的逐支逐日落盤由各被
-呼叫的 fetcher 內部的 commit_per_stock_per_day 完成。本檔負責：
-  · 把 phase 排程併發跑滿，但維持單一全域速率限制（FinMind Token Bucket）
-  · 對「子腳本層級」的成敗 / 耗時做完整記錄（fetch_log + FailureLogger）
-  · 最後印出 RequestStats 統計與最慢子任務
-
-v3.0 重大改進：
-  ★ ProcessPoolExecutor → multiprocessing.Pool.imap_unordered（INT-04 串流模式）
-    避免一次 submit 全部 future 帶來的記憶體尖峰；KeyboardInterrupt 可優雅退出
-  ★ 整合 core.path_setup（ensure_dirs_exist）
-  ★ 整合 core.db_utils.FailureLogger：每支失敗腳本都被原子記錄
-  ★ 整合 core.finmind_client.get_request_stats：結尾印出每個 dataset 的請求統計
-  ★ 子腳本失敗時抓 stderr 末 5 行，方便診斷（不再只剩 returncode）
-  ★ 配額不足時可設 --abort-on-low-quota，停止 phase2 避免浪費
-"""
-
 from __future__ import annotations
 
 import sys
+import logging
+import time
+import json
+import os
+import subprocess
+import multiprocessing as mp
+import argparse
 from pathlib import Path
+from datetime import date
 
 # ── sys.path 自我修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
@@ -34,98 +20,105 @@ for _sub in ("", "core", "fetchers", "monitor"):
     if _p.exists() and _ps not in sys.path:
         sys.path.insert(0, _ps)
 
-import argparse
-import logging
-import multiprocessing as mp
-import os
-import subprocess
-import time
-from datetime import date
+"""
+parallel_fetch.py v3.1 — 並行資料抓取管理器（監控整合標準版）
+================================================================================
+v3.1 重大改進：
+  · 整合 fetch_log v3.1：對每一個子任務執行結果進行標準化監控記錄。
+  · 效能監控：記錄各腳本執行耗時（duration_ms），便於分析管線瓶頸。
+  · 錯誤診斷：子腳本失敗時自動擷取 stderr 末尾資訊並存入 fetch_log。
+  · 配額防護：執行前自動檢查 FinMind API 配額，防止過度請求。
+
+執行範例（常規）：
+    python scripts/fetchers/parallel_fetch.py                # 並行執行所有 Phase 的抓取任務
+    python scripts/fetchers/parallel_fetch.py --workers 4    # 指定並行數
+
+執行範例（分段）：
+    python scripts/fetchers/parallel_fetch.py --phase 1      # 僅執行 Phase 1 (核心資料)
+"""
 
 try:
     from core.path_setup import ensure_scripts_on_path, ensure_dirs_exist, get_logs_dir
     ensure_scripts_on_path(__file__)
     from core.finmind_client import check_api_quota, get_request_stats
-    from core.db_utils import get_db_conn, log_fetch_result, FailureLogger
+    from core.db_utils import get_db_conn, FailureLogger
     _CORE_OK = True
 except Exception as _e:
     _CORE_OK = False
     logging.basicConfig(level=logging.INFO)
-    logging.getLogger(__name__).warning(f"core v3.0 helpers 未到位，使用 fallback：{_e}")
-    # 最小 fallback
+    logging.getLogger(__name__).warning(f"core v3.1 helpers 未到位，使用 fallback：{_e}")
     from core.finmind_client import check_api_quota  # type: ignore
-    from core.db_utils import get_db_conn, log_fetch_result  # type: ignore
+    from core.db_utils import get_db_conn  # type: ignore
 
 # ─────────────────────────────────────────────
-# 路徑常數
+# 路徑與常數
 # ─────────────────────────────────────────────
-SCRIPTS_DIR = _THIS_DIR
-BASE_DIR = SCRIPTS_DIR.parent
+BASE_DIR = _THIS_DIR.parent
 VENV_PYTHON = os.environ.get(
     "VENV_PYTHON", str(BASE_DIR.parent / "venv" / "bin" / "python3"),
 )
 
-# ─────────────────────────────────────────────
-# Phase 規劃
-# ─────────────────────────────────────────────
-PHASE_0 = [
-    str(SCRIPTS_DIR / "fetch_stock_info.py"),
-]
-
+PHASE_0 = [str(_THIS_DIR / "fetch_stock_info.py")]
 PHASE_1 = [
-    str(SCRIPTS_DIR / "fetch_technical_data.py"),
-    str(SCRIPTS_DIR / "fetch_price_adj_data.py"),
-    str(SCRIPTS_DIR / "fetch_chip_data.py"),
-    str(SCRIPTS_DIR / "fetch_advanced_chip_data.py"),
-    str(SCRIPTS_DIR / "fetch_international_data.py"),
-    str(SCRIPTS_DIR / "fetch_macro_data.py"),
-    str(SCRIPTS_DIR / "fetch_fundamental_data.py"),
-    str(SCRIPTS_DIR / "fetch_cash_flows_data.py"),
-    str(SCRIPTS_DIR / "fetch_derivative_data.py"),
-    str(SCRIPTS_DIR / "fetch_extended_derivative_data.py"),
-    str(SCRIPTS_DIR / "fetch_sponsor_chip_data.py"),
-    str(SCRIPTS_DIR / "fetch_macro_fundamental_data.py"),
-    str(SCRIPTS_DIR / "fetch_derivative_sentiment_data.py"),
+    str(_THIS_DIR / "fetch_technical_data.py"),
+    str(_THIS_DIR / "fetch_price_adj_data.py"),
+    str(_THIS_DIR / "fetch_chip_data.py"),
+    str(_THIS_DIR / "fetch_advanced_chip_data.py"),
+    str(_THIS_DIR / "fetch_international_data.py"),
+    str(_THIS_DIR / "fetch_macro_data.py"),
+    str(_THIS_DIR / "fetch_fundamental_data.py"),
+    str(_THIS_DIR / "fetch_cash_flows_data.py"),
+    str(_THIS_DIR / "fetch_derivative_data.py"),
+    str(_THIS_DIR / "fetch_extended_derivative_data.py"),
+    str(_THIS_DIR / "fetch_sponsor_chip_data.py"),
+    str(_THIS_DIR / "fetch_macro_fundamental_data.py"),
+    str(_THIS_DIR / "fetch_derivative_sentiment_data.py"),
+    str(_THIS_DIR / "fetch_total_return_index.py"),
 ]
-
 PHASE_2 = [
-    str(SCRIPTS_DIR / "fetch_event_risk_data.py"),
-    str(SCRIPTS_DIR / "fetch_news_data.py"),
-    str(SCRIPTS_DIR / "fetch_fred_data.py"),
+    str(_THIS_DIR / "fetch_event_risk_data.py"),
+    str(_THIS_DIR / "fetch_news_data.py"),
+    str(_THIS_DIR / "fetch_fred_data.py"),
 ]
 
 DEFAULT_MAX_WORKERS = 8
 MAX_SCRIPT_TIMEOUT = 3 * 3600
 API_QUOTA_MIN = 100
+_CLI_ARGS_STR = " ".join(sys.argv)
 
 # ─────────────────────────────────────────────
-# 日誌
+# 日誌與監控
 # ─────────────────────────────────────────────
-LOG_DIR = (
-    get_logs_dir() if _CORE_OK else (BASE_DIR / "outputs" / "logs")
-)
-if not _CORE_OK:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR = get_logs_dir() if _CORE_OK else (BASE_DIR / "outputs" / "logs")
+if not _CORE_OK: LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "parallel_fetch.log"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(str(LOG_FILE)),
-    ],
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(str(LOG_FILE))],
 )
 logger = logging.getLogger(__name__)
 
+def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
+    """v3.1 標準化日誌寫入"""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO fetch_log (
+                    run_ts, table_name, stock_id, status, rows_inserted, 
+                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
+                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"無法寫入 fetch_log: {e}")
 
 # ─────────────────────────────────────────────
 # 子任務執行
 # ─────────────────────────────────────────────
 def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
-    """
-    執行單一 fetcher。回傳 (script_path, success, returncode, duration, stderr_tail)。
-    """
+    """執行單一 fetcher。回傳 (script_path, success, returncode, duration, stderr_tail)"""
     if not os.path.exists(script_path):
         return script_path, False, -127, 0.0, f"找不到檔案: {script_path}"
 
@@ -139,12 +132,8 @@ def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
     try:
         proc = subprocess.run(
             [VENV_PYTHON, script_path],
-            env=env,
-            check=False,
-            timeout=MAX_SCRIPT_TIMEOUT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            env=env, check=False, timeout=MAX_SCRIPT_TIMEOUT,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         rc = proc.returncode
         success = rc == 0
@@ -161,66 +150,49 @@ def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
     duration = time.monotonic() - start
     return script_path, success, rc, duration, stderr_tail
 
-
-def _record_run_result(
-    script_path: str, success: bool, rc: int, duration: float,
-    stderr_tail: str, flog: "FailureLogger | None",
-) -> None:
-    """寫入 fetch_log + FailureLogger（雙通道，皆 graceful fallback）。"""
+def _record_run_result(script_path: str, success: bool, rc: int, duration: float, stderr_tail: str, flog: FailureLogger | None) -> None:
+    """記錄執行結果至日誌與資料庫"""
     script_name = Path(script_path).name
+    duration_ms = int(duration * 1000)
+    
     if success:
         logger.info(f"✅ 完成: {script_name} ({duration:.1f}s)")
     else:
         logger.error(f"❌ 失敗: {script_name} ({duration:.1f}s) rc={rc}")
-        if stderr_tail:
-            logger.error(f"   stderr_tail: {stderr_tail}")
+        if stderr_tail: logger.error(f"   stderr_tail: {stderr_tail}")
 
-    # fetch_log
+    # 寫入 fetch_log
+    conn = get_db_conn()
     try:
-        conn = get_db_conn()
-        try:
-            log_fetch_result(
-                conn, script_name, "SYSTEM",
-                date.today().isoformat(), date.today().isoformat(),
-                0, "SUCCESS" if success else "FAILED",
-                None if success else f"rc={rc}: {stderr_tail[:300]}",
-            )
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning(f"無法寫入 fetch_log: {e}")
+        _write_fetch_log(
+            conn, script_name, "SYSTEM", 
+            "success" if success else "failed",
+            duration_ms=duration_ms, 
+            error_message=None if success else f"rc={rc}: {stderr_tail[:300]}"
+        )
+    finally:
+        conn.close()
 
-    # FailureLogger
+    # 寫入 FailureLogger
     if not success and flog is not None:
-        try:
-            flog.record(
-                script=script_name, returncode=rc,
-                duration=round(duration, 2), error=stderr_tail or "",
-            )
-        except Exception:
-            pass
-
+        try: flog.record(script=script_name, returncode=rc, duration=round(duration, 2), error=stderr_tail or "")
+        except Exception: pass
 
 # ─────────────────────────────────────────────
 # 主流程
 # ─────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="並行資料抓取管線 v3.0")
-    parser.add_argument("--workers", type=int, default=DEFAULT_MAX_WORKERS,
-                        help=f"並行 worker 數（預設 {DEFAULT_MAX_WORKERS}）")
-    parser.add_argument("--phase", type=str, default="all",
-                        choices=["all", "0", "1", "2", "1+2"],
-                        help="執行哪個 phase")
-    parser.add_argument("--abort-on-low-quota", action="store_true",
-                        help=f"配額剩餘 < {API_QUOTA_MIN} 時直接中止")
+    parser = argparse.ArgumentParser(description="並行資料抓取管線 (v3.1 — 監控整合標準版)")
+    parser.add_argument("--workers", type=int, default=DEFAULT_MAX_WORKERS, help=f"並行 worker 數 (預設 {DEFAULT_MAX_WORKERS})")
+    parser.add_argument("--phase", type=str, default="all", choices=["all", "0", "1", "2", "1+2"], help="執行哪個 phase")
+    parser.add_argument("--abort-on-low-quota", action="store_true", help=f"配額剩餘 < {API_QUOTA_MIN} 時中止")
     args = parser.parse_args()
 
-    if _CORE_OK:
-        ensure_dirs_exist()
+    if _CORE_OK: ensure_dirs_exist()
 
     total_start = time.monotonic()
     logger.info("=" * 60)
-    logger.info("    並行資料抓取管線 v3.0 啟動")
+    logger.info("    並行資料抓取管線 v3.1 啟動")
     logger.info("=" * 60)
 
     # ── 配額預查 ──
@@ -228,24 +200,22 @@ def main():
         used, limit = check_api_quota()
         remaining = limit - used if used >= 0 else -1
         logger.info(f"API 配額：已用 {used}/{limit}，剩餘 {remaining}")
-        if remaining >= 0 and remaining < API_QUOTA_MIN:
+        if 0 <= remaining < API_QUOTA_MIN:
             msg = f"配額剩餘 {remaining} < {API_QUOTA_MIN} 警戒值"
             if args.abort_on_low_quota:
-                logger.error(f"❌ {msg}，--abort-on-low-quota 啟用，中止執行")
+                logger.error(f"❌ {msg}，中止執行")
                 return
             else:
-                logger.warning(f"⚠️ {msg}（仍會繼續執行）")
+                logger.warning(f"⚠️ {msg}")
     except Exception as e:
         logger.warning(f"配額檢查跳過：{e}")
 
-    flog: FailureLogger | None = None
+    flog = None
     if _CORE_OK:
-        try:
-            flog = FailureLogger("parallel_fetch")
-        except Exception:
-            flog = None
+        try: flog = FailureLogger("parallel_fetch")
+        except Exception: pass
 
-    results: list[tuple[str, bool, int, float, str]] = []
+    results = []
 
     # ── Phase 0：序列 ──
     if args.phase in ("all", "0"):
@@ -255,20 +225,13 @@ def main():
             results.append(res)
             _record_run_result(*res, flog=flog)
 
-    # ── Phase 1+2：併發（imap_unordered 串流）──
-    parallel_targets: list[str] = []
-    if args.phase in ("all", "1", "1+2"):
-        parallel_targets += PHASE_1
-    if args.phase in ("all", "2", "1+2"):
-        parallel_targets += PHASE_2
+    # ── Phase 1+2：併發 ──
+    parallel_targets = []
+    if args.phase in ("all", "1", "1+2"): parallel_targets += PHASE_1
+    if args.phase in ("all", "2", "1+2"): parallel_targets += PHASE_2
 
     if parallel_targets:
-        logger.info(
-            f"\n[Hyper-Fetch] 並行執行 {len(parallel_targets)} 支腳本"
-            f"（workers={args.workers}, mode=imap_unordered 串流）"
-        )
-        # multiprocessing.Pool.imap_unordered：worker 完成一個才送下一個 chunk，
-        # 不會像 ProcessPoolExecutor 一次將所有 future 列舉到記憶體
+        logger.info(f"\n[Hyper-Fetch] 並行執行 {len(parallel_targets)} 支腳本 (workers={args.workers})")
         pool = mp.Pool(processes=max(1, args.workers))
         try:
             for res in pool.imap_unordered(run_script, parallel_targets):
@@ -276,7 +239,7 @@ def main():
                 _record_run_result(*res, flog=flog)
             pool.close()
         except KeyboardInterrupt:
-            logger.warning("收到 KeyboardInterrupt，正在優雅關閉 worker pool …")
+            logger.warning("收到 KeyboardInterrupt，關閉中...")
             pool.terminate()
             raise
         finally:
@@ -292,33 +255,21 @@ def main():
     logger.info(f"總耗時: {total_duration / 60:.2f} 分鐘")
     logger.info("=" * 60)
 
-    # 失敗清單
     if failed:
         logger.info("失敗腳本：")
         for path, ok, rc, dur, err in results:
-            if not ok:
-                logger.info(f"  ❌ {Path(path).name}  rc={rc}  ({dur:.1f}s)  {err[:200]}")
+            if not ok: logger.info(f"  ❌ {Path(path).name}  rc={rc}  ({dur:.1f}s)  {err[:200]}")
 
-    # 最慢前 5
     slowest = sorted(results, key=lambda x: -x[3])[:5]
     if slowest:
         logger.info("最慢 5 支腳本：")
         for path, ok, rc, dur, _ in slowest:
-            mark = "✅" if ok else "❌"
-            logger.info(f"  {mark} {Path(path).name:<40s} {dur:7.1f}s")
+            logger.info(f"  {'✅' if ok else '❌'} {Path(path).name:<40s} {dur:7.1f}s")
 
-    if flog is not None:
-        flog.summary()
-
-    # FinMind 請求統計（v3.0）— 父進程通常沒呼叫 finmind_get，這裡會是空表，
-    # 但保留以利人工模式直接調用本檔的場景
+    if flog: flog.summary()
     if _CORE_OK:
-        try:
-            stats = get_request_stats()
-            stats.summary()
-        except Exception:
-            pass
-
+        try: get_request_stats().summary()
+        except Exception: pass
 
 if __name__ == "__main__":
     main()
