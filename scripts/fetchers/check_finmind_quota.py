@@ -16,8 +16,8 @@ def check_account_status():
         print(json.dumps(data, indent=2, ensure_ascii=False))
         
         # 檢查配額
-        api_count = data.get("api_count", 0)
-        api_limit = data.get("api_limit", 6000)
+        api_count = data.get("user_count", 0)
+        api_limit = data.get("api_request_limit", 6000)
         print(f"\nAPI Usage: {api_count} / {api_limit}")
         if api_count >= api_limit:
             print("⚠️ 配額已耗盡！")
