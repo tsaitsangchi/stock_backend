@@ -13,16 +13,34 @@ for sub in ("", "core", "fetchers"):
         sys.path.insert(0, sp)
 
 """
-fetch_chip_data.py v3.0 — 籌碼面核心資料（逐支逐日 commit 完整性版）
+fetch_chip_data.py — 籌碼面核心資料（v3.1 fetch_log 整合版）
 ================================================================================
-v3.0 重大改進：
-  ★ 導入 core v3.0：全面使用 FailureLogger、safe_commit_rows 與原子寫入。
-  ★ 逐支逐日 commit： institutional_investors、margin_purchase、shareholding 
-     全數採用最細粒度 (sid, date) 的 commit 策略。
-  ★ 統計與斷路器：整合 finmind_client v3.0 的請求報表與 CircuitBreaker。
+v3.1 改進：
+  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
+  · 效能追蹤：記錄每支股票的 API 請求與寫入耗時（duration_ms）。
+  · 支援 --retry-failed N 與 --gap-fill N 模式，實現智慧補抓。
+
+v3.0 既有：
+  · 導入 core v3.0：全面使用 FailureLogger、safe_commit_rows 與原子寫入。
+  · 逐支逐日 commit：全數採用最細粒度 (sid, date) 的 commit 策略。
+
+執行（常規）：
+    python fetch_chip_data.py
+    python fetch_chip_data.py --tables institutional_investors_buy_sell shareholding
+    python fetch_chip_data.py --stock-id 2330 --force
+    python fetch_chip_data.py --stock-id 2330 --tables institutional_investors_buy_sell margin_purchase_short_sale shareholding --force
+    python fetch_chip_data.py --stock-id 2330,2454 --tables margin_purchase_short_sale --force
+
+執行（模式切換）：
+    # 重試最近 7 天失敗的組合
+    python fetch_chip_data.py --retry-failed 7
+
+    # 補抓最近 30 天無成功紀錄的資料
+    python fetch_chip_data.py --gap-fill 30
 """
 
 import argparse
+import time
 from datetime import date
 from core.path_setup import ensure_scripts_on_path, get_outputs_dir, ensure_dirs_exist
 ensure_scripts_on_path(__file__)
@@ -59,6 +77,32 @@ DATASET_START_DATES = {
     "shareholding":                     "2004-02-01",
 }
 DEFAULT_END = date.today().strftime("%Y-%m-%d")
+
+_CLI_ARGS_STR = " ".join(sys.argv)
+
+def _write_fetch_log(conn, **kwargs):
+    """寫入 fetch_log，失敗不影響主流程。"""
+    try:
+        with conn.cursor() as cur:
+            sql = """
+            INSERT INTO fetch_log (
+                run_ts, table_name, stock_id, fetch_mode,
+                fetch_date_from, fetch_date_to,
+                rows_inserted, rows_updated, duration_ms,
+                status, error_message, cli_args
+            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+            """
+            cur.execute(sql, (
+                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
+                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
+                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
+                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
+            ))
+        conn.commit()
+    except Exception as e:
+        try: conn.rollback()
+        except: pass
+        logger.debug(f"fetch_log 寫入失敗：{e}")
 
 # ──────────────────────────────────────────────
 # DDL & SQL
@@ -188,11 +232,17 @@ def fetch_per_stock_task(
     for i, sid in enumerate(stock_ids, 1):
         actual_start = resolve_start_cached(sid, latest_dates, start_date, DATASET_START_DATES[table_name], force)
         if not actual_start:
+            _write_fetch_log(conn, table_name=table_name, stock_id=sid, status="skipped", error_message="up_to_date")
             skipped += 1; continue
 
+        t0 = time.time()
         try:
             data = finmind_get(dataset_name, {"data_id": sid, "start_date": actual_start, "end_date": end_date})
-            if not data: continue
+            dur = int((time.time() - t0) * 1000)
+            if not data:
+                _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
+                                 fetch_date_to=end_date, rows_inserted=0, duration_ms=dur, status="no_new_data")
+                continue
             
             rows = map_rows_safe(mapper, data, label=f"{table_name}/{sid}")
             
@@ -204,9 +254,15 @@ def fetch_per_stock_task(
 
             # ⭐ 逐支逐日 Commit ⭐
             results = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table_name, failure_logger=flog)
-            total_rows += sum(results.values())
+            n = sum(results.values())
+            total_rows += n
+            _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
+                             fetch_date_to=end_date, rows_inserted=n, duration_ms=dur, status="success")
         except Exception as e:
+            dur = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e))
+            _write_fetch_log(conn, table_name=table_name, stock_id=sid, fetch_date_from=actual_start, 
+                             fetch_date_to=end_date, rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e))
 
         if i % 100 == 0:
             logger.info(f"  [{table_name}] 進度：{i}/{len(stock_ids)}，寫入 {total_rows} 筆")
