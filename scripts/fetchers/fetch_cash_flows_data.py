@@ -28,6 +28,7 @@ v3.0 既有：
     python fetch_cash_flows_data.py
     python fetch_cash_flows_data.py --tables cash_flows_statement dividend_result
     python fetch_cash_flows_data.py --stock-id 2330 --force
+    python fetch_cash_flows_data.py --stock-id 2330 --tables cash_flows_statement dividend_result --force
     python fetch_cash_flows_data.py --stock-id 2330,2454 --tables cash_flows_statement --force
 
 執行（模式切換）：
