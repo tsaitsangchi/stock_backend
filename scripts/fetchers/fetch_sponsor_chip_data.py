@@ -28,6 +28,7 @@ v3.1 重大改進：
 執行範例（指定標的）：
     python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --tables holding_shares_per
     python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330,2317 --force
+    python scripts/fetchers/fetch_sponsor_chip_data.py --stock-id 2330 --force --tables all
 
 執行範例（期貨）：
     python scripts/fetchers/fetch_sponsor_chip_data.py --tables futures_large_oi
