@@ -17,7 +17,7 @@ v2.2 改進：
 
 執行：
     python fetch_advanced_chip_data.py
-    python fetch_advanced_chip_data.py --tables securities_lending daily_short_balance
+    python fetch_advanced_chip_data.py --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension
     python fetch_advanced_chip_data.py --stock-id 2330 --force
 """
 
