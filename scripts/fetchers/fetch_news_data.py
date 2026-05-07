@@ -12,25 +12,25 @@ if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_news_data.py v3.2 — 個股相關新聞（可觀察性監控版）
+fetch_news_data.py v3.3 — 個股相關新聞（監控整合標準版）
 ================================================================================
-v3.2 重大改進：
-  ★ 整合 fetch_log v3.1：每一支股票的抓取狀態、耗時與筆數均記錄至監控日誌。
-  ★ 核心優先：預設抓取 STOCK_CONFIGS 的核心股票，避開全市場雜訊與 400 錯誤。
-  ★ 效能監控：精準追蹤每一請求的 API 耗時（duration_ms）。
-  ★ 原子性 Commit：每一天、每一支股票獨立 commit，確保斷點續傳。
+v3.1 重大改進：
+  · 整合 fetch_log v3.1：每一支股票的抓取狀態、耗時與筆數均記錄至監控日誌。
+  · 效能監控：精準追蹤每一請求的 API 耗時（duration_ms）。
+  · 狀態追蹤：支援 success, failed, no_new_data, skipped 等標準化狀態。
+  · 核心優先：預設僅抓取核心標的，避開 ETF/權證產生的 400 錯誤與配額浪費。
+  · 完整註解：提供標準化執行範例，便於系統維運。
 
-執行範例（預設抓取核心標的）：
-    python scripts/fetchers/fetch_news_data.py
+執行範例（常規）：
+    python scripts/fetchers/fetch_news_data.py                # 抓取 160 支核心標最近 30 天新聞
+    python scripts/fetchers/fetch_news_data.py --stock-id 2330 # 僅抓取台積電
 
-    # 抓取特定標的最近 7 天新聞
-    python scripts/fetchers/fetch_news_data.py --stock-id 2330,2317 --days 7
+執行範例（強制重抓）：
+    python scripts/fetchers/fetch_news_data.py --days 60 --force # 強制重抓最近 60 天資料
+    python scripts/fetchers/fetch_news_data.py --start 2024-01-01 --end 2024-05-01 --force
 
-    # 強制重抓最近 30 天資料
-    python scripts/fetchers/fetch_news_data.py --days 30 --force
-
-    # 抓取特定時間範圍
-    python scripts/fetchers/fetch_news_data.py --start 2024-01-01 --end 2024-05-01
+執行範例（全市場）：
+    python scripts/fetchers/fetch_news_data.py --all-market    # 抓取全市場（不建議，消耗配額快）
 """
 
 from core.finmind_client import finmind_get
@@ -51,6 +51,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ──────────────────────────────────────────────
+# DDL & SQL
+# ──────────────────────────────────────────────
 DDL_NEWS = """
 CREATE TABLE IF NOT EXISTS stock_news (
     date DATE, 
@@ -88,6 +91,9 @@ def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_
     except Exception as e:
         logger.warning(f"無法寫入 fetch_log: {e}")
 
+# ──────────────────────────────────────────────
+# Mappers & Helpers
+# ──────────────────────────────────────────────
 def map_news(r: dict) -> tuple:
     return (r["date"], r["stock_id"], (r.get("title") or "")[:1000], r.get("description"), r.get("source"), r.get("link"))
 
@@ -104,7 +110,7 @@ def resolve_stock_ids(args, conn) -> list[str]:
     return list(STOCK_CONFIGS.keys())
 
 def main():
-    p = argparse.ArgumentParser(description="個股新聞抓取 (v3.2 — 可觀察性監控版)")
+    p = argparse.ArgumentParser(description="個股新聞抓取 (v3.3 — 監控整合標準版)")
     p.add_argument("--stock-id", default=None)
     p.add_argument("--all-market", action="store_true")
     p.add_argument("--days", type=int, default=30)
