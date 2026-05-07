@@ -21,6 +21,7 @@ v3.1 改進：
   · 支援 --retry-failed N 與 --gap-fill N 模式，實現智慧補抓。
 
 v3.0 既有：
+  · 支援 2 個資料表：cash_flows_statement, dividend_result。
   · 導入 commit_per_stock_per_day：每一對 (sid, date) 獨立原子寫入。
   · 全面整合 FailureLogger：精準追蹤健康度。
 
