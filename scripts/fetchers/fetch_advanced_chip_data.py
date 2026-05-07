@@ -20,6 +20,7 @@ v2.2 改進：
     python fetch_advanced_chip_data.py --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension
     python fetch_advanced_chip_data.py --stock-id 2330 --force
     python fetch_advanced_chip_data.py --stock-id 2330 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
+    python fetch_advanced_chip_data.py --stock-id 2330,2454 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
 """
 
 import argparse
