@@ -93,10 +93,18 @@ LOG_DIR = get_logs_dir() if _CORE_OK else (BASE_DIR / "outputs" / "logs")
 if not _CORE_OK: LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "parallel_fetch.log"
 
+_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+try:
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _handlers.append(logging.FileHandler(str(LOG_FILE)))
+except (PermissionError, OSError) as _log_err:
+    # 無法寫入日誌檔案時，降級為僅輸出至終端（不中斷程式）
+    logging.getLogger(__name__).warning(f"無法寫入日誌檔：{_log_err}，改為僅輸出至終端")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(str(LOG_FILE))],
+    handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
 
