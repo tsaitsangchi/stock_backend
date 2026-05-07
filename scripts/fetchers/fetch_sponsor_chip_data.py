@@ -86,12 +86,10 @@ def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_
 # DDL & SQL
 # ─────────────────────────────────────────────
 DDL_HOLDING = """CREATE TABLE IF NOT EXISTS holding_shares_per (date DATE, stock_id VARCHAR(50), level VARCHAR(50), people BIGINT, percent NUMERIC(10,4), unit VARCHAR(100), PRIMARY KEY (date, stock_id, level));"""
-DDL_BROKER = """CREATE TABLE IF NOT EXISTS broker_trades (date DATE, stock_id VARCHAR(50), broker_id VARCHAR(50), broker_name VARCHAR(100), buy BIGINT, sell BIGINT, PRIMARY KEY (date, stock_id, broker_id));"""
 DDL_EIGHT_BANKS = """CREATE TABLE IF NOT EXISTS eight_banks_buy_sell (date DATE, stock_id VARCHAR(50), buy BIGINT, sell BIGINT, PRIMARY KEY (date, stock_id));"""
 DDL_FUTURES_LARGE_OI = """CREATE TABLE IF NOT EXISTS futures_large_oi (date DATE, contract_code VARCHAR(20), name VARCHAR(50), long_position BIGINT, long_position_over50 BIGINT, short_position BIGINT, short_position_over50 BIGINT, net_position BIGINT, market_total_oi BIGINT, PRIMARY KEY (date, contract_code, name));"""
 
 UPSERT_HOLDING = """INSERT INTO holding_shares_per (date, stock_id, level, people, percent, unit) VALUES %s ON CONFLICT (date, stock_id, level) DO UPDATE SET people = EXCLUDED.people, percent = EXCLUDED.percent;"""
-UPSERT_BROKER = """INSERT INTO broker_trades (date, stock_id, broker_id, broker_name, buy, sell) VALUES %s ON CONFLICT (date, stock_id, broker_id) DO UPDATE SET buy = EXCLUDED.buy, sell = EXCLUDED.sell;"""
 UPSERT_EIGHT_BANKS = """INSERT INTO eight_banks_buy_sell (date, stock_id, buy, sell) VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET buy = EXCLUDED.buy, sell = EXCLUDED.sell;"""
 UPSERT_FUTURES_LARGE_OI = """INSERT INTO futures_large_oi (date, contract_code, name, long_position, long_position_over50, short_position, short_position_over50, net_position, market_total_oi) VALUES %s ON CONFLICT (date, contract_code, name) DO UPDATE SET net_position = EXCLUDED.net_position;"""
 
@@ -101,9 +99,6 @@ UPSERT_FUTURES_LARGE_OI = """INSERT INTO futures_large_oi (date, contract_code, 
 def map_holding(r: dict) -> tuple:
     lv = str(r.get("HoldingSharesLevel", ""))
     return (r["date"], r["stock_id"], lv, safe_int(r.get("people")), safe_float(r.get("percent")), r.get("unit", lv))
-
-def map_broker(r: dict) -> tuple:
-    return (r["date"], r["stock_id"], str(r.get("securities_trader_id", "")), r.get("securities_trader", ""), safe_int(r.get("buy")), safe_int(r.get("sell")))
 
 def map_eight_banks(r: dict) -> tuple:
     return (r["date"], r["stock_id"], safe_int(r.get("buy")), safe_int(r.get("sell")))
@@ -145,54 +140,6 @@ def fetch_holding(conn, stock_ids, start, end, delay, force):
             _write_fetch_log(conn, "holding_shares_per", sid, "failed", fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e))
             
     logger.info(f"  [holding_shares_per] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-def fetch_broker(conn, stock_ids, start, end, delay, force):
-    logger.info("=== [broker_trades] 開始 ===")
-    ensure_ddl(conn, DDL_BROKER)
-    latest = get_all_safe_starts(conn, "broker_trades")
-    flog = FailureLogger("broker_trades", db_conn=conn)
-    total_rows = 0
-    for sid in stock_ids:
-        s_raw = resolve_start_cached(sid, latest, start, DATASET_START["holding_shares_per"], force)
-        if not s_raw:
-            _write_fetch_log(conn, "broker_trades", sid, "skipped", error_message="up_to_date")
-            continue
-            
-        s_dt = datetime.strptime(s_raw, "%Y-%m-%d").date()
-        e_dt = datetime.strptime(end, "%Y-%m-%d").date()
-        
-        while s_dt <= e_dt:
-            c_e = min(s_dt + timedelta(days=29), e_dt)
-            f_from = s_dt.strftime("%Y-%m-%d")
-            f_to = c_e.strftime("%Y-%m-%d")
-            
-            start_time = time.time()
-            try:
-                data = finmind_get("TaiwanStockTradingDailyReport", {"data_id": sid, "start_date": f_from, "end_date": f_to}, delay)
-                duration_ms = int((time.time() - start_time) * 1000)
-                if data:
-                    agg = defaultdict(lambda: [0, 0, ""])
-                    for r in data:
-                        k = (r["date"], sid, str(r.get("securities_trader_id", "")))
-                        agg[k][0] += safe_int(r.get("buy"))
-                        agg[k][1] += safe_int(r.get("sell"))
-                        agg[k][2] = r.get("securities_trader", "")
-                    rows = [(k[0], k[1], k[2], v[2], v[0], v[1]) for k, v in agg.items()]
-                    rows = dedup_rows(rows, (0, 1, 2))
-                    res = commit_per_stock_per_day(conn, UPSERT_BROKER, rows, "(%s, %s, %s, %s, %s, %s)", label_prefix="broker", failure_logger=flog)
-                    n = sum(res.values())
-                    total_rows += n
-                    _write_fetch_log(conn, "broker_trades", sid, "success", rows_inserted=n, fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms)
-                else:
-                    _write_fetch_log(conn, "broker_trades", sid, "no_new_data", fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms)
-            except Exception as e:
-                duration_ms = int((time.time() - start_time) * 1000)
-                flog.record(stock_id=sid, error=str(e))
-                _write_fetch_log(conn, "broker_trades", sid, "failed", fetch_date_from=f_from, fetch_date_to=f_to, duration_ms=duration_ms, error_message=str(e))
-            s_dt = c_e + timedelta(days=1)
-            
-    logger.info(f"  [broker_trades] 總共寫入 {total_rows} 筆")
     flog.summary()
 
 EIGHT_BANKS_CHUNK_DAYS = 30 
@@ -285,7 +232,7 @@ def fetch_futures_oi(conn, start, end, delay, force):
 
 def main():
     p = argparse.ArgumentParser(description="進階籌碼資料抓取 (v3.1 — 監控整合標準版)")
-    p.add_argument("--tables", nargs="+", choices=["holding_shares_per", "broker_trades", "eight_banks", "futures_large_oi", "all"], default=["all"])
+    p.add_argument("--tables", nargs="+", choices=["holding_shares_per", "eight_banks", "futures_large_oi", "all"], default=["all"])
     p.add_argument("--stock-id", default=None)
     p.add_argument("--start", default=None)
     p.add_argument("--end", default=DEFAULT_END)
@@ -299,7 +246,6 @@ def main():
         from core.db_utils import get_db_stock_ids
         stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn)
         if "holding_shares_per" in tables: fetch_holding(conn, stock_ids, args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
-        if "broker_trades" in tables: fetch_broker(conn, [args.stock_id] if args.stock_id else ["2330"], args.start or DATASET_START["holding_shares_per"], args.end, args.delay, args.force)
         if "eight_banks" in tables: fetch_eight_banks(conn, stock_ids, args.start, args.end, args.delay, args.force)
         if "futures_large_oi" in tables: fetch_futures_oi(conn, args.start or DATASET_START["futures_large_oi"], args.end, args.delay, args.force)
     finally:
