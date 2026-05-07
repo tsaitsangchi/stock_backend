@@ -29,6 +29,7 @@ v3.0 既有：
     python fetch_fred_data.py
     python fetch_fred_data.py --ids T10Y2Y VIXCLS
     python fetch_fred_data.py --ids DGS10 --force
+    python fetch_fred_data.py --force
     python fetch_fred_data.py --start 2024-01-01 --force
 
 執行（模式切換）：
