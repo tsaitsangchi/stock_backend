@@ -11,15 +11,31 @@ if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 """
-fetch_cash_flows_data.py v3.1 — 現金流量表 + 除權息結果（v3.1 fetch_log 整合版）
+fetch_cash_flows_data.py — 現金流量表 + 除權息結果（v3.1 fetch_log 整合版）
 ================================================================================
 v3.1 改進：
-  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
-  · 支援 --retry-failed 與 --gap-fill 模式（比照 advanced_chip）。
+  · 整合 fetch_log：每次抓取操作（不論成功、失敗、跳過）皆會記錄，
+    作為 monitor.update_daily_status / 燈號判斷的依據。
+  · fetch_log 寫入採 best-effort 模式，失敗僅印 warning，不中斷主流程。
+  · 完整支援 v3.1 核心架構：FailureLogger + commit_per_stock_per_day。
+  · 支援 --retry-failed N 與 --gap-fill N 模式，實現智慧補抓。
 
 v3.0 既有：
   · 導入 commit_per_stock_per_day：每一對 (sid, date) 獨立原子寫入。
   · 全面整合 FailureLogger：精準追蹤健康度。
+
+執行（常規）：
+    python fetch_cash_flows_data.py
+    python fetch_cash_flows_data.py --tables cash_flows_statement dividend_result
+    python fetch_cash_flows_data.py --stock-id 2330 --force
+    python fetch_cash_flows_data.py --stock-id 2330,2454 --tables cash_flows_statement --force
+
+執行（模式切換）：
+    # 重試最近 7 天失敗的任務
+    python fetch_cash_flows_data.py --retry-failed 7
+
+    # 補抓最近 30 天無成功紀錄的任務
+    python fetch_cash_flows_data.py --gap-fill 30
 """
 
 from core.finmind_client import finmind_get
