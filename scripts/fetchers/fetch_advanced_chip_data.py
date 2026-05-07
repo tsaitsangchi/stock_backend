@@ -9,6 +9,8 @@ if str(_base_dir) not in sys.path:
 fetch_advanced_chip_data.py — 進階籌碼與融資融券資料（逐支 commit 完整性版）
 ================================================================================
 v2.2 改進：
+  · 支援 5 個資料表：total_margin_short, total_inst_investors, securities_lending,
+    daily_short_balance, margin_short_suspension。
   · safe_commit_rows()：每支股票 / 每組寫入後立即 commit，失敗 rollback。
   · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
   · 失敗清單寫入 outputs/{table}_failed_{date}.json。
