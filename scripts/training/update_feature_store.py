@@ -66,23 +66,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# v3.1 CLI args 全域儲存
-_CLI_ARGS_STR = " ".join(sys.argv[1:])
-
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
-    """v3.1 標準化日誌寫入"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 
 
 # ─────────────────────────────────────────────
@@ -239,7 +222,7 @@ def process_one_stock(
         raw = build_daily_frame(stock_id, start_date=fetch_start_date)
     except Exception as e:
         flog.record(stock_id=stock_id, stage="build_daily_frame", error=str(e))
-        return False, 0
+        return False, 0, 0
 
     if raw is None or raw.empty:
         logger.info(f"[{stock_id}] build_daily_frame 無資料，跳過")
@@ -363,20 +346,16 @@ def main():
                 ok, n, feat_cnt = process_one_stock(conn, stock_id, args.force, flog)
                 duration_ms = int((time.time() - _t_start) * 1000)
                 
-                # 寫入 v3.1 fetch_log (保留向後相容)
                 if ok:
                     status = "success" if n > 0 else "no_new_data"
-                    _write_fetch_log(conn, "daily_features", stock_id, status, rows_inserted=n, duration_ms=duration_ms)
                     write_feature_log(conn, stock_id, feat_cnt, n, 0, 0, duration_ms, status)
                 else:
-                    _write_fetch_log(conn, "daily_features", stock_id, "failed", duration_ms=duration_ms)
                     write_feature_log(conn, stock_id, feat_cnt, n, 0, 0, duration_ms, "failed")
 
             except Exception as e:
                 duration_ms = int((time.time() - _t_start) * 1000)
                 # 防禦性外層保護
                 flog.record(stock_id=stock_id, stage="outer", error=str(e))
-                _write_fetch_log(conn, "daily_features", stock_id, "failed", duration_ms=duration_ms, error_message=str(e))
                 write_feature_log(conn, stock_id, 0, 0, 0, 0, duration_ms, "failed", str(e))
                 ok, n = False, 0
 

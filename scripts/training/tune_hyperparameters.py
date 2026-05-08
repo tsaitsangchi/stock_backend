@@ -71,9 +71,6 @@ from feature_engineering import build_features
 
 logger = logging.getLogger(__name__)
 
-# v3.1 CLI args 全域儲存
-_CLI_ARGS_STR = " ".join(sys.argv[1:])
-
 # ─────────────────────────────────────────────
 # v3 因子守門（與 P0-5 / parallel_train 對齊）
 # ─────────────────────────────────────────────
