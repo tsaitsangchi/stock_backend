@@ -1,54 +1,19 @@
-from __future__ import annotations
 import sys
 import json
 import time
-from pathlib import Path
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
-"""
-fetch_advanced_chip_data.py — 進階籌碼與融資融券資料（v2.3 fetch_log 整合版）
-================================================================================
-v2.3 改進：
-  · 每次 fetch 操作（市場層級或個股層級）都寫入 fetch_log，
-    供 monitor.update_daily_status / data_integrity_audit / dashboard 取用。
-  · 新增 --retry-failed N：依 fetch_log 找近 N 天最後狀態為 failed 的
-    (table, stock_id) 對，只重抓這些。
-  · 新增 --gap-fill N：依 fetch_log 找近 N 天「沒有 success 紀錄」的
-    (table, stock_id) 對，只補這些。
-  · fetch_log 寫入是 best-effort，失敗不影響主流程（會印 warning）。
-  · cli_args 完整保存執行命令，便於追溯。
-
-v2.2 既有：
-  · 支援 5 個資料表：total_margin_short, total_inst_investors,
-    securities_lending, daily_short_balance, margin_short_suspension。
-  · safe_commit_rows()：每支股票 / 每組寫入後立即 commit，失敗 rollback。
-  · 主迴圈以 try/except 包單支，單支失敗不影響其他股票。
-  · 失敗清單寫入 outputs/{table}_failed_{date}.json。
-
-執行（沿用原版）：
-    python fetch_advanced_chip_data.py
-    python fetch_advanced_chip_data.py --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension
-    python fetch_advanced_chip_data.py --stock-id 2330 --force
-    python fetch_advanced_chip_data.py --stock-id 2330 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
-    python fetch_advanced_chip_data.py --stock-id 2330,2454 --tables total_margin_short total_inst_investors securities_lending daily_short_balance margin_short_suspension --force
-
-v2.3 新增執行模式：
-    # 重試最近 7 天最後狀態仍為 failed 的所有 (table, stock) 組合
-    python fetch_advanced_chip_data.py --retry-failed 7
-
-    # 補抓最近 30 天沒有任何 success 紀錄的 (table, stock) 組合
-    python fetch_advanced_chip_data.py --gap-fill 30
-
-    # 只針對特定表做 retry/gap-fill
-    python fetch_advanced_chip_data.py --retry-failed 7 --tables securities_lending daily_short_balance
-    python fetch_advanced_chip_data.py --gap-fill 14 --tables securities_lending
-"""
-
 import argparse
 import logging
+from pathlib import Path
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+
+# ── 啟動引導 (Bootstrap)：確保能找到 scripts/core ──
+_scripts_dir = Path(__file__).resolve().parent.parent  # 指向 scripts/
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
+
+from core.path_setup import ensure_scripts_on_path, get_outputs_dir
+ensure_scripts_on_path(__file__)
 
 from config import DB_CONFIG  # noqa: F401
 from core.finmind_client import finmind_get, BatchNotSupportedError
@@ -58,10 +23,14 @@ from core.db_utils import (
     bulk_upsert,
     safe_float,
     safe_int,
+    get_core_stocks_from_db,
     get_db_stock_ids,
     get_all_safe_starts,
     get_market_safe_start,
     resolve_start_cached,
+    log_fetch_result,
+    safe_commit_rows,
+    FailureLogger
 )
 
 logging.basicConfig(
@@ -71,8 +40,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OUTPUT_DIR = _base_dir / "outputs"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR = get_outputs_dir()
 
 DATASET_START = {
     "total_margin_short":      "2001-01-01",
@@ -89,44 +57,6 @@ PER_STOCK_TABLES = set(DATASET_START.keys()) - MARKET_LEVEL_TABLES
 
 # CLI 命令字串（給 fetch_log 紀錄）
 _CLI_ARGS_STR = " ".join(sys.argv)
-
-# ─────────────────────────────────────────────
-# DDL：fetch_log（與 monitor/init_monitoring_schema.py 一致）
-# 若該腳本未先執行，這裡也會 idempotent 建好
-# ─────────────────────────────────────────────
-DDL_FETCH_LOG = """
-CREATE TABLE IF NOT EXISTS fetch_log (
-    id               BIGSERIAL    PRIMARY KEY,
-    run_ts           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    table_name       VARCHAR(64)  NOT NULL,
-    stock_id         VARCHAR(20),
-    fetch_mode       VARCHAR(16),
-    fetch_date_from  DATE,
-    fetch_date_to    DATE,
-    rows_inserted    INTEGER,
-    rows_updated     INTEGER,
-    duration_ms      INTEGER,
-    status           VARCHAR(16)  NOT NULL,
-    error_message    TEXT,
-    api_quota_left   INTEGER,
-    cli_args         TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_table_ts  ON fetch_log(table_name, run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_stock_ts  ON fetch_log(stock_id,   run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_status_ts ON fetch_log(status,     run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup    ON fetch_log(table_name, stock_id, run_ts DESC);
-"""
-
-INSERT_FETCH_LOG = """
-INSERT INTO fetch_log (
-    run_ts, table_name, stock_id, fetch_mode,
-    fetch_date_from, fetch_date_to,
-    rows_inserted, rows_updated, duration_ms,
-    status, error_message, api_quota_left, cli_args
-) VALUES (
-    NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-);
-"""
 
 # ─────────────────────────────────────────────
 # 業務 DDL（沿用原版）
@@ -274,86 +204,163 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 """
 
 
-# ═════════════════════════════════════════════
-# fetch_log 寫入工具（best-effort，失敗不影響主流程）
-# ═════════════════════════════════════════════
-def _ensure_fetch_log_table(conn) -> None:
-    """確保 fetch_log 表存在（idempotent）。"""
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗（將跳過所有日誌寫入）：{e}")
-
-
-def _write_fetch_log(
-    conn,
-    *,
-    table_name: str,
-    stock_id: str | None,
-    fetch_mode: str,
-    fetch_date_from: str | None,
-    fetch_date_to: str | None,
-    rows_inserted: int,
-    duration_ms: int,
-    status: str,
-    error_message: str | None = None,
-    api_quota_left: int | None = None,
-) -> None:
-    """寫一筆到 fetch_log。任何失敗都吞掉並 warn，不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(INSERT_FETCH_LOG, (
-                table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, 0, duration_ms,
-                status, error_message, api_quota_left, _CLI_ARGS_STR,
-            ))
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.warning(f"[fetch_log] 寫入失敗（不影響主流程）：{e}")
-
-
 # ─────────────────────────────────────────────
-# 逐支 commit 工具函式（沿用原版）
+# 抓取邏輯（整合 db_utils 標準日誌與 FailureLogger）
 # ─────────────────────────────────────────────
-def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
-                      label: str = "") -> int:
-    if not rows:
-        return 0
+def fetch_market_dataset(
+    conn, dataset: str, table: str, ddl: str,
+    upsert_sql: str, template: str, mapper, dataset_key: str,
+    start: str, end: str, delay: float, force: bool,
+):
+    ensure_ddl(conn, ddl)
+    s = start
+    if not force:
+        safe_s = get_market_safe_start(conn, table)
+        if safe_s:
+            if safe_s > end:
+                logger.info(f"[{table}] 已最新，跳過")
+                log_fetch_result(conn, table, "MARKET", None, None, 0, "skipped")
+                return
+            s = max(safe_s, DATASET_START[dataset_key])
+    
+    s = max(s, DATASET_START[dataset_key])
+    logger.info(f"[{table}] 抓取 {s} ~ {end}")
+
+    t0 = time.time()
     try:
-        n = bulk_upsert(conn, upsert_sql, rows, template)
-        conn.commit()
-        return n
+        data = finmind_get(dataset, {"start_date": s, "end_date": end}, delay, raise_on_error=True)
     except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
-        return 0
-
-
-def dump_failures(table: str, failures: list) -> None:
-    if not failures:
+        logger.error(f"[{table}] API 失敗：{e}")
+        log_fetch_result(conn, table, "MARKET", s, end, 0, "failed", str(e))
         return
-    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
-    try:
-        out.write_text(
-            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
-            encoding="utf-8",
-        )
-        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 支）")
-    except Exception as e:
-        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
+
+    if not data:
+        logger.info(f"[{table}] 無新資料")
+        log_fetch_result(conn, table, "MARKET", s, end, 0, "no_new_data")
+        return
+
+    # 去重
+    rows_map = {}
+    for r in data:
+        try:
+            mapped = mapper(r)
+            pk = mapped[:2] # (date, name)
+            rows_map[pk] = mapped
+        except Exception as e:
+            logger.warning(f"[{table}] mapper 異常筆，跳過：{e}")
+
+    rows = list(rows_map.values())
+    n = safe_commit_rows(conn, upsert_sql, rows, template, label=table)
+    status = "success" if n > 0 else "failed"
+    log_fetch_result(conn, table, "MARKET", s, end, n, status)
+    logger.info(f"[{table}] 寫入 {n} 筆")
+
+
+def fetch_per_stock_dataset(
+    conn, dataset: str, table: str, ddl: str,
+    upsert_sql: str, template: str, mapper, dataset_key: str,
+    stock_ids: list[str], start: str, end: str,
+    delay: float, force: bool, use_batch: bool,
+    batch_threshold: int = 20, chunk_days: int = 90,
+    fetch_mode_override: str | None = None,
+):
+    """個股層資料：支援批次或逐支。每支股票寫入後立即 commit。"""
+    ensure_ddl(conn, ddl)
+    latest_dates = get_all_safe_starts(conn, table)
+    failure_logger = FailureLogger(table)
+
+    stock_starts: dict[str, str] = {}
+    for sid in stock_ids:
+        s = resolve_start_cached(sid, latest_dates, start, DATASET_START[dataset_key], force)
+        if s is None:
+            log_fetch_result(conn, table, sid, None, None, 0, "skipped")
+        else:
+            stock_starts[sid] = s
+
+    if not stock_starts:
+        logger.info(f"[{table}] 全部標的皆已最新")
+        return
+
+    # 按起始日分組，優化批次請求
+    groups: dict[str, list] = defaultdict(list)
+    for sid, s in stock_starts.items():
+        groups[s].append(sid)
+
+    total_rows = 0
+    batch_disabled = False
+    pk_len = 3 if table == "securities_lending" else 2
+
+    for group_start in sorted(groups.keys()):
+        sids = groups[group_start]
+        sids_set = set(sids)
+
+        # ── 批次模式 ──
+        if use_batch and len(sids) >= batch_threshold and not batch_disabled:
+            logger.info(f"[{table}] 啟動批次模式：{group_start} ~ {end} ({len(sids)} 支)")
+            try:
+                # 簡單分段抓取防止超長
+                seg_start = group_start
+                seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
+                all_data = []
+                while True:
+                    seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
+                    if seg_start_dt > seg_end_dt: break
+                    seg_end = min((seg_start_dt + timedelta(days=chunk_days-1)).strftime("%Y-%m-%d"), end)
+                    
+                    data = finmind_get(
+                        dataset, {"start_date": seg_start, "end_date": seg_end},
+                        delay, raise_on_error=True, raise_on_batch_400=True
+                    )
+                    all_data.extend([r for r in data if r.get("stock_id") in sids_set])
+                    
+                    seg_start = (datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                
+                # 分組寫入
+                rows_by_stock = defaultdict(list)
+                for r in all_data:
+                    try: rows_by_stock[r["stock_id"]].append(mapper(r))
+                    except: pass
+                
+                for sid in sids:
+                    s_rows = rows_by_stock.get(sid, [])
+                    if not s_rows:
+                        log_fetch_result(conn, table, sid, group_start, end, 0, "no_new_data")
+                        continue
+                    
+                    # 去重
+                    rows_map = {r[:pk_len]: r for r in s_rows}
+                    n = safe_commit_rows(conn, upsert_sql, list(rows_map.values()), template, label=f"{table}/{sid}")
+                    total_rows += n
+                    log_fetch_result(conn, table, sid, group_start, end, n, "success" if n > 0 else "failed")
+                continue
+
+            except BatchNotSupportedError:
+                logger.warning(f"[{table}] 不支援批次，切換至逐支模式")
+                batch_disabled = True
+            except Exception as e:
+                logger.error(f"[{table}] 批次抓取嚴重錯誤：{e}")
+                for sid in sids: log_fetch_result(conn, table, sid, group_start, end, 0, "failed", str(e))
+                continue
+
+        # ── 逐支模式 ──
+        for sid in sids:
+            try:
+                data = finmind_get(dataset, {"data_id": sid, "start_date": group_start, "end_date": end}, delay, raise_on_error=True)
+                if not data:
+                    log_fetch_result(conn, table, sid, group_start, end, 0, "no_new_data")
+                    continue
+                
+                rows_map = {mapper(r)[:pk_len]: mapper(r) for r in data if r}
+                n = safe_commit_rows(conn, upsert_sql, list(rows_map.values()), template, label=f"{table}/{sid}")
+                total_rows += n
+                log_fetch_result(conn, table, sid, group_start, end, n, "success" if n > 0 else "failed")
+            except Exception as e:
+                logger.error(f"[{table}/{sid}] 失敗：{e}")
+                failure_logger.record(sid, 0, str(e))
+                log_fetch_result(conn, table, sid, group_start, end, 0, "failed", str(e))
+
+    failure_logger.summary()
+    logger.info(f"[{table}] 總計寫入 {total_rows} 筆")
 
 
 # ─────────────────────────────────────────────
@@ -867,6 +874,9 @@ def _run_targeted(
 # ═════════════════════════════════════════════
 # main
 # ═════════════════════════════════════════════
+# ═════════════════════════════════════════════
+# main
+# ═════════════════════════════════════════════
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tables", nargs="+",
@@ -889,16 +899,21 @@ def main():
 
     conn = get_db_conn()
     try:
-        # 確保 fetch_log 表存在（best-effort）
-        _ensure_fetch_log_table(conn)
-
+        # 模式 A/B/C 判斷
         if args.stock_id:
             stock_ids = [s.strip() for s in args.stock_id.split(",")]
         else:
-            stock_ids = get_db_stock_ids(conn, types=("twse", "otc"))
+            # ⭐ DB 驅動：優先從 stocks 資料表抓取開啟 fetch_chip 的標的
+            core_stocks = get_core_stocks_from_db(conn, require_active=True)
+            if core_stocks:
+                stock_ids = [sid for sid, cfg in core_stocks.items() if cfg.get("fetch_chip")]
+                logger.info(f"從資料庫載入 {len(stock_ids)} 支核心籌碼標的")
+            else:
+                stock_ids = get_db_stock_ids(conn, types=("twse", "otc"))
+                logger.warning(f"stocks 表無資料，Fallback 使用全市場標的 ({len(stock_ids)} 支)")
 
         # ─────────────────────────────────────────
-        # 模式 A：retry-failed（依 fetch_log 反推）
+        # 模式 A：retry-failed
         # ─────────────────────────────────────────
         if args.retry_failed > 0:
             logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
@@ -910,7 +925,7 @@ def main():
             return
 
         # ─────────────────────────────────────────
-        # 模式 B：gap-fill（依 fetch_log 反推）
+        # 模式 B：gap-fill
         # ─────────────────────────────────────────
         if args.gap_fill > 0:
             logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
@@ -922,9 +937,9 @@ def main():
             return
 
         # ─────────────────────────────────────────
-        # 模式 C：常規（沿用原版邏輯）
+        # 模式 C：常規邏輯
         # ─────────────────────────────────────────
-        # 1. 市場層資料（不需 stock_id）
+        # 1. 市場層資料
         if "total_margin_short" in args.tables:
             fetch_market_dataset(
                 conn, "TaiwanStockTotalMarginPurchaseShortSale", "total_margin_short",
@@ -940,7 +955,7 @@ def main():
                 "total_inst_investors", args.start, args.end, args.delay, args.force,
             )
 
-        # 2. 個股層資料（Sponsor 批次最佳）
+        # 2. 個股層資料
         per_stock_configs = [
             ("securities_lending", "TaiwanStockSecuritiesLending", DDL_SBL,
              UPSERT_SBL, "(%s, %s, %s, %s, %s, %s, %s, %s)", map_sbl),

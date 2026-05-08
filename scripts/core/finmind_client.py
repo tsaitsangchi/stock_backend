@@ -43,6 +43,10 @@ class CircuitOpenError(Exception):
     """當斷路器處於開啟狀態時拋出，防止對已失效端點進行無效連線。"""
     pass
 
+class BatchNotSupportedError(Exception):
+    """當資料集不支援批次（data_id 清單）請求時拋出。"""
+    pass
+
 # ─────────────────────────────────────────────
 # 1. 請求統計追蹤器 (RequestStats)
 # ─────────────────────────────────────────────
@@ -215,15 +219,17 @@ def wait_until_next_hour():
 # ─────────────────────────────────────────────
 def finmind_get(dataset: str, params: Dict[str, Any], max_retries: int = 3, 
                 use_rate_limiter: bool = True, raise_on_quota: bool = False, 
-                raise_on_error: bool = False, delay: float = 0.0) -> List:
+                raise_on_error: bool = False, delay: float = 0.0,
+                raise_on_batch_400: bool = False) -> List:
     """
     同步抓取函式：整合速率限制、斷路器與重試機制。
+    新增 raise_on_batch_400：當 API 因不支援批次（data_id）而報錯時拋出專屬例外。
     """
     if use_rate_limiter:
         while not global_rate_limiter.acquire():
             time.sleep(0.5 + random.uniform(0, 0.3))
     
-    # 手動延遲（若呼叫端有指定）
+    # 手動延遲
     if delay > 0:
         time.sleep(delay)
             
@@ -234,7 +240,6 @@ def finmind_get(dataset: str, params: Dict[str, Any], max_retries: int = 3,
         if raise_on_error: raise
         return []
     
-    # 確保 Token 存在
     merged_params = params.copy()
     if FINMIND_TOKEN and "token" not in merged_params:
         merged_params["token"] = FINMIND_TOKEN
@@ -252,19 +257,31 @@ def finmind_get(dataset: str, params: Dict[str, Any], max_retries: int = 3,
                     raise FetcherInterrupted("FinMind API 配額耗盡 (402)。")
                 wait_until_quota_reset()
                 continue
+            
+            # 處理不支援批次的情況 (400 Bad Request)
+            if response.status_code == 400 and raise_on_batch_400:
+                msg = response.json().get("msg", "").lower()
+                if "parameter" in msg or "data_id" in msg:
+                    raise BatchNotSupportedError(f"資料集 {dataset} 不支援批次請求")
                 
             response.raise_for_status()
             data = response.json()
             
-            # 筆數驗證與格式檢查
             res_data = data.get("data")
             if res_data is None or not isinstance(res_data, list):
-                raise ValueError(f"API 回傳格式異常 (dataset={dataset}): {data.get('msg', 'no msg')}")
+                # 檢查是否為 batch 錯誤訊息
+                msg = data.get("msg", "").lower()
+                if raise_on_batch_400 and ("parameter" in msg or "data_id" in msg):
+                    raise BatchNotSupportedError(f"資料集 {dataset} 格式異常，疑似不支援批次: {msg}")
+                raise ValueError(f"API 回傳格式異常 (dataset={dataset}): {msg}")
                 
             global_circuit_breaker.record_success(dataset)
             global_stats.record(dataset, True, latency)
             return res_data
             
+        except BatchNotSupportedError:
+            # 批次錯誤不重試，直接向上拋出供切換模式
+            raise
         except Exception as e:
             latency = time.time() - start_time
             error_msg = str(e)
