@@ -1,9 +1,16 @@
 from __future__ import annotations
 import sys
+import logging
 from pathlib import Path
-base_dir = Path(__file__).resolve().parent.parent
-for sub in ['fetchers', 'pipeline', 'training', 'monitor']: sys.path.append(str(base_dir / sub))
-sys.path.append(str(base_dir))
+from typing import Optional
+
+# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
+
+from core.path_setup import ensure_scripts_on_path
+ensure_scripts_on_path(__file__)
 """
 data_pipeline.py — 資料層（PostgreSQL 17 版）
 直接從 PostgreSQL 讀取所有資料表，合併為每日寬格式 DataFrame。
@@ -505,11 +512,11 @@ def load_bond_yield() -> pd.DataFrame:
 def load_total_return_index() -> pd.DataFrame:
     """
     total_return_index：TAIEX / TPEx 大盤指數
-    DB schema: date, stock_id, price
+    DB schema: date, stock_id, total_return_index
     → pivot(stock_id) → TAIEX / TPEx 各一欄
     """
     sql = """
-        SELECT date, stock_id, price::float
+        SELECT date, stock_id, total_return_index::float
         FROM   total_return_index
         ORDER  BY date, stock_id
     """
@@ -519,7 +526,7 @@ def load_total_return_index() -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     wide = df.pivot_table(
         index="date", columns="stock_id",
-        values="price", aggfunc="last",
+        values="total_return_index", aggfunc="last",
     ).sort_index()
     logger.debug(f"[total_return_index] {len(wide):,} 筆  "
                  f"指數：{wide.columns.tolist()}")

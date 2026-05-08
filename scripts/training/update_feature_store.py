@@ -1,52 +1,40 @@
 """
-update_feature_store.py v3.1 — 每日特徵存儲更新 (監控整合標準版)
+update_feature_store.py — 每日特徵存儲更新與監控管線 (v3.2 核心模組升級版)
 ==============================================================================
-增量更新 PostgreSQL `daily_features` 表，每筆 row 一個 (date, stock_id) JSONB。
+增量更新 PostgreSQL `daily_features` 表，將高維度特徵集轉化為 JSONB 存儲。
 
-v3.1 重大改進：
-  · 整合 fetch_log v3.1：針對每個股票的特徵工程寫入標準化監控紀錄。
-  · 效能監控：精確記錄每檔股票特徵運算的 duration_ms 與命令參數 (cli_args)。
+v3.2 改進 (配合 core v3.0 標準)：
+  ★ 導入 `core.path_setup` 統一處理路徑設定。
+  ★ 強化可觀察性：整合 `feature_log` 寫入，精確記錄特徵維度、寫入量與耗時。
+  ★ 特徵守門員：啟動前自動校驗 v3 新因子 (如 fcf_yield) 是否存在，防止計算降級。
+  ★ 連線自癒機制：每 N 支檢查一次連線健康度，自動修復 InFailedSqlTransaction。
 
-v3.0 改進（與 core/db_utils.py v3.0 / 系統檢核報告 P0-3 / P0-5 一致）：
-  ★ 改用 safe_commit_rows / commit_per_stock — 單支失敗不影響整批，崩潰前已寫入的股票全部保留
-  ★ 改用 FailureLogger — 失敗即時 append 到 outputs/daily_features_failed_YYYYMMDD.json
-  ★ 改用 is_conn_healthy — 每 N 支檢查一次連線健康度，自動修復 InFailedSqlTransaction
-  ★ 改用 safe_float / safe_mapper — JSON 序列化前統一處理 NaN/Inf
-  ★ [P0-5 對齊] 啟動時 assert_v3_features_present() — 防止把 v2 特徵集寫進 store
-  ★ 結尾印 success / failed / total_records 統計摘要
-  ★ 新增 --max-stocks / --skip-on-error 參數，方便分批跑
-  ★ 新增 heartbeat 檔案（與 auto_train_manager P0-3 對齊），cron 可監控
-
-執行：
-    python scripts/training/update_feature_store.py
-    python scripts/training/update_feature_store.py --stock-id 2330
-    python scripts/training/update_feature_store.py --stock-id 2330 --force  # 單一股票強制重刷
-    python scripts/training/update_feature_store.py --force                  # 全市場強制重刷
-    python scripts/training/update_feature_store.py --max-stocks 10          # 只跑前 10 支
+執行範例：
+    python scripts/training/update_feature_store.py --stock-id 2330 --force
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
-
-# ── sys.path 自我修復 ──
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import core.path_setup  # noqa: F401  (side-effect: ensure all sub-paths)
-
 import argparse
 import json
 import logging
 import math
 import time
+from pathlib import Path
 from datetime import date, datetime, timedelta
 
 import pandas as pd
 
-# from config import STOCK_CONFIGS (切換至 DB)
+# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
+_base_dir = Path(__file__).resolve().parent.parent
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
 
-# core v3.0 helpers
-from core.path_setup import get_outputs_dir, ensure_dirs_exist
+from core.path_setup import ensure_scripts_on_path, get_outputs_dir, ensure_dirs_exist
+ensure_scripts_on_path(__file__)
+
+# ── 2. 引入核心模組 ──
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
@@ -56,6 +44,7 @@ from core.db_utils import (
     write_feature_log,
     get_core_stocks_from_db,
 )
+from core.model_metadata import atomic_write_json
 
 from data_pipeline import build_daily_frame
 from feature_engineering import build_features_with_medium_term
@@ -186,7 +175,7 @@ def write_heartbeat(progress: str, ok: int, failed: int, total: int) -> None:
             "failed":   failed,
             "total":    total,
         }
-        HEARTBEAT_FILE.write_text(json.dumps(payload, ensure_ascii=False))
+        atomic_write_json(str(HEARTBEAT_FILE), payload)
     except Exception as e:
         logger.debug(f"heartbeat 寫入失敗（不影響主流程）：{e}")
 

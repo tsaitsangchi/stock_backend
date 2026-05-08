@@ -141,7 +141,7 @@ ON CONFLICT (date, stock_id) DO UPDATE SET
 # Mappers
 # ─────────────────────────────────────────────
 def map_tr(r: dict) -> tuple:
-    return (r["date"], str(r.get("stock_id", "")), safe_float(r.get("TotalReturnIndex")))
+    return (r["date"], str(r.get("stock_id", "")), safe_float(r.get("price")))
 
 
 # ─────────────────────────────────────────────
