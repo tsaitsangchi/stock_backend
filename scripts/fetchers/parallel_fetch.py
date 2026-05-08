@@ -28,10 +28,16 @@ v3.1 重大改進：
   · 效能監控：記錄各腳本執行耗時（duration_ms），便於分析管線瓶頸。
   · 錯誤診斷：子腳本失敗時自動擷取 stderr 末尾資訊並存入 fetch_log。
   · 配額防護：執行前自動檢查 FinMind API 配額，防止過度請求。
+  · 完整註解：提供多樣化執行範例，便於維運。
 
 執行範例（常規）：
-    python scripts/fetchers/parallel_fetch.py                # 並行執行所有 Phase 的抓取任務
+    python scripts/fetchers/parallel_fetch.py                # 並行執行所有 Phase 的抓取任務 (預設全市場)
     python scripts/fetchers/parallel_fetch.py --workers 4    # 指定並行數
+
+執行範例（單一個股或強制重抓）：
+    python scripts/fetchers/parallel_fetch.py --stock-id 2330
+    python scripts/fetchers/parallel_fetch.py --stock-id 2330 --force
+    python scripts/fetchers/parallel_fetch.py --force
 
 執行範例（分段）：
     python scripts/fetchers/parallel_fetch.py --phase 1      # 僅執行 Phase 1 (核心資料)
@@ -125,8 +131,9 @@ def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_
 # ─────────────────────────────────────────────
 # 子任務執行
 # ─────────────────────────────────────────────
-def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
-    """執行單一 fetcher。回傳 (script_path, success, returncode, duration, stderr_tail)"""
+def run_script_with_args(task: tuple[str, list[str]]) -> tuple[str, bool, int, float, str]:
+    """執行單一 fetcher，並可傳入額外參數。回傳 (script_path, success, returncode, duration, stderr_tail)"""
+    script_path, extra_args = task
     if not os.path.exists(script_path):
         return script_path, False, -127, 0.0, f"找不到檔案: {script_path}"
 
@@ -138,8 +145,9 @@ def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
     success = False
     stderr_tail = ""
     try:
+        cmd = [VENV_PYTHON, script_path] + (extra_args or [])
         proc = subprocess.run(
-            [VENV_PYTHON, script_path],
+            cmd,
             env=env, check=False, timeout=MAX_SCRIPT_TIMEOUT,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
@@ -158,7 +166,7 @@ def run_script(script_path: str) -> tuple[str, bool, int, float, str]:
     duration = time.monotonic() - start
     return script_path, success, rc, duration, stderr_tail
 
-def _record_run_result(script_path: str, success: bool, rc: int, duration: float, stderr_tail: str, flog: FailureLogger | None) -> None:
+def _record_run_result(script_path: str, success: bool, rc: int, duration: float, stderr_tail: str, flog: FailureLogger | None, stock_id: str = "SYSTEM") -> None:
     """記錄執行結果至日誌與資料庫"""
     script_name = Path(script_path).name
     duration_ms = int(duration * 1000)
@@ -173,7 +181,7 @@ def _record_run_result(script_path: str, success: bool, rc: int, duration: float
     conn = get_db_conn()
     try:
         _write_fetch_log(
-            conn, script_name, "SYSTEM", 
+            conn, script_name, stock_id, 
             "success" if success else "failed",
             duration_ms=duration_ms, 
             error_message=None if success else f"rc={rc}: {stderr_tail[:300]}"
@@ -194,7 +202,17 @@ def main():
     parser.add_argument("--workers", type=int, default=DEFAULT_MAX_WORKERS, help=f"並行 worker 數 (預設 {DEFAULT_MAX_WORKERS})")
     parser.add_argument("--phase", type=str, default="all", choices=["all", "0", "1", "2", "1+2"], help="執行哪個 phase")
     parser.add_argument("--abort-on-low-quota", action="store_true", help=f"配額剩餘 < {API_QUOTA_MIN} 時中止")
+    parser.add_argument("--stock-id", type=str, help="指定抓取單一股號 (例如 2330)")
+    parser.add_argument("--force", action="store_true", help="強制重抓 (略過 cache)")
     args = parser.parse_args()
+
+    extra_args = []
+    if args.stock_id:
+        extra_args.extend(["--stock-id", args.stock_id])
+    if args.force:
+        extra_args.append("--force")
+        
+    log_stock_id = args.stock_id if args.stock_id else "SYSTEM"
 
     if _CORE_OK: ensure_dirs_exist()
 
@@ -229,9 +247,9 @@ def main():
     if args.phase in ("all", "0"):
         logger.info(f"\n[Phase 0] 序列執行 {len(PHASE_0)} 支基礎腳本")
         for script in PHASE_0:
-            res = run_script(script)
+            res = run_script_with_args((script, extra_args))
             results.append(res)
-            _record_run_result(*res, flog=flog)
+            _record_run_result(*res, flog=flog, stock_id=log_stock_id)
 
     # ── Phase 1+2：併發 ──
     parallel_targets = []
@@ -242,9 +260,10 @@ def main():
         logger.info(f"\n[Hyper-Fetch] 並行執行 {len(parallel_targets)} 支腳本 (workers={args.workers})")
         pool = mp.Pool(processes=max(1, args.workers))
         try:
-            for res in pool.imap_unordered(run_script, parallel_targets):
+            tasks = [(script, extra_args) for script in parallel_targets]
+            for res in pool.imap_unordered(run_script_with_args, tasks):
                 results.append(res)
-                _record_run_result(*res, flog=flog)
+                _record_run_result(*res, flog=flog, stock_id=log_stock_id)
             pool.close()
         except KeyboardInterrupt:
             logger.warning("收到 KeyboardInterrupt，關閉中...")
