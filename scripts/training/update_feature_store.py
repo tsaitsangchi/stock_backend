@@ -43,7 +43,7 @@ from datetime import date, datetime, timedelta
 
 import pandas as pd
 
-from config import STOCK_CONFIGS
+# from config import STOCK_CONFIGS (切換至 DB)
 
 # core v3.0 helpers
 from core.path_setup import get_outputs_dir, ensure_dirs_exist
@@ -54,6 +54,7 @@ from core.db_utils import (
     is_conn_healthy,
     FailureLogger,
     write_feature_log,
+    get_core_stocks_from_db,
 )
 
 from data_pipeline import build_daily_frame
@@ -318,7 +319,12 @@ def main():
     try:
         ensure_ddl(conn, DDL_FEATURE_STORE)
 
-        stock_ids = [args.stock_id] if args.stock_id else list(STOCK_CONFIGS.keys())
+        if args.stock_id:
+            stock_ids = [s.strip() for s in args.stock_id.split(",")]
+            stock_configs = get_core_stocks_from_db(conn, require_active=False)
+        else:
+            stock_configs = get_core_stocks_from_db(conn)
+            stock_ids = list(stock_configs.keys())
         if args.max_stocks:
             stock_ids = stock_ids[: args.max_stocks]
         total = len(stock_ids)
@@ -339,7 +345,7 @@ def main():
                 conn = get_db_conn()
                 flog.db_conn = conn
 
-            logger.info(f"\n[{i}/{total}] {stock_id} ({STOCK_CONFIGS.get(stock_id, {}).get('name', '?')})")
+            logger.info(f"\n[{i}/{total}] {stock_id} ({stock_configs.get(stock_id, {}).get('name', '?')})")
 
             _t_start = time.time()
             try:

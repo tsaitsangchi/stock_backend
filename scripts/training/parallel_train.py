@@ -35,9 +35,10 @@ import subprocess
 import time
 
 from config import (
-    STOCK_CONFIGS, MODEL_DIR, LOG_DIR, BASE_DIR, WF_CONFIG,
+    MODEL_DIR, LOG_DIR, BASE_DIR, WF_CONFIG,
     FEATURE_GROUPS, get_all_features,
 )
+from core.db_utils import get_db_conn, get_core_stocks_from_db
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -103,6 +104,7 @@ def _worker_init(turbo: bool, fast_mode: bool) -> None:
 
 
 def get_stocks_needing_training(
+    all_stocks: list[str],
     force_retrain_days: int = RETRAIN_AGE_THRESHOLD_DAYS,
 ) -> list[str]:
     """
@@ -112,7 +114,7 @@ def get_stocks_needing_training(
       - 模型檔超過 force_retrain_days 天未更新
       - PSI 超過 0.2（漂移嚴重，需重訓）
     """
-    all_stocks = list(STOCK_CONFIGS.keys())
+    # all_stocks 已由參數傳入
     try:
         from model_health_check import check_model_files_df, check_prediction_drift_df
         files_df = check_model_files_df(all_stocks)
@@ -136,9 +138,9 @@ def get_stocks_needing_training(
         ]
 
 
-def train_one_stock(stock_id: str) -> tuple[str, bool, str | None]:
+def train_one_stock(task_info: tuple[str, str]) -> tuple[str, bool, str | None]:
     """訓練單一個股，含指數退避重試與 timeout 保護。"""
-    stock_name = STOCK_CONFIGS[stock_id]["name"]
+    stock_id, stock_name = task_info
     log_file   = str(LOG_DIR / f"train_{stock_id}.log")
     step_days  = str(WF_CONFIG["step_days"])
 
@@ -254,11 +256,19 @@ def main():
                         help=f"並行 worker 數（預設 {MAX_WORKERS}）")
     args, _ = parser.parse_known_args()
 
+    # ── 獲取標的名單 (DB Driven) ──
+    conn = get_db_conn()
+    stock_configs = get_core_stocks_from_db(conn)
+    conn.close()
+    
+    all_sids = list(stock_configs.keys())
+    logger.info(f"從資料庫載入 {len(all_sids)} 支核心股票配置")
+
     if args.force_all:
         logger.info("⚡ [Force All] 強制重訓所有標的，目的：讓模型吃到 v3 新因子")
-        to_train = list(STOCK_CONFIGS.keys())
+        to_train = all_sids
     else:
-        to_train = get_stocks_needing_training()
+        to_train = get_stocks_needing_training(all_sids)
 
     if not to_train:
         print("所有個股模型皆已新鮮，無需重訓。")
@@ -277,7 +287,10 @@ def main():
         initargs=(args.turbo, args.fast_mode),
     )
     try:
-        for sid, success, error in pool.imap_unordered(train_one_stock, to_train):
+        # 準備帶有名稱的任務清單
+        tasks = [(sid, stock_configs.get(sid, {}).get("name", "Unknown")) for sid in to_train]
+        
+        for sid, success, error in pool.imap_unordered(train_one_stock, tasks):
             if success:
                 print(f"[完成] {sid}")
                 results["success"].append(sid)

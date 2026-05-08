@@ -4,24 +4,21 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 """
-fetch_stock_info.py  v2.2
-=========================
-從 FinMind API 抓取 TaiwanStockInfo（台股總覽）並寫入 PostgreSQL stock_info 資料表。
-
-v2.2 改進：
-  · 導入 safe_commit_rows() 與 dump_failures()。
-  · 強化 atomicity：逐支 commit 標的資訊。
-  · 失敗清單寫入 outputs/stock_info_failed_{date}.json。
+fetch_stock_info.py  v3.0 (Unified Stocks Edition)
+=================================================
+從 FinMind API 抓取 TaiwanStockInfo 並寫入核心 stocks 資料表。
+與 Quantum Finance v5.1 監控架構對齊。
 """
 
 import json
 import logging
 import time
+import os
 from datetime import date, datetime, timedelta
 
 import psycopg2
 
-from core.finmind_client import finmind_get, wait_until_next_hour
+from core.finmind_client import finmind_get
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
@@ -42,36 +39,35 @@ OUTPUT_DIR = _base_dir / "outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ======================
-# DDL（若資料表尚未存在則建立）
+# DDL (使用統一的 stocks 資料表)
 # ======================
 CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS stock_info (
+CREATE TABLE IF NOT EXISTS stocks (
     stock_id          VARCHAR(50) PRIMARY KEY,
     stock_name        VARCHAR(100),
-    industry_category VARCHAR(100),
-    type              VARCHAR(50),
-    date              DATE
+    industry          VARCHAR(100),
+    market_type       VARCHAR(50),
+    last_update_date  DATE,
+    updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_stock_info_date ON stock_info (date);
+CREATE INDEX IF NOT EXISTS idx_stocks_market_type ON stocks (market_type);
 """
 
 # ======================
 # Upsert SQL
 # ======================
 UPSERT_SQL = """
-INSERT INTO stock_info (stock_id, stock_name, industry_category, type, date)
+INSERT INTO stocks (stock_id, stock_name, industry, market_type, last_update_date)
 VALUES %s
 ON CONFLICT (stock_id)
 DO UPDATE SET
     stock_name        = EXCLUDED.stock_name,
-    industry_category = EXCLUDED.industry_category,
-    type              = EXCLUDED.type,
-    date              = EXCLUDED.date;
+    industry          = EXCLUDED.industry,
+    market_type       = EXCLUDED.market_type,
+    last_update_date  = EXCLUDED.last_update_date,
+    updated_at        = CURRENT_TIMESTAMP;
 """
 
-# ──────────────────────────────────────────────
-# 逐支 commit 工具函式
-# ──────────────────────────────────────────────
 def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
                       label: str = "") -> int:
     if not rows:
@@ -88,28 +84,8 @@ def safe_commit_rows(conn, upsert_sql: str, rows: list, template: str,
         logger.error(f"  [{label}] 寫入失敗，已 rollback：{e}")
         return 0
 
-
-def dump_failures(table: str, failures: list) -> None:
-    if not failures:
-        return
-    out = OUTPUT_DIR / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
-    try:
-        out.write_text(
-            json.dumps(failures, indent=2, ensure_ascii=False, default=str),
-            encoding="utf-8",
-        )
-        logger.info(f"  失敗清單已寫入：{out}（{len(failures)} 筆）")
-    except Exception as e:
-        logger.warning(f"  寫入失敗清單時發生錯誤：{e}")
-
-# ──────────────────────────────────────────────
-# 1. 抓取與轉換
-# ──────────────────────────────────────────────
-def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
-    """
-    抓取台股總覽並去重轉換。
-    """
-    data = finmind_get("TaiwanStockInfo", {}, delay, raise_on_error=True)
+def fetch_and_transform() -> list[tuple]:
+    data = finmind_get("TaiwanStockInfo", {}, raise_on_error=True)
     if not data:
         return []
 
@@ -121,7 +97,6 @@ def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
         _date = r.get("date", "")
         date_val = _date if (_date and _date.upper() != "NONE") else None
 
-        # 同一 stock_id 保留日期最新的那筆
         if sid not in seen or (date_val and date_val > (seen[sid][4] or "")):
             seen[sid] = (
                 sid,
@@ -135,18 +110,13 @@ def fetch_and_transform(delay: float = 1.0) -> list[tuple]:
     logger.info(f"去重後剩 {len(rows)} 筆（原始 {len(data)} 筆）")
     return rows
 
-
-# ──────────────────────────────────────────────
-# 2. 執行更新
-# ──────────────────────────────────────────────
-def run_update(delay: float = 1.0) -> None:
-    rows = fetch_and_transform(delay)
+def run_update() -> None:
+    rows = fetch_and_transform()
     if not rows:
         logger.warning("沒有資料可更新")
         return
 
     conn = get_db_conn()
-    failures = []
     try:
         ensure_ddl(conn, CREATE_TABLE_SQL)
         conn.commit()
@@ -157,19 +127,14 @@ def run_update(delay: float = 1.0) -> None:
             n = safe_commit_rows(
                 conn, UPSERT_SQL, [row],
                 template="(%s, %s, %s, %s, %s::date)",
-                label=f"stock_info/{sid}"
+                label=f"stocks/{sid}"
             )
             if n > 0:
                 success_count += n
-            else:
-                failures.append({"stock_id": sid, "error": "db_write_error"})
 
-        logger.info(f"完成，逐支寫入 {success_count} 筆標的資訊")
+        logger.info(f"完成，逐支寫入 {success_count} 筆標的資訊至 stocks 資料表")
     finally:
         conn.close()
-
-    dump_failures("stock_info", failures)
-
 
 def main():
     try:
@@ -177,7 +142,6 @@ def main():
     except Exception as e:
         logger.error(f"執行失敗：{e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

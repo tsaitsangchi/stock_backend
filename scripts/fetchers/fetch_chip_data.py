@@ -43,6 +43,7 @@ from core.db_utils import (
     map_rows_safe,
     commit_per_stock_per_day,
     dedup_rows,
+    get_core_stocks_from_db,
 )
 
 logging.basicConfig(
@@ -252,8 +253,10 @@ def main():
         if args.stock_id:
             stock_ids = [s.strip() for s in args.stock_id.split(",")]
         else:
-            from core.db_utils import get_db_stock_ids
-            stock_ids = get_db_stock_ids(conn)
+            # v3.1 改用 DB 動態配置與開關
+            stock_configs = get_core_stocks_from_db(conn)
+            stock_ids = [sid for sid, cfg in stock_configs.items() if cfg.get("fetch_chip", True)]
+            logger.info(f"從資料庫讀取到 {len(stock_ids)} 支核心股票 (已過濾 fetch_chip=True)")
 
         configs = {
             "institutional_investors_buy_sell": ("TaiwanStockInstitutionalInvestorsBuySell", DDL_INSTITUTIONAL_INVESTORS, UPSERT_INSTITUTIONAL_INVESTORS, "(%s::date,%s,%s,%s,%s)", map_inst),

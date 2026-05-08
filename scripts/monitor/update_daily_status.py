@@ -54,7 +54,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from config import DB_CONFIG, TABLE_REGISTRY, STOCK_CONFIGS, LOG_DIR  # noqa: E402
+from config import DB_CONFIG, TABLE_REGISTRY, LOG_DIR  # noqa: E402
+from core.db_utils import get_core_stocks_from_db  # noqa: E402
 
 try:
     from config import get_all_features  # noqa: E402
@@ -498,11 +499,19 @@ def run(
     if target_date is None:
         target_date = date.today()
 
-    stock_ids = list(STOCK_CONFIGS.keys())
+    # ── 獲取標的名單 (DB Driven) ──
+    conn = _connect()
+    try:
+        stock_configs = get_core_stocks_from_db(conn)
+        stock_ids = list(stock_configs.keys())
+    finally:
+        conn.close()
+
     if stock_filter:
-        stock_ids = [s for s in stock_ids if s == stock_filter]
-        if not stock_ids:
-            logger.error(f"找不到股票 {stock_filter}（不在 STOCK_CONFIGS）")
+        if stock_filter in stock_ids:
+            stock_ids = [stock_filter]
+        else:
+            logger.error(f"找不到股票 {stock_filter}（不具備核心標記或已停用）")
             return
 
     logger.info(f"目標股票數：{len(stock_ids)}（過濾：{stock_filter or 'ALL'}）")

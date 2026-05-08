@@ -16,7 +16,8 @@ import logging
 import time
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from config import STOCK_CONFIGS, SYSTEM_STABILITY_CONFIG, BASE_DIR
+from config import SYSTEM_STABILITY_CONFIG, BASE_DIR
+from core.db_utils import get_db_conn, get_core_stocks_from_db
 
 # 環境路徑設定
 VENV_PYTHON = "/home/hugo/project/stock_backend/venv/bin/python3"
@@ -79,8 +80,13 @@ def main():
         logger.info("將嘗試使用現有資料繼續後續推論...")
 
     # 1. 並行批次推論
-    stock_ids = list(STOCK_CONFIGS.keys())
-    logger.info(f"[Step 1] 執行批次推論 (個股數: {len(stock_ids)}, 並行數: {MAX_WORKERS})")
+    # ── 獲取標的名單 (DB Driven) ──
+    conn = get_db_conn()
+    stock_configs = get_core_stocks_from_db(conn)
+    conn.close()
+    
+    stock_ids = list(stock_configs.keys())
+    logger.info(f"[Step 1] 執行批次推論 (資料庫核心標的數: {len(stock_ids)}, 並行數: {MAX_WORKERS})")
     
     results = []
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:

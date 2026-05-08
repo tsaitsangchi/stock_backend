@@ -57,11 +57,11 @@ except ModuleNotFoundError:
     )
     sys.exit(127)
 
-from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, STOCK_CONFIGS, get_all_features
+from config import HORIZON, TRAIN_START_DATE, WF_CONFIG, get_all_features
 
 # core v3.0 helpers
 from core.path_setup import get_outputs_dir, ensure_dirs_exist
-from core.db_utils import get_db_conn, write_model_log
+from core.db_utils import get_db_conn, write_model_log, get_core_stocks_from_db
 from core.model_metadata import ModelMetadata, atomic_write_json
 import uuid
 
@@ -386,7 +386,9 @@ def main():
 
     try:
         if args.all_stocks:
-            stock_ids = list(STOCK_CONFIGS.keys())
+            stock_configs = get_core_stocks_from_db(conn)
+            stock_ids = list(stock_configs.keys())
+            logger.info(f"從資料庫讀取到 {len(stock_ids)} 支核心股票進行批次調優")
             out_dir = get_outputs_dir() / "tuning"
             out_dir.mkdir(parents=True, exist_ok=True)
 
