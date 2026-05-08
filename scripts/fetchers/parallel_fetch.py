@@ -40,7 +40,8 @@ v3.1 重大改進：
     python scripts/fetchers/parallel_fetch.py --force
 
 執行範例（分段）：
-    python scripts/fetchers/parallel_fetch.py --phase 1      # 僅執行 Phase 1 (核心資料)
+    python scripts/fetchers/parallel_fetch.py --phase 1      # 僅執行 Phase 1 (包含所有核心股票的基礎與技術面資料完整抓取)
+    python scripts/fetchers/parallel_fetch.py --phase 1 --force # 強制重刷所有核心股票的基礎資料
 """
 
 try:
