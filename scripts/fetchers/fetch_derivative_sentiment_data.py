@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS block_trading (date DATE, stock_id VARCHAR(50), secur
 
 UPSERT_OPTIONS_LARGE_OI = """INSERT INTO options_oi_large_holders VALUES %s ON CONFLICT (date, option_id, put_call, contract_type) DO UPDATE SET market_open_interest = EXCLUDED.market_open_interest;"""
 UPSERT_FEAR_GREED = """INSERT INTO fear_greed_index (date, fear_greed, fear_greed_emotion) VALUES %s ON CONFLICT (date) DO UPDATE SET fear_greed = EXCLUDED.fear_greed;"""
-UPSERT_BLOCK_TRADING = """INSERT INTO block_trading (date, stock_id, securities_trader_id, securities_trader, price, buy, sell, trade_type) VALUES %s ON CONFLICT (date, stock_id, securities_trader_id, price, trade_type) DO UPDATE SET buy = EXCLUDED.buy;"""
+UPSERT_BLOCK_TRADING = """INSERT INTO block_trading (date, stock_id, securities_trader_id, securities_trader, price, buy, sell, trade_type) VALUES %s ON CONFLICT (date, stock_id, securities_trader_id, price, trade_type) DO UPDATE SET buy = EXCLUDED.buy, sell = EXCLUDED.sell;"""
 
 # ─────────────────────────────────────────────
 # Mappers
