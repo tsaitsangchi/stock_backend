@@ -87,6 +87,19 @@ PHASE_2 = [
     str(_THIS_DIR / "fetch_fred_data.py"),
 ]
 
+NON_STOCK_SCRIPTS = {
+    "fetch_stock_info.py",
+    "fetch_international_data.py",
+    "fetch_macro_data.py",
+    "fetch_macro_fundamental_data.py",
+    "fetch_total_return_index.py",
+    "fetch_event_risk_data.py",
+    "fetch_fred_data.py",
+    "fetch_derivative_sentiment_data.py",
+    "fetch_extended_derivative_data.py",
+    "fetch_derivative_data.py",
+}
+
 DEFAULT_MAX_WORKERS = 8
 MAX_SCRIPT_TIMEOUT = 12 * 3600  # 初始全量補抓建議 12 小時
 API_QUOTA_MIN = 100
@@ -144,8 +157,21 @@ def run_script_with_args(task: tuple[str, list[str]]) -> tuple[str, bool, int, f
     rc = 0
     success = False
     stderr_tail = ""
+    script_name = Path(script_path).name
+    
+    # Filter out --stock-id for scripts that don't support it
+    filtered_args = []
+    if extra_args:
+        i = 0
+        while i < len(extra_args):
+            if extra_args[i] == "--stock-id" and script_name in NON_STOCK_SCRIPTS:
+                i += 2  # skip --stock-id and its value
+            else:
+                filtered_args.append(extra_args[i])
+                i += 1
+
     try:
-        cmd = [VENV_PYTHON, script_path] + (extra_args or [])
+        cmd = [VENV_PYTHON, script_path] + filtered_args
         proc = subprocess.run(
             cmd,
             env=env, check=False, timeout=MAX_SCRIPT_TIMEOUT,
