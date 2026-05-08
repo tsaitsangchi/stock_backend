@@ -189,11 +189,15 @@ def check_api_quota(force: bool = False) -> tuple[int, int]:
         return _QUOTA_CACHE["used"], _QUOTA_CACHE["limit"]
 
     try:
-        res = requests.get(USER_INFO_URL, params={"token": FINMIND_TOKEN}, timeout=10)
+        headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
+        res = requests.get(USER_INFO_URL, headers=headers, timeout=10)
         res.raise_for_status()
-        data = res.json().get("data", {})
-        used = data.get("api_request", -1)
+        data = res.json()
+        
+        # 修正：FinMind v2 user_info 的欄位直接位於根節點 (user_count, api_request_limit)
+        used = data.get("user_count", -1)
         limit = data.get("api_request_limit", -1)
+        
         _QUOTA_CACHE.update({"used": used, "limit": limit, "ts": now})
         return used, limit
     except Exception as e:
@@ -223,7 +227,6 @@ def finmind_get(dataset: str, params: Dict[str, Any], max_retries: int = 3,
                 raise_on_batch_400: bool = False) -> List:
     """
     同步抓取函式：整合速率限制、斷路器與重試機制。
-    新增 raise_on_batch_400：當 API 因不支援批次（data_id）而報錯時拋出專屬例外。
     """
     if use_rate_limiter:
         while not global_rate_limiter.acquire():
@@ -240,16 +243,15 @@ def finmind_get(dataset: str, params: Dict[str, Any], max_retries: int = 3,
         if raise_on_error: raise
         return []
     
+    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     merged_params = params.copy()
-    if FINMIND_TOKEN and "token" not in merged_params:
-        merged_params["token"] = FINMIND_TOKEN
     merged_params["dataset"] = dataset
     
     backoff = 1.0
     for attempt in range(max_retries):
         start_time = time.time()
         try:
-            response = requests.get(API_BASE_URL, params=merged_params, timeout=20)
+            response = requests.get(API_BASE_URL, headers=headers, params=merged_params, timeout=20)
             latency = time.time() - start_time
             
             if response.status_code == 402:
@@ -310,14 +312,13 @@ async def finmind_get_async(session: aiohttp.ClientSession, dataset: str, params
     except CircuitOpenError:
         return []
 
+    headers = {"Authorization": f"Bearer {FINMIND_TOKEN}"}
     merged_params = params.copy()
-    if FINMIND_TOKEN and "token" not in merged_params:
-        merged_params["token"] = FINMIND_TOKEN
     merged_params["dataset"] = dataset
     
     start_time = time.time()
     try:
-        async with session.get(API_BASE_URL, params=merged_params, timeout=20) as response:
+        async with session.get(API_BASE_URL, headers=headers, params=merged_params, timeout=20) as response:
             latency = time.time() - start_time
             if response.status == 402:
                 logger.warning(f"非同步 Worker 遭遇 402 配額耗盡 (dataset={dataset})。")
