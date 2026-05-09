@@ -1,0 +1,1608 @@
+.
+  |-- fetch_debug.log
+  |-- tests
+  |--   |-- test_data_integrity.py
+  |--   |-- test_statistics.py
+  |-- lightning_logs
+  |--   |-- version_140
+  |--   |-- version_412
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_362
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_346
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_390
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_326
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_331
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_31
+  |--   |-- version_171
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_291
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_75
+  |--   |-- version_96
+  |--   |-- version_268
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_141
+  |--   |-- version_135
+  |--   |-- version_418
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_132
+  |--   |-- version_183
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_99
+  |--   |-- version_202
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_0
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_48
+  |--   |-- version_258
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_65
+  |--   |-- version_420
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_76
+  |--   |-- version_353
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_358
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_373
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_278
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_121
+  |--   |-- version_434
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_407
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_392
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_120
+  |--   |-- version_336
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_24
+  |--   |-- version_181
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_385
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_43
+  |--   |-- version_57
+  |--   |-- version_272
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_219
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_399
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_226
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_374
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_320
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_242
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_403
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_72
+  |--   |-- version_228
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_225
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_126
+  |--   |-- version_131
+  |--   |-- version_170
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_324
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_243
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_231
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_66
+  |--   |-- version_319
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_370
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_100
+  |--   |-- version_380
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_298
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_102
+  |--   |-- version_112
+  |--   |-- version_306
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_21
+  |--   |-- version_421
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_323
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_60
+  |--   |-- version_98
+  |--   |-- version_42
+  |--   |-- version_377
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_164
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_237
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_178
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_129
+  |--   |-- version_56
+  |--   |-- version_88
+  |--   |-- version_59
+  |--   |-- version_165
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_16
+  |--   |-- version_162
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_130
+  |--   |-- version_197
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_156
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_52
+  |--   |-- version_6
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_22
+  |--   |-- version_286
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_201
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_279
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_397
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_188
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_312
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_307
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_294
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_117
+  |--   |-- version_316
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_340
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_30
+  |--   |-- version_439
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_92
+  |--   |-- version_404
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_276
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_111
+  |--   |-- version_101
+  |--   |-- version_63
+  |--   |-- version_246
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_372
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_345
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_81
+  |--   |-- version_375
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_236
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_189
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_163
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_427
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_185
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_154
+  |--   |-- version_277
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_44
+  |--   |-- version_4
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_123
+  |--   |-- version_124
+  |--   |-- version_196
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_151
+  |--   |-- version_366
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_308
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_321
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_194
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_300
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_391
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_195
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_332
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_173
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_363
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_38
+  |--   |-- version_334
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_138
+  |--   |-- version_200
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_169
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_28
+  |--   |-- version_261
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_147
+  |--   |-- version_303
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_70
+  |--   |-- version_360
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_145
+  |--   |-- version_166
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_295
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_249
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_333
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_192
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_114
+  |--   |-- version_338
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_210
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_144
+  |--   |-- version_343
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_167
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_213
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_329
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_41
+  |--   |-- version_20
+  |--   |-- version_301
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_50
+  |--   |-- version_206
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_71
+  |--   |-- version_45
+  |--   |-- version_33
+  |--   |-- version_408
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_137
+  |--   |-- version_388
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_212
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_149
+  |--   |-- version_127
+  |--   |-- version_83
+  |--   |-- version_187
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_325
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_414
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_222
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_176
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_211
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_433
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_118
+  |--   |-- version_91
+  |--   |-- version_78
+  |--   |-- version_107
+  |--   |-- version_26
+  |--   |-- version_89
+  |--   |-- version_280
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_209
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_208
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_233
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_39
+  |--   |-- version_361
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_311
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_339
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_310
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_409
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_220
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_116
+  |--   |-- version_422
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_27
+  |--   |-- version_350
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_235
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_253
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_198
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_244
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_357
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_387
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_344
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_288
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_230
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_95
+  |--   |-- version_241
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_378
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_174
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_86
+  |--   |-- version_383
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_69
+  |--   |-- version_250
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_239
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_247
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_401
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_305
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_53
+  |--   |-- version_417
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_413
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_104
+  |--   |-- version_157
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_110
+  |--   |-- version_77
+  |--   |-- version_90
+  |--   |-- version_364
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_394
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_348
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_46
+  |--   |-- version_152
+  |--   |-- version_240
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_252
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_435
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_204
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_80
+  |--   |-- version_23
+  |--   |-- version_40
+  |--   |-- version_322
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_84
+  |--   |-- version_393
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_274
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_313
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_109
+  |--   |-- version_271
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_337
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_184
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_223
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_7
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_125
+  |--   |-- version_159
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_352
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_215
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_177
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_289
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_3
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_430
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_379
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_180
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_182
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_328
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_341
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_302
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_214
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_342
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_148
+  |--   |-- version_82
+  |--   |-- version_62
+  |--   |-- version_260
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_351
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_190
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_411
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_355
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_431
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_367
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_79
+  |--   |-- version_368
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_186
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_227
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_283
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_1
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_314
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_309
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_410
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_128
+  |--   |-- version_229
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_423
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_381
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_429
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_36
+  |--   |-- version_396
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_425
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_179
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_119
+  |--   |-- version_143
+  |--   |-- version_438
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_93
+  |--   |-- version_257
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_17
+  |--   |-- version_68
+  |--   |-- version_108
+  |--   |-- version_347
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_67
+  |--   |-- version_55
+  |--   |-- version_359
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_406
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_18
+  |--   |-- version_14
+  |--   |-- version_8
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_115
+  |--   |-- version_234
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_255
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_293
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_94
+  |--   |-- version_74
+  |--   |-- version_216
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_384
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_419
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_85
+  |--   |-- version_35
+  |--   |-- version_232
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_281
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_150
+  |--   |-- version_400
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_256
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_335
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_5
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_113
+  |--   |-- version_275
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_299
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_10
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_356
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_73
+  |--   |-- version_262
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_61
+  |--   |-- version_161
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_207
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_49
+  |--   |-- version_297
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_327
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_369
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_265
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_424
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_365
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_218
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_296
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_175
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_405
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_304
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_330
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_382
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_245
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_106
+  |--   |-- version_87
+  |--   |-- version_103
+  |--   |-- version_386
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_25
+  |--   |-- version_15
+  |--   |-- version_51
+  |--   |-- version_248
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_172
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_251
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_64
+  |--   |-- version_136
+  |--   |-- version_224
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_254
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_437
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_287
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_221
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_264
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_315
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_402
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_142
+  |--   |-- version_318
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_284
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_354
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_32
+  |--   |-- version_12
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_2
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_426
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_371
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_203
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_193
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_34
+  |--   |-- version_146
+  |--   |-- version_155
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_349
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_134
+  |--   |-- version_205
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_29
+  |--   |-- version_292
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_47
+  |--   |-- version_398
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_432
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_285
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_376
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_11
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_238
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_199
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_122
+  |--   |-- version_97
+  |--   |-- version_317
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_273
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_160
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_13
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_54
+  |--   |-- version_428
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_19
+  |--   |-- version_263
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_259
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_415
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_270
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_269
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_290
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_105
+  |--   |-- version_158
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_9
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_58
+  |--   |-- version_133
+  |--   |-- version_139
+  |--   |-- version_168
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_436
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_416
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_191
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_37
+  |--   |-- version_153
+  |--   |-- version_266
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_282
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_267
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_217
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_395
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |--   |-- version_389
+  |--   |--   |-- metrics.csv
+  |--   |--   |-- hparams.yaml
+  |-- 第三輪優化審查報告.md
+  |-- github_gemini_sync.py
+  |-- mlruns
+  |--   |-- 58
+  |--   |--   |-- models
+  |--   |-- 31
+  |--   |--   |-- models
+  |--   |-- 33
+  |--   |--   |-- models
+  |--   |-- 41
+  |--   |--   |-- models
+  |--   |-- 63
+  |--   |--   |-- models
+  |--   |-- 38
+  |--   |--   |-- models
+  |--   |-- 44
+  |--   |--   |-- models
+  |--   |-- 36
+  |--   |--   |-- models
+  |--   |-- 20
+  |--   |--   |-- models
+  |--   |-- 45
+  |--   |--   |-- models
+  |--   |-- 46
+  |--   |--   |-- models
+  |--   |-- 15
+  |--   |--   |-- models
+  |--   |-- 52
+  |--   |--   |-- models
+  |--   |-- 60
+  |--   |--   |-- models
+  |--   |-- 47
+  |--   |--   |-- models
+  |--   |-- 64
+  |--   |--   |-- models
+  |--   |-- 14
+  |--   |--   |-- models
+  |--   |-- 3
+  |--   |--   |-- models
+  |--   |-- 19
+  |--   |--   |-- models
+  |--   |-- 29
+  |--   |--   |-- models
+  |--   |-- 1
+  |--   |--   |-- models
+  |--   |-- 66
+  |--   |--   |-- models
+  |--   |-- 26
+  |--   |--   |-- models
+  |--   |-- 5
+  |--   |--   |-- models
+  |--   |-- 10
+  |--   |--   |-- models
+  |--   |-- 25
+  |--   |--   |-- models
+  |--   |-- 61
+  |--   |--   |-- models
+  |--   |-- 59
+  |--   |--   |-- models
+  |--   |-- 55
+  |--   |--   |-- models
+  |--   |-- 50
+  |--   |--   |-- models
+  |--   |-- 8
+  |--   |--   |-- models
+  |--   |-- 2
+  |--   |--   |-- models
+  |--   |-- 30
+  |--   |--   |-- models
+  |--   |-- 18
+  |--   |--   |-- models
+  |--   |-- 21
+  |--   |--   |-- models
+  |--   |-- 49
+  |--   |--   |-- models
+  |--   |-- 43
+  |--   |--   |-- models
+  |--   |-- 42
+  |--   |--   |-- models
+  |--   |-- 7
+  |--   |--   |-- models
+  |--   |-- 16
+  |--   |--   |-- models
+  |--   |-- 56
+  |--   |--   |-- models
+  |--   |-- 51
+  |--   |--   |-- models
+  |--   |-- 11
+  |--   |--   |-- models
+  |--   |-- 17
+  |--   |--   |-- models
+  |--   |-- 24
+  |--   |--   |-- models
+  |--   |-- 54
+  |--   |--   |-- models
+  |--   |-- 22
+  |--   |--   |-- models
+  |--   |-- 12
+  |--   |--   |-- models
+  |--   |-- 39
+  |--   |--   |-- models
+  |--   |-- 6
+  |--   |--   |-- models
+  |--   |-- 9
+  |--   |--   |-- models
+  |--   |-- 67
+  |--   |--   |-- models
+  |--   |-- 65
+  |--   |--   |-- models
+  |--   |-- 62
+  |--   |--   |-- models
+  |--   |-- 57
+  |--   |--   |-- models
+  |--   |-- 27
+  |--   |--   |-- models
+  |--   |-- 37
+  |--   |--   |-- models
+  |--   |-- 68
+  |--   |--   |-- models
+  |--   |-- 23
+  |--   |--   |-- models
+  |--   |-- 13
+  |--   |--   |-- models
+  |--   |-- 35
+  |--   |--   |-- models
+  |--   |-- 53
+  |--   |--   |-- models
+  |--   |-- 34
+  |--   |--   |-- models
+  |--   |-- 28
+  |--   |--   |-- models
+  |--   |-- 32
+  |--   |--   |-- models
+  |--   |-- 4
+  |--   |--   |-- models
+  |--   |-- 48
+  |--   |--   |-- models
+  |--   |-- 40
+  |--   |--   |-- models
+  |-- requirements.txt
+  |-- scratch
+  |--   |-- probe_finmind.py
+  |--   |-- test_api_v2.py
+  |--   |-- check_failed_fetch.py
+  |--   |-- test_api.py
+  |-- config.py
+  |-- scripts
+  |--   |-- fetchers
+  |--   |--   |-- fetch_derivative_data.py
+  |--   |--   |-- fetch_cash_flows_data.py
+  |--   |--   |-- fetch_stock_info.py
+  |--   |--   |-- fetch_macro_data.py
+  |--   |--   |-- check_finmind_quota.py
+  |--   |--   |-- fetch_event_risk_data.py
+  |--   |--   |-- fetch_extended_derivative_data.py
+  |--   |--   |-- parallel_fetch.py
+  |--   |--   |-- fetch_sponsor_chip_data.py
+  |--   |--   |-- fetch_chip_data.py
+  |--   |--   |-- check_finmind_datalist.py
+  |--   |--   |-- check_db_locks.py
+  |--   |--   |-- outputs
+  |--   |--   |-- test_out.txt
+  |--   |--   |-- fetch_fundamental_data.py
+  |--   |--   |-- fetch_total_return_index.py
+  |--   |--   |-- test_block_trading.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- fetch_news_data.py
+  |--   |--   |-- fetch_fred_data.py
+  |--   |--   |-- fetch_advanced_chip_data.py
+  |--   |--   |-- fetch_macro_fundamental_data.py
+  |--   |--   |-- fetch_missing_stocks_data.py
+  |--   |--   |-- backfill_from_gaps.py
+  |--   |--   |-- fetch_international_data.py
+  |--   |--   |-- fetch_price_adj_data.py
+  |--   |--   |-- fetch_derivative_sentiment_data.py
+  |--   |--   |-- search_finmind_datasets.py
+  |--   |--   |-- fetch_technical_data.py
+  |--   |-- tests
+  |--   |--   |-- test_round3_fixes.py
+  |--   |--   |-- test_v5_audit_fixes.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- test_round5_fixes.py
+  |--   |-- parallel_fetch.py
+  |--   |-- mlruns
+  |--   |--   |-- 3
+  |--   |--   |-- 1
+  |--   |--   |-- 5
+  |--   |--   |-- 2
+  |--   |--   |-- 7
+  |--   |--   |-- 6
+  |--   |--   |-- 4
+  |--   |-- requirements.txt
+  |--   |-- scratch
+  |--   |--   |-- test_surprise.py
+  |--   |-- config.py
+  |--   |-- utils
+  |--   |--   |-- feature_selection.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- model_loader.py
+  |--   |--   |-- db.py
+  |--   |--   |-- metrics.py
+  |--   |-- outputs
+  |--   |--   |-- oof_predictions_with_dates_3711.csv
+  |--   |--   |-- oof_predictions_with_dates_2886.csv
+  |--   |--   |-- oof_predictions_partial_2886.csv
+  |--   |--   |-- oof_predictions_4147.csv
+  |--   |--   |-- oof_predictions_2885.csv
+  |--   |--   |-- oof_predictions_with_dates_3013.csv
+  |--   |--   |-- oof_predictions_with_dates_1301.csv
+  |--   |--   |-- train_2454.log
+  |--   |--   |-- oof_predictions_with_dates_9904.csv
+  |--   |--   |-- stocks_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_2376.csv
+  |--   |--   |-- capital_reduction_failed_20260508.json
+  |--   |--   |-- oof_predictions_5478.csv
+  |--   |--   |-- oof_predictions_2912.csv
+  |--   |--   |-- oof_predictions_2409.csv
+  |--   |--   |-- train_2317.log
+  |--   |--   |-- metrics_registry.json
+  |--   |--   |-- oof_predictions_partial_2609.csv
+  |--   |--   |-- oof_predictions_6488.csv
+  |--   |--   |-- oof_predictions_3533.csv
+  |--   |--   |-- oof_predictions_partial_3533.csv
+  |--   |--   |-- oof_predictions_with_dates_3533.csv
+  |--   |--   |-- oof_predictions_3035.csv
+  |--   |--   |-- oof_predictions_2317.csv
+  |--   |--   |-- oof_predictions_with_dates_2324.csv
+  |--   |--   |-- oof_predictions_partial_3231.csv
+  |--   |--   |-- oof_predictions_3293.csv
+  |--   |--   |-- oof_predictions_partial_6547.csv
+  |--   |--   |-- oof_predictions_partial_5880.csv
+  |--   |--   |-- oof_predictions_with_dates_3231.csv
+  |--   |--   |-- oof_predictions_6138.csv
+  |--   |--   |-- oof_predictions_5871.csv
+  |--   |--   |-- oof_predictions_3037.csv
+  |--   |--   |-- oof_predictions_partial_3017.csv
+  |--   |--   |-- oof_predictions_partial_3443.csv
+  |--   |--   |-- oof_predictions_partial_8299.csv
+  |--   |--   |-- oof_predictions_with_dates_3443.csv
+  |--   |--   |-- eight_banks_failed_20260508.json
+  |--   |--   |-- oof_predictions_with_dates_2303.csv
+  |--   |--   |-- gold_price_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_2353.csv
+  |--   |--   |-- oof_predictions_partial_2454.csv
+  |--   |--   |-- us_stock_price_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_2002.csv
+  |--   |--   |-- oof_predictions_with_dates_5347.csv
+  |--   |--   |-- pids
+  |--   |--   |-- industry_chain_failed_20260508.json
+  |--   |--   |-- oof_predictions_with_dates_2301.csv
+  |--   |--   |-- oof_predictions_2303.csv
+  |--   |--   |-- oof_predictions_with_dates_2615.csv
+  |--   |--   |-- oof_predictions_partial_2357.csv
+  |--   |--   |-- feature_importance.csv
+  |--   |--   |-- oof_predictions_with_dates_2891.csv
+  |--   |--   |-- oof_predictions_with_dates_2330.csv
+  |--   |--   |-- oof_predictions_3131.csv
+  |--   |--   |-- oof_predictions_with_dates_1513.csv
+  |--   |--   |-- oof_predictions_1513.csv
+  |--   |--   |-- oof_predictions_partial_6446.csv
+  |--   |--   |-- manager.log
+  |--   |--   |-- stock_price_failed_20260509.json
+  |--   |--   |-- business_indicator_failed_20260508.json
+  |--   |--   |-- oof_predictions_with_dates_2881.csv
+  |--   |--   |-- oof_predictions_with_dates_2344.csv
+  |--   |--   |-- oof_predictions_partial_3515.csv
+  |--   |--   |-- stock_news_failed_20260508.json
+  |--   |--   |-- oof_predictions_with_dates_5871.csv
+  |--   |--   |-- fetch_20yr_full.log
+  |--   |--   |-- holding_shares_per_failed_20260508.json
+  |--   |--   |-- train.log
+  |--   |--   |-- oof_predictions_3711.csv
+  |--   |--   |-- oof_predictions_2002.csv
+  |--   |--   |-- oof_predictions_with_dates_2002.csv
+  |--   |--   |-- oof_predictions_with_dates_3037.csv
+  |--   |--   |-- oof_predictions_with_dates_3016.csv
+  |--   |--   |-- oof_predictions_partial_2912.csv
+  |--   |--   |-- oof_predictions_partial_3016.csv
+  |--   |--   |-- oof_predictions_partial_2882.csv
+  |--   |--   |-- backfill_successes.json
+  |--   |--   |-- oof_predictions_partial_2308.csv
+  |--   |--   |-- manager_stdout.log
+  |--   |--   |-- oof_predictions_with_dates_4743.csv
+  |--   |--   |-- oof_predictions_6180.csv
+  |--   |--   |-- financial_statements_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_3293.csv
+  |--   |--   |-- oof_predictions_with_dates_6547.csv
+  |--   |--   |-- oof_predictions_partial_3324.csv
+  |--   |--   |-- oof_predictions_2615.csv
+  |--   |--   |-- checkpoints
+  |--   |--   |-- oof_predictions_2886.csv
+  |--   |--   |-- probe_2021.log
+  |--   |--   |-- backfill_failures.json
+  |--   |--   |-- oof_predictions_partial_5347.csv
+  |--   |--   |-- oof_predictions_6125.csv
+  |--   |--   |-- oof_predictions_with_dates_5880.csv
+  |--   |--   |-- market_value_weight_failed_20260508.json
+  |--   |--   |-- oof_predictions_2308.csv
+  |--   |--   |-- oof_predictions_2454.csv
+  |--   |--   |-- oof_predictions_3013.csv
+  |--   |--   |-- oof_predictions_2330.csv
+  |--   |--   |-- market_value_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_2885.csv
+  |--   |--   |-- stock_per_failed_20260509.json
+  |--   |--   |-- oof_predictions_partial_2352.csv
+  |--   |--   |-- oof_predictions_with_dates_6446.csv
+  |--   |--   |-- oof_predictions_2892.csv
+  |--   |--   |-- oof_predictions_with_dates_3017.csv
+  |--   |--   |-- oof_predictions_partial_2615.csv
+  |--   |--   |-- oof_predictions_3324.csv
+  |--   |--   |-- oof_predictions_3443.csv
+  |--   |--   |-- oof_predictions_partial_3131.csv
+  |--   |--   |-- oof_predictions_partial_5871.csv
+  |--   |--   |-- oof_predictions_2357.csv
+  |--   |--   |-- oof_predictions_partial_6488.csv
+  |--   |--   |-- meta_oof_metrics.csv
+  |--   |--   |-- oof_predictions_with_dates_6244.csv
+  |--   |--   |-- oof_predictions_2609.csv
+  |--   |--   |-- options_oi_large_holders_failed_20260508.json
+  |--   |--   |-- oof_predictions_partial_6223.csv
+  |--   |--   |-- oof_predictions_partial_3037.csv
+  |--   |--   |-- feature_importance_by_group.csv
+  |--   |--   |-- oof_predictions_2408.csv
+  |--   |--   |-- oof_predictions_4743.csv
+  |--   |--   |-- oof_predictions_2382.csv
+  |--   |--   |-- oof_predictions_with_dates_8299.csv
+  |--   |--   |-- oof_predictions_6244.csv
+  |--   |--   |-- oof_predictions_partial_4743.csv
+  |--   |--   |-- oof_predictions_partial_2330.csv
+  |--   |--   |-- oof_predictions_with_dates_2352.csv
+  |--   |--   |-- total_return_index_failed_20260508.json
+  |--   |--   |-- oof_predictions_2881.csv
+  |--   |--   |-- oof_predictions_3008.csv
+  |--   |--   |-- oof_predictions_2610.csv
+  |--   |--   |-- oof_predictions_6182.csv
+  |--   |--   |-- oof_predictions_partial_2603.csv
+  |--   |--   |-- oof_predictions_partial_2303.csv
+  |--   |--   |-- oof_predictions_2344.csv
+  |--   |--   |-- oof_predictions_with_dates_3264.csv
+  |--   |--   |-- oof_predictions_with_dates_2317.csv
+  |--   |--   |-- oof_predictions_5347.csv
+  |--   |--   |-- oof_predictions_2353.csv
+  |--   |--   |-- oof_predictions_partial_1301.csv
+  |--   |--   |-- oof_predictions_with_dates_2603.csv
+  |--   |--   |-- oof_predictions_with_dates_2609.csv
+  |--   |--   |-- oof_predictions_with_dates_2382.csv
+  |--   |--   |-- oof_predictions_3481.csv
+  |--   |--   |-- oof_predictions_with_dates_3293.csv
+  |--   |--   |-- oof_predictions_6223.csv
+  |--   |--   |-- oof_predictions_partial_2409.csv
+  |--   |--   |-- oof_predictions_with_dates_2408.csv
+  |--   |--   |-- crude_oil_failed_20260508.json
+  |--   |--   |-- oof_predictions_with_dates_2885.csv
+  |--   |--   |-- oof_predictions_partial_6180.csv
+  |--   |--   |-- oof_predictions_with_dates_6180.csv
+  |--   |--   |-- oof_predictions_partial_1513.csv
+  |--   |--   |-- oof_predictions_8046.csv
+  |--   |--   |-- oof_predictions_3231.csv
+  |--   |--   |-- oof_predictions_partial_2881.csv
+  |--   |--   |-- oof_predictions_partial_5478.csv
+  |--   |--   |-- oof_predictions_partial_3264.csv
+  |--   |--   |-- oof_predictions_partial_2891.csv
+  |--   |--   |-- bond_yield_failed_20260508.json
+  |--   |--   |-- oof_predictions_2618.csv
+  |--   |--   |-- wf_fold_metrics.csv
+  |--   |--   |-- oof_predictions_with_dates_5478.csv
+  |--   |--   |-- oof_predictions_2891.csv
+  |--   |--   |-- oof_predictions_partial_3013.csv
+  |--   |--   |-- oof_predictions_partial_3105.csv
+  |--   |--   |-- oof_predictions_with_dates_3481.csv
+  |--   |--   |-- oof_predictions_with_dates_3035.csv
+  |--   |--   |-- oof_predictions_partial_2618.csv
+  |--   |--   |-- oof_predictions_with_dates_3131.csv
+  |--   |--   |-- oof_predictions_with_dates_3008.csv
+  |--   |--   |-- oof_predictions_partial_6182.csv
+  |--   |--   |-- oof_predictions_with_dates_3105.csv
+  |--   |--   |-- interest_rate_failed_20260508.json
+  |--   |--   |-- oof_predictions_1301.csv
+  |--   |--   |-- integrity_gaps.json
+  |--   |--   |-- oof_predictions_partial_6244.csv
+  |--   |--   |-- feature_importance_refined.csv
+  |--   |--   |-- oof_predictions_partial_8046.csv
+  |--   |--   |-- oof_predictions_with_dates_8046.csv
+  |--   |--   |-- oof_predictions_partial_6669.csv
+  |--   |--   |-- oof_predictions_with_dates_3576.csv
+  |--   |--   |-- oof_predictions_partial_3035.csv
+  |--   |--   |-- oof_predictions_3576.csv
+  |--   |--   |-- oof_predictions_with_dates_4147.csv
+  |--   |--   |-- oof_predictions_partial_2610.csv
+  |--   |--   |-- oof_predictions_2376.csv
+  |--   |--   |-- oof_predictions_partial_4147.csv
+  |--   |--   |-- oof_predictions_partial_3711.csv
+  |--   |--   |-- oof_predictions_with_dates_6669.csv
+  |--   |--   |-- oof_predictions_partial_3576.csv
+  |--   |--   |-- oof_predictions_2884.csv
+  |--   |--   |-- models
+  |--   |--   |-- oof_predictions_partial_6125.csv
+  |--   |--   |-- oof_predictions_partial_2884.csv
+  |--   |--   |-- oof_predictions_2352.csv
+  |--   |--   |-- oof_predictions_6446.csv
+  |--   |--   |-- oof_predictions_3515.csv
+  |--   |--   |-- exchange_rate_failed_20260508.json
+  |--   |--   |-- oof_predictions_6547.csv
+  |--   |--   |-- oof_predictions_with_dates_2892.csv
+  |--   |--   |-- oof_predictions_partial_2301.csv
+  |--   |--   |-- oof_predictions_2603.csv
+  |--   |--   |-- oof_predictions_with_dates_3324.csv
+  |--   |--   |-- oof_predictions_9904.csv
+  |--   |--   |-- oof_predictions_with_dates_2409.csv
+  |--   |--   |-- oof_predictions_with_dates_3515.csv
+  |--   |--   |-- oof_predictions_partial_2382.csv
+  |--   |--   |-- oof_predictions_with_dates_2882.csv
+  |--   |--   |-- oof_predictions_with_dates_2376.csv
+  |--   |--   |-- oof_predictions_3017.csv
+  |--   |--   |-- oof_predictions_8299.csv
+  |--   |--   |-- oof_predictions_with_dates_2912.csv
+  |--   |--   |-- oof_predictions_with_dates_6223.csv
+  |--   |--   |-- oof_predictions_partial_2324.csv
+  |--   |--   |-- oof_predictions_with_dates_2357.csv
+  |--   |--   |-- oof_predictions_2301.csv
+  |--   |--   |-- oof_predictions_partial_2892.csv
+  |--   |--   |-- oof_predictions_3264.csv
+  |--   |--   |-- oof_predictions_partial_2408.csv
+  |--   |--   |-- oof_predictions_with_dates_2353.csv
+  |--   |--   |-- regime_metrics.csv
+  |--   |--   |-- oof_predictions_partial_6138.csv
+  |--   |--   |-- oof_predictions_partial_3008.csv
+  |--   |--   |-- oof_predictions_with_dates_6182.csv
+  |--   |--   |-- oof_predictions_with_dates_2308.csv
+  |--   |--   |-- fetch_macro_all.log
+  |--   |--   |-- oof_predictions_with_dates_2454.csv
+  |--   |--   |-- oof_predictions_3016.csv
+  |--   |--   |-- oof_predictions_with_dates_6488.csv
+  |--   |--   |-- oof_predictions_with_dates_6138.csv
+  |--   |--   |-- oof_predictions_2324.csv
+  |--   |--   |-- oof_predictions_with_dates_2618.csv
+  |--   |--   |-- oof_predictions_2882.csv
+  |--   |--   |-- oof_predictions_partial_2317.csv
+  |--   |--   |-- backtest_train.log
+  |--   |--   |-- oof_predictions_3105.csv
+  |--   |--   |-- oof_predictions_with_dates_6125.csv
+  |--   |--   |-- logs
+  |--   |--   |-- oof_predictions_with_dates_2610.csv
+  |--   |--   |-- oof_predictions_6669.csv
+  |--   |--   |-- oof_predictions_with_dates_2884.csv
+  |--   |--   |-- oof_predictions_partial_9904.csv
+  |--   |--   |-- oof_predictions_partial_2344.csv
+  |--   |--   |-- oof_predictions_5880.csv
+  |--   |--   |-- oof_predictions_partial_3481.csv
+  |--   |-- __init__.py
+  |--   |-- run_tests.sh
+  |--   |-- automate_daily.py
+  |--   |-- pipeline
+  |--   |--   |-- data_pipeline.py
+  |--   |--   |-- portfolio_optimizer.py
+  |--   |--   |-- portfolio_backtest.py
+  |--   |--   |-- faithful_portfolio_backtest.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- feature_engineering.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- backtest_engine.py
+  |--   |--   |-- debug_feat_crash.py
+  |--   |--   |-- signal_filter.py
+  |--   |--   |-- strategy_tester.py
+  |--   |--   |-- portfolio_strategy.py
+  |--   |--   |-- compute_stock_dynamics.py
+  |--   |-- __pycache__
+  |--   |--   |-- strategy_tester.cpython-312.pyc
+  |--   |--   |-- config.cpython-312.pyc
+  |--   |--   |-- predict.cpython-312.pyc
+  |--   |--   |-- parallel_train.cpython-312.pyc
+  |--   |--   |-- feature_engineering.cpython-312.pyc
+  |--   |--   |-- feature_analysis.cpython-312.pyc
+  |--   |--   |-- backtest_audit.cpython-312.pyc
+  |--   |--   |-- auto_train_manager.cpython-312.pyc
+  |--   |--   |-- data_integrity_audit.cpython-312.pyc
+  |--   |--   |-- train_evaluate.cpython-312.pyc
+  |--   |--   |-- signal_filter.cpython-312.pyc
+  |--   |--   |-- model_health_check.cpython-312.pyc
+  |--   |--   |-- __init__.cpython-312.pyc
+  |--   |--   |-- data_pipeline.cpython-312.pyc
+  |--   |-- maintenance
+  |--   |--   |-- enrich_stocks_metadata.py
+  |--   |--   |-- sync_stocks_from_config.py
+  |--   |--   |-- initialize_and_enrich_stocks.py
+  |--   |-- README.md
+  |--   |-- archive
+  |--   |--   |-- train_all_missing.py
+  |--   |--   |-- patch_fetch_scripts.py
+  |--   |--   |-- calibrate_stock_physics.py
+  |--   |--   |-- next_2330_predictor_light.py
+  |--   |--   |-- next_2330_quarterly_builder.py
+  |--   |--   |-- fetch_anchors_20yr.sh
+  |--   |--   |-- nan_correlation_analysis.py
+  |--   |--   |-- fetch_2330_all.sh
+  |--   |--   |-- next_2330_market_share_builder.py
+  |--   |--   |-- db_auto_fix.py
+  |--   |--   |-- next_2330_feature_builder.py
+  |--   |--   |-- wait_and_train_and_full.sh
+  |--   |--   |-- asymmetric_simulator.py
+  |--   |--   |-- visual_report_gen.py
+  |--   |--   |-- patch_all_stocks.py
+  |--   |--   |-- singularity_layout_simulator.py
+  |--   |--   |-- data_integrity_check.py
+  |--   |--   |-- feature_analysis.py
+  |--   |--   |-- train_all_force.py
+  |--   |--   |-- run_2330_20yr_full.sh
+  |--   |--   |-- llms-full.txt
+  |--   |-- models
+  |--   |--   |-- ensemble_model.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- tft_model.py
+  |--   |-- _patch_backup
+  |--   |--   |-- fetch_derivative_data.py
+  |--   |--   |-- fetch_stock_info.py
+  |--   |--   |-- fetch_macro_data.py
+  |--   |--   |-- fetch_chip_data.py
+  |--   |--   |-- fetch_fundamental_data.py
+  |--   |--   |-- fetch_total_return_index.py
+  |--   |--   |-- fetch_macro_fundamental_data.py
+  |--   |--   |-- fetch_international_data.py
+  |--   |--   |-- fetch_derivative_sentiment_data.py
+  |--   |--   |-- fetch_technical_data.py
+  |--   |-- monitor
+  |--   |--   |-- model_health_check.py
+  |--   |--   |-- sync_trinity_db.py
+  |--   |--   |-- model_quality_audit.py
+  |--   |--   |-- db_health_check.py
+  |--   |--   |-- data_integrity_audit.py
+  |--   |--   |-- action_runner.py
+  |--   |--   |-- init_monitoring_schema.py
+  |--   |--   |-- pipeline_monitor.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- update_daily_status.py
+  |--   |--   |-- backtest_audit.py
+  |--   |--   |-- log_manager.py
+  |--   |--   |-- db_optimize.py
+  |--   |--   |-- dashboard.py
+  |--   |-- training
+  |--   |--   |-- batch_tune.py
+  |--   |--   |-- debug_8banks_400.py
+  |--   |--   |-- path_fix.py
+  |--   |--   |-- batch_predict_all.py
+  |--   |--   |-- debug_8banks_week.py
+  |--   |--   |-- historical_backfill.py
+  |--   |--   |-- mlruns
+  |--   |--   |-- debug_8banks_400_msg.py
+  |--   |--   |-- train_evaluate_body.py
+  |--   |--   |-- auto_train_manager.py
+  |--   |--   |-- train_evaluate.py
+  |--   |--   |-- predict.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- auto_predict_manager.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- tune_hyperparameters.py
+  |--   |--   |-- debug_8banks_single_day_2.py
+  |--   |--   |-- feature_analysis.py
+  |--   |--   |-- debug_8banks_2days.py
+  |--   |--   |-- parallel_train.py
+  |--   |--   |-- header_fix.py
+  |--   |--   |-- update_feature_store.py
+  |--   |--   |-- test_adj_access.py
+  |--   |--   |-- check_finmind_token.py
+  |--   |--   |-- compute_stock_dynamics.py
+  |--   |-- logs
+  |--   |-- core
+  |--   |--   |-- finmind_client.py
+  |--   |--   |-- path_setup.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- migrate_stocks_config.py
+  |--   |--   |-- __pycache__
+  |--   |--   |-- db_utils.py
+  |--   |--   |-- model_metadata.py
+  |-- outputs
+  |--   |-- finmind_cache.db
+  |--   |-- models
+  |--   |-- logs
+  |-- app
+  |--   |-- __init__.py
+  |--   |-- domain
+  |--   |--   |-- repositories.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- entities.py
+  |--   |-- interfaces
+  |--   |--   |-- __init__.py
+  |--   |--   |-- api
+  |--   |-- infrastructure
+  |--   |--   |-- auth_service.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- database.py
+  |--   |-- application
+  |--   |--   |-- use_cases
+  |--   |--   |-- commands.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- uow.py
+  |-- create_table.sql
+  |-- System_Audit_Report_2026-04-30.md
+  |-- health_check_output.txt
+  |-- fetch_macro.log
+  |-- 系統架構全面審查報告.md
+  |-- 系統檢核報告_2026-04-30.md
+  |-- probe_final.log
+  |-- walkthrough.md
+  |-- task.md
+  |-- requirements_raw.txt
+  |-- __pycache__
+  |--   |-- config.cpython-312.pyc
+  |-- scripts_backup
+  |--   |-- fetch_derivative_data.py
+  |--   |-- data_pipeline.py
+  |--   |-- fetch_stock_info.py
+  |--   |-- fetch_macro_data.py
+  |--   |-- historical_backfill.py
+  |--   |-- model_health_check.py
+  |--   |-- portfolio_optimizer.py
+  |--   |-- parallel_fetch.py
+  |--   |-- finmind_client.py
+  |--   |-- train_all_missing.py
+  |--   |-- portfolio_backtest.py
+  |--   |-- fetch_sponsor_chip_data.py
+  |--   |-- calibrate_stock_physics.py
+  |--   |-- next_2330_predictor_light.py
+  |--   |-- fetch_chip_data.py
+  |--   |-- requirements.txt
+  |--   |-- scratch
+  |--   |--   |-- test_surprise.py
+  |--   |-- config.py
+  |--   |-- utils
+  |--   |--   |-- model_loader.py
+  |--   |-- next_2330_quarterly_builder.py
+  |--   |-- scripts
+  |--   |--   |-- fetch_derivative_data.py
+  |--   |--   |-- data_pipeline.py
+  |--   |--   |-- fetch_stock_info.py
+  |--   |--   |-- fetch_macro_data.py
+  |--   |--   |-- historical_backfill.py
+  |--   |--   |-- model_health_check.py
+  |--   |--   |-- portfolio_optimizer.py
+  |--   |--   |-- parallel_fetch.py
+  |--   |--   |-- finmind_client.py
+  |--   |--   |-- train_all_missing.py
+  |--   |--   |-- portfolio_backtest.py
+  |--   |--   |-- fetch_sponsor_chip_data.py
+  |--   |--   |-- calibrate_stock_physics.py
+  |--   |--   |-- next_2330_predictor_light.py
+  |--   |--   |-- fetch_chip_data.py
+  |--   |--   |-- requirements.txt
+  |--   |--   |-- scratch
+  |--   |--   |-- config.py
+  |--   |--   |-- utils
+  |--   |--   |-- next_2330_quarterly_builder.py
+  |--   |--   |-- fetch_anchors_20yr.sh
+  |--   |--   |-- fetch_2330_all.sh
+  |--   |--   |-- auto_train_manager.py
+  |--   |--   |-- next_2330_market_share_builder.py
+  |--   |--   |-- train_evaluate.py
+  |--   |--   |-- fetch_fundamental_data.py
+  |--   |--   |-- fetch_total_return_index.py
+  |--   |--   |-- predict.py
+  |--   |--   |-- next_2330_feature_builder.py
+  |--   |--   |-- run_tests.sh
+  |--   |--   |-- wait_and_train_and_full.sh
+  |--   |--   |-- feature_engineering.py
+  |--   |--   |-- automate_daily.py
+  |--   |--   |-- asymmetric_simulator.py
+  |--   |--   |-- fetch_macro_fundamental_data.py
+  |--   |--   |-- fetch_missing_stocks_data.py
+  |--   |--   |-- README.md
+  |--   |--   |-- visual_report_gen.py
+  |--   |--   |-- patch_all_stocks.py
+  |--   |--   |-- backtest_engine.py
+  |--   |--   |-- tune_hyperparameters.py
+  |--   |--   |-- singularity_layout_simulator.py
+  |--   |--   |-- models
+  |--   |--   |-- backtest_audit.py
+  |--   |--   |-- signal_filter.py
+  |--   |--   |-- db_utils.py
+  |--   |--   |-- feature_analysis.py
+  |--   |--   |-- train_all_force.py
+  |--   |--   |-- run_2330_20yr_full.sh
+  |--   |--   |-- llms-full.txt
+  |--   |--   |-- parallel_train.py
+  |--   |--   |-- fetch_international_data.py
+  |--   |--   |-- audit_snapshot.py
+  |--   |--   |-- fetch_derivative_sentiment_data.py
+  |--   |--   |-- update_feature_store.py
+  |--   |--   |-- db_optimize.py
+  |--   |--   |-- dashboard.py
+  |--   |--   |-- portfolio_strategy.py
+  |--   |--   |-- fetch_technical_data.py
+  |--   |-- fetch_anchors_20yr.sh
+  |--   |-- fetch_2330_all.sh
+  |--   |-- auto_train_manager.py
+  |--   |-- next_2330_market_share_builder.py
+  |--   |-- train_evaluate.py
+  |--   |-- fetch_fundamental_data.py
+  |--   |-- fetch_total_return_index.py
+  |--   |-- predict.py
+  |--   |-- next_2330_feature_builder.py
+  |--   |-- run_tests.sh
+  |--   |-- wait_and_train_and_full.sh
+  |--   |-- feature_engineering.py
+  |--   |-- automate_daily.py
+  |--   |-- asymmetric_simulator.py
+  |--   |-- fetch_macro_fundamental_data.py
+  |--   |-- fetch_missing_stocks_data.py
+  |--   |-- README.md
+  |--   |-- visual_report_gen.py
+  |--   |-- patch_all_stocks.py
+  |--   |-- backtest_engine.py
+  |--   |-- tune_hyperparameters.py
+  |--   |-- singularity_layout_simulator.py
+  |--   |-- models
+  |--   |--   |-- ensemble_model.py
+  |--   |--   |-- __init__.py
+  |--   |--   |-- tft_model.py
+  |--   |-- backtest_audit.py
+  |--   |-- signal_filter.py
+  |--   |-- db_utils.py
+  |--   |-- feature_analysis.py
+  |--   |-- train_all_force.py
+  |--   |-- run_2330_20yr_full.sh
+  |--   |-- llms-full.txt
+  |--   |-- parallel_train.py
+  |--   |-- fetch_international_data.py
+  |--   |-- audit_snapshot.py
+  |--   |-- fetch_derivative_sentiment_data.py
+  |--   |-- update_feature_store.py
+  |--   |-- db_optimize.py
+  |--   |-- dashboard.py
+  |--   |-- portfolio_strategy.py
+  |--   |-- fetch_technical_data.py
+  |-- 第四輪優化審查報告_資料抓取層.md
+  |-- README.md
+  |-- main.py
+  |-- implementation_plan.md
+  |-- Dockerfile
+  |-- reports
+  |--   |-- 金融資料擴充.md
+  |--   |-- Quantum_Finance_v5_Asset_Matrix.md
+  |--   |-- 優化特徵資料.md
+  |--   |-- stocks_202605071511.csv
+  |--   |-- project_structure.txt
+  |--   |-- tree_view.txt
+  |--   |-- 系統檢核報告_2026-04-30.md
+  |--   |-- 資料抓取優化.md
+  |--   |-- Audit_Report_2026-04-30.md
+  |--   |-- 逐支逐日commit完整性報告.md
+  |--   |-- project_structure.md
+  |--   |-- Quantum_Finance_v5_Roadmap.md
+  |--   |-- 逐項修改報告.md
+  |--   |-- Quantum_Finance_v5.1.md
+  |--   |-- 系統核心思想.md
+  |--   |-- 系統重構報告.md
+  |-- mlflow.db

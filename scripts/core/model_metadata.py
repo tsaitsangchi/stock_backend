@@ -1,38 +1,34 @@
 """
 model_metadata.py v4.0 (MLOps Registry Edition)
-量化系統核心：模型生命週期管理與註冊表
 ================================================================================
-v4.0 重大升級：
-  · 引入 Pydantic (Data Contracts)：取代原有的 dataclass，對所有模型評估指標
-    (OOF Sharpe, DA, IC) 進行嚴格型別與合理值範圍校驗，拒絕異常模型落地。
-  · 整合 PostgreSQL (Model Registry)：將詮釋資料同步寫入資料庫，
-    支援跨模型、跨時間的 SQL 查詢（例如：追蹤特定特徵組合在所有股票上的表現）。
-  · 修正 Path 拼接錯誤：徹底修復 atomic_write_json 中 Path + str 導致的崩潰。
+量化系統核心：模型生命週期管理與註冊表
+此模組負責管理機器學習模型的元資料 (Metadata)，確保模型版本、特徵指紋、
+以及回測指標 (Sharpe, DA) 的一致性與原子性存儲。
 
-執行範例（訓練腳本寫入模型時）：
+核心功能：
+  · Pydantic 校驗    ─ 嚴格限制模型指標範圍，拒絕異常模型落地。
+  · Model Registry   ─ 將模型元資料同步寫入 PostgreSQL，支援 SQL 追蹤與比對。
+  · 特徵指紋 (Fingerprint) ─ 紀錄訓練時的特徵清單，防止預測時發生特徵漂移 (Skew)。
+  · 原子性寫入        ─ 採用 .tmp 中轉機制，確保 JSON 與模型檔在存檔過程不毀損。
+
+修訂歷程：
+  v4.0 (2026-04-20):
+    - [重大] 引入 Pydantic (Data Contracts)，強制進行評估指標校驗。
+    - [重大] 實作 Model Registry，支援與 PostgreSQL 同步。
+    - [修正] 修復 Path 拼接錯誤導致的原子寫入崩潰。
+  v3.0 (2026-03-15):
+    - [基礎] 實作特徵指紋功能。
+
+執行範例：
+    # 範例 1：建立並儲存模型元資料 (含自動 Git Hash 綁定)
     from core.model_metadata import ModelMetadata, save_metadata
-    
-    # 建立模型元資料 (若數值不合理會直接拋出 ValueError 阻止後續流程)
     meta = ModelMetadata(
-        stock_id="2330",
-        model_path="outputs/models/2330/ensemble.pkl",
-        python_version="3.10.12",
-        feature_count=150,
-        feature_fingerprint="abc123hash...",
-        oof_da=0.55,       # 嚴格要求在 0.0 ~ 1.0 之間
-        oof_sharpe=1.8,
-        oof_ic=0.08,
-        oof_n_samples=1200,
-        n_trades_per_fold=45.5,
-        max_drawdown=-0.15,
-        train_end_date="2024-01-01",
-        horizon_days=5,
-        calibration_method="isotonic",
-        calibrator_cv="prefit",
-        notes="v3 model with macro features"
+        stock_id="2330", model_path="ensemble.pkl", feature_count=150,
+        feature_fingerprint="abc123hash", oof_da=0.55, oof_sharpe=1.8,
+        oof_ic=0.08, oof_n_samples=1200, n_trades_per_fold=45.5,
+        max_drawdown=-0.15, train_end_date="2024-01-01", horizon_days=5,
+        calibration_method="isotonic", calibrator_cv="prefit"
     )
-    
-    # 原子性寫入 JSON 封存檔，並同步註冊至 PostgreSQL
     save_metadata(meta, archive_dir="outputs/models/archive")
 """
 
@@ -100,7 +96,7 @@ def _get_git_hash() -> str:
 class ModelMetadata(BaseModel):
     """
     量化模型詮釋資料結構 (具備嚴格校驗)
-    任何不符合量化物理意義的數據都會在此被攔截。
+    任何不符合量化物理意義的數據都會在此 be 攔截。
     """
     stock_id: str = Field(..., min_length=1)
     model_path: str
@@ -176,8 +172,7 @@ def atomic_copy_file(src: str, dst: str) -> None:
 def fingerprint_features(feature_names: List[str]) -> str:
     """
     為特徵列表產生加密指紋。
-    用於預測階段比對「當前組建的特徵」與「模型訓練時的特徵」是否完美吻合，
-    防止特徵漂移 (Feature Skew) 導致的實盤破產。
+    用於預測階段比對「當前組建的特徵」與「模型訓練時的特徵」是否完美吻合。
     """
     sorted_features = sorted(list(feature_names))
     encoded = json.dumps(sorted_features).encode('utf-8')
@@ -187,12 +182,10 @@ def assert_feature_schema_match(metadata: ModelMetadata, current_features: List[
     """於推論階段驗證特徵集合，確保模型部署之相容性。"""
     current_fingerprint = fingerprint_features(current_features)
     if current_fingerprint != metadata.feature_fingerprint:
-        # 提供更詳細的錯誤診斷資訊
-        old_set = set(current_features) # 注意：實務上需要 metadata 存一份全特徵名單才能完美 diff
         logger.error(
             f"❌ 特徵指紋不符！模型 {metadata.stock_id} 拒絕預測。\n"
-            f"預期: {metadata.feature_fingerprint} (Count: {metadata.feature_count})\n"
-            f"實際: {current_fingerprint} (Count: {len(current_features)})"
+            f"預期: {metadata.feature_fingerprint}\n"
+            f"實際: {current_fingerprint}"
         )
         raise ValueError(f"Feature Schema Mismatch for stock {metadata.stock_id}")
 
@@ -252,14 +245,10 @@ def list_history(stock_id: str, archive_dir: str, limit: int = 5) -> List[ModelM
         try:
             with open(f, 'r', encoding='utf-8') as file:
                 data = json.load(file)
-                # 使用 Pydantic 進行實例化，自動驗證過往數據是否合規
                 history.append(ModelMetadata(**data))
-        except ValidationError as ve:
-            logger.warning(f"封存檔 {f} 資料格式不合規，已略過: {ve}")
         except Exception as e:
             logger.warning(f"讀取封存檔 {f} 失敗: {e}")
             
-    # 依 timestamp 降序排列
     history.sort(key=lambda x: x.timestamp, reverse=True)
     return history[:limit]
 

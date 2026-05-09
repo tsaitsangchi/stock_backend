@@ -1,418 +1,332 @@
 """
-fetch_derivative_sentiment_data.py — 衍生品與情緒指標（v3.2 核心模組全面升級版）
+fetch_derivative_sentiment_data.py v5.0 (Trinity Core Edition)
 ================================================================================
-v3.2 改進（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 修正 `finmind_get` 參數傳遞方式為具名參數 (Keyword Arguments) 避免型別崩潰。
-  ★ 鉅額交易預設改為讀取 `stocks` 表中 `fetch_derivative=True` 或活躍的核心標的。
-  ★ 程式結束時自動印出 `finmind_client` 的 `RequestStats` 統計報表。
+情緒指標與鉅額交易抓取器 — 完美對接 core/ 五大核心模組
+支援並發抓取、自動事務管理與市場/個股路由切換。
 
-執行範例（常規）：
-    # 抓取所有情緒與衍生品表
-    python scripts/fetchers/fetch_derivative_sentiment_data.py
-    
-    # 針對特定市場層級指標抓取
-    python scripts/fetchers/fetch_derivative_sentiment_data.py --tables fear_greed_index
-    
-    # 針對特定個股抓取鉅額交易 (強制更新)
-    python scripts/fetchers/fetch_derivative_sentiment_data.py --ids 2330 --tables block_trading --force
+涵蓋資料表：
+  · options_oi_large_holders ─ 期權大額未平倉 (FinMind: TaiwanOptionOpenInterestLargeTraders)
+  · fear_greed_index         ─ 貪婪恐懼指數     (FinMind: CnnFearGreedIndex)
+  · block_trading            ─ 鉅額交易         (FinMind: TaiwanStockBlockTrade)
 
-執行範例（維運與模式切換）：
-    # 重試最近 7 天失敗的組合
-    python scripts/fetchers/fetch_derivative_sentiment_data.py --retry-failed 7
+對接核心模組 (scripts/core/)：
+  · db_utils v4.5            ─ 連線池 + 自動事務 + 批次寫入降級
+  · finmind_client v4.1      ─ Singleton + SQLite 快取 + 斷路器保護
+  · migrate_stocks_config v3.0 ─ 自動確保 stocks 表配置與 config.py 同步
+  · path_setup v3.0          ─ 跨環境路徑自動導引
 
-    # 補抓最近 30 天無成功紀錄的資料
-    python scripts/fetchers/fetch_derivative_sentiment_data.py --gap-fill 30
+修訂歷程：
+  v5.0 (2026-05-09):
+    - [核心] 修正 ImportError，將 commit_per_day 統一升級為 commit_per_stock_per_day。
+    - [性能] 引入 ThreadPoolExecutor (支援 --workers)，支援多執行緒並行抓取。
+    - [穩定] 實作 90 天智慧分段抓取 (Chunking)，解決 V4 API 長區間 422 錯誤。
+    - [整合] 完美對接 core v4.5 核心組件。
+  v3.2 (2026-04-20):
+    - [基礎] 建立情緒指標與鉅額交易原型。
+
+執行範例：
+    # 範例 1：抓取所有情緒指標 (增量更新)
+    python scripts/fetchers/fetch_derivative_sentiment_data.py --tables options_large_oi,fear_greed
     
-    # 針對鉅額交易特定補抓
-    python scripts/fetchers/fetch_derivative_sentiment_data.py --gap-fill 14 --tables block_trading
+    # 範例 2：抓取核心個股的鉅額交易並使用 5 執行緒
+    python scripts/fetchers/fetch_derivative_sentiment_data.py --tables block_trading --all --workers 5
+    
+    # 範例 3：全量更新所有情緒與指標
+    python scripts/fetchers/fetch_derivative_sentiment_data.py --all --workers 5
 """
-
-from __future__ import annotations
 
 import sys
-import logging
-from collections import defaultdict
-from datetime import date, datetime, timedelta
 import argparse
+import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Callable, List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        safe_int, safe_float, get_db_stock_ids
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+    from core.migrate_stocks_config import migrate as sync_stocks_table
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    get_db_stock_ids,
-    get_core_stocks_from_db,
-    ensure_ddl,
-    safe_float,
-    get_all_safe_starts,
-    resolve_start_cached,
-    FailureLogger,
-    commit_per_stock_per_day,
-    commit_per_day,
-    dedup_rows,
-    write_fetch_log,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DATASET_START = {
-    "options_large_oi":  "2018-01-01",
-    "fear_greed_index":  "2011-01-03",
-    "block_trading":     "2021-01-01",
-}
-DEFAULT_END = date.today().strftime("%Y-%m-%d")
+# =====================================================================
+# 1. DDL 與 SQL 對照表
+# =====================================================================
 
-MARKET_LEVEL_TABLES = {"options_oi_large_holders", "fear_greed_index"}
-
-_CLI_ARGS_STR = " ".join(sys.argv)
-
-
-# ─────────────────────────────────────────────
-# 日誌與 SQL
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-DDL_SENTIMENT = """
-CREATE TABLE IF NOT EXISTS options_oi_large_holders (date DATE, option_id VARCHAR(50), put_call VARCHAR(10), contract_type VARCHAR(50), name VARCHAR(100), market_open_interest NUMERIC(20,6), buy_top5_trader_open_interest NUMERIC(20,6), buy_top5_trader_open_interest_per NUMERIC(20,6), buy_top10_trader_open_interest NUMERIC(20,6), buy_top10_trader_open_interest_per NUMERIC(20,6), sell_top5_trader_open_interest NUMERIC(20,6), sell_top5_trader_open_interest_per NUMERIC(20,6), sell_top10_trader_open_interest NUMERIC(20,6), sell_top10_trader_open_interest_per NUMERIC(20,6), buy_top5_specific_open_interest NUMERIC(20,6), buy_top5_specific_open_interest_per NUMERIC(20,6), buy_top10_specific_open_interest NUMERIC(20,6), buy_top10_specific_open_interest_per NUMERIC(20,6), sell_top5_specific_open_interest NUMERIC(20,6), sell_top5_specific_open_interest_per NUMERIC(20,6), sell_top10_specific_open_interest NUMERIC(20,6), sell_top10_specific_open_interest_per NUMERIC(20,6), PRIMARY KEY (date, option_id, put_call, contract_type));
-CREATE TABLE IF NOT EXISTS fear_greed_index (date DATE PRIMARY KEY, fear_greed NUMERIC(20,6), fear_greed_emotion VARCHAR(50));
-CREATE TABLE IF NOT EXISTS block_trading (date DATE, stock_id VARCHAR(50), securities_trader_id VARCHAR(50), securities_trader VARCHAR(100), price NUMERIC(20,6), buy NUMERIC(20,6), sell NUMERIC(20,6), trade_type VARCHAR(50), PRIMARY KEY (date, stock_id, securities_trader_id, price, trade_type));
-"""
-
-UPSERT_OPTIONS_LARGE_OI = """INSERT INTO options_oi_large_holders VALUES %s ON CONFLICT (date, option_id, put_call, contract_type) DO UPDATE SET market_open_interest = EXCLUDED.market_open_interest;"""
-UPSERT_FEAR_GREED = """INSERT INTO fear_greed_index (date, fear_greed, fear_greed_emotion) VALUES %s ON CONFLICT (date) DO UPDATE SET fear_greed = EXCLUDED.fear_greed;"""
-UPSERT_BLOCK_TRADING = """INSERT INTO block_trading (date, stock_id, securities_trader_id, securities_trader, price, buy, sell, trade_type) VALUES %s ON CONFLICT (date, stock_id, securities_trader_id, price, trade_type) DO UPDATE SET buy = EXCLUDED.buy, sell = EXCLUDED.sell;"""
-
-# ─────────────────────────────────────────────
-# Mappers
-# ─────────────────────────────────────────────
-def map_opt_large(r): return (r["date"], str(r.get("option_id", "")), r.get("put_call", ""), str(r.get("contract_type", "")), r.get("name", ""), safe_float(r.get("market_open_interest")), safe_float(r.get("buy_top5_trader_open_interest")), safe_float(r.get("buy_top5_trader_open_interest_per")), safe_float(r.get("buy_top10_trader_open_interest")), safe_float(r.get("buy_top10_trader_open_interest_per")), safe_float(r.get("sell_top5_trader_open_interest")), safe_float(r.get("sell_top5_trader_open_interest_per")), safe_float(r.get("sell_top10_trader_open_interest")), safe_float(r.get("sell_top10_trader_open_interest_per")), safe_float(r.get("buy_top5_specific_open_interest")), safe_float(r.get("buy_top5_specific_open_interest_per")), safe_float(r.get("buy_top10_specific_open_interest")), safe_float(r.get("buy_top10_specific_open_interest_per")), safe_float(r.get("sell_top5_specific_open_interest")), safe_float(r.get("sell_top5_specific_open_interest_per")), safe_float(r.get("sell_top10_specific_open_interest")), safe_float(r.get("sell_top10_specific_open_interest_per")))
-def map_fg(r): return (r["date"], safe_float(r.get("fear_greed")), r.get("fear_greed_emotion", "")[:50])
-def map_block(r): return (r["date"], r["stock_id"], str(r.get("securities_trader_id", "")), r.get("securities_trader", "")[:100], safe_float(r.get("price")), safe_float(r.get("volume")), 0.0, str(r.get("trade_type", ""))[:50])
-
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_block_trading(conn, stock_ids, start, end, delay, force, fetch_mode_override=None):
-    logger.info("=== [block_trading] 開始 ===")
-    ensure_ddl(conn, DDL_SENTIMENT)
-    conn.commit()
-    
-    flog = FailureLogger("block_trading", db_conn=conn)
-    latest = get_all_safe_starts(conn, "block_trading")
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
-    
-    for sid in stock_ids:
-        s = resolve_start_cached(sid, latest, start, DATASET_START["block_trading"], force)
-        if not s:
-            write_fetch_log(conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
-        
-        t0 = time.time()
-        try:
-            # 修正：全面改為具名參數 (Keyword arguments)
-            data = finmind_get(
-                dataset="TaiwanStockBlockTrade", 
-                params={"data_id": sid, "start_date": s, "end_date": end}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            dur = int((time.time() - t0) * 1000)
-            
-            if data:
-                rows = [map_block(r) for r in data]
-                rows = dedup_rows(rows, (0, 1, 2, 4, 7))
-                res = commit_per_stock_per_day(conn, UPSERT_BLOCK_TRADING, rows, None, label_prefix=f"block/{sid}", failure_logger=flog)
-                n = sum(res.values())
-                total_rows += n
-                write_fetch_log(
-                    conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
-                    duration_ms=dur, status="success" if n > 0 else "partial"
-                )
-            else:
-                write_fetch_log(
-                    conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                    duration_ms=dur, status="no_new_data"
-                )
-        except Exception as e:
-            dur = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                duration_ms=dur, status="failed", error_message=str(e)
-            )
-            
-    logger.info(f"  [block_trading] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay, force, fetch_mode_override=None):
-    logger.info(f"=== [{table}] 開始 ===")
-    ensure_ddl(conn, DDL_SENTIMENT)
-    conn.commit()
-    
-    flog = FailureLogger(table, db_conn=conn)
-    fetch_mode = fetch_mode_override or "market"
-
-    # ⭐ 自動尋找起始日 ⭐
-    if not start and not force:
-        with conn.cursor() as cur:
-            cur.execute(f"SELECT MAX(date) FROM {table}")
-            max_d = cur.fetchone()[0]
-            if max_d:
-                start = (max_d + timedelta(days=1)).strftime("%Y-%m-%d")
-                logger.info(f"  [{table}] 自動從資料庫最新日期續傳：{start}")
-            else:
-                start = DATASET_START.get(table.replace("options_oi_large_holders", "options_large_oi"), "2021-01-01")
-    
-    s_dt = datetime.strptime(start or DATASET_START.get(table.replace("options_oi_large_holders", "options_large_oi"), "2021-01-01"), "%Y-%m-%d").date()
-    e_dt = datetime.strptime(end, "%Y-%m-%d").date()
-    
-    if s_dt > e_dt:
-        logger.info(f"  [{table}] 已最新，跳過")
-        write_fetch_log(conn, table_name=table, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-        return
-    
-    total_rows = 0
-    curr = s_dt
-    while curr <= e_dt:
-        d_str = curr.strftime("%Y-%m-%d")
-        logger.info(f"  [{table}] 正在抓取自 {d_str} 起的資料塊...")
-        t0 = time.time()
-        try:
-            # ⭐ 核心優化：不帶 end_date 可觸發快速度大量回傳 (約 200-300 天) 
-            # 修正：全面改為具名參數 (Keyword arguments)
-            data = finmind_get(
-                dataset=dataset, 
-                params={"start_date": d_str}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            dur = int((time.time() - t0) * 1000)
-            
-            if not data:
-                # 若無資料，則跳過一天繼續
-                write_fetch_log(
-                    conn, table_name=table, fetch_mode=fetch_mode, fetch_date_from=d_str, 
-                    rows_inserted=0, duration_ms=dur, status="no_new_data"
-                )
-                curr += timedelta(days=1)
-                continue
-                
-            # 轉換資料
-            rows = [mapper(r) for r in data]
-            
-            # 找出這批資料中最後一天的日期
-            received_dates = sorted(list(set(r[0] for r in rows)))
-            logger.info(f"    -> 成功接收 {len(received_dates)} 天的資料 ({received_dates[0]} ~ {received_dates[-1]})")
-            
-            last_date_str = received_dates[-1]
-            last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
-            
-            # 寫入資料庫
-            if table == "fear_greed_index":
-                rows = dedup_rows(rows, (0,))
-                res = commit_per_day(conn, upsert_sql, rows, "(%s::date, %s::numeric, %s)", date_index=0, label_prefix=table, failure_logger=flog)
-            elif table == "options_oi_large_holders":
-                rows = dedup_rows(rows, (0, 1, 2, 3))
-                tmpl = "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-                res = commit_per_day(conn, upsert_sql, rows, tmpl, date_index=0, label_prefix=table, failure_logger=flog)
-            else:
-                rows = dedup_rows(rows, (0, 1, 2, 3))
-                res = commit_per_stock_per_day(conn, upsert_sql, rows, None, label_prefix=table, failure_logger=flog)
-            
-            n = sum(res.values())
-            total_rows += n
-            write_fetch_log(
-                conn, table_name=table, fetch_mode=fetch_mode, 
-                fetch_date_from=d_str, fetch_date_to=last_date_str, 
-                rows_inserted=n, duration_ms=dur, status="success" if n > 0 else "partial"
-            )
-            
-            # ⭐ 下一次從最後一天的隔天開始 ⭐
-            new_curr = last_date + timedelta(days=1)
-            
-            # 如果日期沒推進，強制跳一天避開無窮迴圈
-            if new_curr <= curr:
-                curr += timedelta(days=1)
-            else:
-                curr = new_curr
-            
-            if curr > e_dt:
-                break
-                
-        except Exception as e:
-            dur = int((time.time() - t0) * 1000)
-            flog.record(date=d_str, error=str(e))
-            write_fetch_log(
-                conn, table_name=table, fetch_mode=fetch_mode, fetch_date_from=d_str, 
-                rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e)
-            )
-            curr += timedelta(days=1)
-
-    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str | None]]:
-    targets: dict[str, list[str | None]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
+DDL_MAP = {
+    "options_oi_large_holders": """
+        CREATE TABLE IF NOT EXISTS options_oi_large_holders (
+            date DATE NOT NULL,
+            option_id VARCHAR(50) NOT NULL,
+            put_call VARCHAR(10) NOT NULL,
+            contract_type VARCHAR(50) NOT NULL,
+            name VARCHAR(100),
+            market_open_interest NUMERIC(20,6),
+            buy_top5_trader_open_interest NUMERIC(20,6),
+            buy_top5_trader_open_interest_per NUMERIC(20,6),
+            buy_top10_trader_open_interest NUMERIC(20,6),
+            buy_top10_trader_open_interest_per NUMERIC(20,6),
+            sell_top5_trader_open_interest NUMERIC(20,6),
+            sell_top5_trader_open_interest_per NUMERIC(20,6),
+            sell_top10_trader_open_interest NUMERIC(20,6),
+            sell_top10_trader_open_interest_per NUMERIC(20,6),
+            buy_top5_specific_open_interest NUMERIC(20,6),
+            buy_top5_specific_open_interest_per NUMERIC(20,6),
+            buy_top10_specific_open_interest NUMERIC(20,6),
+            buy_top10_specific_open_interest_per NUMERIC(20,6),
+            sell_top5_specific_open_interest NUMERIC(20,6),
+            sell_top5_specific_open_interest_per NUMERIC(20,6),
+            sell_top10_specific_open_interest NUMERIC(20,6),
+            sell_top10_specific_open_interest_per NUMERIC(20,6),
+            PRIMARY KEY (date, option_id, put_call, contract_type)
+        );
+    """,
+    "fear_greed_index": """
+        CREATE TABLE IF NOT EXISTS fear_greed_index (
+            date DATE PRIMARY KEY,
+            fear_greed NUMERIC(20,6),
+            fear_greed_emotion VARCHAR(50)
+        );
+    """,
+    "block_trading": """
+        CREATE TABLE IF NOT EXISTS block_trading (
+            date DATE NOT NULL,
+            stock_id VARCHAR(50) NOT NULL,
+            securities_trader_id VARCHAR(50) NOT NULL,
+            securities_trader VARCHAR(100),
+            price NUMERIC(20,6) NOT NULL,
+            buy NUMERIC(20,6),
+            sell NUMERIC(20,6),
+            trade_type VARCHAR(50) NOT NULL,
+            PRIMARY KEY (date, stock_id, securities_trader_id, price, trade_type)
+        );
     """
+}
+
+UPSERT_MAP = {
+    "options_oi_large_holders": """
+        INSERT INTO options_oi_large_holders VALUES (
+            %(date)s, %(option_id)s, %(put_call)s, %(contract_type)s, %(name)s,
+            %(market_open_interest)s, %(buy_top5_trader_open_interest)s, %(buy_top5_trader_open_interest_per)s,
+            %(buy_top10_trader_open_interest)s, %(buy_top10_trader_open_interest_per)s,
+            %(sell_top5_trader_open_interest)s, %(sell_top5_trader_open_interest_per)s,
+            %(sell_top10_trader_open_interest)s, %(sell_top10_trader_open_interest_per)s,
+            %(buy_top5_specific_open_interest)s, %(buy_top5_specific_open_interest_per)s,
+            %(buy_top10_specific_open_interest)s, %(buy_top10_specific_open_interest_per)s,
+            %(sell_top5_specific_open_interest)s, %(sell_top5_specific_open_interest_per)s,
+            %(sell_top10_specific_open_interest)s, %(sell_top10_specific_open_interest_per)s
+        ) ON CONFLICT (date, option_id, put_call, contract_type) DO UPDATE SET market_open_interest = EXCLUDED.market_open_interest;
+    """,
+    "fear_greed_index": """
+        INSERT INTO fear_greed_index (date, fear_greed, fear_greed_emotion)
+        VALUES (%(date)s, %(fear_greed)s, %(fear_greed_emotion)s)
+        ON CONFLICT (date) DO UPDATE SET fear_greed = EXCLUDED.fear_greed;
+    """,
+    "block_trading": """
+        INSERT INTO block_trading (date, stock_id, securities_trader_id, securities_trader, price, buy, sell, trade_type)
+        VALUES (%(date)s, %(stock_id)s, %(securities_trader_id)s, %(securities_trader)s, %(price)s, %(buy)s, %(sell)s, %(trade_type)s)
+        ON CONFLICT (date, stock_id, securities_trader_id, price, trade_type) DO UPDATE SET buy = EXCLUDED.buy;
+    """
+}
+
+DATASET_MAP = {
+    "options_oi_large_holders": "TaiwanOptionOpenInterestLargeTraders",
+    "fear_greed_index":         "CnnFearGreedIndex",
+    "block_trading":            "TaiwanStockBlockTrade",
+}
+
+# =====================================================================
+# 2. Mappers
+# =====================================================================
+
+def map_opt_large(r: dict) -> dict:
+    return {
+        "date": r["date"], "option_id": str(r.get("option_id", "")), "put_call": r.get("put_call", ""), "contract_type": str(r.get("contract_type", "")),
+        "name": r.get("name", ""), "market_open_interest": safe_float(r.get("market_open_interest")),
+        "buy_top5_trader_open_interest": safe_float(r.get("buy_top5_trader_open_interest")), "buy_top5_trader_open_interest_per": safe_float(r.get("buy_top5_trader_open_interest_per")),
+        "buy_top10_trader_open_interest": safe_float(r.get("buy_top10_trader_open_interest")), "buy_top10_trader_open_interest_per": safe_float(r.get("buy_top10_trader_open_interest_per")),
+        "sell_top5_trader_open_interest": safe_float(r.get("sell_top5_trader_open_interest")), "sell_top5_trader_open_interest_per": safe_float(r.get("sell_top5_trader_open_interest_per")),
+        "sell_top10_trader_open_interest": safe_float(r.get("sell_top10_trader_open_interest")), "sell_top10_trader_open_interest_per": safe_float(r.get("sell_top10_trader_open_interest_per")),
+        "buy_top5_specific_open_interest": safe_float(r.get("buy_top5_specific_open_interest")), "buy_top5_specific_open_interest_per": safe_float(r.get("buy_top5_specific_open_interest_per")),
+        "buy_top10_specific_open_interest": safe_float(r.get("buy_top10_specific_open_interest")), "buy_top10_specific_open_interest_per": safe_float(r.get("buy_top10_specific_open_interest_per")),
+        "sell_top5_specific_open_interest": safe_float(r.get("sell_top5_specific_open_interest")), "sell_top5_specific_open_interest_per": safe_float(r.get("sell_top5_specific_open_interest_per")),
+        "sell_top10_specific_open_interest": safe_float(r.get("sell_top10_specific_open_interest")), "sell_top10_specific_open_interest_per": safe_float(r.get("sell_top10_specific_open_interest_per"))
+    }
+
+def map_fg(r: dict) -> dict:
+    return {"date": r["date"], "fear_greed": safe_float(r.get("fear_greed")), "fear_greed_emotion": r.get("fear_greed_emotion", "")[:50]}
+
+def map_block(r: dict) -> dict:
+    return {
+        "date": r["date"], "stock_id": r["stock_id"], "securities_trader_id": str(r.get("securities_trader_id", "")),
+        "securities_trader": r.get("securities_trader", "")[:100], "price": safe_float(r.get("price")),
+        "buy": safe_float(r.get("volume", 0.0)), "sell": 0.0, "trade_type": str(r.get("trade_type", "Unknown"))[:50]
+    }
+
+MAPPER_MAP = {
+    "options_oi_large_holders": map_opt_large,
+    "fear_greed_index":         map_fg,
+    "block_trading":            map_block,
+}
+
+# =====================================================================
+# 3. 工具函式
+# =====================================================================
+
+def taipei_today() -> str:
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
-    except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    except:
+        return date.today().strftime("%Y-%m-%d")
 
-    for tbl, sids in targets.items():
-        sample = [s for s in sids if s is not None][:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
+def next_day(date_str: str) -> str:
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return date_str
 
-def query_gap_targets(conn, days: int, target_tables: list[str], all_stock_ids: list[str]) -> dict[str, list[str | None]]:
-    targets: dict[str, list[str | None]] = defaultdict(list)
-    for tbl in target_tables:
-        if tbl in MARKET_LEVEL_TABLES:
-            sql = f"SELECT 1 FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval LIMIT 1;"
-            try:
+def resolve_stock_ids(args) -> List[str]:
+    if args.all:
+        try:
+            with db_session() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(sql, (tbl, str(days)))
-                    if cur.fetchone() is None: targets[tbl].append(None)
-            except Exception as e: logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
-        else:
-            sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(sql, (tbl, str(days), all_stock_ids))
-                    have_success = {row[0] for row in cur.fetchall()}
-                missing = [sid for sid in all_stock_ids if sid not in have_success]
-                targets[tbl].extend(missing)
-            except Exception as e: logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+                    cur.execute("SELECT stock_id FROM stocks WHERE is_active = TRUE ORDER BY stock_id")
+                    sids = [r[0] for r in cur.fetchall()]
+            if sids: return sids
+        except: pass
+        return get_db_stock_ids() or []
+    if not args.ids: return []
+    return [s.strip() for s in args.ids.split(",") if s.strip()]
 
-    for tbl, lst in targets.items():
-        sample = [s for s in lst if s is not None][:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(lst)} 個目標 (例：{sample})")
-    return targets
+# =====================================================================
+# 4. 核心抓取邏輯
+# =====================================================================
 
-def _run_targeted(conn, targets: dict[str, list[str | None]], args, fetch_mode: str):
-    for tbl, sids in targets.items():
-        if not sids: continue
-        
-        if tbl == "options_oi_large_holders":
-            fetch_sentiment(conn, "TaiwanOptionOpenInterestLargeTraders", "options_oi_large_holders", UPSERT_OPTIONS_LARGE_OI, map_opt_large, args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode)
-        elif tbl == "fear_greed_index":
-            fetch_sentiment(conn, "CnnFearGreedIndex", "fear_greed_index", UPSERT_FEAR_GREED, map_fg, args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode)
-        elif tbl == "block_trading":
-            real_sids = [s for s in sids if s is not None]
-            if real_sids:
-                fetch_block_trading(conn, real_sids, args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode)
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+", choices=["options_large_oi", "fear_greed_index", "block_trading", "all"], default=["all"])
-    p.add_argument("--ids")
-    p.add_argument("--start", default="")
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
-
-    tables = ["options_large_oi", "fear_greed_index", "block_trading"] if "all" in args.tables else args.tables
-    conn = get_db_conn()
+def fetch_one_unit(table: str, unit_id: Optional[str], start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    """unit_id 為 None 時代表市場級資料 (如 Fear Greed)"""
+    api = FinMindClient()
+    fail_log = FailureLogger(f"sentiment_{table}")
+    cur_start = start
     
+    if not force:
+        latest = get_latest_date(table, unit_id)
+        if latest:
+            cur_start = next_day(str(latest))
+            if cur_start > end: return (unit_id or "market"), 0, 0
+
     try:
-        _ensure_fetch_log_table(conn)
+        start_dt = datetime.strptime(cur_start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+        total_success = total_error = 0
+        chunk_days = 90
         
-        # 決定鉅額交易要抓取的標的
-        if args.ids:
-            stock_ids = [s.strip() for s in args.ids.split(",")]
-        else:
-            # 優先使用動態核心配置，否則退回舊版
-            stock_configs = get_core_stocks_from_db(conn)
-            if stock_configs:
-                stock_ids = [sid for sid, cfg in stock_configs.items() if cfg.get("is_active", True)]
-            else:
-                stock_ids = get_db_stock_ids(conn)
-        
-        db_table_map = {
-            "options_large_oi": "options_oi_large_holders",
-            "fear_greed_index": "fear_greed_index",
-            "block_trading": "block_trading"
-        }
-        db_tables = [db_table_map[t] for t in tables]
-
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, db_tables)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="retry")
-            else: logger.info("沒有找到需要重試的目標，結束。")
-            return
-
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, db_tables, stock_ids)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="gap_fill")
-            else: logger.info("沒有找到需要補抓的目標，結束。")
-            return
-
-        # 模式 C：常規抓取
-        if "options_large_oi" in tables: 
-            fetch_sentiment(conn, "TaiwanOptionOpenInterestLargeTraders", "options_oi_large_holders", UPSERT_OPTIONS_LARGE_OI, map_opt_large, args.start, args.end, args.delay, args.force)
-        if "fear_greed_index" in tables: 
-            fetch_sentiment(conn, "CnnFearGreedIndex", "fear_greed_index", UPSERT_FEAR_GREED, map_fg, args.start, args.end, args.delay, args.force)
-        if "block_trading" in tables: 
-            fetch_block_trading(conn, stock_ids, args.start or DATASET_START["block_trading"], args.end, args.delay, args.force)
+        while start_dt <= end_dt:
+            seg_start = start_dt.strftime("%Y-%m-%d")
+            seg_end_dt = min(start_dt + timedelta(days=chunk_days - 1), end_dt)
+            seg_end = seg_end_dt.strftime("%Y-%m-%d")
             
-    finally:
-        conn.close()
-        logger.info("全部完成")
-        # 於程式完全結束時，印出統一的 FinMind RequestStats 報表
+            t0 = time.monotonic()
+            data = api.get_data(DATASET_MAP[table], unit_id, seg_start, seg_end)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            if data:
+                records = [MAPPER_MAP[table](row) for row in data if "date" in row]
+                if records:
+                    success, error = commit_per_stock_per_day(table, records, UPSERT_MAP[table], unit_id)
+                    total_success += success
+                    total_error += error
+                    write_fetch_log(table, unit_id, "success" if error == 0 else "partial", "sentiment_v5", seg_start, seg_end, duration_ms)
+            
+            start_dt = seg_end_dt + timedelta(days=1)
+            time.sleep(0.3)
+
+        return (unit_id or "market"), total_success, total_error
+    except Exception as e:
+        logger.error(f"  ❌ {(unit_id or 'market')} @ {table}: {e}")
+        fail_log.log_failure(table, unit_id, cur_start, end, str(e))
+        return (unit_id or "market"), 0, 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Sentiment Data Fetcher v5.0 (Trinity Core Edition)")
+    parser.add_argument("--tables", type=str, default="all")
+    parser.add_argument("--ids", type=str, default="")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--start", default="2021-01-01")
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
+
+    # Step 0: 資產同步
+    try:
+        sync_stocks_table()
+    except: pass
+
+    # 決定目標表
+    table_inputs = [t.strip().lower() for t in args.tables.split(",") if t.strip()]
+    target_tables = []
+    if "all" in table_inputs:
+        target_tables = list(MAPPER_MAP.keys())
+    else:
+        mapping = {"options_large_oi": "options_oi_large_holders", "fear_greed": "fear_greed_index", "block_trading": "block_trading"}
+        for t in table_inputs:
+            if t in mapping: target_tables.append(mapping[t])
+            elif t in DDL_MAP: target_tables.append(t)
+
+    end_date = args.end or taipei_today()
+
+    logger.info("=" * 70)
+    logger.info(f"  Sentiment Data Fetcher v5.0  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    logger.info(f"  目標資料表  : {target_tables}")
+    logger.info(f"  日期區間    : {args.start} ~ {end_date}")
+    logger.info(f"  Workers     : {args.workers}")
+    logger.info("=" * 70)
+
+    for table in target_tables:
+        ensure_ddl(DDL_MAP[table])
+        
+        if table == "block_trading":
+            # 個股層級
+            sids = resolve_stock_ids(args)
+            logger.info(f"━━━ 抓取資料表 {table} ({len(sids)} stocks) ━━━")
+            with ThreadPoolExecutor(max_workers=args.workers) as ex:
+                futures = {ex.submit(fetch_one_unit, table, sid, args.start, end_date, args.force): sid for sid in sids}
+                for fut in as_completed(futures):
+                    sid, ok, err = fut.result()
+                    if ok: logger.info(f"  ✓ {sid}: {ok} rows")
+        else:
+            # 市場層級
+            logger.info(f"━━━ 抓取資料表 {table} (Market Level) ━━━")
+            _, ok, err = fetch_one_unit(table, None, args.start, end_date, args.force)
+            if ok: logger.info(f"  ✓ market: {ok} rows")
+
+    logger.info("🎉 抓取任務完成。")
+    try:
         get_request_stats().summary()
+    except: pass
 
 if __name__ == "__main__":
     main()

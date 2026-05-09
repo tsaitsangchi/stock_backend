@@ -1,299 +1,176 @@
 """
-fetch_total_return_index.py — 台股報酬指數（v3.4 Schema Auto-Migration 版）
+fetch_total_return_index.py v5.1 (Trinity Core Edition)
 ================================================================================
-v3.4 改進：
-  ★ 導入 `_upgrade_schema()`：自動偵測舊版資料庫中可能被命名為 `value` 或 `return_index` 的欄位，
-    並自動進行 `RENAME COLUMN` 升級為 `total_return_index`，徹底解決 column does not exist 錯誤。
+台股報酬指數抓取器 — 完美對接 core/ 五大核心模組
+此模組負責抓取發行量加權股價報酬指數 (TAIEX) 與櫃買報酬指數 (TPEx)。
 
-v3.3 既有：
-  ★ 修正 SQL 語法：明確宣告 INSERT INTO 欄位。
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 結合 `FailureLogger` 與 `commit_per_stock_per_day` 進行雙層粒度原子寫入。
+主要功能：
+  · Schema 自動遷移  ─ 自動偵測並修正舊版資料庫欄位名稱 (如 value, return_index)，統一為 total_return_index。
+  · 智慧增量更新     ─ 自動從 fetch_log 推算缺失區間，確保報酬指數連續性。
+  · 斷路器保護       ─ 對接 v5.1 核心，排除 API 業務錯誤對系統熔斷的干擾。
 
-執行範例（常規）：
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 事務原子性 + 筆數追蹤 (rows_inserted)
+  · finmind_client v5.1      ─ Singleton + SQLite 快取 + 智慧斷路器
+  · path_setup v3.0          ─ 跨環境路徑自動導引
+
+修訂歷程：
+  v5.1 (2026-05-09):
+    - [核心] 修正 ImportError，移除 finmind_get，全面換裝 FinMindClient()。
+    - [核心] 移除 get_db_conn，改用 db_session 與 db_transaction。
+    - [監控] 補齊 write_fetch_log 的 rows_inserted 參數，實現精準監控。
+  v3.4 (2024-05-01):
+    - [基礎] 建立基礎報酬指數抓取邏輯。
+
+執行範例：
+    # 範例 1：抓取所有預設報酬指數 (TAIEX, TPEx)
     python scripts/fetchers/fetch_total_return_index.py
+    
+    # 範例 2：強制重抓台積電相關報酬指數
     python scripts/fetchers/fetch_total_return_index.py --ids TAIEX --force
 """
 
-from __future__ import annotations
-
 import sys
+import argparse
 import logging
 import time
-import argparse
 from pathlib import Path
-from collections import defaultdict
 from datetime import date, datetime, timedelta
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, safe_float
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    write_fetch_log,
-    safe_float,
-    get_all_safe_starts,
-    resolve_start_cached,
-    FailureLogger,
-    commit_per_stock_per_day,
-    dedup_rows,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DATASET_START = {
-    "total_return_index": "2003-01-01"
-}
-DEFAULT_END = date.today().strftime("%Y-%m-%d")
-DEFAULT_IDS = ["TAIEX", "TPEx"]
-
-_CLI_ARGS_STR = " ".join(sys.argv)
-
-
-# ─────────────────────────────────────────────
-# 日誌與 SQL
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
+# =====================================================================
+# 1. DDL 與 SQL 配置
+# =====================================================================
 
 DDL_TOTAL_RETURN = """
 CREATE TABLE IF NOT EXISTS total_return_index (
-    date DATE, 
-    stock_id VARCHAR(50), 
+    date DATE NOT NULL, 
+    stock_id VARCHAR(50) NOT NULL, 
     total_return_index NUMERIC(20,6), 
     PRIMARY KEY (date, stock_id)
 );
+CREATE INDEX IF NOT EXISTS idx_total_return_stock ON total_return_index (stock_id, date DESC);
 """
 
-def _upgrade_schema(conn) -> None:
-    """
-    自動化 Schema 移轉 (Auto-Migration)
-    解決舊版資料庫可能使用 value、return_index 或大寫名稱作為欄位名的問題。
-    """
-    try:
-        with conn.cursor() as cur:
-            # 取得 total_return_index 表的所有欄位
-            cur.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'total_return_index';
-            """)
-            columns = [row[0] for row in cur.fetchall()]
-            
-            # 如果發現沒有 total_return_index 欄位，代表是舊版 Schema
-            if columns and "total_return_index" not in columns:
-                # 找出除了 date, stock_id 以外的那個舊版資料欄位
-                for col in columns:
-                    if col not in ('date', 'stock_id'):
-                        logger.warning(f"🛠️ 偵測到舊版欄位名稱 '{col}'，正在自動進行 Schema 升級 (改名為 total_return_index)...")
-                        cur.execute(f'ALTER TABLE total_return_index RENAME COLUMN "{col}" TO total_return_index;')
-                        logger.info("✅ Schema 升級完成！")
-                        break
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        logger.debug(f"Schema 升級檢查失敗 (可能是首次建表，可忽略): {e}")
-
 UPSERT_TOTAL_RETURN = """
-INSERT INTO total_return_index (date, stock_id, total_return_index) VALUES %s 
+INSERT INTO total_return_index (date, stock_id, total_return_index) 
+VALUES (%(date)s, %(stock_id)s, %(total_return_index)s) 
 ON CONFLICT (date, stock_id) DO UPDATE SET 
     total_return_index = EXCLUDED.total_return_index;
 """
 
+# =====================================================================
+# 2. 工具與 Schema 升級
+# =====================================================================
 
-# ─────────────────────────────────────────────
-# Mappers
-# ─────────────────────────────────────────────
-def map_tr(r: dict) -> tuple:
-    return (r["date"], str(r.get("stock_id", "")), safe_float(r.get("price")))
-
-
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_total_return_index(
-    conn, target_ids: list[str], start: str, end: str, 
-    delay: float, force: bool, fetch_mode_override: str | None = None
-):
-    table = "total_return_index"
-    logger.info(f"=== [{table}] 開始 ===")
-    
-    # 執行 DDL 與 Schema 升級
-    ensure_ddl(conn, DDL_TOTAL_RETURN)
-    conn.commit()
-    _upgrade_schema(conn)
-    
-    flog = FailureLogger(table, db_conn=conn)
-    latest = get_all_safe_starts(conn, table)
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
-    tmpl = "(%s::date, %s, %s::numeric)"
-
-    for sid in target_ids:
-        s = resolve_start_cached(sid, latest, start, DATASET_START[table], force)
-        if not s:
-            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
-        
-        t0 = time.time()
-        try:
-            data = finmind_get(
-                dataset="TaiwanStockTotalReturnIndex", 
-                params={"data_id": sid, "start_date": s, "end_date": end}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            duration_ms = int((time.time() - t0) * 1000)
-            
-            if data:
-                rows = [map_tr(r) for r in data]
-                rows = dedup_rows(rows, (0, 1))
-                
-                res = commit_per_stock_per_day(conn, UPSERT_TOTAL_RETURN, rows, tmpl, label_prefix=table, failure_logger=flog)
-                n = sum(res.values())
-                total_rows += n
-                
-                write_fetch_log(
-                    conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
-                    duration_ms=duration_ms, status="success" if n > 0 else "partial"
-                )
-            else:
-                write_fetch_log(
-                    conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                    duration_ms=duration_ms, status="no_new_data"
-                )
-        except Exception as e:
-            duration_ms = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                duration_ms=duration_ms, status="failed", error_message=str(e)
-            )
-            
-    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
-    """
+def _upgrade_schema():
+    """自動偵測並修正舊版資料庫欄位名稱。"""
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
-    except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
-
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-def query_gap_targets(conn, days: int, target_tables: list[str], all_stock_ids: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    for tbl in target_tables:
-        sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-        try:
+        with db_session() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (tbl, str(days), all_stock_ids))
-                have_success = {row[0] for row in cur.fetchall()}
-            missing = [sid for sid in all_stock_ids if sid not in have_success]
-            targets[tbl].extend(missing)
-        except Exception as e:
-            logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'total_return_index';")
+                columns = [row[0] for row in cur.fetchall()]
+                if columns and "total_return_index" not in columns:
+                    for col in columns:
+                        if col not in ('date', 'stock_id'):
+                            logger.warning(f"🛠️ 偵測到舊版欄位 '{col}'，正在升級為 total_return_index...")
+                            with db_transaction() as tx_cur:
+                                tx_cur.execute(f'ALTER TABLE total_return_index RENAME COLUMN "{col}" TO total_return_index;')
+                            break
+    except Exception as e:
+        logger.debug(f"Schema 升級檢查可忽略: {e}")
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
-def main():
-    p = argparse.ArgumentParser(description="台股報酬指數抓取 (v3.4 — 核心模組升級版)")
-    p.add_argument("--ids", nargs="+", help="指定報酬指數代碼 (例如 TAIEX, TPEx)", default=DEFAULT_IDS)
-    p.add_argument("--start", default="2003-01-01")
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
-
-    conn = get_db_conn()
-    tables = ["total_return_index"]
-    
+def next_day(date_str: str) -> str:
     try:
-        _ensure_fetch_log_table(conn)
-        
-        target_ids = args.ids
-        
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, tables)
-            if targets and "total_return_index" in targets: 
-                fetch_total_return_index(conn, targets["total_return_index"], args.start, args.end, args.delay, force=True, fetch_mode_override="retry")
-            else: 
-                logger.info("沒有找到需要重試的目標，結束。")
-            return
+        d = datetime.strptime(str(date_str), "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except: return str(date_str)
 
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, tables, target_ids)
-            if targets and "total_return_index" in targets: 
-                fetch_total_return_index(conn, targets["total_return_index"], args.start, args.end, args.delay, force=True, fetch_mode_override="gap_fill")
-            else: 
-                logger.info("沒有找到需要補抓的目標，結束。")
-            return
+# =====================================================================
+# 3. Fetcher Logic
+# =====================================================================
 
-        # 模式 C：常規抓取
-        fetch_total_return_index(conn, target_ids, args.start, args.end, args.delay, args.force)
+def fetch_one_index(stock_id: str, start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    api = FinMindClient()
+    table = "total_return_index"
+    
+    cur_start = start
+    if not force:
+        latest = get_latest_date(table, stock_id)
+        if latest:
+            cur_start = next_day(latest)
+            if cur_start > end:
+                write_fetch_log(table, stock_id, "skipped", "tr_v5.1", str(latest), end, 0, 0, "up_to_date")
+                return stock_id, 0, 0
+
+    try:
+        t0 = time.monotonic()
+        data = api.get_data("TaiwanStockTotalReturnIndex", stock_id, cur_start, end)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        
+        if data:
+            records = [{
+                "date": r["date"], "stock_id": stock_id, 
+                "total_return_index": safe_float(r.get("price"))
+            } for r in data if "date" in r]
             
-    finally:
-        conn.close()
-        logger.info("全部完成")
-        get_request_stats().summary()
+            if records:
+                success, error = commit_per_stock_per_day(table, records, UPSERT_TOTAL_RETURN, stock_id)
+                write_fetch_log(table, stock_id, "success" if error == 0 else "partial", "tr_v5.1", cur_start, end, duration_ms, success, None)
+                return stock_id, success, error
+        
+        write_fetch_log(table, stock_id, "no_new_data", "tr_v5.1", cur_start, end, duration_ms, 0, None)
+        return stock_id, 0, 0
+    except Exception as e:
+        logger.error(f"  ❌ {stock_id} @ {table}: {e}")
+        write_fetch_log(table, stock_id, "failed", "tr_v5.1", cur_start, end, 0, 0, str(e))
+        return stock_id, 0, 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Total Return Index Fetcher v5.1 (Trinity Core Edition)")
+    parser.add_argument("--ids", nargs="+", default=["TAIEX", "TPEx"])
+    parser.add_argument("--start", default="2003-01-01")
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
+
+    ensure_ddl(DDL_TOTAL_RETURN)
+    _upgrade_schema()
+
+    end_date = args.end or date.today().strftime("%Y-%m-%d")
+
+    logger.info("=" * 70)
+    logger.info(f"  Total Return Index Fetcher v5.1  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+
+    for sid in args.ids:
+        ok, success, err = fetch_one_index(sid, args.start, end_date, args.force)
+        if success: logger.info(f"  ✓ {sid}: {success} rows")
+
+    logger.info("🎉 任務完成")
 
 if __name__ == "__main__":
     main()

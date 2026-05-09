@@ -7,7 +7,7 @@ _base_dir = Path(__file__).resolve().parent.parent
 if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
-from core.finmind_client import finmind_get
+# Removed unused import of finmind_get
 
 import requests
 import json

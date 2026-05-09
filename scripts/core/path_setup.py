@@ -1,21 +1,31 @@
 """
 path_setup.py v3.0 (MLOps Modular Edition)
-量化系統核心：專案路徑與環境變數管理
 ================================================================================
-v3.0 重大升級：
-  · 支援標準化套件安裝：為未來遷移至 `pip install -e .` (pyproject.toml) 做準備，
-    減少對 sys.path 強行注入的依賴。
-  · 環境變數優先：支援以環境變數 TRINITY_ROOT 強制指定專案根目錄，完美適配 Docker/Airflow 生產環境。
-  · 智慧載入 (Smart Path Injection)：自動偵測模組是否已可用，若尚未安裝才啟動 sys.path fallback。
+量化系統核心：專案路徑與環境變數管理
+此模組負責統一全系統的路徑標準，確保在不同環境 (Dev/Docker/Server) 下，
+各個模組與輸出目錄 (models, logs, outputs) 都能被精確定位。
 
-執行範例與最佳實踐：
-    # 在任何腳本的開頭，只需要呼叫 ensure_dirs_exist 即可確保輸出目錄健全
-    from core.path_setup import ensure_dirs_exist
-    dirs = ensure_dirs_exist()
-    print(f"訓練好的模型將存檔於: {dirs['models']}")
+核心功能：
+  · TRINITY_ROOT      ─ 支援環境變數優先，完美適配生產環境部署。
+  · 智慧路徑注入       ─ 自動處理 sys.path，解決 Python 模組匯入的 ImportError。
+  · 目錄自動確保       ─ 自動建立 outputs, models, logs 等必備資料夾。
+
+修訂歷程：
+  v3.0 (2026-04-25):
+    - [重大] 實作 Smart Path Injection，支援 Docker/Airflow 環境。
+    - [規範] 統一輸出目錄結構，支援 checkpoints 與 archive 子目錄。
+  v2.0 (2026-04-10):
+    - [基礎] 初步封裝 sys.path 注入邏輯。
+
+執行範例：
+    # 範例 1：在腳本開頭確保路徑正確
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
     
-    # 生產環境下 (如 Linux Server / Docker)，可透過環境變數直接鎖定根目錄
-    # export TRINITY_ROOT="/opt/stock_backend/scripts"
+    # 範例 2：獲取並確保模型存檔目錄
+    from core.path_setup import get_models_dir
+    model_path = get_models_dir()
+    print(f"模型存檔位置: {model_path}")
 """
 
 import os

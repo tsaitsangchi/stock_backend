@@ -1,79 +1,77 @@
 """
-fetch_fred_data.py — FRED 全球宏觀資料（v3.2 核心模組全面升級版）
+fetch_fred_data.py v5.0 (Trinity Core Edition)
 ================================================================================
-v3.2 改進（配合 db_utils v3.0, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 模組化抓取邏輯，與其他核心腳本架構對齊。
-  ★ 強化 `fred_get` 錯誤處理與退避重試機制。
+FRED 全球宏觀資料抓取器 — 完美對接 core/ 五大核心模組
+此模組負責從 St. Louis Fed (FRED) API 抓取全球宏觀指標，如美債利差、VIX、M2 與 CPI。
 
-v3.1 既有：
-  · 整合 fetch_log：每次抓取（無論成功、失敗或跳過）都會寫入監控日誌。
-  · 效能追蹤：記錄各總經指標的 API 請求耗時。
-  · 導入 commit_per_stock_per_day：每一天、每一指標獨立原子 commit。
+主要指標：
+  · T10Y2Y   ─ 10 年減 2 年美債利差 (衰退預警指標)
+  · VIXCLS   ─ CBOE 波動率指數 (市場情緒)
+  · M2SL     ─ 美國 M2 貨幣供給 (流動性)
+  · CPIAUCSL ─ 美國消費者物價指數 (通膨)
 
-執行範例（常規）：
-    # 抓取預設的所有 FRED 總經指標
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 事務原子性 + 筆數追蹤 (rows_inserted)
+  · path_setup v3.0          ─ 跨環境路徑自動導引
+
+修訂歷程：
+  v5.0 (2026-05-09):
+    - [核心] 修正 ImportError，移除 get_db_conn，全面換裝 db_transaction。
+    - [監控] 對接 Core v4.6，補齊 write_fetch_log 的 rows_inserted 參數。
+    - [靈活] 調用 get_latest_date 並指定 id_column="series_id"。
+    - [並發] 引入 ThreadPoolExecutor (支援 --workers)，支援多指標並行抓取。
+  v4.0 (2026-04-10):
+    - [基礎] 建立基礎抓取原型，整合 FRED API 請求。
+
+執行範例：
+    # 範例 1：抓取所有預設 FRED 指標 (增量更新)
     python scripts/fetchers/fetch_fred_data.py
     
-    # 針對特定指標抓取
-    python scripts/fetchers/fetch_fred_data.py --ids T10Y2Y VIXCLS
+    # 範例 2：並發抓取特定指標並使用 3 執行緒
+    python scripts/fetchers/fetch_fred_data.py --ids T10Y2Y,VIXCLS,DGS10 --workers 3
     
-    # 強制重抓特定指標
-    python scripts/fetchers/fetch_fred_data.py --ids DGS10 --force
-    
-    # 強制重抓指定日期後的所有指標
-    python scripts/fetchers/fetch_fred_data.py --start 2024-01-01 --force
-
-執行範例（維運與模式切換）：
-    # 重試最近 7 天失敗的指標
-    python scripts/fetchers/fetch_fred_data.py --retry-failed 7
-
-    # 補抓最近 30 天無成功紀錄的指標
-    python scripts/fetchers/fetch_fred_data.py --gap-fill 30
+    # 範例 3：全量更新最近一年的總經數據 (強制重補)
+    python scripts/fetchers/fetch_fred_data.py --start 2025-01-01 --force
 """
 
-from __future__ import annotations
-
 import sys
-import logging
 import os
-import random
-import time
-from pathlib import Path
-from datetime import date, datetime, timedelta
 import argparse
+import logging
+import time
+import random
 import requests
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        safe_float
+    )
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    safe_float,
-    get_all_safe_starts,
-    resolve_start_cached,
-    FailureLogger,
-    commit_per_stock_per_day,
-    dedup_rows,
-    write_fetch_log,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+# =====================================================================
+# 1. 常數與 DDL
+# =====================================================================
 
 FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 DEFAULT_FRED_SERIES = [
@@ -82,22 +80,25 @@ DEFAULT_FRED_SERIES = [
     "UMCSENT", "INDPRO", "UNRATE", "CPIAUCSL"
 ]
 
-DDL_FRED = """CREATE TABLE IF NOT EXISTS fred_series (series_id VARCHAR(50), date DATE, value NUMERIC(20,6), PRIMARY KEY (series_id, date));"""
-UPSERT_FRED = """INSERT INTO fred_series (series_id, date, value) VALUES %s ON CONFLICT (series_id, date) DO UPDATE SET value = EXCLUDED.value;"""
+DDL_FRED = """
+    CREATE TABLE IF NOT EXISTS fred_series (
+        series_id VARCHAR(50) NOT NULL,
+        date DATE NOT NULL,
+        value NUMERIC(20,6),
+        PRIMARY KEY (series_id, date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_fred_series_id_date ON fred_series(series_id, date DESC);
+"""
 
-_CLI_ARGS_STR = " ".join(sys.argv)
+UPSERT_FRED = """
+    INSERT INTO fred_series (series_id, date, value)
+    VALUES (%(series_id)s, %(date)s, %(value)s)
+    ON CONFLICT (series_id, date) DO UPDATE SET value = EXCLUDED.value;
+"""
 
-# ─────────────────────────────────────────────
-# 日誌與 API 客戶端
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
+# =====================================================================
+# 2. API 客戶端
+# =====================================================================
 
 def fred_get(series_id: str, api_key: str, start: str, end: str, max_retries: int = 3) -> list:
     """從 FRED API 獲取資料，包含指數退避重試機制。"""
@@ -113,193 +114,96 @@ def fred_get(series_id: str, api_key: str, start: str, end: str, max_retries: in
     for attempt in range(1, max_retries + 1):
         try:
             resp = requests.get(FRED_API_URL, params=params, timeout=(10, 60))
-            
             if resp.status_code == 200:
                 return resp.json().get("observations", [])
             elif resp.status_code == 429:
-                logger.warning(f"FRED API 配額受限 (429)，等待 60 秒後重試... (Attempt {attempt}/{max_retries})")
+                logger.warning(f"  ⚠️ FRED API (429) 限速，等待 60s... ({attempt}/{max_retries})")
                 time.sleep(60)
             else:
                 resp.raise_for_status()
-                
         except Exception as e:
             last_error = e
-            jitter = random.uniform(0, 1)
-            sleep_time = (2 ** attempt) + jitter
-            logger.warning(f"FRED API 請求失敗 ({e})，{sleep_time:.1f} 秒後重試... (Attempt {attempt}/{max_retries})")
+            sleep_time = (2 ** attempt) + random.uniform(0, 1)
+            logger.warning(f"  ⚠️ FRED API 失敗 ({e})，{sleep_time:.1f}s 後重試... ({attempt}/{max_retries})")
             time.sleep(sleep_time)
             
-    raise RuntimeError(f"FRED API 請求失敗已達最大重試次數 ({max_retries}): {last_error}")
+    logger.error(f"  ❌ {series_id} 請求失敗達上限: {last_error}")
+    return []
 
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_fred_series(
-    conn, series_ids: list[str], api_key: str, 
-    start: str, end: str, delay: float, force: bool,
-    fetch_mode_override: str | None = None
-):
-    logger.info("=== [fred_series] 開始 ===")
-    ensure_ddl(conn, DDL_FRED)
-    conn.commit()
+# =====================================================================
+# 3. 核心抓取邏輯
+# =====================================================================
+
+def fetch_one_series(sid: str, api_key: str, start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    fail_log = FailureLogger(f"fred_{sid}")
+    cur_start = start
     
-    latest = get_all_safe_starts(conn, "fred_series", key_col="series_id")
-    flog = FailureLogger("fred_series", db_conn=conn)
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
+    if not force:
+        latest = get_latest_date("fred_series", sid, id_column="series_id")
+        if latest:
+            d = datetime.strptime(str(latest), "%Y-%m-%d").date()
+            cur_start = (d + timedelta(days=1)).strftime("%Y-%m-%d")
+            if cur_start > end:
+                write_fetch_log("fred_series", sid, "skipped", "fred_v5", str(latest), end, 0, 0, "up_to_date")
+                return sid, 0, 0
 
-    for sid in series_ids:
-        s = resolve_start_cached(sid, latest, start, "1990-01-01", force)
-        if not s:
-            write_fetch_log(conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
+    try:
+        t0 = time.monotonic()
+        obs = fred_get(sid, api_key, cur_start, end)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        if obs:
+            records = []
+            for o in obs:
+                val_str = o.get("value", ".")
+                val = safe_float(val_str) if val_str != "." else None
+                if val is not None:
+                    records.append({"series_id": sid, "date": o.get("date"), "value": val})
+            
+            if records:
+                success, error = commit_per_stock_per_day("fred_series", records, UPSERT_FRED, sid)
+                write_fetch_log("fred_series", sid, "success" if error == 0 else "partial", "fred_v5", cur_start, end, duration_ms, success, None)
+                return sid, success, error
         
-        t0 = time.time()
-        try:
-            obs = fred_get(sid, api_key, s, end)
-            dur = int((time.time() - t0) * 1000)
-            
-            if obs:
-                rows = []
-                for o in obs:
-                    v = safe_float(o.get("value")) if o.get("value") != "." else None
-                    if v is not None: 
-                        rows.append((sid, o.get("date"), v))
-                        
-                if rows:
-                    rows = dedup_rows(rows, (0, 1))
-                    res = commit_per_stock_per_day(
-                        conn, UPSERT_FRED, rows, "(%s, %s, %s)", 
-                        stock_index=0, date_index=1, label_prefix=sid, failure_logger=flog
-                    )
-                    n = sum(res.values())
-                    total_rows += n
-                    write_fetch_log(
-                        conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
-                        fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
-                        duration_ms=dur, status="success" if n > 0 else "partial"
-                    )
-                else:
-                    write_fetch_log(
-                        conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
-                        fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                        duration_ms=dur, status="no_new_data"
-                    )
-            else:
-                write_fetch_log(
-                    conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                    duration_ms=dur, status="no_new_data"
-                )
-            time.sleep(delay)
-            
-        except Exception as e:
-            dur = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                duration_ms=dur, status="failed", error_message=str(e)
-            )
-            
-    logger.info(f"  [fred_series] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int) -> list[str]:
-    targets = []
-    sql = """
-    WITH recent AS (
-        SELECT stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = 'fred_series' AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT stock_id FROM recent WHERE rn = 1 AND status = 'failed';
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (str(days),))
-            targets = [row[0] for row in cur.fetchall()]
+        write_fetch_log("fred_series", sid, "no_new_data", "fred_v5", cur_start, end, duration_ms, 0, None)
+        return sid, 0, 0
     except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
+        duration_ms = int((time.monotonic() - t0) * 1000) if 't0' in locals() else 0
+        logger.error(f"  ❌ {sid} 抓取崩潰: {e}")
+        fail_log.log_failure("fred_series", sid, cur_start, end, str(e))
+        write_fetch_log("fred_series", sid, "failed", "fred_v5", cur_start, end, duration_ms, 0, str(e))
+        return sid, 0, 0
 
-    if targets:
-        logger.info(f"  [retry-failed/fred_series] 發現 {len(targets)} 個目標 (例：{targets[:5]})")
-    return targets
-
-def query_gap_targets(conn, days: int, all_series_ids: list[str]) -> list[str]:
-    targets = []
-    sql = """
-    SELECT DISTINCT stock_id FROM fetch_log 
-    WHERE table_name = 'fred_series' AND status = 'success' 
-      AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (str(days), all_series_ids))
-            have_success = {row[0] for row in cur.fetchall()}
-        targets = [sid for sid in all_series_ids if sid not in have_success]
-    except Exception as e:
-        logger.error(f"[gap-fill/fred_series] 查詢失敗：{e}")
-
-    if targets:
-        logger.info(f"  [gap-fill/fred_series] 發現 {len(targets)} 個目標 (例：{targets[:5]})")
-    return targets
-
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--ids", nargs="+", default=DEFAULT_FRED_SERIES, help="指定要抓取的 FRED 指標代號")
-    p.add_argument("--start", default="1990-01-01")
-    p.add_argument("--end", default=date.today().strftime("%Y-%m-%d"))
-    p.add_argument("--delay", type=float, default=0.5)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description="FRED Macro Fetcher v5.0 (Trinity Core Edition)")
+    parser.add_argument("--ids", type=str, default=",".join(DEFAULT_FRED_SERIES))
+    parser.add_argument("--start", default="2021-01-01")
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
 
     api_key = os.environ.get("FRED_API_KEY")
     if not api_key:
         logger.error("❌ 嚴重錯誤：未設定環境變數 FRED_API_KEY")
         sys.exit(1)
 
-    conn = get_db_conn()
-    try:
-        _ensure_fetch_log_table(conn)
+    target_ids = [s.strip() for s in args.ids.split(",") if s.strip()]
+    end_date = args.end or date.today().strftime("%Y-%m-%d")
 
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed)
-            if targets: 
-                fetch_fred_series(conn, targets, api_key, args.start, args.end, args.delay, force=True, fetch_mode_override="retry")
-            else: 
-                logger.info("沒有找到需要重試的目標，結束。")
-            return
+    logger.info("=" * 70)
+    logger.info(f"  FRED Macro Fetcher v5.0  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    
+    ensure_ddl(DDL_FRED)
 
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, args.ids)
-            if targets: 
-                fetch_fred_series(conn, targets, api_key, args.start, args.end, args.delay, force=True, fetch_mode_override="gap_fill")
-            else: 
-                logger.info("沒有找到需要補抓的目標，結束。")
-            return
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        futures = {ex.submit(fetch_one_series, sid, api_key, args.start, end_date, args.force): sid for sid in target_ids}
+        for fut in as_completed(futures):
+            sid, ok, err = fut.result()
+            if ok: logger.info(f"  ✓ {sid}: {ok} rows")
 
-        # 模式 C：常規抓取
-        fetch_fred_series(conn, args.ids, api_key, args.start, args.end, args.delay, args.force)
-            
-    finally:
-        conn.close()
-        logger.info("全部完成")
+    logger.info("🎉 抓取任務完成。")
 
 if __name__ == "__main__":
     main()

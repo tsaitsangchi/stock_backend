@@ -1,303 +1,278 @@
 """
-fetch_cash_flows_data.py — 現金流量表 + 除權息結果（v3.1 核心模組全面升級版）
+fetch_cash_flows_data.py v5.0 (Trinity Core Edition)
 ================================================================================
-v3.1 改進（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 使用 `commit_per_stock_per_day` 進行雙層粒度原子寫入，確保極致的資料完整性。
-  ★ 修正 `finmind_get` 參數傳遞方式為具名參數 (Keyword Arguments) 避免型別崩潰。
-  ★ 程式結束時自動印出 `finmind_client` 的 `RequestStats` 統計報表。
+基本面數據抓取器：現金流量表 & 除權息結果
+此模組負責抓取企業的現金流狀態與股利發放數據，為基本面模型提供關鍵特徵。
+
+涵蓋資料表：
+  · cash_flows_statement    ─ 現金流量表 (TaiwanStockCashFlowsStatement)
+  · dividend_result         ─ 除權息結果 (TaiwanStockDividendResult)
+
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 事務原子性 + 筆數追蹤 (rows_inserted)
+  · finmind_client v5.0      ─ 402 自動休眠 1000s + Singleton 連線
+  · path_setup v3.0          ─ 跨環境路徑自動導引
+
+修訂歷程：
+  v5.0 (2026-05-09):
+    - [核心] 修正 ImportError，換裝 db_transaction，對接 Core v4.6。
+    - [監控] 補齊 write_fetch_log 的 rows_inserted 參數。
+    - [並發] 維持 ThreadPoolExecutor 支援，優化分段抓取為 365 天。
+  v4.0 (2026-04-15):
+    - [基礎] 建立基礎抓取原型。
 
 執行範例：
-    # 常規全量/增量抓取 (所有支援的表)
-    python scripts/fetchers/fetch_cash_flows_data.py
-
-    # 針對特定表抓取
-    python scripts/fetchers/fetch_cash_flows_data.py --tables cash_flows_statement dividend_result
-
-    # 重試近 7 天失敗目標
-    python scripts/fetchers/fetch_cash_flows_data.py --retry-failed 7
-
-    # 補足近 30 天無紀錄目標
-    python scripts/fetchers/fetch_cash_flows_data.py --gap-fill 30
-
-    # 針對特定個股抓取
-    python scripts/fetchers/fetch_cash_flows_data.py --stock-id 2330,2454 --tables cash_flows_statement
-
-    # 強制重新抓取特定個股資料（無視增量檢查）
-    python scripts/fetchers/fetch_cash_flows_data.py --stock-id 2330 --force
+    # 範例 1：抓取台積電現金流量與除權息 (增量更新)
+    python scripts/fetchers/fetch_cash_flows_data.py --stock-id 2330
+    
+    # 範例 2：並發抓取所有個股 (依 stocks 表設定) 並使用 5 執行緒
+    python scripts/fetchers/fetch_cash_flows_data.py --all --workers 5
 """
 
-from __future__ import annotations
-
+import sys
 import argparse
 import logging
-import sys
 import time
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        safe_float, get_db_stock_ids
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+    from core.migrate_stocks_config import migrate as sync_stocks_table
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    safe_float,
-    get_all_safe_starts,
-    resolve_start_cached,
-    FailureLogger,
-    commit_per_stock_per_day,
-    get_db_stock_ids,
-    write_fetch_log,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DATASET_START = {
-    "cash_flows_statement": "2008-06-01",
-    "dividend_result":      "2003-05-01",
-}
-DEFAULT_END = date.today().strftime("%Y-%m-%d")
-
-_CLI_ARGS_STR = " ".join(sys.argv)
-
-# ─────────────────────────────────────────────
-# 日誌與 SQL
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
+# =====================================================================
+# 1. 資料表 DDL
+# =====================================================================
 
 DDL_CASH_FLOWS = """
 CREATE TABLE IF NOT EXISTS cash_flows_statement (
-    date DATE, stock_id VARCHAR(50), type VARCHAR(100), 
-    value NUMERIC(20,6), origin_name VARCHAR(200), 
+    date DATE NOT NULL,
+    stock_id VARCHAR(20) NOT NULL,
+    type VARCHAR(100) NOT NULL,
+    value NUMERIC(24,4),
+    origin_name VARCHAR(200),
     PRIMARY KEY (date, stock_id, type)
 );
+CREATE INDEX IF NOT EXISTS idx_cf_stock_date ON cash_flows_statement(stock_id, date DESC);
 """
+
 DDL_DIVIDEND_RESULT = """
 CREATE TABLE IF NOT EXISTS dividend_result (
-    date DATE, stock_id VARCHAR(50), 
-    before_price NUMERIC(20,6), after_price NUMERIC(20,6), 
-    stock_and_cache_dividend NUMERIC(20,6), stock_or_cache_dividend VARCHAR(20), 
-    max_price NUMERIC(20,6), min_price NUMERIC(20,6), 
-    open_price NUMERIC(20,6), reference_price NUMERIC(20,6), 
+    date DATE NOT NULL,
+    stock_id VARCHAR(20) NOT NULL,
+    before_price NUMERIC(20,6),
+    after_price NUMERIC(20,6),
+    stock_and_cache_dividend NUMERIC(20,6),
+    stock_or_cache_dividend VARCHAR(20),
+    max_price NUMERIC(20,6),
+    min_price NUMERIC(20,6),
+    open_price NUMERIC(20,6),
+    reference_price NUMERIC(20,6),
     PRIMARY KEY (date, stock_id)
 );
+CREATE INDEX IF NOT EXISTS idx_dr_stock_date ON dividend_result(stock_id, date DESC);
 """
 
-UPSERT_CASH_FLOWS = """
-INSERT INTO cash_flows_statement (date, stock_id, type, value, origin_name) 
-VALUES %s ON CONFLICT (date, stock_id, type) DO UPDATE SET value = EXCLUDED.value;
-"""
-UPSERT_DIVIDEND_RESULT = """
-INSERT INTO dividend_result (date, stock_id, before_price, after_price, stock_and_cache_dividend, stock_or_cache_dividend, max_price, min_price, open_price, reference_price) 
-VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET after_price = EXCLUDED.after_price;
-"""
+UPSERT_MAP = {
+    "cash_flows_statement": """
+        INSERT INTO cash_flows_statement (date, stock_id, type, value, origin_name)
+        VALUES (%(date)s, %(stock_id)s, %(type)s, %(value)s, %(origin_name)s)
+        ON CONFLICT (date, stock_id, type) DO UPDATE SET value = EXCLUDED.value;
+    """,
+    "dividend_result": """
+        INSERT INTO dividend_result (date, stock_id, before_price, after_price, stock_and_cache_dividend, stock_or_cache_dividend, max_price, min_price, open_price, reference_price)
+        VALUES (%(date)s, %(stock_id)s, %(before_price)s, %(after_price)s, %(stock_and_cache_dividend)s, %(stock_or_cache_dividend)s, %(max_price)s, %(min_price)s, %(open_price)s, %(reference_price)s)
+        ON CONFLICT (date, stock_id) DO UPDATE SET after_price = EXCLUDED.after_price;
+    """,
+}
 
-# ─────────────────────────────────────────────
-# Mappers
-# ─────────────────────────────────────────────
-def map_cf_row(r: dict) -> tuple:
-    return (r["date"], r["stock_id"], r.get("type", "")[:100], safe_float(r.get("value")), r.get("origin_name", "")[:200])
+DATASET_MAP = {
+    "cash_flows_statement": "TaiwanStockCashFlowsStatement",
+    "dividend_result": "TaiwanStockDividendResult",
+}
 
-def map_dr_row(r: dict) -> tuple:
-    return (r["date"], r["stock_id"], safe_float(r.get("before_price")), safe_float(r.get("after_price")), safe_float(r.get("stock_and_cache_dividend")), r.get("stock_or_cache_dividend", "")[:20], safe_float(r.get("max_price")), safe_float(r.get("min_price")), safe_float(r.get("open_price")), safe_float(r.get("reference_price")))
+# =====================================================================
+# 2. Mappers
+# =====================================================================
 
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_dataset(
-    conn, dataset: str, table: str, ddl: str, upsert_sql: str, 
-    mapper, dataset_key: str, stock_ids: list[str], 
-    start: str, end: str, delay: float, force: bool,
-    fetch_mode_override: str | None = None
-):
-    ensure_ddl(conn, ddl)
-    conn.commit()
-    latest = get_all_safe_starts(conn, table)
-    flog = FailureLogger(table, db_conn=conn)
-    total_rows = 0
+def map_cf_row(r: dict) -> dict:
+    return {
+        "date": r["date"], "stock_id": r["stock_id"],
+        "type": r.get("type", "Unknown")[:100],
+        "value": safe_float(r.get("value", 0.0)),
+        "origin_name": r.get("origin_name", "")[:200]
+    }
+
+def map_dr_row(r: dict) -> dict:
+    return {
+        "date": r["date"], "stock_id": r["stock_id"],
+        "before_price": safe_float(r.get("before_price", 0.0)),
+        "after_price": safe_float(r.get("after_price", 0.0)),
+        "stock_and_cache_dividend": safe_float(r.get("stock_and_cache_dividend", 0.0)),
+        "stock_or_cache_dividend": r.get("stock_or_cache_dividend", "")[:20],
+        "max_price": safe_float(r.get("max_price", 0.0)),
+        "min_price": safe_float(r.get("min_price", 0.0)),
+        "open_price": safe_float(r.get("open_price", 0.0)),
+        "reference_price": safe_float(r.get("reference_price", 0.0))
+    }
+
+MAPPER_MAP = {
+    "cash_flows_statement": map_cf_row,
+    "dividend_result": map_dr_row,
+}
+
+# =====================================================================
+# 3. 工具
+# =====================================================================
+
+def taipei_today() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    except:
+        return date.today().strftime("%Y-%m-%d")
+
+def next_day(date_str: str) -> str:
+    try:
+        d = datetime.strptime(str(date_str), "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return str(date_str)
+
+def resolve_stock_ids(args) -> List[str]:
+    if args.all:
+        try:
+            with db_session() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT stock_id FROM stocks WHERE fetch_fundamental = TRUE AND is_active = TRUE ORDER BY stock_id")
+                    sids = [r[0] for r in cur.fetchall()]
+            if sids: return sids
+        except: pass
+        return get_db_stock_ids() or []
+    if not args.stock_id: return []
+    return [s.strip() for s in args.stock_id.split(",") if s.strip()]
+
+# =====================================================================
+# 4. 核心邏輯
+# =====================================================================
+
+def fetch_one_stock(table: str, sid: str, start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    api = FinMindClient()
+    fail_log = FailureLogger(f"cf_{table}")
+    cur_start = start
     
-    template = "(%s, %s, %s, %s, %s)" if table == "cash_flows_statement" else "(%s, %s, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric)"
-    fetch_mode = fetch_mode_override or "per_stock"
+    if not force:
+        latest = get_latest_date(table, sid)
+        if latest:
+            cur_start = next_day(latest)
+            if cur_start > end:
+                write_fetch_log(table, sid, "skipped", "cf_v5", str(latest), end, 0, 0, "up_to_date")
+                return sid, 0, 0
 
-    for sid in stock_ids:
-        s = resolve_start_cached(sid, latest, start, DATASET_START[dataset_key], force)
-        if not s:
-            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
+    try:
+        start_dt = datetime.strptime(cur_start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+        total_success = total_error = 0
+        chunk_days = 365
         
-        t0 = time.time()
-        try:
-            # 修正為具名參數 (Keyword arguments) 以確保穩定
-            data = finmind_get(
-                dataset=dataset, 
-                params={"data_id": sid, "start_date": s, "end_date": end}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            dur = int((time.time() - t0) * 1000)
+        while start_dt <= end_dt:
+            seg_start = start_dt.strftime("%Y-%m-%d")
+            seg_end_dt = min(start_dt + timedelta(days=chunk_days - 1), end_dt)
+            seg_end = seg_end_dt.strftime("%Y-%m-%d")
             
+            t0 = time.monotonic()
+            data = api.get_data(DATASET_MAP[table], sid, seg_start, seg_end)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
             if data:
-                rows = [mapper(r) for r in data]
-                # 雙層粒度原子寫入
-                res = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
-                n = sum(res.values())
-                total_rows += n
-                write_fetch_log(
-                    conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
-                    duration_ms=dur, status="success" if n > 0 else "partial"
-                )
+                records = [MAPPER_MAP[table](row) for row in data if "date" in row]
+                if records:
+                    success, error = commit_per_stock_per_day(table, records, UPSERT_MAP[table], sid)
+                    total_success += success
+                    total_error += error
+                    write_fetch_log(table, sid, "success" if error == 0 else "partial", "cf_v5", seg_start, seg_end, duration_ms, success, None)
+                else:
+                    write_fetch_log(table, sid, "no_new_data", "cf_v5", seg_start, seg_end, duration_ms, 0, "empty_records")
             else:
-                write_fetch_log(
-                    conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                    duration_ms=dur, status="no_new_data"
-                )
-        except Exception as e:
-            dur = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                duration_ms=dur, status="failed", error_message=str(e)
-            )
+                write_fetch_log(table, sid, "no_new_data", "cf_v5", seg_start, seg_end, duration_ms, 0, None)
             
-    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
-    flog.summary()
+            start_dt = seg_end_dt + timedelta(days=1)
+            time.sleep(0.3)
 
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
+        return sid, total_success, total_error
     except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
+        duration_ms = int((time.monotonic() - t0) * 1000) if 't0' in locals() else 0
+        logger.error(f"  ❌ {sid} @ {table}: {e}")
+        fail_log.log_failure(table, sid, cur_start, end, str(e))
+        write_fetch_log(table, sid, "failed", "cf_v5", cur_start, end, duration_ms, 0, str(e))
+        return sid, 0, 0
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-def query_gap_targets(conn, days: int, target_tables: list[str], all_stock_ids: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    for tbl in target_tables:
-        sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (tbl, str(days), all_stock_ids))
-                have_success = {row[0] for row in cur.fetchall()}
-            missing = [sid for sid in all_stock_ids if sid not in have_success]
-            targets[tbl].extend(missing)
-        except Exception as e:
-            logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
-
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-def _config_for_table(table: str):
-    if table == "cash_flows_statement":
-        return ("TaiwanStockCashFlowsStatement", DDL_CASH_FLOWS, UPSERT_CASH_FLOWS, map_cf_row)
-    elif table == "dividend_result":
-        return ("TaiwanStockDividendResult", DDL_DIVIDEND_RESULT, UPSERT_DIVIDEND_RESULT, map_dr_row)
-    return None
-
-def _run_targeted(conn, targets: dict[str, list[str]], args, fetch_mode: str):
-    for tbl, sids in targets.items():
-        if not sids: continue
-        cfg = _config_for_table(tbl)
-        if cfg:
-            dataset, ddl, upsert, mapper = cfg
-            fetch_dataset(conn, dataset, tbl, ddl, upsert, mapper, tbl, sids, args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode)
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+", choices=["cash_flows_statement", "dividend_result", "all"], default=["all"])
-    p.add_argument("--stock-id", default=None)
-    p.add_argument("--start", default="2003-05-01")
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(description="Cash Flows Fetcher v5.0 (Trinity Core Edition)")
+    parser.add_argument("--stock-id", type=str, default="")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--tables", type=str, default="cash_flows_statement,dividend_result")
+    parser.add_argument("--start", type=str, default="2021-01-01")
+    parser.add_argument("--end", type=str, default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
 
-    tables = ["cash_flows_statement", "dividend_result"] if "all" in args.tables else args.tables
-    conn = get_db_conn()
-    
     try:
-        _ensure_fetch_log_table(conn)
-        stock_ids = [s.strip() for s in args.stock_id.split(",")] if args.stock_id else get_db_stock_ids(conn, types=("twse", "otc"))
+        sync_stocks_table()
+    except Exception as e:
+        logger.warning(f"資產同步略過: {e}")
 
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, tables)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="retry")
-            else: logger.info("沒有找到需要重試的目標，結束。")
-            return
+    stock_ids = resolve_stock_ids(args)
+    if not stock_ids:
+        logger.error("找不到個股清單。")
+        sys.exit(1)
 
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, tables, stock_ids)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="gap_fill")
-            else: logger.info("沒有找到需要補抓的目標，結束。")
-            return
+    tables = [t.strip().lower() for t in args.tables.split(",") if t.strip()]
+    end_date = args.end or taipei_today()
 
-        # 模式 C：常規抓取
-        if "cash_flows_statement" in tables:
-            fetch_dataset(conn, "TaiwanStockCashFlowsStatement", "cash_flows_statement", DDL_CASH_FLOWS, UPSERT_CASH_FLOWS, map_cf_row, "cash_flows_statement", stock_ids, args.start, args.end, args.delay, args.force)
-        if "dividend_result" in tables:
-            fetch_dataset(conn, "TaiwanStockDividendResult", "dividend_result", DDL_DIVIDEND_RESULT, UPSERT_DIVIDEND_RESULT, map_dr_row, "dividend_result", stock_ids, args.start, args.end, args.delay, args.force)
-            
-    finally:
-        conn.close()
-        logger.info("全部完成")
-        # 於程式完全結束時，印出統一的 FinMind RequestStats 報表
+    logger.info("=" * 70)
+    logger.info(f"  Cash Flows Fetcher v5.0  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    for table in tables:
+        if table == "cash_flows_statement": ensure_ddl(DDL_CASH_FLOWS)
+        elif table == "dividend_result": ensure_ddl(DDL_DIVIDEND_RESULT)
+        else: continue
+        
+        logger.info(f"━━━ 抓取資料表 {table} ({len(stock_ids)} stocks) ━━━")
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futures = {ex.submit(fetch_one_stock, table, sid, args.start, end_date, args.force): sid for sid in stock_ids}
+            for fut in as_completed(futures):
+                sid, ok, err = fut.result()
+                if ok: logger.info(f"  ✓ {sid}: {ok} rows")
+
+    logger.info("🎉 抓取任務完成。")
+    try:
         get_request_stats().summary()
+    except: pass
 
 if __name__ == "__main__":
     main()

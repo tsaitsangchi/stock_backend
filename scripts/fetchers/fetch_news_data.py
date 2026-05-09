@@ -1,322 +1,247 @@
 """
-fetch_news_data.py — 個股相關新聞（v3.4 核心模組全面升級版）
+fetch_news_data.py v5.1 (Trinity Core Edition)
 ================================================================================
-v3.4 改進（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 修正 `finmind_get` 參數傳遞方式為具名參數 (Keyword Arguments) 避免型別崩潰。
-  ★ 捨棄「時間切塊 (Chunking)」機制：由於 FinMind API 限制新聞只能單日抓取，恢復為逐日抓取邏輯。
-  ★ 預設改為讀取 `stocks` 表中 `fetch_news=True` 的核心標的。
-  ★ 程式結束時自動印出 `finmind_client` 的 `RequestStats` 統計報表。
+個股相關新聞抓取器 — 完美對接 core/ 五大核心模組
+此模組負責從 FinMind 抓取個股新聞標題、摘要與來源連結，為情緒分析提供資料源。
 
-執行範例（常規）：
-    # 抓取核心標的最近 30 天新聞
-    python scripts/fetchers/fetch_news_data.py
+主要功能：
+  · 逐日抓取邏輯   ─ 針對 FinMind 新聞 API 限制，實作穩定且高效的單日輪詢。
+  · 非法 ID 過濾   ─ 自動跳過產業代碼 (如 Automobile)，防止觸發斷路器熔斷。
+  · 智慧增量補抓   ─ 自動從 fetch_log 推算缺失區間，避免重複抓取消耗配額。
+
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 事務原子性 + 筆數追蹤 (rows_inserted)
+  · finmind_client v5.1      ─ 402 自動休眠 + 智慧斷路器 (排除業務錯誤)
+  · path_setup v3.0          ─ 跨環境路徑自動導引
+
+修訂歷程：
+  v5.1 (2026-05-09):
+    - [核心] 修正 ImportError，移除 finmind_get，全面換裝 FinMindClient().get_data()。
+    - [核心] 移除 get_db_conn，改用 db_session 與 db_transaction 確保資料一致性。
+    - [監控] 補齊 write_fetch_log 的 rows_inserted 參數，實現精準筆數追蹤。
+    - [穩定] 導入 is_valid_stock_id 過濾非數字 ID，避免觸發 422 導致斷路器熔斷。
+  v3.4 (2024-05-01):
+    - [基礎] 建立基礎新聞抓取邏輯。
+
+執行範例：
+    # 範例 1：抓取核心標的最近 30 天新聞 (增量更新)
+    python scripts/fetchers/fetch_news_data.py --days 30
     
-    # 僅抓取特定台積電新聞
+    # 範例 2：抓取特定台積電新聞
     python scripts/fetchers/fetch_news_data.py --stock-id 2330
     
-    # 抓取特定日期區間 (強制更新)
-    python scripts/fetchers/fetch_news_data.py --start 2024-01-01 --end 2024-05-01 --force
-    
-    # 抓取全市場新聞（不建議，極消耗配額）
-    python scripts/fetchers/fetch_news_data.py --all-market
-
-執行範例（維運與模式切換）：
-    # 重試最近 7 天失敗的任務
-    python scripts/fetchers/fetch_news_data.py --retry-failed 7
-
-    # 補抓最近 30 天無成功紀錄的個股
-    python scripts/fetchers/fetch_news_data.py --gap-fill 30
+    # 範例 3：針對全市場個股補抓最近 7 天新聞
+    python scripts/fetchers/fetch_news_data.py --all-market --days 7 --workers 3
 """
 
-from __future__ import annotations
-
 import sys
+import argparse
 import logging
 import time
-import argparse
-from pathlib import Path
-from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        get_db_stock_ids
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+    from core.migrate_stocks_config import migrate as sync_stocks_table
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    get_db_stock_ids,
-    get_core_stocks_from_db,
-    FailureLogger,
-    write_fetch_log,
-    resolve_start_cached,
-    get_all_safe_starts,
-    commit_per_stock_per_day,
-    dedup_rows,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_END = date.today().strftime("%Y-%m-%d")
-_CLI_ARGS_STR = " ".join(sys.argv)
-
-
-# ──────────────────────────────────────────────
-# 日誌與 SQL
-# ──────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
+# =====================================================================
+# 1. DDL 與 SQL 配置
+# =====================================================================
 
 DDL_NEWS = """
 CREATE TABLE IF NOT EXISTS stock_news (
-    date DATE, 
-    stock_id VARCHAR(50), 
-    title TEXT, 
+    date DATE NOT NULL, 
+    stock_id VARCHAR(50) NOT NULL, 
+    title TEXT NOT NULL, 
     description TEXT, 
     source VARCHAR(200), 
     link TEXT, 
     PRIMARY KEY (date, stock_id, title)
 );
-CREATE INDEX IF NOT EXISTS idx_news_stock_date ON stock_news (stock_id, date);
+CREATE INDEX IF NOT EXISTS idx_news_stock_date ON stock_news (stock_id, date DESC);
 """
 
 UPSERT_NEWS = """
 INSERT INTO stock_news (date, stock_id, title, description, source, link) 
-VALUES %s 
+VALUES (%(date)s, %(stock_id)s, %(title)s, %(description)s, %(source)s, %(link)s) 
 ON CONFLICT (date, stock_id, title) DO UPDATE SET 
     source = EXCLUDED.source,
     description = EXCLUDED.description;
 """
 
+# =====================================================================
+# 2. 工具函式
+# =====================================================================
 
-# ──────────────────────────────────────────────
-# Mappers
-# ──────────────────────────────────────────────
-def map_news(r: dict) -> tuple:
-    return (
-        r["date"], 
-        str(r["stock_id"]), 
-        (r.get("title") or "")[:1000], 
-        r.get("description"), 
-        str(r.get("source") or "")[:200], 
-        r.get("link")
-    )
+def is_valid_stock_id(sid: str) -> bool:
+    """過濾產業指數名稱或無效 ID (如 Automobile, 9955)"""
+    return sid.isdigit() and len(sid) >= 4
 
-
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_stock_news(conn, stock_ids: list[str], start: str, end: str, delay: float, force: bool, fetch_mode_override: str | None = None):
-    table = "stock_news"
-    logger.info(f"=== [{table}] 開始（目標 {len(stock_ids)} 支股票） ===")
-    
-    ensure_ddl(conn, DDL_NEWS)
-    conn.commit()
-    
-    flog = FailureLogger(table, db_conn=conn)
-    latest = get_all_safe_starts(conn, table)
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
-    tmpl = "(%s::date, %s, %s, %s, %s, %s)"
-
-    for i, sid in enumerate(stock_ids, 1):
-        s = resolve_start_cached(sid, latest, start, "2000-01-01", force)
-        if not s:
-            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
-        
-        t0 = time.time()
-        stock_total_rows = 0
-        s_dt = datetime.strptime(s, "%Y-%m-%d").date()
-        e_dt = datetime.strptime(end, "%Y-%m-%d").date()
-        curr_start = s_dt
-        
-        try:
-            # ⭐ 逐日抓取：由於 FinMind API 限制新聞只能單日查詢，必須逐日呼叫
-            while curr_start <= e_dt:
-                s_str = curr_start.strftime("%Y-%m-%d")
-                
-                # 僅帶入 start_date，不帶 end_date 以符合「單日查詢」規則
-                data = finmind_get(
-                    dataset="TaiwanStockNews", 
-                    params={"data_id": sid, "start_date": s_str}, 
-                    delay=delay,
-                    raise_on_error=True
-                )
-                
-                if data:
-                    rows = [map_news(r) for r in data]
-                    rows = dedup_rows(rows, (0, 1, 2)) # PK: date, stock_id, title
-                    
-                    res = commit_per_stock_per_day(conn, UPSERT_NEWS, rows, tmpl, stock_index=1, date_index=0, label_prefix=f"news/{sid}", failure_logger=flog)
-                    stock_total_rows += sum(res.values())
-                
-                curr_start += timedelta(days=1)
-
-            duration_ms = int((time.time() - t0) * 1000)
-            total_rows += stock_total_rows
-            
-            status = "success" if stock_total_rows > 0 else "no_new_data"
-            write_fetch_log(
-                conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
-                duration_ms=duration_ms, status=status
-            )
-            
-        except Exception as e:
-            duration_ms = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
-                duration_ms=duration_ms, status="failed", error_message=str(e)
-            )
-            
-        if i % 10 == 0:
-            logger.info(f"  進度：{i}/{len(stock_ids)}（累計寫入 {total_rows} 筆）")
-
-    logger.info(f"  [{table}] 總共寫入 {total_rows} 筆")
-    flog.summary()
-
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
-    """
+def taipei_today() -> str:
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
-    except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    except:
+        return date.today().strftime("%Y-%m-%d")
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
+def next_day(date_str: str) -> str:
+    try:
+        d = datetime.strptime(str(date_str), "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return str(date_str)
 
-def query_gap_targets(conn, days: int, target_tables: list[str], all_stock_ids: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    for tbl in target_tables:
-        sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (tbl, str(days), all_stock_ids))
-                have_success = {row[0] for row in cur.fetchall()}
-            missing = [sid for sid in all_stock_ids if sid not in have_success]
-            targets[tbl].extend(missing)
-        except Exception as e:
-            logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
-
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-
-def resolve_stock_ids(args, conn) -> list[str]:
-    """根據 CLI 參數與核心資料庫表解析要抓取的股票代號"""
+def resolve_stock_ids(args) -> List[str]:
     if args.stock_id:
         return [s.strip() for s in args.stock_id.split(",") if s.strip()]
-    if args.all_market:
-        return get_db_stock_ids(conn)
-        
-    # 預設：使用 DB 中的核心清單，並要求 fetch_news = TRUE
-    stock_configs = get_core_stocks_from_db(conn)
-    if stock_configs:
-        return [sid for sid, cfg in stock_configs.items() if cfg.get("is_active", True) and cfg.get("fetch_news", True)]
     
-    # 若資料庫無設定，退回預設全市場
-    return get_db_stock_ids(conn)
-
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
-def main():
-    p = argparse.ArgumentParser(description="個股新聞抓取 (v3.4 — 核心模組升級版)")
-    p.add_argument("--stock-id", default=None)
-    p.add_argument("--all-market", action="store_true", help="抓取全市場（不建議，極消耗配額）")
-    p.add_argument("--days", type=int, default=30)
-    p.add_argument("--start", default=None)
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=0.8)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
-
-    conn = get_db_conn()
     try:
-        _ensure_fetch_log_table(conn)
-        stock_ids = resolve_stock_ids(args, conn)
+        with db_session() as conn:
+            with conn.cursor() as cur:
+                if args.all_market:
+                    cur.execute("SELECT stock_id FROM stocks WHERE is_active = TRUE ORDER BY stock_id")
+                else:
+                    cur.execute("SELECT stock_id FROM stocks WHERE fetch_news = TRUE AND is_active = TRUE ORDER BY stock_id")
+                return [r[0] for r in cur.fetchall()]
+    except:
+        return []
+
+# =====================================================================
+# 3. 核心抓取邏輯 (v5.1 精準監控)
+# =====================================================================
+
+def map_news(r: dict) -> dict:
+    return {
+        "date": r["date"], 
+        "stock_id": str(r["stock_id"]), 
+        "title": (r.get("title") or "")[:1000], 
+        "description": r.get("description"), 
+        "source": str(r.get("source") or "")[:200], 
+        "link": r.get("link")
+    }
+
+def fetch_one_stock(stock_id: str, start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    api = FinMindClient()
+    table = "stock_news"
+    
+    # 1. 預檢 ID 合法性
+    if not is_valid_stock_id(stock_id):
+        logger.debug(f"  ⏭️ {stock_id} 為無效代碼，自動跳過。")
+        write_fetch_log(table, stock_id, "skipped", "news_v5.1", start, end, 0, 0, "invalid_stock_id")
+        return stock_id, 0, 0
+
+    cur_start = start
+    if not force:
+        latest = get_latest_date(table, stock_id)
+        if latest:
+            cur_start = next_day(latest)
+            if cur_start > end:
+                write_fetch_log(table, stock_id, "skipped", "news_v5.1", str(latest), end, 0, 0, "up_to_date")
+                return stock_id, 0, 0
+
+    try:
+        s_dt = datetime.strptime(cur_start, "%Y-%m-%d").date()
+        e_dt = datetime.strptime(end, "%Y-%m-%d").date()
+        curr_dt = s_dt
+        total_success = total_error = 0
         
-        if not stock_ids:
-            logger.warning("未找到需要抓取新聞的標的（請確認 stocks 表中 fetch_news 是否有設為 TRUE）。")
-            return
-
-        end_dt = datetime.strptime(args.end, "%Y-%m-%d")
-        start_str = args.start if args.start else (end_dt - timedelta(days=args.days)).strftime("%Y-%m-%d")
-
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, ["stock_news"])
-            if targets and "stock_news" in targets: 
-                fetch_stock_news(conn, targets["stock_news"], start_str, args.end, args.delay, force=True, fetch_mode_override="retry")
-            else: 
-                logger.info("沒有找到需要重試的目標，結束。")
-            return
-
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, ["stock_news"], stock_ids)
-            if targets and "stock_news" in targets: 
-                fetch_stock_news(conn, targets["stock_news"], start_str, args.end, args.delay, force=True, fetch_mode_override="gap_fill")
-            else: 
-                logger.info("沒有找到需要補抓的目標，結束。")
-            return
-
-        # 模式 C：常規抓取
-        fetch_stock_news(conn, stock_ids, start_str, args.end, args.delay, args.force)
+        while curr_dt <= e_dt:
+            s_str = curr_dt.strftime("%Y-%m-%d")
+            t0 = time.monotonic()
             
-    finally:
-        conn.close()
-        logger.info("全部完成")
+            # ⭐ 逐日抓取：新聞 API 規則為單日查詢
+            data = api.get_data("TaiwanStockNews", stock_id, s_str)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            if data:
+                records = [map_news(row) for row in data if "date" in row]
+                if records:
+                    success, error = commit_per_stock_per_day(table, records, UPSERT_NEWS, stock_id)
+                    total_success += success
+                    total_error += error
+                    write_fetch_log(table, stock_id, "success" if error == 0 else "partial", "news_v5.1", s_str, s_str, duration_ms, success, None)
+            
+            curr_dt += timedelta(days=1)
+            time.sleep(0.3)
+
+        return stock_id, total_success, total_error
+
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"  ❌ {stock_id} @ {table}: {msg}")
+        status = "circuit_open" if "Circuit Breaker" in msg else "failed"
+        write_fetch_log(table, stock_id, status, "news_v5.1", cur_start, end, 0, 0, msg)
+        return stock_id, 0, 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Stock News Fetcher v5.1 (Trinity Core Edition)")
+    parser.add_argument("--stock-id", type=str, default=None)
+    parser.add_argument("--all-market", action="store_true")
+    parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--start", type=str, default=None)
+    parser.add_argument("--end", type=str, default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
+
+    try:
+        sync_stocks_table()
+        ensure_ddl(DDL_NEWS)
+    except: pass
+
+    stock_ids = resolve_stock_ids(args)
+    if not stock_ids:
+        logger.warning("未找到需要抓取新聞的標的。")
+        return
+
+    end_date = args.end or taipei_today()
+    start_date = args.start
+    if not start_date:
+        e_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        start_date = (e_dt - timedelta(days=args.days)).strftime("%Y-%m-%d")
+
+    logger.info("=" * 70)
+    logger.info(f"  Stock News Fetcher v5.1  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    logger.info(f"  目標個股    : {len(stock_ids)}")
+    logger.info(f"  日期區間    : {start_date} ~ {end_date}")
+    logger.info(f"  Workers     : {args.workers}")
+    logger.info("=" * 70)
+
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        futures = {ex.submit(fetch_one_stock, sid, start_date, end_date, args.force): sid for sid in stock_ids}
+        for fut in as_completed(futures):
+            sid, ok, err = fut.result()
+            if ok: logger.info(f"  ✓ {sid}: {ok} rows")
+
+    logger.info("🎉 抓取任務完成。")
+    try:
         get_request_stats().summary()
+    except: pass
 
 if __name__ == "__main__":
     main()

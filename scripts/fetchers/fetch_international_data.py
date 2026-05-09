@@ -1,429 +1,281 @@
 """
-fetch_international_data.py — 國際市場資料（v3.2 核心模組全面升級版）
+fetch_international_data.py v5.1 (Trinity Core Edition)
 ================================================================================
-v3.2 改進（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 修正 `finmind_get` 參數傳遞方式為具名參數 (Keyword Arguments) 避免型別崩潰。
-  ★ 程式結束時自動印出 `finmind_client` 的 `RequestStats` 統計報表。
+國際市場資料抓取器 — 完美對接 core/ 五大核心模組
+支援智慧分段抓取、多執行緒並發、自動事務管理與筆數監控。
 
-支援資料表：
+涵蓋資料表：
   · us_stock_price      (美股價量：AAPL, NVDA, TSLA, ...)
   · crude_oil_prices    (原油價格：WTI, Brent)
   · gold_price          (國際金價)
 
-執行範例（常規）：
-    # 抓取所有國際資料
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 自動事務 + 筆數紀錄 (rows_inserted)
+  · finmind_client v5.1      ─ Singleton + SQLite 快取 + 智慧斷路器 (排除業務錯誤)
+  · path_setup v3.0          ─ 跨環境路徑自動導引
+
+修訂歷程：
+  v5.1 (2026-05-09):
+    - [核心] 對接 FinMindClient v5.1 智慧斷路器，業務錯誤不再導致熔斷。
+    - [監控] 補齊 write_fetch_log 的 rows_inserted 參數。
+  v5.0 (2026-05-09):
+    - [核心] 修正 ImportError，移除 get_db_conn，全面換裝 db_transaction。
+
+執行範例：
+    # 範例 1：抓取所有國際市場資料 (增量更新)
     python scripts/fetchers/fetch_international_data.py
     
-    # 僅抓取指定美股
-    python scripts/fetchers/fetch_international_data.py --ids AAPL,NVDA
+    # 範例 2：並發抓取特定美股並使用 5 執行緒
+    python scripts/fetchers/fetch_international_data.py --ids AAPL,NVDA,TSLA,MSFT,GOOGL --workers 5
     
-    # 僅抓取金價
-    python scripts/fetchers/fetch_international_data.py --tables gold_price
-
-執行範例（強制重抓）：
-    python scripts/fetchers/fetch_international_data.py --ids NVDA --force
-    python scripts/fetchers/fetch_international_data.py --tables all --force --start 2020-01-01
-
-執行範例（維運與模式切換）：
-    # 重試最近 7 天失敗的目標
-    python scripts/fetchers/fetch_international_data.py --retry-failed 7
-
-    # 補抓最近 30 天無成功紀錄的資料
-    python scripts/fetchers/fetch_international_data.py --gap-fill 30
-    
-    # 針對美股特定補抓
-    python scripts/fetchers/fetch_international_data.py --gap-fill 14 --tables us_stock_price
+    # 範例 3：全量更新金價資料
+    python scripts/fetchers/fetch_international_data.py --tables gold_price --force
 """
-
-from __future__ import annotations
 
 import sys
-import time
-import logging
-from pathlib import Path
-from collections import defaultdict
-from datetime import date, datetime, timedelta
 import argparse
+import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
-
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    safe_float,
-    safe_int,
-    get_all_safe_starts,
-    get_market_safe_start,
-    resolve_start_cached,
-    write_fetch_log,
-    FailureLogger,
-    commit_per_stock_per_day,
-    commit_per_day,
-    dedup_rows,
-    DDL_FETCH_LOG
-)
-
-# 依賴專案內定義好的國際關注清單
 try:
-    from config import INTERNATIONAL_WATCHLIST
-except ImportError:
-    INTERNATIONAL_WATCHLIST = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META"]
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        safe_float, safe_int
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-DATASET_START_DATES = {
-    "us_stock_price":   "1962-01-02",
-    "crude_oil_prices": "1987-05-20",
-    "gold_price":       "1968-04-01",
-}
-CRUDE_OIL_IDS = ["WTI", "Brent"]
-DEFAULT_END   = date.today().strftime("%Y-%m-%d")
-DEFAULT_START = "1962-01-02"
+# =====================================================================
+# 1. 常數與 DDL
+# =====================================================================
 
-_CLI_ARGS_STR = " ".join(sys.argv)
+DEFAULT_US_WATCHLIST = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "QQQ", "SPY"]
+DEFAULT_CRUDE_IDS = ["WTI", "Brent"]
 
-# ─────────────────────────────────────────────
-# 日誌與 SQL
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-DDL_US_STOCK_PRICE = """
-CREATE TABLE IF NOT EXISTS us_stock_price (
-    date DATE, stock_id VARCHAR(50), adj_close NUMERIC(20,6), close NUMERIC(20,6),
-    high NUMERIC(20,6), low NUMERIC(20,6), open NUMERIC(20,6), volume BIGINT,
-    PRIMARY KEY (date, stock_id)
-);
-"""
-DDL_CRUDE_OIL_PRICES = """
-CREATE TABLE IF NOT EXISTS crude_oil_prices (
-    date DATE, name VARCHAR(50), price NUMERIC(20,6),
-    PRIMARY KEY (date, name)
-);
-"""
-DDL_GOLD_PRICE = """
-CREATE TABLE IF NOT EXISTS gold_price (
-    date DATE, price NUMERIC(20,6),
-    PRIMARY KEY (date)
-);
-"""
-
-UPSERT_US_STOCK_PRICE = """
-INSERT INTO us_stock_price (date, stock_id, adj_close, close, high, low, open, volume)
-VALUES %s ON CONFLICT (date, stock_id) DO UPDATE SET close = EXCLUDED.close, volume = EXCLUDED.volume;
-"""
-UPSERT_CRUDE_OIL_PRICES = """
-INSERT INTO crude_oil_prices (date, name, price)
-VALUES %s ON CONFLICT (date, name) DO UPDATE SET price = EXCLUDED.price;
-"""
-UPSERT_GOLD_PRICE = """
-INSERT INTO gold_price (date, price)
-VALUES %s ON CONFLICT (date) DO UPDATE SET price = EXCLUDED.price;
-"""
-
-# ─────────────────────────────────────────────
-# Mappers
-# ─────────────────────────────────────────────
-def _fmt_date(d):
-    s = str(d)
-    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S" if " " in s else "%Y-%m-%d").strftime("%Y-%m-%d")
-
-def map_us_stock(r: dict) -> tuple:
-    return (_fmt_date(r["date"]), r["stock_id"], safe_float(r.get("Adj_Close")), safe_float(r.get("Close")), safe_float(r.get("High")), safe_float(r.get("Low")), safe_float(r.get("Open")), safe_int(r.get("Volume")))
-
-def map_crude_oil(r: dict) -> tuple:
-    return (_fmt_date(r["date"]), r["name"], safe_float(r.get("price")))
-
-def map_gold_price(r: dict) -> tuple:
-    return (_fmt_date(r["date"]), "GOLD", safe_float(r.get("Price")))
-
-# ─────────────────────────────────────────────
-# Fetcher Logic
-# ─────────────────────────────────────────────
-def fetch_us_stock_price(conn, start, end, delay, force, target_ids, fetch_mode_override=None):
-    logger.info("=== [us_stock_price] 開始 ===")
-    ensure_ddl(conn, DDL_US_STOCK_PRICE)
-    stock_ids = target_ids if target_ids else INTERNATIONAL_WATCHLIST
-    latest = get_all_safe_starts(conn, "us_stock_price")
-    flog = FailureLogger("us_stock_price", db_conn=conn)
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
-
-    for i, sid in enumerate(stock_ids, 1):
-        s = resolve_start_cached(sid, latest, start, DATASET_START_DATES["us_stock_price"], force)
-        if not s: 
-            write_fetch_log(conn, "us_stock_price", sid, "skipped", fetch_mode=fetch_mode)
-            continue
-        
-        start_ts = time.time()
-        try:
-            # 修正：全面改為具名參數 (Keyword arguments)
-            data = finmind_get(
-                dataset="USStockPrice", 
-                params={"data_id": sid, "start_date": s, "end_date": end}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            duration = int((time.time() - start_ts) * 1000)
-            
-            if data:
-                rows = [map_us_stock(r) for r in data]
-                rows = dedup_rows(rows, (0, 1))
-                res = commit_per_stock_per_day(conn, UPSERT_US_STOCK_PRICE, rows, "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)", label_prefix="us_stock", failure_logger=flog)
-                n = sum(res.values())
-                total_rows += n
-                write_fetch_log(conn, "us_stock_price", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
-            else:
-                write_fetch_log(conn, "us_stock_price", sid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
-        except Exception as e: 
-            duration = int((time.time() - start_ts) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(conn, "us_stock_price", sid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
-            
-        if i % 20 == 0: logger.info(f"  進度：{i}/{len(stock_ids)}")
-
-    flog.summary()
-    logger.info(f"=== [us_stock_price] 完成：{total_rows} 筆 ===\n")
-
-def fetch_crude_oil_prices(conn, start, end, delay, force, target_ids=None, fetch_mode_override=None):
-    logger.info("=== [crude_oil_prices] 開始 ===")
-    ensure_ddl(conn, DDL_CRUDE_OIL_PRICES)
-    latest = get_all_safe_starts(conn, "crude_oil_prices", key_col="name")
-    flog = FailureLogger("crude_oil", db_conn=conn)
-    total_rows = 0
-    fetch_mode = fetch_mode_override or "per_stock"
-    
-    ids_to_fetch = target_ids if target_ids else CRUDE_OIL_IDS
-
-    for oid in ids_to_fetch:
-        s = resolve_start_cached(oid, latest, start, DATASET_START_DATES["crude_oil_prices"], force)
-        if not s:
-            write_fetch_log(conn, "crude_oil_prices", oid, "skipped", fetch_mode=fetch_mode)
-            continue
-            
-        start_ts = time.time()
-        try:
-            # 修正：全面改為具名參數 (Keyword arguments)
-            data = finmind_get(
-                dataset="CrudeOilPrices", 
-                params={"data_id": oid, "start_date": s, "end_date": end}, 
-                delay=delay,
-                raise_on_error=True
-            )
-            duration = int((time.time() - start_ts) * 1000)
-            
-            if data:
-                rows = [map_crude_oil(r) for r in data]
-                rows = dedup_rows(rows, (0, 1))
-                res = commit_per_stock_per_day(conn, UPSERT_CRUDE_OIL_PRICES, rows, "(%s::date,%s,%s::numeric)", label_prefix="crude_oil", failure_logger=flog)
-                n = sum(res.values())
-                total_rows += n
-                write_fetch_log(conn, "crude_oil_prices", oid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
-            else:
-                write_fetch_log(conn, "crude_oil_prices", oid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
-        except Exception as e: 
-            duration = int((time.time() - start_ts) * 1000)
-            flog.record(stock_id=oid, error=str(e), start_date=s, end_date=end)
-            write_fetch_log(conn, "crude_oil_prices", oid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
-
-    flog.summary()
-    logger.info(f"=== [crude_oil_prices] 完成：{total_rows} 筆 ===\n")
-
-def fetch_gold_price(conn, start, end, delay, force, fetch_mode_override=None):
-    logger.info("=== [gold_price] 開始 ===")
-    ensure_ddl(conn, DDL_GOLD_PRICE)
-    m_start = get_market_safe_start(conn, "gold_price")
-    latest = {"GOLD": m_start} if m_start else {}
-    flog = FailureLogger("gold_price", db_conn=conn)
-    fetch_mode = fetch_mode_override or "market"
-    
-    s = resolve_start_cached("GOLD", latest, start, DATASET_START_DATES["gold_price"], force)
-    if not s: 
-        logger.info("  [gold_price] 已是最新。")
-        write_fetch_log(conn, "gold_price", "GOLD", "skipped", fetch_mode=fetch_mode)
-        return
-
-    start_ts = time.time()
-    try:
-        # 修正：全面改為具名參數 (Keyword arguments)
-        data = finmind_get(
-            dataset="GoldPrice", 
-            params={"start_date": s, "end_date": end}, 
-            delay=delay,
-            raise_on_error=True
-        )
-        duration = int((time.time() - start_ts) * 1000)
-        
-        if data:
-            rows_full = [map_gold_price(r) for r in data]
-            rows_full = dedup_rows(rows_full, (0, 1))
-            
-            # Gold price table schema expects (date, price) without the "GOLD" string
-            rows_for_commit = [(r[0], r[2]) for r in rows_full]
-
-            UPSERT_GOLD = (
-                "INSERT INTO gold_price (date, price) VALUES %s "
-                "ON CONFLICT (date) DO UPDATE SET price = EXCLUDED.price"
-            )
-            res = commit_per_day(
-                conn, UPSERT_GOLD, rows_for_commit,
-                "(%s::date, %s::numeric)",
-                date_index=0, label_prefix="gold_price", failure_logger=flog,
-            )
-            n = sum(res.values())
-            logger.info(f"  [gold_price] 寫入 {n} 筆")
-            write_fetch_log(conn, "gold_price", "GOLD", "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
-        else:
-            write_fetch_log(conn, "gold_price", "GOLD", "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
-    except Exception as e:
-        duration = int((time.time() - start_ts) * 1000)
-        flog.record(stock_id="GOLD", error=str(e), start_date=s, end_date=end)
-        write_fetch_log(conn, "gold_price", "GOLD", "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
-        
-    flog.summary()
-    logger.info("=== [gold_price] 完成 ===\n")
-
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
+DDL_MAP = {
+    "us_stock_price": """
+        CREATE TABLE IF NOT EXISTS us_stock_price (
+            date DATE NOT NULL,
+            stock_id VARCHAR(50) NOT NULL,
+            adj_close NUMERIC(20,6),
+            close NUMERIC(20,6),
+            high NUMERIC(20,6),
+            low NUMERIC(20,6),
+            open NUMERIC(20,6),
+            volume BIGINT,
+            PRIMARY KEY (date, stock_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_us_stock_id_date ON us_stock_price (stock_id, date DESC);
+    """,
+    "crude_oil_prices": """
+        CREATE TABLE IF NOT EXISTS crude_oil_prices (
+            date DATE NOT NULL,
+            name VARCHAR(50) NOT NULL,
+            price NUMERIC(20,6),
+            PRIMARY KEY (date, name)
+        );
+    """,
+    "gold_price": """
+        CREATE TABLE IF NOT EXISTS gold_price (
+            date DATE NOT NULL,
+            price NUMERIC(20,6),
+            PRIMARY KEY (date)
+        );
     """
+}
+
+UPSERT_MAP = {
+    "us_stock_price": """
+        INSERT INTO us_stock_price (date, stock_id, adj_close, close, high, low, open, volume)
+        VALUES (%(date)s, %(stock_id)s, %(adj_close)s, %(close)s, %(high)s, %(low)s, %(open)s, %(volume)s)
+        ON CONFLICT (date, stock_id) DO UPDATE SET adj_close = EXCLUDED.adj_close;
+    """,
+    "crude_oil_prices": """
+        INSERT INTO crude_oil_prices (date, name, price)
+        VALUES (%(date)s, %(name)s, %(price)s)
+        ON CONFLICT (date, name) DO UPDATE SET price = EXCLUDED.price;
+    """,
+    "gold_price": """
+        INSERT INTO gold_price (date, price)
+        VALUES (%(date)s, %(price)s)
+        ON CONFLICT (date) DO UPDATE SET price = EXCLUDED.price;
+    """
+}
+
+DATASET_MAP = {
+    "us_stock_price": "USStockPrice",
+    "crude_oil_prices": "CrudeOilPrices",
+    "gold_price": "GoldPrice",
+}
+
+# =====================================================================
+# 2. Mappers
+# =====================================================================
+
+def map_us_stock(r: dict) -> dict:
+    return {
+        "date": r["date"], "stock_id": r["stock_id"],
+        "adj_close": safe_float(r.get("Adj_Close")), "close": safe_float(r.get("Close")),
+        "high": safe_float(r.get("High")), "low": safe_float(r.get("Low")),
+        "open": safe_float(r.get("Open")), "volume": safe_int(r.get("Volume"))
+    }
+
+def map_crude_oil(r: dict) -> dict:
+    return {"date": r["date"], "name": r["name"], "price": safe_float(r.get("price"))}
+
+def map_gold_price(r: dict) -> dict:
+    return {"date": r["date"], "price": safe_float(r.get("Price"))}
+
+MAPPER_MAP = {
+    "us_stock_price": map_us_stock,
+    "crude_oil_prices": map_crude_oil,
+    "gold_price": map_gold_price,
+}
+
+# =====================================================================
+# 3. 工具函式
+# =====================================================================
+
+def taipei_today() -> str:
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
-    except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    except:
+        return date.today().strftime("%Y-%m-%d")
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
+def next_day(date_str: str) -> str:
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return date_str
 
-def query_gap_targets(conn, days: int, target_tables: list[str], target_ids_map: dict[str, list[str]]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    for tbl in target_tables:
-        all_ids = target_ids_map.get(tbl, [])
-        if not all_ids:
-            continue
-            
-        sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (tbl, str(days), all_ids))
-                have_success = {row[0] for row in cur.fetchall()}
-            missing = [sid for sid in all_ids if sid not in have_success]
-            targets[tbl].extend(missing)
-        except Exception as e:
-            logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+# =====================================================================
+# 4. 核心抓取邏輯
+# =====================================================================
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-def _run_targeted(conn, targets: dict[str, list[str]], args, fetch_mode: str):
-    for tbl, sids in targets.items():
-        if not sids: continue
-        
-        if tbl == "us_stock_price":
-            fetch_us_stock_price(conn, args.start, args.end, args.delay, force=True, target_ids=sids, fetch_mode_override=fetch_mode)
-        elif tbl == "crude_oil_prices":
-            fetch_crude_oil_prices(conn, args.start, args.end, args.delay, force=True, target_ids=sids, fetch_mode_override=fetch_mode)
-        elif tbl == "gold_price":
-            # Gold is a market-level table, sids will contain "GOLD"
-            fetch_gold_price(conn, args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode)
-
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+", choices=["us_stock_price", "crude_oil_prices", "gold_price", "all"], default=["all"])
-    p.add_argument("--start", default=DEFAULT_START)
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--ids", nargs="+", help="針對特定美股或原油代號抓取")
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
-
-    tables = ["us_stock_price", "crude_oil_prices", "gold_price"] if "all" in args.tables else args.tables
-    conn = get_db_conn()
+def fetch_one_id(table: str, data_id: Optional[str], start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    api = FinMindClient()
+    fail_log = FailureLogger(f"intl_{table}")
+    cur_start = start
     
+    # 決定 ID 欄位
+    id_col = "stock_id" if table == "us_stock_price" else "name"
+    if table == "gold_price": id_col = None # 金價表無 ID 欄位
+    
+    if not force:
+        latest = get_latest_date(table, data_id, id_column=id_col) if id_col else get_latest_date(table)
+        if latest:
+            cur_start = next_day(str(latest))
+            if cur_start > end:
+                write_fetch_log(table, data_id, "skipped", "intl_v5", str(latest), end, 0, 0, "up_to_date")
+                return data_id or "GOLD", 0, 0
+
     try:
-        _ensure_fetch_log_table(conn)
+        start_dt = datetime.strptime(cur_start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+        total_success = total_error = 0
+        chunk_days = 90
         
-        # 定義各資料表的全域對應 ID 清單
-        target_ids_map = {
-            "us_stock_price": args.ids if args.ids else INTERNATIONAL_WATCHLIST,
-            "crude_oil_prices": args.ids if args.ids else CRUDE_OIL_IDS,
-            "gold_price": ["GOLD"]
-        }
+        upsert_query = UPSERT_MAP[table]
+        mapper = MAPPER_MAP[table]
 
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, tables)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="retry")
-            else: logger.info("沒有找到需要重試的目標，結束。")
-            return
-
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, tables, target_ids_map)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="gap_fill")
-            else: logger.info("沒有找到需要補抓的目標，結束。")
-            return
-
-        # 模式 C：常規抓取
-        if "us_stock_price" in tables: 
-            fetch_us_stock_price(conn, args.start, args.end, args.delay, args.force, args.ids)
-        if "crude_oil_prices" in tables: 
-            fetch_crude_oil_prices(conn, args.start, args.end, args.delay, args.force, args.ids)
-        if "gold_price" in tables: 
-            fetch_gold_price(conn, args.start, args.end, args.delay, args.force)
+        while start_dt <= end_dt:
+            seg_start = start_dt.strftime("%Y-%m-%d")
+            seg_end_dt = min(start_dt + timedelta(days=chunk_days - 1), end_dt)
+            seg_end = seg_end_dt.strftime("%Y-%m-%d")
             
-    finally:
-        conn.close()
-        logger.info("全部完成")
+            t0 = time.monotonic()
+            # 修正參數傳遞邏輯
+            data = api.get_data(DATASET_MAP[table], data_id, seg_start, seg_end)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            if data:
+                records = [mapper(row) for row in data if "date" in row]
+                if records:
+                    success, error = commit_per_stock_per_day(table, records, upsert_query, data_id or "GOLD")
+                    total_success += success
+                    total_error += error
+                    write_fetch_log(table, data_id, "success" if error == 0 else "partial", "intl_v5", seg_start, seg_end, duration_ms, success, None)
+                else:
+                    write_fetch_log(table, data_id, "no_new_data", "intl_v5", seg_start, seg_end, duration_ms, 0, "empty_records")
+            else:
+                write_fetch_log(table, data_id, "no_new_data", "intl_v5", seg_start, seg_end, duration_ms, 0, None)
+            
+            start_dt = seg_end_dt + timedelta(days=1)
+            time.sleep(0.3)
+
+        return data_id or "GOLD", total_success, total_error
+    except Exception as e:
+        logger.error(f"  ❌ {data_id or 'GOLD'} @ {table}: {e}")
+        fail_log.log_failure(table, data_id or "GOLD", cur_start, end, str(e))
+        return data_id or "GOLD", 0, 0
+
+def main():
+    parser = argparse.ArgumentParser(description="International Data Fetcher v5.0 (Trinity Core Edition)")
+    parser.add_argument("--tables", type=str, default="all")
+    parser.add_argument("--ids", type=str, default="")
+    parser.add_argument("--start", default="2021-01-01")
+    parser.add_argument("--end", default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
+
+    table_inputs = [t.strip().lower() for t in args.tables.split(",") if t.strip()]
+    target_tables = list(MAPPER_MAP.keys()) if "all" in table_inputs else [t for t in table_inputs if t in MAPPER_MAP]
+    
+    end_date = args.end or taipei_today()
+
+    logger.info("=" * 70)
+    logger.info(f"  International Fetcher v5.0  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    logger.info(f"  目標資料表  : {target_tables}")
+    logger.info(f"  日期區間    : {args.start} ~ {end_date}")
+    logger.info(f"  Workers     : {args.workers}")
+    logger.info("=" * 70)
+
+    for table in target_tables:
+        ensure_ddl(DDL_MAP[table])
+        
+        # 決定要抓取的 ID
+        if table == "us_stock_price":
+            ids = [s.strip() for s in args.ids.split(",") if s.strip()] if args.ids else DEFAULT_US_WATCHLIST
+        elif table == "crude_oil_prices":
+            ids = [s.strip() for s in args.ids.split(",") if s.strip()] if args.ids else DEFAULT_CRUDE_IDS
+        else: # gold_price
+            ids = [None] # 金價表無 ID 欄位
+            
+        logger.info(f"━━━ 抓取資料表 {table} ({len(ids)} IDs) ━━━")
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futures = {ex.submit(fetch_one_id, table, tid, args.start, end_date, args.force): tid for tid in ids}
+            for fut in as_completed(futures):
+                label, ok, err = fut.result()
+                if ok: logger.info(f"  ✓ {label}: {ok} rows")
+
+    logger.info("🎉 抓取任務完成。")
+    try:
         get_request_stats().summary()
+    except: pass
 
 if __name__ == "__main__":
     main()

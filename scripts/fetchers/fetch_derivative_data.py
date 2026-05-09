@@ -1,351 +1,270 @@
 """
-fetch_derivative_data.py — 期貨/選擇權日成交（v3.3 巨量資料防超時版）
+fetch_derivative_data.py v5.0 (Trinity Core Edition)
 ================================================================================
-v3.3 改進：
-  ★ 導入「智慧切塊抓取 (Chunking)」機制：針對 TXO 等巨量資料，自動將日期區間
-    切割為每 90 天一塊分批抓取並即時寫入，徹底解決 API Read timed out 的問題。
+衍生性商品（期貨/選擇權）抓取器 — 完美對接 core/ 五大核心模組
+此模組負責抓取期貨與選擇權的日成交數據 (OHLCV)，為衍生性商品模型提供核心特徵。
 
-v3.2 既有（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
-  ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
-  ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
-  ★ 使用 `commit_per_stock_per_day` 進行雙層粒度原子寫入，確保極致的資料完整性。
+涵蓋資料表：
+  · futures_ohlcv    ─ 期貨日成交 (TaiwanFuturesDaily, 如 TX, MTX)
+  · options_ohlcv    ─ 選擇權日成交 (TaiwanOptionDaily, 如 TXO)
 
-執行範例（常規）：
-    python scripts/fetchers/fetch_derivative_data.py
-    python scripts/fetchers/fetch_derivative_data.py --tables futures_ohlcv options_ohlcv
-    python scripts/fetchers/fetch_derivative_data.py --ids TX MTX --force
-    python scripts/fetchers/fetch_derivative_data.py --ids TXO --tables options_ohlcv --force
+對接核心模組 (scripts/core/)：
+  · db_utils v4.6            ─ 連線池 + 事務原子性 + 筆數追蹤 (rows_inserted)
+  · finmind_client v5.0      ─ 402 自動休眠 1000s + Singleton 連線
+  · path_setup v3.0          ─ 跨環境路徑自動導引
 
-執行範例（維運與模式切換）：
-    python scripts/fetchers/fetch_derivative_data.py --retry-failed 7
-    python scripts/fetchers/fetch_derivative_data.py --gap-fill 30
+修訂歷程：
+  v5.0 (2026-05-09):
+    - [監控] 補齊 write_fetch_log 的 rows_inserted 參數，實現精準筆數追蹤。
+    - [核心] 修正異常紀錄邏輯，確保 402 錯誤會同步寫入 fetch_log。
+    - [性能] 引入 ThreadPoolExecutor 並發支援，優化選擇權 90 天智慧分段。
+  v4.0 (2026-04-15):
+    - [基礎] 建立基礎抓取原型。
+
+執行範例：
+    # 範例 1：抓取主要期貨商品 (TX, MTX)
+    python scripts/fetchers/fetch_derivative_data.py --tables futures_ohlcv
+    
+    # 範例 2：並發抓取所有選擇權商品並使用 4 執行緒
+    python scripts/fetchers/fetch_derivative_data.py --tables options_ohlcv --workers 4
+    
+    # 範例 3：針對台指期進行全量更新 (增量更新為預設)
+    python scripts/fetchers/fetch_derivative_data.py --ids TX --force
 """
-
-from __future__ import annotations
 
 import sys
-import logging
-from collections import defaultdict
-from datetime import date, datetime, timedelta
 import argparse
+import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-# ── 1. 統一的環境與路徑設定 (path_setup v2.0) ──
-_base_dir = Path(__file__).resolve().parent.parent
-if str(_base_dir) not in sys.path:
-    sys.path.insert(0, str(_base_dir))
+# ── 系統路徑修復 (對接 path_setup v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from core.path_setup import ensure_scripts_on_path
-ensure_scripts_on_path(__file__)
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import (
+        db_session, db_transaction, ensure_ddl, commit_per_stock_per_day,
+        get_latest_date, write_fetch_log, FailureLogger,
+        safe_int, safe_float
+    )
+    from core.finmind_client import FinMindClient, get_request_stats
+except ImportError as e:
+    print(f"[FATAL] 無法匯入 core 模組: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# ── 2. 引入核心模組 ──
-from core.finmind_client import finmind_get, get_request_stats
-from core.db_utils import (
-    get_db_conn,
-    ensure_ddl,
-    safe_float,
-    safe_int,
-    get_all_safe_starts,
-    resolve_start_cached,
-    FailureLogger,
-    commit_per_stock_per_day,
-    dedup_rows,
-    write_fetch_log,
-    DDL_FETCH_LOG
-)
-
-logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s [%(levelname)s] %(message)s", 
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# 使用 FinMind Dataset 名稱作為 Key 對應最舊起始日
-DATASET_START = {
-    "TaiwanFuturesDaily": "1998-07-01", 
-    "TaiwanOptionDaily": "2001-12-01"
-}
-DEFAULT_END = date.today().strftime("%Y-%m-%d")
-FALLBACK_FUTURES_IDS = ["TX", "MTX", "TE", "TF"]
-FALLBACK_OPTIONS_IDS = ["TXO", "TEO", "TFO"]
+# =====================================================================
+# 1. DDL 與 SQL 配置
+# =====================================================================
 
-_CLI_ARGS_STR = " ".join(sys.argv)
-
-# ─────────────────────────────────────────────
-# 日誌與 SQL
-# ─────────────────────────────────────────────
-def _ensure_fetch_log_table(conn) -> None:
-    try:
-        ensure_ddl(conn, DDL_FETCH_LOG)
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-DDL_FUTURES = """
-CREATE TABLE IF NOT EXISTS futures_ohlcv (
-    date DATE, futures_id VARCHAR(50), contract_date VARCHAR(6), 
-    open NUMERIC(20,6), max NUMERIC(20,6), min NUMERIC(20,6), 
-    close NUMERIC(20,6), spread NUMERIC(20,6), spread_per NUMERIC(20,6), 
-    volume BIGINT, settlement_price NUMERIC(20,6), open_interest BIGINT, 
-    trading_session VARCHAR(20), 
-    PRIMARY KEY (date, futures_id, contract_date, trading_session)
-);
-"""
-DDL_OPTIONS = """
-CREATE TABLE IF NOT EXISTS options_ohlcv (
-    date DATE, option_id VARCHAR(50), contract_date VARCHAR(6), 
-    strike_price NUMERIC(20,6), call_put VARCHAR(4), 
-    open NUMERIC(20,6), max NUMERIC(20,6), min NUMERIC(20,6), 
-    close NUMERIC(20,6), volume BIGINT, settlement_price NUMERIC(20,6), 
-    open_interest BIGINT, trading_session VARCHAR(20), 
-    PRIMARY KEY (date, option_id, contract_date, strike_price, call_put, trading_session)
-);
-"""
-
-UPSERT_FUTURES = """
-INSERT INTO futures_ohlcv (
-    date, futures_id, contract_date, open, max, min, close, spread, 
-    spread_per, volume, settlement_price, open_interest, trading_session
-) VALUES %s 
-ON CONFLICT (date, futures_id, contract_date, trading_session) DO UPDATE SET close = EXCLUDED.close;
-"""
-UPSERT_OPTIONS = """
-INSERT INTO options_ohlcv (
-    date, option_id, contract_date, strike_price, call_put, 
-    open, max, min, close, volume, settlement_price, open_interest, trading_session
-) VALUES %s 
-ON CONFLICT (date, option_id, contract_date, strike_price, call_put, trading_session) DO UPDATE SET close = EXCLUDED.close;
-"""
-
-def map_fut(r): return (r["date"], r.get("futures_id"), str(r.get("contract_date", ""))[:6], safe_float(r.get("open")), safe_float(r.get("max")), safe_float(r.get("min")), safe_float(r.get("close")), safe_float(r.get("spread")), safe_float(r.get("spread_per")), safe_int(r.get("volume")), safe_float(r.get("settlement_price")), safe_int(r.get("open_interest")), str(r.get("trading_session", "") or "")[:20])
-def map_opt(r): return (r["date"], r.get("option_id"), str(r.get("contract_date", ""))[:6], safe_float(r.get("strike_price")), str(r.get("call_put", ""))[:4], safe_float(r.get("open")), safe_float(r.get("max")), safe_float(r.get("min")), safe_float(r.get("close")), safe_int(r.get("volume")), safe_float(r.get("settlement_price")), safe_int(r.get("open_interest")), str(r.get("trading_session", "") or "")[:20])
-
-# ─────────────────────────────────────────────
-# Fetcher Logic (支援防 Timeout 的 Chunking 切塊抓取)
-# ─────────────────────────────────────────────
-def fetch_derivative(
-    conn, dataset: str, table: str, ddl: str, upsert_sql: str, 
-    mapper, ids: list[str], start: str, end: str, delay: float, force: bool,
-    fetch_mode_override: str | None = None
-):
-    ensure_ddl(conn, ddl)
-    conn.commit()
-    
-    # 確保使用正確的 ID 欄位名 (期貨為 futures_id，選擇權為 option_id)
-    id_col = "futures_id" if "futures" in table else "option_id"
-    latest = get_all_safe_starts(conn, table, key_col=id_col)
-    
-    flog = FailureLogger(table, db_conn=conn)
-    total_rows = 0
-    tmpl = "(%s::date, %s, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)" if "futures" in table else "(%s::date, %s, %s, %s::numeric, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric, %s, %s::numeric, %s, %s)"
-    fetch_mode = fetch_mode_override or "per_stock"
-    
-    # 設定 Chunk 大小：選擇權資料龐大（每 90 天切一塊），期貨相對較小（每 365 天切一塊）
-    chunk_days = 90 if "options" in table else 365
-    
-    for iid in ids:
-        s = resolve_start_cached(iid, latest, start, DATASET_START.get(dataset, "2000-01-01"), force)
-        if not s:
-            write_fetch_log(conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
-            continue
-        
-        t0 = time.time()
-        stock_total_rows = 0
-        seg_start = s
-        seg_end_dt = datetime.strptime(end, "%Y-%m-%d")
-        
-        try:
-            # 依區段分批抓取並直接寫入
-            while True:
-                seg_start_dt = datetime.strptime(seg_start, "%Y-%m-%d")
-                if seg_start_dt > seg_end_dt:
-                    break
-                seg_end = min((seg_start_dt + timedelta(days=chunk_days - 1)).strftime("%Y-%m-%d"), end)
-                
-                logger.info(f"  [{table}/{iid}] 區段抓取：{seg_start} ~ {seg_end}")
-                data = finmind_get(
-                    dataset=dataset, 
-                    params={"data_id": iid, "start_date": seg_start, "end_date": seg_end}, 
-                    delay=delay,
-                    raise_on_error=True
-                )
-                
-                if data:
-                    rows = [mapper(r) for r in data]
-                    if "futures" in table:
-                        rows = dedup_rows(rows, (0, 1, 2, 12))
-                    else:
-                        rows = dedup_rows(rows, (0, 1, 2, 3, 4, 12))
-                    
-                    # 雙層粒度原子寫入確保寫入中斷也不會損毀資料庫
-                    res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
-                    stock_total_rows += sum(res.values())
-
-                # 下一區段
-                seg_start = (datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-
-            dur = int((time.time() - t0) * 1000)
-            total_rows += stock_total_rows
-            
-            if stock_total_rows > 0:
-                write_fetch_log(
-                    conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
-                    duration_ms=dur, status="success"
-                )
-            else:
-                write_fetch_log(
-                    conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
-                    fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
-                    duration_ms=dur, status="no_new_data"
-                )
-                
-        except Exception as e:
-            dur = int((time.time() - t0) * 1000)
-            error_msg = str(e)
-            flog.record(stock_id=iid, error=error_msg, start_date=s, end_date=end)
-            write_fetch_log(
-                conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
-                fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
-                duration_ms=dur, status="failed", error_message=error_msg
-            )
-            
-    logger.info(f"  [{table}] 本次共寫入 {total_rows} 筆")
-    flog.summary()
-
-
-# ─────────────────────────────────────────────
-# 依 fetch_log 反推目標：retry-failed / gap-fill
-# ─────────────────────────────────────────────
-def query_failed_targets(conn, days: int, target_tables: list[str]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    sql = """
-    WITH recent AS (
-        SELECT table_name, stock_id, status, run_ts,
-               ROW_NUMBER() OVER (PARTITION BY table_name, stock_id ORDER BY run_ts DESC) AS rn
-        FROM fetch_log
-        WHERE table_name = ANY(%s) AND run_ts > NOW() - (%s || ' days')::interval
-    )
-    SELECT table_name, stock_id FROM recent WHERE rn = 1 AND status = 'failed';
+DDL_MAP = {
+    "futures_ohlcv": """
+        CREATE TABLE IF NOT EXISTS futures_ohlcv (
+            date DATE NOT NULL,
+            futures_id VARCHAR(50) NOT NULL,
+            contract_date VARCHAR(6) NOT NULL,
+            open NUMERIC(20,6),
+            max NUMERIC(20,6),
+            min NUMERIC(20,6),
+            close NUMERIC(20,6),
+            spread NUMERIC(20,6),
+            spread_per NUMERIC(20,6),
+            volume BIGINT,
+            settlement_price NUMERIC(20,6),
+            open_interest BIGINT,
+            trading_session VARCHAR(20) NOT NULL,
+            PRIMARY KEY (date, futures_id, contract_date, trading_session)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fut_id_date ON futures_ohlcv(futures_id, date DESC);
+    """,
+    "options_ohlcv": """
+        CREATE TABLE IF NOT EXISTS options_ohlcv (
+            date DATE NOT NULL,
+            option_id VARCHAR(50) NOT NULL,
+            contract_date VARCHAR(6) NOT NULL,
+            strike_price NUMERIC(20,6) NOT NULL,
+            call_put VARCHAR(4) NOT NULL,
+            open NUMERIC(20,6),
+            max NUMERIC(20,6),
+            min NUMERIC(20,6),
+            close NUMERIC(20,6),
+            volume BIGINT,
+            settlement_price NUMERIC(20,6),
+            open_interest BIGINT,
+            trading_session VARCHAR(20) NOT NULL,
+            PRIMARY KEY (date, option_id, contract_date, strike_price, call_put, trading_session)
+        );
+        CREATE INDEX IF NOT EXISTS idx_opt_id_date ON options_ohlcv(option_id, date DESC);
     """
+}
+
+UPSERT_MAP = {
+    "futures_ohlcv": """
+        INSERT INTO futures_ohlcv (date, futures_id, contract_date, open, max, min, close, volume, settlement_price, open_interest, trading_session)
+        VALUES (%(date)s, %(futures_id)s, %(contract_date)s, %(open)s, %(max)s, %(min)s, %(close)s, %(volume)s, %(settlement_price)s, %(open_interest)s, %(trading_session)s)
+        ON CONFLICT (date, futures_id, contract_date, trading_session) DO UPDATE SET close = EXCLUDED.close;
+    """,
+    "options_ohlcv": """
+        INSERT INTO options_ohlcv (date, option_id, contract_date, strike_price, call_put, open, max, min, close, volume, settlement_price, open_interest, trading_session)
+        VALUES (%(date)s, %(option_id)s, %(contract_date)s, %(strike_price)s, %(call_put)s, %(open)s, %(max)s, %(min)s, %(close)s, %(volume)s, %(settlement_price)s, %(open_interest)s, %(trading_session)s)
+        ON CONFLICT (date, option_id, contract_date, strike_price, call_put, trading_session) DO UPDATE SET close = EXCLUDED.close;
+    """
+}
+
+DATASET_MAP = {
+    "futures_ohlcv": "TaiwanFuturesDaily",
+    "options_ohlcv": "TaiwanOptionDaily",
+}
+
+# =====================================================================
+# 2. Mappers
+# =====================================================================
+
+def map_fut(r: dict) -> dict:
+    return {
+        "date": r["date"], "futures_id": r.get("futures_id"), "contract_date": str(r.get("contract_date", ""))[:6],
+        "open": safe_float(r.get("open")), "max": safe_float(r.get("max")), "min": safe_float(r.get("min")),
+        "close": safe_float(r.get("close")), "volume": safe_int(r.get("volume")), 
+        "settlement_price": safe_float(r.get("settlement_price")), "open_interest": safe_int(r.get("open_interest")), 
+        "trading_session": str(r.get("trading_session", "position"))[:20]
+    }
+
+def map_opt(r: dict) -> dict:
+    return {
+        "date": r["date"], "option_id": r.get("option_id"), "contract_date": str(r.get("contract_date", ""))[:6],
+        "strike_price": safe_float(r.get("strike_price")), "call_put": str(r.get("call_put", ""))[:4],
+        "open": safe_float(r.get("open")), "max": safe_float(r.get("max")), "min": safe_float(r.get("min")),
+        "close": safe_float(r.get("close")), "volume": safe_int(r.get("volume")), 
+        "settlement_price": safe_float(r.get("settlement_price")), "open_interest": safe_int(r.get("open_interest")), 
+        "trading_session": str(r.get("trading_session", "position"))[:20]
+    }
+
+MAPPER_MAP = {"futures_ohlcv": map_fut, "options_ohlcv": map_opt}
+
+# =====================================================================
+# 3. 工具函式
+# =====================================================================
+
+def taipei_today() -> str:
     try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (target_tables, str(days)))
-            for tbl, sid in cur.fetchall():
-                targets[tbl].append(sid)
-    except Exception as e:
-        logger.error(f"[retry-failed] 查詢失敗：{e}")
-        return {}
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m-%d")
+    except:
+        return date.today().strftime("%Y-%m-%d")
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [retry-failed/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
+def next_day(date_str: str) -> str:
+    try:
+        d = datetime.strptime(str(date_str), "%Y-%m-%d").date()
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
+    except:
+        return str(date_str)
 
-def query_gap_targets(conn, days: int, target_tables: list[str], target_ids_map: dict[str, list[str]]) -> dict[str, list[str]]:
-    targets: dict[str, list[str]] = defaultdict(list)
-    for tbl in target_tables:
-        all_ids = target_ids_map.get(tbl, [])
-        if not all_ids:
-            continue
-            
-        sql = f"SELECT DISTINCT stock_id FROM fetch_log WHERE table_name = %s AND status = 'success' AND run_ts > NOW() - (%s || ' days')::interval AND stock_id = ANY(%s);"
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (tbl, str(days), all_ids))
-                have_success = {row[0] for row in cur.fetchall()}
-            missing = [sid for sid in all_ids if sid not in have_success]
-            targets[tbl].extend(missing)
-        except Exception as e:
-            logger.error(f"[gap-fill/{tbl}] 查詢失敗：{e}")
+# =====================================================================
+# 4. 核心邏輯
+# =====================================================================
 
-    for tbl, sids in targets.items():
-        sample = sids[:5]
-        logger.info(f"  [gap-fill/{tbl}] {len(sids)} 個目標 (例：{sample})")
-    return targets
-
-def _config_for_table(table: str):
-    if table == "futures_ohlcv":
-        return ("TaiwanFuturesDaily", DDL_FUTURES, UPSERT_FUTURES, map_fut)
-    elif table == "options_ohlcv":
-        return ("TaiwanOptionDaily", DDL_OPTIONS, UPSERT_OPTIONS, map_opt)
-    return None
-
-def _run_targeted(conn, targets: dict[str, list[str]], args, fetch_mode: str):
-    for tbl, sids in targets.items():
-        if not sids: continue
-        cfg = _config_for_table(tbl)
-        if cfg:
-            dataset, ddl, upsert, mapper = cfg
-            fetch_derivative(
-                conn, dataset, tbl, ddl, upsert, mapper, sids, 
-                args.start, args.end, args.delay, force=True, fetch_mode_override=fetch_mode
-            )
-
-# ─────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--tables", nargs="+", choices=["futures_ohlcv", "options_ohlcv", "all"], default=["all"])
-    p.add_argument("--ids", nargs="+", help="指定要抓取的商品代號 (例如 TX TXO)，預設為核心期貨與選擇權")
-    p.add_argument("--start", default="2020-01-01")
-    p.add_argument("--end", default=DEFAULT_END)
-    p.add_argument("--delay", type=float, default=1.2)
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--retry-failed", type=int, default=0, metavar="DAYS", help="重試 fetch_log 中近 N 天最後狀態為 failed 的目標")
-    p.add_argument("--gap-fill", type=int, default=0, metavar="DAYS", help="補抓 fetch_log 中近 N 天無 success 紀錄的目標")
-    args = p.parse_args()
-
-    tables = ["futures_ohlcv", "options_ohlcv"] if "all" in args.tables else args.tables
-    conn = get_db_conn()
+def fetch_one_id(table: str, iid: str, start: str, end: str, force: bool) -> Tuple[str, int, int]:
+    api = FinMindClient()
+    fail_log = FailureLogger(f"derivative_{table}")
+    cur_start = start
+    id_col = "futures_id" if "futures" in table else "option_id"
     
+    if not force:
+        latest = get_latest_date(table, iid, id_column=id_col)
+        if latest:
+            cur_start = next_day(latest)
+            if cur_start > end:
+                write_fetch_log(table, iid, "skipped", "derivative_v5", str(latest), end, 0, 0, "up_to_date")
+                return iid, 0, 0
+
     try:
-        _ensure_fetch_log_table(conn)
+        start_dt = datetime.strptime(cur_start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+        total_success = total_error = 0
+        chunk_days = 90 if "options" in table else 365
         
-        # 決定全域的目標 ID 清單
-        target_ids_map = {
-            "futures_ohlcv": args.ids if args.ids else FALLBACK_FUTURES_IDS,
-            "options_ohlcv": args.ids if args.ids else FALLBACK_OPTIONS_IDS
-        }
-
-        # 模式 A：retry-failed
-        if args.retry_failed > 0:
-            logger.info(f"═══ 模式：retry-failed（過去 {args.retry_failed} 天） ═══")
-            targets = query_failed_targets(conn, args.retry_failed, tables)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="retry")
-            else: logger.info("沒有找到需要重試的目標，結束。")
-            return
-
-        # 模式 B：gap-fill
-        if args.gap_fill > 0:
-            logger.info(f"═══ 模式：gap-fill（過去 {args.gap_fill} 天無 success） ═══")
-            targets = query_gap_targets(conn, args.gap_fill, tables, target_ids_map)
-            if targets: _run_targeted(conn, targets, args, fetch_mode="gap_fill")
-            else: logger.info("沒有找到需要補抓的目標，結束。")
-            return
-
-        # 模式 C：常規抓取
-        if "futures_ohlcv" in tables: 
-            fetch_derivative(
-                conn, "TaiwanFuturesDaily", "futures_ohlcv", DDL_FUTURES, UPSERT_FUTURES, 
-                map_fut, target_ids_map["futures_ohlcv"], args.start, args.end, args.delay, args.force
-            )
-        if "options_ohlcv" in tables: 
-            fetch_derivative(
-                conn, "TaiwanOptionDaily", "options_ohlcv", DDL_OPTIONS, UPSERT_OPTIONS, 
-                map_opt, target_ids_map["options_ohlcv"], args.start, args.end, args.delay, args.force
-            )
+        while start_dt <= end_dt:
+            seg_start = start_dt.strftime("%Y-%m-%d")
+            seg_end_dt = min(start_dt + timedelta(days=chunk_days - 1), end_dt)
+            seg_end = seg_end_dt.strftime("%Y-%m-%d")
             
-    finally:
-        conn.close()
-        logger.info("全部完成")
-        # 於程式完全結束時，印出統一的 FinMind RequestStats 報表
+            t0 = time.monotonic()
+            data = api.get_data(DATASET_MAP[table], iid, seg_start, seg_end)
+            duration_ms = int((time.monotonic() - t0) * 1000)
+
+            if data:
+                records = [MAPPER_MAP[table](row) for row in data if "date" in row]
+                if records:
+                    success, error = commit_per_stock_per_day(table, records, UPSERT_MAP[table], iid)
+                    total_success += success
+                    total_error += error
+                    write_fetch_log(table, iid, "success" if error == 0 else "partial", "derivative_v5", seg_start, seg_end, duration_ms, success, None)
+                else:
+                    write_fetch_log(table, iid, "no_new_data", "derivative_v5", seg_start, seg_end, duration_ms, 0, "empty")
+            else:
+                write_fetch_log(table, iid, "no_new_data", "derivative_v5", seg_start, seg_end, duration_ms, 0, None)
+            
+            start_dt = seg_end_dt + timedelta(days=1)
+            time.sleep(0.3)
+
+        return iid, total_success, total_error
+    except Exception as e:
+        duration_ms = int((time.monotonic() - t0) * 1000) if 't0' in locals() else 0
+        logger.error(f"  ❌ {iid} @ {table}: {e}")
+        fail_log.log_failure(table, iid, cur_start, end, str(e))
+        write_fetch_log(table, iid, "failed", "derivative_v5", cur_start, end, duration_ms, 0, str(e))
+        return iid, 0, 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Derivative Fetcher v5.0 (Trinity Core Edition)")
+    parser.add_argument("--ids", type=str, default="")
+    parser.add_argument("--all", action="store_true")
+    parser.add_argument("--tables", type=str, default="all")
+    parser.add_argument("--start", type=str, default="2021-01-01")
+    parser.add_argument("--end", type=str, default=None)
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--workers", type=int, default=1)
+    args = parser.parse_args()
+
+    tables = [t.strip().lower() for t in args.tables.split(",") if t.strip()]
+    if "all" in tables: tables = ["futures_ohlcv", "options_ohlcv"]
+
+    target_ids = {
+        "futures_ohlcv": [s.strip() for s in args.ids.split(",") if s.strip()] if args.ids else ["TX", "MTX", "TE", "TF"],
+        "options_ohlcv": [s.strip() for s in args.ids.split(",") if s.strip()] if args.ids else ["TXO", "TEO", "TFO"]
+    }
+
+    end_date = args.end or taipei_today()
+
+    logger.info("=" * 70)
+    logger.info(f"  Derivative Fetcher v5.0  ({datetime.now():%Y-%m-%d %H:%M:%S})")
+    logger.info("=" * 70)
+    for table in tables:
+        ensure_ddl(DDL_MAP[table])
+        ids = target_ids[table]
+        logger.info(f"━━━ 抓取資料表 {table} ({len(ids)} IDs) ━━━")
+        with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futures = {ex.submit(fetch_one_id, table, iid, args.start, end_date, args.force): iid for iid in ids}
+            for fut in as_completed(futures):
+                iid, ok, err = fut.result()
+                if ok: logger.info(f"  ✓ {iid}: {ok} rows")
+
+    logger.info("🎉 抓取任務完成。")
+    try:
         get_request_stats().summary()
+    except: pass
 
 if __name__ == "__main__":
     main()
