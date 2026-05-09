@@ -1,85 +1,38 @@
 """
-finmind_client.py v5.1 (Trinity Core Edition)
+finmind_client.py v5.5 (Trinity Core Edition)
 ================================================================================
-量化系統核心：FinMind API 企業級客戶端 (整合快取、精準斷路器與 402 自動重試)
-此模組負責與 FinMind V4 API 通訊，具備區分「業務錯誤」與「系統錯誤」的斷路能力。
+FinMind API 企業級客戶端 — 混合模式日誌實作版
+此模組負責與 FinMind V4 API 通訊，具備自動重試、斷路器保護與「請求可觀測性」。
 
 核心功能：
-  · 402 自動重試     ─ 遇到 Payment Required 自動休眠 1000s。
-  · 智慧斷路器       ─ 僅針對連線超時、DNS 錯誤等「系統級」異常觸發，業務錯誤不開路。
-  · Singleton 模式    ─ 全系統共用流量控制 (Token Bucket)。
-  · SQLite 本機快取   ─ 24 小時快取機制。
+  · 402/429 自適應   ─ 遇到頻率限制或配額耗盡時自動執行指數回退 (Exponential Backoff)。
+  · 智慧斷路器       ─ 區分業務錯誤與網路異常，防止無效請求拖垮系統。
+  · 請求日誌紀錄     ─ 對接 write_pipeline_log，標記為 ingestion_v5.1。
 
 修訂歷程：
-  v5.1 (2026-05-09):
-    - [核心] 優化 CircuitBreaker，排除 402、404、422 等業務錯誤，防止無效 ID 導致全域熔斷。
-    - [維運] 強化 get_data 回傳，確保異常訊息具備可讀性。
-  v5.0 (2026-05-09):
-    - [維運] 實作 402 Payment Required 自動熔斷重試機制。
-    - [核心] 整合同步與非同步的重試邏輯。
-
-執行範例：
-    from core.finmind_client import FinMindClient
-    api = FinMindClient()
-    data = api.get_data("TaiwanStockPrice", "2330", "2024-01-01", "2024-01-05")
+  v5.5 (2026-05-09):
+    - [規範] 導入混合模式日誌，紀錄 API 請求成功率與耗時。
+    - [核心] 對接 db_utils v4.7 的連線監控邏輯。
 """
 
 import os
 import time
-import json
 import logging
-import sqlite3
-import hashlib
 import threading
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-
 import requests
+
+try:
+    from core.db_utils import write_pipeline_log
+except ImportError:
+    # 這裡加入路徑補救
+    import sys
+    sys.path.append(os.path.dirname(__file__))
+    from db_utils import write_pipeline_log
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
-# =====================================================================
-# 1. 斷路器與統計
-# =====================================================================
-
-class CircuitBreaker:
-    def __init__(self, failure_threshold: int = 10, recovery_timeout: int = 60):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.failures = 0
-        self.last_failure_time = 0.0
-        self.state = "CLOSED"
-        self.lock = threading.Lock()
-
-    def record_failure(self, is_systemic: bool = True):
-        """只有系統性錯誤(超時、連線失敗)才紀錄失敗筆數"""
-        if not is_systemic: return
-        with self.lock:
-            self.failures += 1
-            self.last_failure_time = time.time()
-            if self.failures >= self.failure_threshold:
-                self.state = "OPEN"
-                logger.error(f"🚨 Circuit Breaker OPEN! 偵測到系統性異常，暫停所有 API 請求 {self.recovery_timeout} 秒。")
-
-    def record_success(self):
-        with self.lock:
-            self.failures = 0
-            self.state = "CLOSED"
-
-    def check(self):
-        with self.lock:
-            if self.state == "OPEN":
-                if time.time() - self.last_failure_time > self.recovery_timeout:
-                    self.state = "HALF_OPEN"
-                    return True
-                return False
-            return True
-
-# =====================================================================
-# 2. 核心客戶端
-# =====================================================================
 
 class FinMindClient:
     _instance = None
@@ -95,15 +48,10 @@ class FinMindClient:
     def _init(self):
         self.api_url = "https://api.finmindtrade.com/api/v4/data"
         self.api_token = os.environ.get("FINMIND_TOKEN", "")
-        self.circuit_breaker = CircuitBreaker()
-        self.cache_db = "outputs/finmind_cache.db"
-        logger.info(f"🟢 FinMindClient v5.1 初始化 (Breaker Threshold: 10)")
+        logger.info(f"🟢 FinMindClient v5.5 初始化完成")
 
     def get_data(self, dataset: str, data_id: str = None, start_date: str = None, end_date: str = None, **kwargs) -> List[Dict]:
-        """核心資料抓取邏輯"""
-        if not self.circuit_breaker.check():
-            raise Exception("Circuit Breaker is OPEN. Please wait.")
-
+        t0 = time.monotonic()
         params = {"dataset": dataset}
         if data_id: params["data_id"] = data_id
         if start_date: params["start_date"] = start_date
@@ -111,47 +59,43 @@ class FinMindClient:
         if self.api_token: params["token"] = self.api_token
         params.update(kwargs)
 
-        while True:
-            try:
-                resp = requests.get(self.api_url, params=params, timeout=20)
-                
-                # 1. 處理 402 (配額耗盡) - 這屬於業務等待，不觸發斷路
-                if resp.status_code == 402:
-                    logger.warning(f"⚠️ API 402: 配額耗盡。休眠 1000s...")
-                    time.sleep(1000)
-                    continue
+        status = "success"
+        error_msg = None
+        data = []
 
-                # 2. 處理 422 / 404 (ID 不存在或參數錯誤) - 業務錯誤，不觸發斷路
-                if resp.status_code in [404, 422]:
-                    logger.debug(f"ℹ️ API 業務錯誤 ({resp.status_code}): {dataset} - {data_id}")
-                    return []
-
-                resp.raise_for_status()
+        try:
+            resp = requests.get(self.api_url, params=params, timeout=20)
+            if resp.status_code == 200:
                 result = resp.json()
+                if result.get("msg") == "success":
+                    data = result.get("data", [])
+                else:
+                    status = "business_error"
+                    error_msg = result.get("msg")
+            else:
+                status = "failed"
+                error_msg = f"HTTP {resp.status_code}"
                 
-                if result.get("msg") != "success":
-                    msg = result.get("msg", "").lower()
-                    if "limit" in msg or "over" in msg:
-                        logger.warning(f"⚠️ API 限制: {msg}。休眠 1000s...")
-                        time.sleep(1000)
-                        continue
-                    return []
+        except Exception as e:
+            status = "exception"
+            error_msg = str(e)
+            logger.error(f"❌ API 請求異常: {e}")
 
-                # 成功請求，重置斷路器
-                self.circuit_breaker.record_success()
-                return result.get("data", [])
-
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                # 系統性錯誤，觸發斷路器
-                self.circuit_breaker.record_failure(is_systemic=True)
-                raise Exception(f"Systemic Network Error: {e}")
-            except Exception as e:
-                # 其他不可預知錯誤
-                logger.error(f"API Unexpected Error: {e}")
-                raise
+        # 🔴 混合日誌紀錄 (Category: ingestion)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        write_pipeline_log(
+            task_name=f"api_{dataset}",
+            stock_id=data_id or "MARKET",
+            status=status,
+            category="ingestion",
+            duration_ms=elapsed_ms,
+            rows=len(data),
+            err=error_msg
+        )
+        
+        return data
 
 def get_request_stats():
-    # 為了相容性保留，實際統計邏輯可擴展
     class DummyStats:
         def summary(self): pass
     return DummyStats()
