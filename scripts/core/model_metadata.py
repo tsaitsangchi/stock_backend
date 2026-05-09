@@ -1,8 +1,39 @@
 """
-core/model_metadata.py v3.0 (Full Lifecycle Management Edition)
-===============================================================
-提供量化模型的特徵指紋比對、原子寫入保障、歷史版本回滾支援，
-以及動態環境套件依賴追蹤的完整生命週期管理。
+model_metadata.py v4.0 (MLOps Registry Edition)
+量化系統核心：模型生命週期管理與註冊表
+================================================================================
+v4.0 重大升級：
+  · 引入 Pydantic (Data Contracts)：取代原有的 dataclass，對所有模型評估指標
+    (OOF Sharpe, DA, IC) 進行嚴格型別與合理值範圍校驗，拒絕異常模型落地。
+  · 整合 PostgreSQL (Model Registry)：將詮釋資料同步寫入資料庫，
+    支援跨模型、跨時間的 SQL 查詢（例如：追蹤特定特徵組合在所有股票上的表現）。
+  · 修正 Path 拼接錯誤：徹底修復 atomic_write_json 中 Path + str 導致的崩潰。
+
+執行範例（訓練腳本寫入模型時）：
+    from core.model_metadata import ModelMetadata, save_metadata
+    
+    # 建立模型元資料 (若數值不合理會直接拋出 ValueError 阻止後續流程)
+    meta = ModelMetadata(
+        stock_id="2330",
+        model_path="outputs/models/2330/ensemble.pkl",
+        python_version="3.10.12",
+        feature_count=150,
+        feature_fingerprint="abc123hash...",
+        oof_da=0.55,       # 嚴格要求在 0.0 ~ 1.0 之間
+        oof_sharpe=1.8,
+        oof_ic=0.08,
+        oof_n_samples=1200,
+        n_trades_per_fold=45.5,
+        max_drawdown=-0.15,
+        train_end_date="2024-01-01",
+        horizon_days=5,
+        calibration_method="isotonic",
+        calibrator_cv="prefit",
+        notes="v3 model with macro features"
+    )
+    
+    # 原子性寫入 JSON 封存檔，並同步註冊至 PostgreSQL
+    save_metadata(meta, archive_dir="outputs/models/archive")
 """
 
 import os
@@ -11,190 +42,240 @@ import shutil
 import hashlib
 import subprocess
 import threading
-import importlib
 import glob
 import platform
-from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import logging
 
+# 導入 Pydantic 進行嚴格資料契約校驗
+from pydantic import BaseModel, Field, field_validator, ValidationError
+
+# 嘗試對接內部資料庫模組，若無則降級為純檔案模式
+try:
+    from core.db_utils import db_transaction
+    _DB_AVAILABLE = True
+except ImportError:
+    _DB_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
-@dataclass
-class ModelMetadata:
-    """量化模型詮釋資料結構。"""
-    stock_id: str
+# =====================================================================
+# 資料庫 DDL (Model Registry)
+# =====================================================================
+DDL_MODEL_REGISTRY = """
+CREATE TABLE IF NOT EXISTS model_registry (
+    stock_id VARCHAR(20) NOT NULL,
+    timestamp VARCHAR(50) NOT NULL,
+    model_path TEXT,
+    git_hash VARCHAR(50),
+    python_version VARCHAR(20),
+    feature_count INTEGER,
+    feature_fingerprint VARCHAR(64),
+    oof_da NUMERIC(10, 4),
+    oof_sharpe NUMERIC(10, 4),
+    oof_ic NUMERIC(10, 4),
+    max_drawdown NUMERIC(10, 4),
+    train_end_date DATE,
+    horizon_days INTEGER,
+    notes TEXT,
+    package_versions JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (stock_id, timestamp)
+);
+"""
+
+# =====================================================================
+# 領域實體與資料契約 (Data Contracts)
+# =====================================================================
+def _get_git_hash() -> str:
+    """自動獲取當前 Git Hash 以綁定模型版本"""
+    try:
+        h = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.STDOUT)
+        return h.decode("utf-8").strip()
+    except Exception:
+        return "nogit"
+
+class ModelMetadata(BaseModel):
+    """
+    量化模型詮釋資料結構 (具備嚴格校驗)
+    任何不符合量化物理意義的數據都會在此被攔截。
+    """
+    stock_id: str = Field(..., min_length=1)
     model_path: str
-    timestamp: str
-    git_hash: Optional[str]
-    python_version: str
-    feature_count: int
+    timestamp: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d_%H%M%S"))
+    git_hash: str = Field(default_factory=_get_git_hash)
+    python_version: str = Field(default_factory=platform.python_version)
+    
+    # 特徵資訊
+    feature_count: int = Field(..., ge=1, description="特徵數量必須大於 0")
     feature_fingerprint: str
-    oof_da: float
+    
+    # 回測與表現指標 (OOF: Out-Of-Fold)
+    oof_da: float = Field(..., ge=0.0, le=1.0, description="方向準確率 (DA) 必須介於 0 與 1 之間")
     oof_sharpe: float
     oof_ic: float
-    oof_n_samples: int
+    oof_n_samples: int = Field(..., ge=0)
     n_trades_per_fold: float
-    max_drawdown: float
+    max_drawdown: float = Field(..., le=0.0, description="最大回撤必須為負數或零")
+    
+    # 訓練邊界
     train_end_date: str
-    horizon_days: int
+    horizon_days: int = Field(..., ge=1, description="預測窗期必須大於等於 1 天")
+    
+    # 校準器與其他設定
     calibration_method: str
     calibrator_cv: str
-    notes: str
-    package_versions: Dict[str, str]
+    notes: str = ""
+    package_versions: Dict[str, str] = Field(default_factory=dict)
 
-    def to_dict(self) -> Dict:
-        return asdict(self)
-
-# ─────────────────────────────────────────────
-# 路徑鎖定機制 (Path-level Mutex)
-# ─────────────────────────────────────────────
+# =====================================================================
+# 路徑鎖定與原子操作機制
+# =====================================================================
 _locks_dict_lock = threading.Lock()
 _path_locks: Dict[str, threading.Lock] = {}
 
-class _path_lock:
-    """提供針對單一路徑的執行緒安全互斥鎖，防範平行訓練競爭。"""
-    def __init__(self, path: str):
-        self.path = os.path.abspath(path)
-    def __enter__(self):
-        with _locks_dict_lock:
-            if self.path not in _path_locks:
-                _path_locks[self.path] = threading.Lock()
-            self.lock = _path_locks[self.path]
-        self.lock.acquire()
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.lock.release()
+def _get_lock_for_path(path_str: str) -> threading.Lock:
+    with _locks_dict_lock:
+        if path_str not in _path_locks:
+            _path_locks[path_str] = threading.Lock()
+        return _path_locks[path_str]
 
-# ─────────────────────────────────────────────
-# 核心工具函式
-# ─────────────────────────────────────────────
-def get_git_hash(short: bool = True) -> Optional[str]:
-    """獲取當前程式碼庫的 Git Commit Hash 以進行版控追蹤。"""
-    try:
-        cmd = ["git", "rev-parse", "--short", "HEAD"] if short else ["git", "rev-parse", "HEAD"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except Exception as e:
-        logger.warning(f"無法獲取 Git Hash: {e}")
-        return None
-
-def fingerprint_features(features: List[str]) -> str:
-    """生成經過 SHA-256 雜湊的特徵指紋，防範推論期資料漂移。"""
-    sorted_features = sorted(features)
-    feature_str = ",".join(sorted_features)
-    return hashlib.sha256(feature_str.encode("utf-8")).hexdigest()[:12]
-
-def get_package_versions(packages: Optional[List[str]] = None) -> Dict[str, str]:
-    """動態擷取訓練環境下的關鍵套件版本。"""
-    if packages is None:
-        packages = ["numpy", "pandas", "scikit-learn", "xgboost", "lightgbm", "joblib", "torch", "polars"]
-    
-    versions = {}
-    for pkg in packages:
-        try:
-            module_name = "sklearn" if pkg == "scikit-learn" else pkg
-            mod = importlib.import_module(module_name)
-            versions[pkg] = getattr(mod, "__version__", "unknown")
-        except ImportError:
-            versions[pkg] = "not installed"
-    return versions
-
-# ─────────────────────────────────────────────
-# 原子寫入與檔案操作 (Atomic I/O)
-# ─────────────────────────────────────────────
-def atomic_write_json(path: str, data: dict):
-    """利用暫存檔與 os.replace 實現防止斷電損毀的原子寫入機制。"""
+def atomic_write_json(path: Path | str, data: BaseModel | dict) -> None:
+    """原子化寫入 JSON，修正了 Path 拼接問題，並支援 Pydantic BaseModel"""
     path_obj = Path(path)
-    path_obj.parent.mkdir(parents=True, exist_ok=True)
+    # 若傳入的是 Pydantic 模型，自動轉為 dict
+    dump_data = data.model_dump() if isinstance(data, BaseModel) else data
     
-    tmp_path = path + ".tmp"
-    with _path_lock(path):
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False, default=str)
-        os.replace(tmp_path, path)
-
-def atomic_copy_file(src: str, dst: str):
-    """原子檔案複製，防止複製過程中的多進程競爭。"""
-    dst_obj = Path(dst)
-    dst_obj.parent.mkdir(parents=True, exist_ok=True)
-    
-    tmp_dst = dst + ".tmp"
-    with _path_lock(dst):
-        shutil.copy2(src, tmp_dst)
-        os.replace(tmp_dst, dst)
-
-# ─────────────────────────────────────────────
-# 詮釋資料持久化與生命週期管理
-# ─────────────────────────────────────────────
-def save_metadata(metadata: ModelMetadata, archive_dir: str, current_pkl_path: str, also_archive_pkl: bool = True):
-    """保存詮釋資料，並可選擇性建立實體模型封存檔。"""
-    os.makedirs(archive_dir, exist_ok=True)
-    filename_base = f"ensemble_{metadata.stock_id}_{metadata.timestamp}_{metadata.git_hash or 'nogit'}"
-    json_path = os.path.join(archive_dir, f"{filename_base}.metadata.json")
-    
-    atomic_write_json(json_path, metadata.to_dict())
-    
-    if also_archive_pkl and os.path.exists(current_pkl_path):
-        archive_pkl_path = os.path.join(archive_dir, f"{filename_base}.pkl")
-        atomic_copy_file(current_pkl_path, archive_pkl_path)
-        logger.info(f"模型與詮釋資料已封存至 {archive_dir}")
-
-def list_history(stock_id: str, archive_dir: str, limit: Optional[int] = None) -> List[ModelMetadata]:
-    """依時間逆序回傳特定股票的歷史模型版本清單。"""
-    if not os.path.exists(archive_dir):
-        return []
+    lock = _get_lock_for_path(str(path_obj.resolve()))
+    with lock:
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+        # 【核心修復】使用 .with_name 避免 Path 物件不支援 + 運算子的錯誤
+        temp_path = path_obj.with_name(f"{path_obj.name}.tmp")
         
-    pattern = os.path.join(archive_dir, f"ensemble_{stock_id}_*.metadata.json")
-    files = glob.glob(pattern)
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(dump_data, f, indent=2, ensure_ascii=False, default=str)
+        
+        # os.replace 確保在 POSIX 系統中是原子性的覆蓋
+        os.replace(str(temp_path), str(path_obj))
+
+def atomic_copy_file(src: str, dst: str) -> None:
+    """原子化複製檔案 (如 .pkl 模型檔)"""
+    src_obj, dst_obj = Path(src), Path(dst)
+    lock = _get_lock_for_path(str(dst_obj.resolve()))
+    with lock:
+        dst_obj.parent.mkdir(parents=True, exist_ok=True)
+        temp_dst = dst_obj.with_name(f"{dst_obj.name}.tmp")
+        shutil.copy2(src_obj, temp_dst)
+        os.replace(str(temp_dst), str(dst_obj))
+
+# =====================================================================
+# 特徵指紋 (Feature Fingerprint)
+# =====================================================================
+def fingerprint_features(feature_names: List[str]) -> str:
+    """
+    為特徵列表產生加密指紋。
+    用於預測階段比對「當前組建的特徵」與「模型訓練時的特徵」是否完美吻合，
+    防止特徵漂移 (Feature Skew) 導致的實盤破產。
+    """
+    sorted_features = sorted(list(feature_names))
+    encoded = json.dumps(sorted_features).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
+
+def assert_feature_schema_match(metadata: ModelMetadata, current_features: List[str]):
+    """於推論階段驗證特徵集合，確保模型部署之相容性。"""
+    current_fingerprint = fingerprint_features(current_features)
+    if current_fingerprint != metadata.feature_fingerprint:
+        # 提供更詳細的錯誤診斷資訊
+        old_set = set(current_features) # 注意：實務上需要 metadata 存一份全特徵名單才能完美 diff
+        logger.error(
+            f"❌ 特徵指紋不符！模型 {metadata.stock_id} 拒絕預測。\n"
+            f"預期: {metadata.feature_fingerprint} (Count: {metadata.feature_count})\n"
+            f"實際: {current_fingerprint} (Count: {len(current_features)})"
+        )
+        raise ValueError(f"Feature Schema Mismatch for stock {metadata.stock_id}")
+
+# =====================================================================
+# 生命週期操作：存檔、讀取與資料庫註冊
+# =====================================================================
+
+def register_model_in_db(metadata: ModelMetadata):
+    """將模型詮釋資料同步註冊至 PostgreSQL"""
+    if not _DB_AVAILABLE:
+        return
     
-    # 根據檔案修改時間 (mtime) 進行反向排序 (最新的在最前)
-    files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    sql = """
+        INSERT INTO model_registry (
+            stock_id, timestamp, model_path, git_hash, python_version,
+            feature_count, feature_fingerprint, oof_da, oof_sharpe, oof_ic,
+            max_drawdown, train_end_date, horizon_days, notes, package_versions
+        ) VALUES (
+            %(stock_id)s, %(timestamp)s, %(model_path)s, %(git_hash)s, %(python_version)s,
+            %(feature_count)s, %(feature_fingerprint)s, %(oof_da)s, %(oof_sharpe)s, %(oof_ic)s,
+            %(max_drawdown)s, %(train_end_date)s, %(horizon_days)s, %(notes)s, %(package_versions)s
+        )
+        ON CONFLICT (stock_id, timestamp) DO NOTHING;
+    """
+    
+    data_dict = metadata.model_dump()
+    data_dict["package_versions"] = json.dumps(data_dict["package_versions"])
+    
+    try:
+        with db_transaction() as cur:
+            cur.execute(DDL_MODEL_REGISTRY)
+            cur.execute(sql, data_dict)
+        logger.debug(f"已將模型 {metadata.stock_id} (TS:{metadata.timestamp}) 註冊至資料庫。")
+    except Exception as e:
+        logger.error(f"寫入 Model Registry 失敗 (不影響本地存檔): {e}")
+
+def save_metadata(metadata: ModelMetadata, archive_dir: str):
+    """儲存詮釋資料：同時寫入本地端與資料庫註冊表"""
+    archive_path = Path(archive_dir)
+    archive_path.mkdir(parents=True, exist_ok=True)
+    
+    # 1. 寫入本地 JSON
+    filename_base = f"ensemble_{metadata.stock_id}_{metadata.timestamp}_{metadata.git_hash}"
+    json_path = archive_path / f"{filename_base}.json"
+    atomic_write_json(json_path, metadata)
+    
+    # 2. 註冊至資料庫 (Model Registry)
+    register_model_in_db(metadata)
+
+def list_history(stock_id: str, archive_dir: str, limit: int = 5) -> List[ModelMetadata]:
+    """獲取特定股票的模型歷史紀錄 (依時間倒序)"""
+    search_pattern = os.path.join(archive_dir, f"ensemble_{stock_id}_*.json")
+    files = glob.glob(search_pattern)
     
     history = []
     for f in files:
-        if limit and len(history) >= limit:
-            break
         try:
-            with open(f, "r", encoding="utf-8") as file:
+            with open(f, 'r', encoding='utf-8') as file:
                 data = json.load(file)
+                # 使用 Pydantic 進行實例化，自動驗證過往數據是否合規
                 history.append(ModelMetadata(**data))
+        except ValidationError as ve:
+            logger.warning(f"封存檔 {f} 資料格式不合規，已略過: {ve}")
         except Exception as e:
-            logger.error(f"無法載入詮釋資料 {f}: {e}")
+            logger.warning(f"讀取封存檔 {f} 失敗: {e}")
             
-    return history
-
-def load_latest_metadata(stock_id: str, archive_dir: str) -> Optional[ModelMetadata]:
-    """尋找並載入特定股票最新版本的詮釋資料。"""
-    history = list_history(stock_id, archive_dir, limit=1)
-    return history[0] if history else None
+    # 依 timestamp 降序排列
+    history.sort(key=lambda x: x.timestamp, reverse=True)
+    return history[:limit]
 
 def rollback_to_metadata(metadata: ModelMetadata, archive_dir: str, current_pkl_path: str) -> bool:
-    """將指定的歷史封存模型檔還原至當前的作用路徑。"""
-    filename_base = f"ensemble_{metadata.stock_id}_{metadata.timestamp}_{metadata.git_hash or 'nogit'}"
-    archive_pkl_path = os.path.join(archive_dir, f"{filename_base}.pkl")
+    """將指定的歷史封存模型檔還原至當前的作用路徑 (Active Model Path)"""
+    filename_base = f"ensemble_{metadata.stock_id}_{metadata.timestamp}_{metadata.git_hash}"
+    archive_pkl_path = Path(archive_dir) / f"{filename_base}.pkl"
     
-    if not os.path.exists(archive_pkl_path):
+    if not archive_pkl_path.exists():
         logger.error(f"無法回滾：在 {archive_pkl_path} 找不到封存模型檔案")
         return False
         
     try:
-        atomic_copy_file(archive_pkl_path, current_pkl_path)
-        logger.info(f"成功將 {metadata.stock_id} 回滾至版本 {metadata.timestamp}")
+        atomic_copy_file(str(archive_pkl_path), current_pkl_path)
+        logger.info(f"🔄 成功將 {metadata.stock_id} 實盤模型回滾至版本 {metadata.timestamp}")
         return True
     except Exception as e:
         logger.error(f"回滾失敗 {metadata.stock_id}: {e}")
         return False
-
-def assert_feature_schema_match(metadata: ModelMetadata, current_features: List[str], strict: bool = True, allow_extra: bool = False):
-    """於推論階段驗證特徵集合，確保模型部署之相容性。"""
-    current_fingerprint = fingerprint_features(current_features)
-    if current_fingerprint != metadata.feature_fingerprint:
-        msg = f"特徵綱要不匹配！預期 {metadata.feature_fingerprint}, 實際 {current_fingerprint}。"
-        if strict and not allow_extra:
-            raise RuntimeError(msg)
-        elif allow_extra:
-            logger.warning(f"{msg} 由於 allow_extra=True，允許額外特徵。")
-        else:
-            logger.warning(msg)

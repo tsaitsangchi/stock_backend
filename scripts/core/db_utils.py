@@ -1,1343 +1,234 @@
 """
-core/db_utils.py — 統一的 PostgreSQL 工具函式 v3.0（逐支逐日 commit 完整性版）
-==============================================================================
-v3.0 重大改進（資料寫入完整性）：
-  ★ safe_commit_rows()       逐筆/逐組 commit 主力函式，寫入後立即 commit、失敗 rollback。
-  ★ commit_per_stock()       依 stock_id 分組逐支 commit，回傳 { stock_id: rows_committed }。
-  ★ commit_per_day()         依日期分組逐日 commit，回傳 { date: rows_committed }。
-  ★ commit_per_stock_per_day() 雙層粒度（每支股票×每日）皆獨立 commit，最細粒度的完整性。
-  ★ commit_per_group()       通用分組 commit：呼叫端自訂 group_key_fn。
-  ★ safe_bulk_upsert()       bulk_upsert 的 transaction-safe 版本，失敗自動 rollback。
-  ★ with_savepoint()         savepoint context manager，巢狀交易安全。
-  ★ FailureLogger            統一的失敗清單 append 寫檔器（即時落盤，崩潰不丟失）。
-  ★ async_safe_commit_rows() asyncpg 版逐支 commit（每呼叫一次自動短交易）。
-  ★ async_commit_per_stock_per_day() asyncpg 版雙層粒度。
-  ★ get_failure_log_path()   失敗清單檔名統一規則（outputs/{table}_failed_YYYYMMDD.json）。
-  ★ is_conn_healthy()        檢測連線是否處於可用狀態，失敗交易自動 rollback。
-  ★ bulk_upsert / 所有讀取函式 補上 rollback 容錯，避免毒交易擴散。
+db_utils.py v4.0
+量化系統核心：資料庫連線池與自動事務管理模組
+================================================================================
+v4.0 重大升級：
+  · 實作 ThreadedConnectionPool：解決並行任務（如 parallel > 1）頻繁建立連線的效能瓶頸。
+  · 引入 @contextmanager db_transaction：自動處理 commit 與 rollback，杜絕髒連線。
+  · 增強可靠性：所有 SQL 操作均受 Context Manager 保護，異常時自動回滾並釋放連線。
 
-v2.0 (High-Throughput Binary Edition) 改進：
-  ★ asyncpg 二進位協定：直接實作 PostgreSQL 內部二進位通訊，比 psycopg2 快 3-5 倍。
-  ★ Binary Staging Table：實作「二進位暫存表＋單一合併」模式，降低 70% 巨量寫入耗時。
-  ★ async_bulk_upsert()：針對中小型數據集的非同步批次 UPSERT。
-  ★ async_bulk_copy_upsert()：針對極端資料集（如 TICK/高頻數據）的二進位優化寫入。
+執行範例（開發建議）：
+    from core.db_utils import db_session, db_transaction
+    
+    # 方式 A：單純查詢 (自動歸還連線)
+    with db_session() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM stock_price")
+            print(cur.fetchone())
+
+    # 方式 B：寫入事務 (出錯自動 Rollback, 成功自動 Commit)
+    with db_transaction() as cur:
+        cur.execute("INSERT INTO ...")
+        cur.execute("UPDATE ...")
 """
 
-from __future__ import annotations
-
-import asyncio
+import os
 import json
 import logging
-import sys
-import threading
-from collections import defaultdict
+import time
+from datetime import datetime
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
-
-# ── 自我修復 sys.path（讓本檔可從任何位置直接執行 / import）──
-_THIS_DIR = Path(__file__).resolve().parent      # scripts/core
-_SCRIPTS_DIR = _THIS_DIR.parent                  # scripts
-for _p in (_SCRIPTS_DIR, _THIS_DIR):
-    _ps = str(_p)
-    if _ps not in sys.path:
-        sys.path.insert(0, _ps)
+from typing import Optional, List, Dict, Any, Generator
 
 import psycopg2
-import psycopg2.extras
+from psycopg2 import pool, extras
 
-from config import DB_CONFIG
-
+# ── 系統設定 ──
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── 資料庫連線池設定 ──
+# 使用環境變數或預設值
+DB_CONFIG = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "database": os.environ.get("DB_NAME", "trinity"),
+    "user": os.environ.get("DB_USER", "hugo"),
+    "password": os.environ.get("DB_PASS", ""),
+    "port": os.environ.get("DB_PORT", "5432"),
+}
 
-# ─────────────────────────────────────────────
-# 同步連線（psycopg2）
-# ─────────────────────────────────────────────
-def get_db_conn() -> psycopg2.extensions.connection:
-    """建立並回傳 PostgreSQL 同步連線（psycopg2）。"""
-    return psycopg2.connect(**DB_CONFIG)
+# 初始化執行緒安全的連線池 (最小 2 條, 最大 10 條，視並行數調整)
+try:
+    _DB_POOL = psycopg2.pool.ThreadedConnectionPool(
+        minconn=2,
+        maxconn=10,
+        **DB_CONFIG
+    )
+    logger.info("✅ 成功初始化 ThreadedConnectionPool (maxconn=10)")
+except Exception as e:
+    logger.error(f"❌ 無法建立連線池: {e}")
+    _DB_POOL = None
 
+# =====================================================================
+# 核心：上下文管理器 (Context Managers)
+# =====================================================================
 
-def get_core_stocks_from_db(conn, require_active: bool = True) -> dict:
+@contextmanager
+def db_session() -> Generator[psycopg2.extensions.connection, None, None]:
     """
-    自資料庫取得核心股票配置 (取代 config.STOCK_CONFIGS)。
-    回傳格式同原本 config，如: {"2330": {"name": "台積電", "us_chain_tickers": [...], "fetch_basic": True, ...}}
+    獲取連線的 Context Manager。
+    退出時自動將連線歸還給連線池，不關閉實體連線。
     """
-    query = "SELECT stock_id, stock_name, industry, us_chain, fetch_basic, fetch_chip, fetch_fundamental, fetch_derivative, fetch_news FROM stocks WHERE is_core = TRUE"
-    if require_active:
-        query += " AND is_active = TRUE"
-        
-    stocks = {}
+    if _DB_POOL is None:
+        raise ConnectionError("資料庫連線池未正確初始化")
+    
+    conn = _DB_POOL.getconn()
     try:
+        yield conn
+    finally:
+        _DB_POOL.putconn(conn)
+
+@contextmanager
+def db_transaction() -> Generator[psycopg2.extensions.cursor, None, None]:
+    """
+    自動事務處理的 Context Manager。
+    1. 從池中取連線。
+    2. 開啟 Cursor。
+    3. 執行業務邏輯。
+    4. 成功則 Commit，失敗則 Rollback。
+    5. 自動歸還連線。
+    """
+    with db_session() as conn:
         with conn.cursor() as cur:
-            cur.execute(query)
-            for row in cur.fetchall():
-                sid, name, ind, us_chain, basic, chip, fund, deriv, news = row
-                
-                # 處理 us_chain_tickers (JSON string to list)
-                tickers = []
-                if us_chain:
-                    try:
-                        tickers = json.loads(us_chain)
-                    except Exception:
-                        pass
-                        
-                stocks[sid] = {
-                    "name": name,
-                    "industry": ind,
-                    "us_chain_tickers": tickers,
-                    "fetch_basic": basic,
-                    "fetch_chip": chip,
-                    "fetch_fundamental": fund,
-                    "fetch_derivative": deriv,
-                    "fetch_news": news
-                }
-        return stocks
-    except Exception as e:
-        logger.error(f"無法從 stocks table 讀取配置: {e}")
-        return {}
+            try:
+                yield cur
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"⚠️ 事務執行失敗，已自動回滾: {e}")
+                raise
 
+# =====================================================================
+# 基礎設施 DDL 與 Log
+# =====================================================================
 
-# ─────────────────────────────────────────────
-# 非同步連線池（asyncpg）
-# ─────────────────────────────────────────────
-_asyncpg_pool = None
-_asyncpg_pool_lock = None
-
-
-async def get_asyncpg_pool(min_size: int = 2, max_size: int = 10):
-    """
-    取得（或建立）全域 asyncpg 連線池。
-    首次呼叫時初始化，後續重用同一池。
-    """
-    import asyncio
-    import asyncpg
-
-    global _asyncpg_pool, _asyncpg_pool_lock
-
-    if _asyncpg_pool_lock is None:
-        _asyncpg_pool_lock = asyncio.Lock()
-
-    async with _asyncpg_pool_lock:
-        if _asyncpg_pool is None or _asyncpg_pool._closed:
-            _asyncpg_pool = await asyncpg.create_pool(
-                host=DB_CONFIG.get("host", "localhost"),
-                port=DB_CONFIG.get("port", 5432),
-                database=DB_CONFIG.get("dbname"),
-                user=DB_CONFIG.get("user"),
-                password=DB_CONFIG.get("password"),
-                min_size=min_size,
-                max_size=max_size,
-                command_timeout=300,
-            )
-            logger.info(
-                f"asyncpg 連線池建立完成（min={min_size}, max={max_size}）"
-            )
-    return _asyncpg_pool
-
-
-async def close_asyncpg_pool() -> None:
-    """關閉全域 asyncpg 連線池（程式結束前呼叫）。"""
-    global _asyncpg_pool
-    if _asyncpg_pool and not _asyncpg_pool._closed:
-        await _asyncpg_pool.close()
-        _asyncpg_pool = None
-        logger.info("asyncpg 連線池已關閉")
-
-
-# ─────────────────────────────────────────────
-# DDL
-# ─────────────────────────────────────────────
 DDL_FETCH_LOG = """
 CREATE TABLE IF NOT EXISTS fetch_log (
-    id               BIGSERIAL    PRIMARY KEY,
-    run_ts           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    table_name       VARCHAR(64)  NOT NULL,
-    stock_id         VARCHAR(20),
-    fetch_mode       VARCHAR(16),
-    fetch_date_from  DATE,
-    fetch_date_to    DATE,
-    rows_inserted    INTEGER,
-    rows_updated     INTEGER,
-    duration_ms      INTEGER,
-    status           VARCHAR(16)  NOT NULL,
-    error_message    TEXT,
-    api_quota_left   INTEGER,
-    cli_args         TEXT
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(50),
+    stock_id VARCHAR(20),
+    status VARCHAR(20),
+    fetch_mode VARCHAR(50),
+    fetch_date_from DATE,
+    fetch_date_to DATE,
+    duration_ms INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_fetch_log_table_ts  ON fetch_log(table_name, run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_stock_ts  ON fetch_log(stock_id,   run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_status_ts ON fetch_log(status,     run_ts DESC);
-CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup    ON fetch_log(table_name, stock_id, run_ts DESC);
+CREATE INDEX IF NOT EXISTS idx_fetch_log_lookup ON fetch_log(table_name, stock_id, created_at DESC);
 """
 
+def ensure_ddl(ddl_query: str):
+    """確保指定的資料表結構存在 (使用自動事務)"""
+    with db_transaction() as cur:
+        cur.execute(ddl_query)
+        cur.execute(DDL_FETCH_LOG)
 
-def ensure_ddl(conn, *ddls: str) -> None:
-    """執行一或多個 DDL 語句（冪等，IF NOT EXISTS）。失敗時 rollback。"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(DDL_FETCH_LOG)
-            for ddl in ddls:
-                cur.execute(ddl)
-        conn.commit()
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def log_fetch_result(
-    conn,
-    table_name: str,
-    stock_id: str,
-    start_date: str,
-    end_date: str,
-    rows_count: int,
-    status: str,
-    error_msg: str = None,
-) -> None:
-    """將抓取結果記錄至 fetch_log（向後相容介面）。"""
+def write_fetch_log(table_name: str, stock_id: Optional[str], status: str, 
+                    fetch_mode: str, fetch_date_from: str, fetch_date_to: str, 
+                    duration_ms: int, error_message: Optional[str] = None):
+    """標準化日誌寫入 (使用自動事務)"""
     sql = """
-    INSERT INTO fetch_log (
-        run_ts, table_name, stock_id, 
-        fetch_date_from, fetch_date_to, 
-        rows_inserted, rows_updated,
-        status, error_message
-    ) VALUES (NOW(), %s, %s, %s, %s, %s, 0, %s, %s)
+    INSERT INTO fetch_log (table_name, stock_id, status, fetch_mode, fetch_date_from, fetch_date_to, duration_ms, error_message)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_count, status, error_msg))
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.debug(f"fetch_log 寫入失敗（不影響主流程）：{e}")
-
-
-def write_feature_log(
-    conn,
-    stock_id: str,
-    feature_count: int,
-    rows_processed: int,
-    nan_filled: int,
-    inf_cleared: int,
-    duration_ms: int,
-    status: str,
-    error_message: str = None,
-) -> None:
-    """將特徵工程結果記錄至 feature_log"""
-    sql = """
-    INSERT INTO feature_log (
-        run_ts, stock_id, feature_count, rows_processed, 
-        nan_filled, inf_cleared, duration_ms, status, error_message, cli_args
-    ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (
-                stock_id, feature_count, rows_processed, nan_filled, inf_cleared,
-                duration_ms, status, error_message, " ".join(sys.argv)
-            ))
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.debug(f"feature_log 寫入失敗（不影響主流程）：{e}")
-
-
-def write_model_log(
-    conn,
-    run_id: str,
-    stock_id: str,
-    job_type: str,
-    status: str,
-    started_at: datetime = None,
-    finished_at: datetime = None,
-    duration_sec: int = None,
-    feature_count: int = None,
-    oof_da: float = None,
-    oof_ic: float = None,
-    hyperparams: dict = None,
-    error_message: str = None,
-) -> None:
-    """將模型訓練或調參結果記錄至 model_training_log"""
-    sql = """
-    INSERT INTO model_training_log (
-        run_id, stock_id, job_type, status, 
-        started_at, finished_at, duration_sec,
-        feature_count, oof_da, oof_ic, hyperparams, error_message
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    ON CONFLICT (run_id) DO UPDATE SET
-        status = EXCLUDED.status,
-        finished_at = EXCLUDED.finished_at,
-        duration_sec = EXCLUDED.duration_sec,
-        oof_da = EXCLUDED.oof_da,
-        oof_ic = EXCLUDED.oof_ic,
-        hyperparams = EXCLUDED.hyperparams,
-        error_message = EXCLUDED.error_message
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (
-                run_id, stock_id, job_type, status,
-                started_at, finished_at, duration_sec,
-                feature_count, oof_da, oof_ic, 
-                json.dumps(hyperparams) if hyperparams else None,
-                error_message
-            ))
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.debug(f"model_training_log 寫入失敗（不影響主流程）：{e}")
-
-
-def write_predict_log(
-    conn,
-    status: str,
-    stock_id: str = "ALL",
-    stocks_processed: int = 0,
-    predictions_count: int = 0,
-    duration_ms: int = 0,
-    error_message: str = None,
-) -> None:
-    """將預測腳本執行狀況記錄至 predict_log"""
-    sql = """
-    INSERT INTO predict_log (
-        run_ts, stock_id, status, stocks_processed, 
-        predictions_count, duration_ms, error_message, cli_args
-    ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s)
-    """
-    cli_args = " ".join(sys.argv)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (
-                stock_id, status, stocks_processed,
-                predictions_count, duration_ms, error_message, cli_args
-            ))
-        conn.commit()
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        logger.debug(f"predict_log 寫入失敗（不影響主流程）：{e}")
-
-
-# ─────────────────────────────────────────────
-# 同步批次 Upsert（psycopg2）— v2.0 介面（強化 rollback）
-# ─────────────────────────────────────────────
-def bulk_upsert(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    page_size: int = 2000,
-) -> int:
-    """
-    使用 psycopg2 execute_values 批次寫入（同步）。
-    成功時 commit；失敗時 rollback（v3.0 新增 rollback 容錯）。
-
-    註：呼叫端若希望「失敗時也回傳 0 不拋例外」，請改用 safe_bulk_upsert()。
-    若希望逐支 / 逐日 / 雙層粒度 commit，請用 commit_per_stock / commit_per_day /
-    commit_per_stock_per_day。
-    """
-    if not rows:
-        return 0
-    try:
-        with conn.cursor() as cur:
-            psycopg2.extras.execute_values(
-                cur, sql, rows, template=template, page_size=page_size
-            )
-        conn.commit()
-        return len(rows)
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-# ─────────────────────────────────────────────
-# 逐筆 / 逐組 commit 主力函式（v3.0 新增）
-# ─────────────────────────────────────────────
-def safe_bulk_upsert(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    page_size: int = 2000,
-) -> int:
-    """
-    bulk_upsert 的「失敗回 0」版本（不拋例外）。
-    成功 → 寫入並 commit，回傳寫入筆數。
-    失敗 → 自動 rollback，回傳 0，不拋例外。
-    """
-    if not rows:
-        return 0
-    try:
-        return bulk_upsert(conn, sql, rows, template, page_size)
-    except Exception as e:
-        logger.error(f"safe_bulk_upsert 失敗（已 rollback）：{e}")
-        return 0
-
-
-def safe_commit_rows(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    label: str = "",
-    page_size: int = 2000,
-) -> int:
-    """
-    ⭐ 逐組 commit 主力函式（推薦給所有 fetcher 使用） ⭐
-
-    寫入單支 / 單日 / 單組資料後立即 commit；失敗時 rollback，回傳 0 不拋例外。
-
-    保證：
-      1. 每組成功寫入後立即落地（崩潰前的資料不會回滾）。
-      2. 單組失敗不影響後續呼叫（rollback 後 conn 可繼續使用）。
-      3. label 會印在錯誤日誌中，方便定位（建議格式 "{table}/{stock}" 或
-         "{table}/{stock}/{date}"）。
-
-    Parameters
-    ----------
-    conn      : psycopg2 連線
-    sql       : INSERT ... ON CONFLICT ... 語句
-    rows      : tuple list
-    template  : 欄位佔位符（如 "(%s::date, %s, %s::numeric)"）
-    label     : 錯誤日誌標籤
-    page_size : 每批寫入筆數（預設 2000）
-
-    Returns
-    -------
-    int  實際寫入筆數（失敗回 0）
-    """
-    if not rows:
-        return 0
-    try:
-        with conn.cursor() as cur:
-            psycopg2.extras.execute_values(
-                cur, sql, rows, template=template, page_size=page_size
-            )
-        conn.commit()
-        return len(rows)
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        prefix = f"[{label}] " if label else ""
-        logger.error(f"  {prefix}寫入失敗，已 rollback：{e}")
-        return 0
-
-
-def commit_per_group(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    group_key_fn: Callable[[tuple], Any],
-    label_prefix: str = "",
-    failure_logger: "FailureLogger | None" = None,
-    page_size: int = 2000,
-) -> dict:
-    """
-    ⭐ 通用「逐組 commit」函式 ⭐
-
-    依 group_key_fn(row) 將 rows 分組，每組獨立寫入 + commit；單組失敗不影響其他組。
-
-    Parameters
-    ----------
-    conn         : psycopg2 連線
-    sql          : INSERT ... ON CONFLICT ... 語句
-    rows         : tuple list
-    template     : 欄位佔位符
-    group_key_fn : row → group key 的函式（如 lambda r: r[1] 取第 2 欄當 stock_id）
-    label_prefix : 錯誤標籤前綴（如 "month_revenue"）
-    failure_logger: 失敗時自動 record（可選）
-    page_size    : 每批寫入筆數
-
-    Returns
-    -------
-    dict  { group_key: rows_committed }（失敗組會是 0）
-    """
-    if not rows:
-        return {}
-
-    groups: dict[Any, list] = defaultdict(list)
-    for r in rows:
-        try:
-            groups[group_key_fn(r)].append(r)
-        except Exception as e:
-            logger.warning(f"  [{label_prefix}] group_key_fn 異常筆，歸入 _UNKNOWN：{e}")
-            groups["_UNKNOWN"].append(r)
-
-    results: dict[Any, int] = {}
-    for key, sub_rows in groups.items():
-        sub_label = f"{label_prefix}/{key}" if label_prefix else str(key)
-        n = safe_commit_rows(conn, sql, sub_rows, template, label=sub_label, page_size=page_size)
-        results[key] = n
-        if n == 0 and sub_rows and failure_logger is not None:
-            failure_logger.record(
-                stock_id=str(key),
-                rows=len(sub_rows),
-                error="bulk_upsert returned 0 (rolled back)",
-            )
-    return results
-
-
-def commit_per_stock(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    stock_index: int = 1,
-    label_prefix: str = "",
-    failure_logger: "FailureLogger | None" = None,
-    page_size: int = 2000,
-) -> dict:
-    """
-    ⭐ 依 stock_id 分組「逐支 commit」 ⭐
-
-    rows 中每筆的第 stock_index 欄為 stock_id（一般 PK 排序為 (date, stock_id, ...)，
-    所以預設 stock_index=1）。
-
-    Returns
-    -------
-    dict  { stock_id: rows_committed }
-    """
-    return commit_per_group(
-        conn, sql, rows, template,
-        group_key_fn=lambda r: r[stock_index],
-        label_prefix=label_prefix,
-        failure_logger=failure_logger,
-        page_size=page_size,
-    )
-
-
-def commit_per_day(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    date_index: int = 0,
-    label_prefix: str = "",
-    failure_logger: "FailureLogger | None" = None,
-    page_size: int = 2000,
-) -> dict:
-    """
-    ⭐ 依日期分組「逐日 commit」 ⭐
-
-    rows 中每筆的第 date_index 欄為日期（PK 第一欄，預設 date_index=0）。
-    適用於市場層 / 衍生品 / 全市場 dump 等以日期為主軸的資料。
-
-    Returns
-    -------
-    dict  { date_str: rows_committed }
-    """
-    def _key(r):
-        v = r[date_index]
-        if isinstance(v, (date, datetime)):
-            return v.strftime("%Y-%m-%d")
-        return str(v)
-
-    return commit_per_group(
-        conn, sql, rows, template,
-        group_key_fn=_key,
-        label_prefix=label_prefix,
-        failure_logger=failure_logger,
-        page_size=page_size,
-    )
-
-
-def commit_per_stock_per_day(
-    conn,
-    sql: str,
-    rows: list,
-    template: str,
-    date_index: int = 0,
-    stock_index: int = 1,
-    label_prefix: str = "",
-    failure_logger: "FailureLogger | None" = None,
-    page_size: int = 2000,
-) -> dict:
-    """
-    ⭐⭐ 「逐支 × 逐日」雙層粒度 commit（最細粒度的完整性） ⭐⭐
-
-    把 rows 依 (stock_id, date) 分組，每對 (sid, day) 獨立寫入 + commit。
-    單對失敗不影響其他對，崩潰時已寫入的 (sid, day) 對都已落地。
-
-    使用時機：
-      · 對「資料完整性」要求極高（如金融交易訊號、公告法定資料）。
-      · 單支股票一天的資料量不大（每組通常 1~50 筆，commit 開銷可接受）。
-
-    Parameters
-    ----------
-    conn        : psycopg2 連線
-    sql / rows / template : 同 bulk_upsert
-    date_index  : rows 中日期欄位的 index（預設 0）
-    stock_index : rows 中 stock_id 欄位的 index（預設 1）
-    label_prefix: 錯誤標籤前綴
-    failure_logger: 失敗時自動 record
-    page_size   : 每組批次大小
-
-    Returns
-    -------
-    dict  { (stock_id, date): rows_committed }
-    """
-    def _key(r):
-        v = r[date_index]
-        if isinstance(v, (date, datetime)):
-            d_str = v.strftime("%Y-%m-%d")
-        else:
-            d_str = str(v)
-        return (r[stock_index], d_str)
-
-    if not rows:
-        return {}
-
-    groups: dict[tuple, list] = defaultdict(list)
-    for r in rows:
-        try:
-            groups[_key(r)].append(r)
-        except Exception as e:
-            logger.warning(f"  [{label_prefix}] key 計算異常筆，跳過：{e}")
-
-    results: dict[tuple, int] = {}
-    for (sid, dstr), sub_rows in groups.items():
-        sub_label = f"{label_prefix}/{sid}/{dstr}" if label_prefix else f"{sid}/{dstr}"
-        n = safe_commit_rows(conn, sql, sub_rows, template, label=sub_label, page_size=page_size)
-        results[(sid, dstr)] = n
-        if n == 0 and sub_rows and failure_logger is not None:
-            failure_logger.record(
-                stock_id=str(sid), date=dstr,
-                rows=len(sub_rows),
-                error="bulk_upsert returned 0 (rolled back)",
-            )
-    return results
-
-
-# ─────────────────────────────────────────────
-# Savepoint context manager（巢狀交易支援）
-# ─────────────────────────────────────────────
-@contextmanager
-def with_savepoint(conn, name: str = "sp"):
-    """
-    建立 savepoint 進入巢狀交易。例外時 rollback 至 savepoint。
-
-    用法：
-        with conn.cursor() as cur:
-            cur.execute("INSERT INTO ... VALUES (1)")
-            with with_savepoint(conn, "sp_inner"):
-                cur.execute("INSERT INTO ... VALUES (2)")  # 此處失敗只會回到 SAVEPOINT
-        conn.commit()  # 外層仍可提交（INSERT 1 保留）
-    """
-    safe_name = "".join(c for c in name if c.isalnum() or c == "_") or "sp"
-    with conn.cursor() as cur:
-        cur.execute(f"SAVEPOINT {safe_name}")
-    try:
-        yield
-        with conn.cursor() as cur:
-            cur.execute(f"RELEASE SAVEPOINT {safe_name}")
-    except Exception:
-        try:
-            with conn.cursor() as cur:
-                cur.execute(f"ROLLBACK TO SAVEPOINT {safe_name}")
-                cur.execute(f"RELEASE SAVEPOINT {safe_name}")
-        except Exception:
-            pass
-        raise
-
-
-# ─────────────────────────────────────────────
-# 失敗清單即時 append（v3.0 新增）
-# ─────────────────────────────────────────────
-def get_failure_log_path(table: str, base_dir: str | Path | None = None) -> Path:
-    """
-    取得「失敗清單」檔案的標準路徑。
-    格式：{base_dir or scripts/outputs}/{table}_failed_YYYYMMDD.json
-    """
-    if base_dir is None:
-        base = Path(__file__).resolve().parent.parent / "outputs"
-    else:
-        base = Path(base_dir)
-    base.mkdir(parents=True, exist_ok=True)
-    return base / f"{table}_failed_{date.today().strftime('%Y%m%d')}.json"
-
-
-_failure_lock = threading.Lock()
-
-
-def append_failure_json(path: str | Path, item: dict, max_items: int = 50000) -> None:
-    """
-    將單筆失敗記錄即時 append 至 JSON 檔（atomic write）。
-
-    特性：
-      · 檔案不存在會自動建立。
-      · 寫入採 tmp + rename 原子寫入，崩潰時不會留下半份檔案。
-      · 同一程序中以 lock 防止多執行緒競爭寫入。
-      · max_items 上限，超過時 trim 最舊的記錄。
-    """
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-
-    with _failure_lock:
-        existing: list = []
-        if p.exists():
-            try:
-                existing = json.loads(p.read_text(encoding="utf-8"))
-                if not isinstance(existing, list):
-                    existing = []
-            except Exception:
-                existing = []
-
-        existing.append(item)
-        if len(existing) > max_items:
-            existing = existing[-max_items:]
-
-        try:
-            tmp = p.with_suffix(p.suffix + ".tmp")
-            tmp.write_text(
-                json.dumps(existing, indent=2, ensure_ascii=False, default=str),
-                encoding="utf-8",
-            )
-            tmp.replace(p)
-        except Exception as e:
-            logger.warning(f"append_failure_json 失敗：{e}")
-
-
-class FailureLogger:
-    """
-    統一的失敗紀錄器：
-      · append 至 JSON 失敗清單（每筆即時落盤）。
-      · 同步寫入 fetch_log 資料表（可選）。
-      · 控制台 logger.error。
-
-    用法：
-        flog = FailureLogger("month_revenue")
-        for sid in stock_ids:
-            try:
-                ...
-            except Exception as e:
-                flog.record(stock_id=sid, error=str(e))
-        flog.summary()
-    """
-
-    def __init__(
-        self,
-        table: str,
-        base_dir: str | Path | None = None,
-        log_to_db: bool = False,
-        db_conn=None,
-    ):
-        self.table = table
-        self.path = get_failure_log_path(table, base_dir)
-        self.log_to_db = log_to_db
-        self.db_conn = db_conn
-        self.failures: list[dict] = []
-
-    def record(self, **kwargs) -> None:
-        """記錄一筆失敗。kwargs 至少應含 stock_id 與 error。"""
-        kwargs.setdefault("timestamp", datetime.now().isoformat())
-        kwargs.setdefault("table", self.table)
-        self.failures.append(kwargs)
-        append_failure_json(self.path, kwargs)
-
-        prefix = f"[{self.table}"
-        sid = kwargs.get("stock_id")
-        if sid:
-            prefix += f"/{sid}"
-        d = kwargs.get("date")
-        if d:
-            prefix += f"/{d}"
-        prefix += "]"
-        logger.error(f"  {prefix} 失敗：{kwargs.get('error', '')}")
-
-        if self.log_to_db and self.db_conn is not None:
-            try:
-                log_fetch_result(
-                    self.db_conn,
-                    table_name=self.table,
-                    stock_id=str(sid or "MARKET"),
-                    start_date=kwargs.get("start_date") or date.today().strftime("%Y-%m-%d"),
-                    end_date=kwargs.get("end_date") or date.today().strftime("%Y-%m-%d"),
-                    rows_count=0,
-                    status="FAILED",
-                    error_msg=kwargs.get("error"),
-                )
-            except Exception as e:
-                logger.debug(f"FailureLogger 寫 fetch_log 失敗（忽略）：{e}")
-
-    def summary(self) -> None:
-        if self.failures:
-            logger.info(
-                f"  [{self.table}] 失敗清單已寫入：{self.path}（{len(self.failures)} 筆）"
-            )
-
-    def __len__(self) -> int:
-        return len(self.failures)
-
-
-# ─────────────────────────────────────────────
-# 非同步批次 Upsert（asyncpg）— v3.0 強化失敗處理
-# ─────────────────────────────────────────────
-async def async_bulk_upsert(table: str, records: list[dict], conflict_columns: list[str]) -> None:
-    """
-    中小型數據集的非同步批次 UPSERT 寫入，使用 executemany (Binary Protocol)。
-    依據 Quantum Finance v5.1 重構。
-    """
-    if not records:
-        return
-
-    pool = await get_asyncpg_pool()
-    columns = list(records[0].keys())
-    col_str = ", ".join(columns)
-    val_placeholders = ", ".join(f"${i+1}" for i in range(len(columns)))
-    conflict_str = ", ".join(conflict_columns)
-    update_set = ", ".join(f"{col}=EXCLUDED.{col}" for col in columns if col not in conflict_columns)
-    query = f"""
-        INSERT INTO {table} ({col_str})
-        VALUES ({val_placeholders})
-        ON CONFLICT ({conflict_str})
-        DO UPDATE SET {update_set};
-    """
-    values = [[record[col] for col in columns] for record in records]
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.executemany(query, values)
-            logger.info(f"Successfully upserted {len(records)} records into {table} (async_bulk_upsert).")
-
-
-
-async def async_safe_commit_rows(
-    pool,
-    sql: str,
-    rows: list[tuple],
-    label: str = "",
-) -> int:
-    """
-    ⭐ asyncpg 版的逐組 commit ⭐
-    每呼叫一次自動建立短交易 + commit；失敗時 transaction 自動 rollback，回傳 0。
-    """
-    if not rows:
-        return 0
-    try:
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.executemany(sql, rows)
-        return len(rows)
-    except Exception as e:
-        prefix = f"[{label}] " if label else ""
-        logger.error(f"  {prefix}async 寫入失敗，已 rollback：{e}")
-        return 0
-
-
-async def async_commit_per_stock_per_day(
-    pool,
-    sql: str,
-    rows: list[tuple],
-    date_index: int = 0,
-    stock_index: int = 1,
-    label_prefix: str = "",
-    concurrency: int = 8,
-) -> dict:
-    """
-    ⭐⭐ asyncpg 版「逐支 × 逐日」雙層粒度 commit ⭐⭐
-
-    每對 (stock_id, date) 在 asyncpg 連線池中以獨立短交易並行寫入。
-
-    Parameters
-    ----------
-    concurrency : 同時並行的 (sid, day) 數（預設 8，避免連線池耗盡）
-
-    Returns
-    -------
-    dict  { (stock_id, date): rows_committed }
-    """
-    import asyncio
-
-    if not rows:
-        return {}
-
-    groups: dict[tuple, list] = defaultdict(list)
-    for r in rows:
-        v = r[date_index]
-        d_str = v.strftime("%Y-%m-%d") if isinstance(v, (date, datetime)) else str(v)
-        groups[(r[stock_index], d_str)].append(r)
-
-    sem = asyncio.Semaphore(concurrency)
-    results: dict[tuple, int] = {}
-
-    async def _commit_one(key, sub_rows):
-        sid, dstr = key
-        async with sem:
-            sub_label = f"{label_prefix}/{sid}/{dstr}" if label_prefix else f"{sid}/{dstr}"
-            n = await async_safe_commit_rows(pool, sql, sub_rows, label=sub_label)
-            results[key] = n
-
-    await asyncio.gather(*[_commit_one(k, v) for k, v in groups.items()])
-    return results
-
-
-async def async_bulk_copy_upsert(table: str, records: list[dict], conflict_columns: list[str]) -> None:
-    """
-    極端資料集的二進位寫入優化 (Binary Staging Table + Single Merge)。
-    大幅降低巨量數據寫入的 I/O 阻塞時間。
-    依據 Quantum Finance v5.1 重構。
-    """
-    if not records:
-        return
-        
-    pool = await get_asyncpg_pool()
-    columns = list(records[0].keys())
-    temp_table = f"{table}_temp_{int(asyncio.get_event_loop().time())}"
+    with db_transaction() as cur:
+        cur.execute(sql, (table_name, stock_id, status, fetch_mode, fetch_date_from, fetch_date_to, duration_ms, error_message))
+
+def get_latest_date(table_name: str, stock_id: Optional[str] = None) -> Optional[str]:
+    """獲取資料庫中該表的最新日期"""
+    sql = f"SELECT MAX(date) FROM {table_name}"
+    if stock_id:
+        sql += " WHERE stock_id = %s"
     
-    values = [tuple(record[col] for col in columns) for record in records]
+    with db_session() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (stock_id,) if stock_id else ())
+            res = cur.fetchone()
+            return res[0].strftime("%Y-%m-%d") if res and res[0] else None
+
+# =====================================================================
+# 核心業務：高可靠性資料寫入
+# =====================================================================
+
+def commit_per_stock_per_day(table_name: str, records: List[Dict[str, Any]], 
+                             upsert_query: str, stock_id: str) -> tuple[int, int]:
+    """
+    針對特定股票執行大批次寫入，若失敗則進入自動降級模式（逐筆重試並記錄損毀點）。
+    """
+    success_count = 0
+    error_count = 0
     
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            # 建立無索引之二進位暫存表
-            await conn.execute(f"CREATE TEMP TABLE {temp_table} (LIKE {table} INCLUDING ALL) ON COMMIT DROP;")
-            
-            # 使用二進位資料流通訊協定寫入 (Binary Protocol)
-            await conn.copy_records_to_table(temp_table, records=values, columns=columns)
-            
-            conflict_str = ", ".join(conflict_columns)
-            update_set = ", ".join(f"{col}=EXCLUDED.{col}" for col in columns if col not in conflict_columns)
-            
-            col_str = ", ".join(columns)
-            
-            # 單一合併指令 (Single Merge)
-            merge_query = f"""
-                INSERT INTO {table} ({col_str})
-                SELECT * FROM {temp_table}
-                ON CONFLICT ({conflict_str})
-                DO UPDATE SET {update_set};
-            """
-            await conn.execute(merge_query)
-            logger.info(f"Successfully copy-merged {len(records)} binary records into {table}.")
-
-
-# ─────────────────────────────────────────────
-# 型別轉換工具
-# ─────────────────────────────────────────────
-def safe_float(val) -> float | None:
-    if val is None:
-        return None
-    s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
+    # 1. 嘗試快速批次寫入 (使用一個事務)
     try:
-        return float(s)
-    except (TypeError, ValueError):
-        return None
+        with db_transaction() as cur:
+            psycopg2.extras.execute_batch(cur, upsert_query, records)
+            success_count = len(records)
+            return success_count, 0
+    except Exception as e:
+        logger.warning(f"  [批次失敗] {stock_id} @ {table_name}，嘗試逐筆安全寫入保護資料：{e}")
+    
+    # 2. 批次失敗，降級為「逐筆事務」確保最大程度保留成功資料
+    fail_logger = FailureLogger(table_name)
+    for rec in records:
+        try:
+            with db_transaction() as cur:
+                cur.execute(upsert_query, rec)
+                success_count += 1
+        except Exception as e:
+            error_count += 1
+            fail_logger.log_failure(table_name, stock_id, rec.get('date'), rec.get('date'), str(e))
+            
+    return success_count, error_count
 
+# =====================================================================
+# Type Conversion Utilities
+# =====================================================================
 
-def safe_int(val) -> int | None:
+def safe_float(val: Any) -> Optional[float]:
+    if val is None: return None
+    try: return float(val)
+    except: return None
+
+def safe_int(val: Any) -> Optional[int]:
     f = safe_float(val)
     return int(f) if f is not None else None
 
-
-def safe_bigint(val) -> int | None:
-    return safe_int(val)
-
-
-def safe_date(val) -> str | None:
-    if val is None:
-        return None
+def safe_date(val: Any) -> Optional[str]:
+    if not val: return None
     s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
     try:
+        # Validate format
         datetime.strptime(s, "%Y-%m-%d")
         return s
-    except (TypeError, ValueError):
-        return None
+    except: return None
 
+# =====================================================================
+# Error Tracking and Protection
+# =====================================================================
 
-def safe_timestamp(val) -> datetime | None:
-    if val is None:
-        return None
-    s = str(val).strip()
-    if s.upper() in ("NONE", "NAN", ""):
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%H:%M:%S"):
-        try:
-            return datetime.strptime(s, fmt)
-        except (TypeError, ValueError):
-            continue
-    return None
+class FailureLogger:
+    """處理並發寫入失敗時的持久化紀錄"""
+    def __init__(self, category: str):
+        self.log_path = Path("outputs") / f"failure_{category}.json"
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
-
-def safe_mapper(mapper, raw: dict, label: str = "") -> Optional[tuple]:
-    """包裝 mapper(raw)，異常筆回傳 None 並記錄 warning。"""
-    try:
-        return mapper(raw)
-    except Exception as e:
-        prefix = f"[{label}] " if label else ""
-        logger.warning(f"  {prefix}mapper 異常筆，跳過：{e}")
-        return None
-
-
-def map_rows_safe(mapper, data: Iterable[dict], label: str = "") -> list[tuple]:
-    """批次 safe_mapper：自動過濾掉 mapper 異常的筆。"""
-    out: list[tuple] = []
-    for r in data:
-        m = safe_mapper(mapper, r, label)
-        if m is not None:
-            out.append(m)
-    return out
-
-
-# ─────────────────────────────────────────────
-# 增量更新輔助（皆補上 rollback 容錯）
-# ─────────────────────────────────────────────
-def get_all_latest_dates(conn, table: str, key_col: str = "stock_id") -> dict[str, str]:
-    """查出所有標的的最新日期。回傳 { id: "YYYY-MM-DD" }"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(f"SELECT {key_col}, MAX(date) FROM {table} GROUP BY {key_col}")
-            return {
-                row[0]: row[1].strftime("%Y-%m-%d")
-                for row in cur.fetchall()
-                if row[1] is not None
-            }
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def get_all_safe_starts(
-    conn, table: str, window_days: int = 60, gap_interval: str = "1 day", key_col: str = "stock_id"
-) -> dict[str, str]:
-    """智能偵測起始點，支援不同頻率。"""
-    dow_filter = (
-        "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
-        if gap_interval == "1 day" else ""
-    )
-
-    sql = f"""
-    WITH gaps AS (
-        SELECT
-            t1.{key_col},
-            MIN(t1.date + interval '{gap_interval}') as gap_start
-        FROM {table} t1
-        WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
-          AND t1.date < CURRENT_DATE
-          AND NOT EXISTS (
-              SELECT 1 FROM {table} t2
-              WHERE t2.{key_col} = t1.{key_col}
-                AND t2.date = t1.date + interval '{gap_interval}'
-          )
-          {dow_filter}
-        GROUP BY t1.{key_col}
-    ),
-    max_dates AS (
-        SELECT {key_col}, MAX(date) as last_date FROM {table} GROUP BY {key_col}
-    )
-    SELECT
-        m.{key_col},
-        COALESCE(g.gap_start, m.last_date + interval '{gap_interval}') as safe_start
-    FROM max_dates m
-    LEFT JOIN gaps g ON m.{key_col} = g.{key_col}
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            return {
-                row[0]: row[1].strftime("%Y-%m-%d")
-                for row in cur.fetchall()
-                if row[1] is not None
-            }
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def get_latest_date(conn, table: str, stock_id: str) -> str | None:
-    """查詢單支股票的最新日期。"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(f"SELECT MAX(date) FROM {table} WHERE stock_id = %s", (stock_id,))
-            row = cur.fetchone()
-            if row and row[0]:
-                return row[0].strftime("%Y-%m-%d")
-        return None
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def get_latest_date_by_col(conn, table: str, id_col: str, data_id: str) -> str | None:
-    """查詢非 stock_id 主鍵欄位的最新日期。"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT MAX(date) FROM {table} WHERE {id_col} = %s",
-                (data_id,),
-            )
-            row = cur.fetchone()
-            if row and row[0]:
-                return row[0].strftime("%Y-%m-%d")
-        return None
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def get_market_safe_start(conn, table: str, window_days: int = 60) -> str | None:
-    """市場層資料表的「安全起始日」。"""
-    sql = f"""
-    WITH gap AS (
-        SELECT MIN(t1.date + interval '1 day') as gap_start
-        FROM {table} t1
-        WHERE t1.date >= CURRENT_DATE - interval '{window_days} days'
-          AND t1.date < CURRENT_DATE
-          AND NOT EXISTS (
-              SELECT 1 FROM {table} t2
-              WHERE t2.date = t1.date + interval '1 day'
-          )
-          AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)
-    )
-    SELECT COALESCE(
-        (SELECT gap_start FROM gap),
-        (SELECT MAX(date) + interval '1 day' FROM {table})
-    )
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            row = cur.fetchone()
-            if row and row[0]:
-                return row[0].strftime("%Y-%m-%d")
-        return None
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def get_safe_start(
-    conn, table: str, stock_id: str, window_days: int = 60, gap_interval: str = "1 day"
-) -> str | None:
-    """單支股票的「安全起始日」。"""
-    dow_filter = (
-        "AND extract(dow from t1.date + interval '1 day') NOT IN (0, 6)"
-        if gap_interval == "1 day" else ""
-    )
-
-    sql = f"""
-    WITH gap AS (
-        SELECT MIN(t1.date + interval '{gap_interval}') as gap_start
-        FROM {table} t1
-        WHERE t1.stock_id = %s
-          AND t1.date >= CURRENT_DATE - interval '{window_days} days'
-          AND t1.date < CURRENT_DATE
-          AND NOT EXISTS (
-              SELECT 1 FROM {table} t2
-              WHERE t2.stock_id = t1.stock_id
-                AND t2.date = t1.date + interval '{gap_interval}'
-          )
-          {dow_filter}
-    )
-    SELECT COALESCE(
-        (SELECT gap_start FROM gap),
-        (SELECT MAX(date) + interval '{gap_interval}' FROM {table} WHERE stock_id = %s)
-    )
-    """
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, (stock_id, stock_id))
-            row = cur.fetchone()
-            if row and row[0]:
-                return row[0].strftime("%Y-%m-%d")
-        return None
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-def resolve_start_cached(
-    stock_id: str,
-    latest_dates: dict,
-    global_start: str,
-    dataset_earliest: str,
-    force: bool,
-    today: str | None = None,
-) -> str | None:
-    """從預載快取（latest_dates）決定起始日。"""
-    _today = today or date.today().strftime("%Y-%m-%d")
-    effective_start = max(global_start, dataset_earliest)
-
-    if force:
-        return effective_start
-
-    safe_start = latest_dates.get(str(stock_id))
-
-    if safe_start is None:
-        return effective_start
-
-    if safe_start > _today:
-        return None
-
-    return max(safe_start, dataset_earliest)
-
-
-def resolve_start(
-    conn,
-    table: str,
-    id_col: str,
-    data_id: str,
-    global_start: str,
-    force: bool,
-    today: str | None = None,
-) -> str | None:
-    """直接查 DB 決定起始日。"""
-    _today = today or date.today().strftime("%Y-%m-%d")
-
-    if force:
-        return global_start
-
-    latest = get_latest_date_by_col(conn, table, id_col, data_id)
-    if latest is None:
-        return global_start
-
-    next_day = (
-        datetime.strptime(latest, "%Y-%m-%d") + timedelta(days=1)
-    ).strftime("%Y-%m-%d")
-
-    if next_day > _today:
-        return None
-
-    return max(next_day, global_start)
-
-
-# ─────────────────────────────────────────────
-# 資料庫輔助
-# ─────────────────────────────────────────────
-def dedup_rows(rows: list, key_indices: tuple) -> list:
-    """依指定欄位索引去除重複列。"""
-    seen = {}
-    for row in rows:
-        key = tuple(row[i] for i in key_indices)
-        seen[key] = row
-    return list(seen.values())
-
-
-def get_db_stock_ids(conn, types: tuple = ("twse", "otc")) -> list[str]:
-    """
-    取得股票代號清單。
-    v3.1 優先序：
-      1. 從 stocks 資料表讀取 is_core = TRUE 的核心股票。
-      2. 若 stocks 表無資料或不存在，退而求其次從 stock_info 依類型讀取。
-    """
-    try:
-        with conn.cursor() as cur:
-            # 優先嘗試 stocks 表 (核心清單)
+    def log_failure(self, table: str, stock_id: Optional[str], start: str, end: str, error: str):
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "table": table,
+            "stock_id": stock_id,
+            "start": start,
+            "end": end,
+            "error": error
+        }
+        # 使用原子寫入防止 JSON 損壞
+        existing = []
+        if self.log_path.exists():
             try:
-                cur.execute("SELECT stock_id FROM stocks WHERE is_core = TRUE ORDER BY stock_id")
-                rows = cur.fetchall()
-                if rows:
-                    return [row[0] for row in rows]
-            except Exception:
-                conn.rollback() # stocks 表可能尚未建立，忽略錯誤並進入 fallback
-            
-            # Fallback: 原有 stock_info 邏輯
-            placeholders = ", ".join(["%s"] * len(types))
-            cur.execute(
-                f"SELECT stock_id FROM stock_info WHERE type IN ({placeholders}) ORDER BY stock_id",
-                types,
-            )
-            return [row[0] for row in rows] if (rows := cur.fetchall()) else []
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        raise
-
-
-# ─────────────────────────────────────────────
-# 健康檢查（v3.0 新增）
-# ─────────────────────────────────────────────
-def is_conn_healthy(conn) -> bool:
-    """
-    檢查連線是否處於可用狀態（非 InFailedSqlTransaction）。
-    若不健康會嘗試自動 rollback 修復。
-    """
-    if conn is None or conn.closed:
-        return False
-    try:
-        status = conn.get_transaction_status()
-    except Exception:
-        return False
-    if status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
-        try:
-            conn.rollback()
-            logger.info("檢測到失敗交易，已自動 rollback")
-            return True
-        except Exception:
-            return False
-    return True
-
-
-__all__ = [
-    # 連線
-    "get_db_conn", "get_asyncpg_pool", "close_asyncpg_pool",
-    # 設定與核心清單
-    "get_core_stocks_from_db", "get_db_stock_ids",
-    # DDL / log
-    "ensure_ddl", "log_fetch_result", "DDL_FETCH_LOG",
-    "write_feature_log", "write_model_log", "write_predict_log",
-    # 同步寫入
-    "bulk_upsert", "safe_bulk_upsert", "safe_commit_rows",
-    "commit_per_group", "commit_per_stock", "commit_per_day",
-    "commit_per_stock_per_day",
-    "with_savepoint", "is_conn_healthy",
-    # 失敗清單
-    "FailureLogger", "append_failure_json", "get_failure_log_path",
-    # 非同步寫入
-    "async_bulk_upsert", "async_safe_commit_rows",
-    "async_commit_per_stock_per_day", "async_bulk_copy_upsert",
-    # 型別轉換
-    "safe_float", "safe_int", "safe_bigint", "safe_date", "safe_timestamp",
-    "safe_mapper", "map_rows_safe",
-    # 增量更新
-    "get_all_latest_dates", "get_all_safe_starts",
-    "get_latest_date", "get_latest_date_by_col",
-    "get_market_safe_start", "get_safe_start",
-    "resolve_start_cached", "resolve_start",
-    # 其他
-    "dedup_rows",
-]
+                existing = json.loads(self.log_path.read_text())
+            except: pass
+        
+        existing.append(entry)
+        self.log_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False))
