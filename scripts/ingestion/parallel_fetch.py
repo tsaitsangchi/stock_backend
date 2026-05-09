@@ -1,18 +1,47 @@
 """
-parallel_fetch.py v5.5.2 (Trinity Core Final)
+parallel_fetch.py v5.5.7 (Trinity Core Final)
 ================================================================================
 並行資料抓取引擎 — 混合模式日誌實作版
-負責調度多個抓取器並執行任務匯總，支援真實執行緒池。
+負責調度多個「抓取器 (Fetcher)」並執行大規模並行任務匯總。
 
 修訂歷程：
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的「大規模並行抓取」執行範例。
   v5.5.2 (2026-05-09):
     - [核心] 導入 Hybrid Logging 混合日誌規範 (Category: ingestion)。
-    - [效能] 實作 ThreadPoolExecutor 並行調度機制。
 
-執行範例：
-  # 作為模組匯入
-  from ingestion.parallel_fetch import run_orchestrator
-  run_orchestrator(fetch_tech, STOCK_LIST, "daily_sync")
+【執行範例說明】
+
+1. 直接從命令行執行 (大規模同步全市場量價)：
+   $ python scripts/ingestion/parallel_fetch.py
+
+2. 在其他 Python 腳本中調用 (大規模並行抓取三大法人籌碼)：
+   ------------------------------------------------------------
+   from ingestion.parallel_fetch import run_orchestrator
+   from ingestion.fetch_chip_data import fetch_chip
+   from core.db_utils import get_db_stock_ids
+   
+   # 獲取資料庫中所有啟用的股票 ID
+   all_stocks = get_db_stock_ids()
+   
+   # 啟動並行指揮官：執行 fetch_chip，4 個執行緒同時運作
+   run_orchestrator(
+       task_func=fetch_chip, 
+       stock_ids=all_stocks, 
+       task_label="all_market_chip_sync", 
+       workers=4
+   )
+   ------------------------------------------------------------
+
+3. 大規模並行抓取融資融券資料：
+   ------------------------------------------------------------
+   from ingestion.parallel_fetch import run_orchestrator
+   from ingestion.fetch_advanced_chip_data import fetch_advanced_chip
+   from config import TIER_1_STOCKS
+   
+   # 針對特定名單 (TIER_1) 進行大規模並行同步
+   run_orchestrator(fetch_advanced_chip, TIER_1_STOCKS, "tier1_margin_sync")
+   ------------------------------------------------------------
 """
 
 import sys

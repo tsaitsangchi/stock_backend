@@ -15,8 +15,7 @@ db_utils.py v4.7 (Trinity Core Edition)
   
   with db_transaction() as cur:
       cur.execute("SELECT * FROM stocks LIMIT 5")
-"""
-  v4.6 (2026-05-09):
+    v4.6 (2026-05-09):
     - [監控] write_fetch_log 補齊 rows_inserted 欄位。
 """
 

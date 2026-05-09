@@ -1,16 +1,27 @@
 """
-compute_stock_dynamics.py v5.5 (Trinity Core Final)
+compute_stock_dynamics.py v5.5.7 (Trinity Core Final)
 ================================================================================
 量化運算核心 — 混合模式日誌實作版
-負責機器學習模型建構與生產環境交易訊號生成。
+目錄：inference
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌 (Category: inference)。
-    - [核心] 對接 Model Registry 與實體資料流。
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.x (2026-05-09):
+    - [核心] 導入 Hybrid Logging 混合日誌與路徑標準化。
 
-執行範例：
-  python scripts/inference/compute_stock_dynamics.py
+【執行範例說明】
+
+1. 直接從命令行執行：
+   $ python scripts/inference/compute_stock_dynamics.py
+
+2. 在其他 Python 腳本中引用：
+   ------------------------------------------------------------
+   from inference.compute_stock_dynamics import ...
+   ------------------------------------------------------------
+
+3. 模型元數據紀錄：
+   本腳本會自動將結果同步至 model_registry 表，可透過 Dashboard 查閱。
 """
 
 import sys

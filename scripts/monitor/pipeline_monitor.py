@@ -1,16 +1,27 @@
 """
-pipeline_monitor.py v5.5.3 (Trinity Core Final)
+pipeline_monitor.py v5.5.7 (Trinity Core Final)
 ================================================================================
-自動化監控與運維中心 — 混合模式日誌實作版
-負責全系統狀態掃描、異常告警與資料庫自動優化。
+系統組件 — 混合模式日誌實作版
+目錄：monitor
 
 修訂歷程：
-  v5.5.3 (2026-05-09):
-    - [規範] 導入混合模式日誌 (Category: sys)。
-    - [核心] 實作 DDL 自癒機制與自動化維運調度。
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.x (2026-05-09):
+    - [核心] 導入 Hybrid Logging 混合日誌與路徑標準化。
 
-執行範例：
-  python scripts/monitor/pipeline_monitor.py
+【執行範例說明】
+
+1. 直接從命令行執行：
+   $ python scripts/monitor/pipeline_monitor.py
+
+2. 在其他 Python 腳本中引用：
+   ------------------------------------------------------------
+   from monitor.pipeline_monitor import ...
+   ------------------------------------------------------------
+
+3. 日誌查閱：
+   SELECT * FROM pipeline_execution_log ORDER BY created_at DESC LIMIT 10;
 """
 
 import sys

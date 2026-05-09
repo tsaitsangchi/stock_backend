@@ -12,7 +12,7 @@ migrate_stocks_config.py v5.5 (Trinity Core Edition)
 執行範例：
   python scripts/core/migrate_stocks_config.py
 """
-"""
+
 
 import sys
 import json

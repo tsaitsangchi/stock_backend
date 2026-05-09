@@ -14,7 +14,7 @@ FinMind API 企業級客戶端 — 混合模式日誌實作版
   api = FinMindClient()
   data = api.get_data("TaiwanStockPrice", "2330")
 """
-"""
+
 
 import os
 import time

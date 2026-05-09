@@ -1,13 +1,35 @@
 """
-data_pipeline.py v5.5.4 (Trinity Core Final)
+data_pipeline.py v5.5.7 (Trinity Core Final)
 ================================================================================
 Trinity 全自動資料管線指揮官 — 生產環境正式版
-編排 Ingestion -> Feature -> Training 的端到端資料流。
+編排 Ingestion -> Feature -> Maintenance 的端到端資料生命週期。
 
-核心流程：
-  1. 並行抓取 (Parallel Ingestion)
-  2. 特徵提取 (Feature Generation) - 真實對接資料庫
-  3. 狀態更新 (Daily Status Update)
+修訂歷程：
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的「全自動管線生命週期」執行範例。
+  v5.5.4 (2026-05-09):
+    - [整合] 達成端到端真實資料流 (SQL -> DataFrame -> Features)。
+
+【執行範例說明】
+
+1. 直接從命令行啟動全自動日終工作 (EOD Pipeline)：
+   $ python scripts/pipeline/data_pipeline.py
+   (此指令會自動執行：並行抓取 -> 特徵計算 -> 系統狀態同步)
+
+2. 在 Linux Crontab 中排程定時執行 (每日晚上 6 點啟動)：
+   00 18 * * 1-5 /home/hugo/project/stock_backend/venv/bin/python /home/hugo/project/stock_backend/scripts/pipeline/data_pipeline.py >> /home/hugo/project/stock_backend/logs/pipeline.log 2>&1
+
+3. 在其他 Python 腳本中作為「總管線」調用：
+   ------------------------------------------------------------
+   from pipeline.data_pipeline import run_full_pipeline
+   
+   # 執行一次完整的「資料抓取 + 特徵生成 + 系統同步」循環
+   run_full_pipeline()
+   ------------------------------------------------------------
+
+4. 管線日誌檢查：
+   執行後可至資料庫執行以下查詢，確認生命週期各階段狀態：
+   SELECT * FROM pipeline_execution_log WHERE task_name = 'full_pipeline_master' ORDER BY created_at DESC;
 """
 
 import sys

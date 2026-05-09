@@ -1,16 +1,27 @@
 """
-portfolio_optimizer.py v5.5.1 (Trinity Core Final)
+portfolio_optimizer.py v5.5.7 (Trinity Core Final)
 ================================================================================
-策略回測與績效評估 — 混合模式日誌實作版
-負責計算 Sharpe, MDD 並生成量化分析報表。
+系統組件 — 混合模式日誌實作版
+目錄：evaluation
 
 修訂歷程：
-  v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌 (Category: backtest)。
-    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.x (2026-05-09):
+    - [核心] 導入 Hybrid Logging 混合日誌與路徑標準化。
 
-執行範例：
-  python scripts/evaluation/portfolio_optimizer.py
+【執行範例說明】
+
+1. 直接從命令行執行：
+   $ python scripts/evaluation/portfolio_optimizer.py
+
+2. 在其他 Python 腳本中引用：
+   ------------------------------------------------------------
+   from evaluation.portfolio_optimizer import ...
+   ------------------------------------------------------------
+
+3. 日誌查閱：
+   SELECT * FROM pipeline_execution_log ORDER BY created_at DESC LIMIT 10;
 """
 
 import sys

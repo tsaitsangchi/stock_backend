@@ -1,16 +1,29 @@
 """
-fetch_sponsor_chip_data.py v5.5.1 (Trinity Core Final)
+fetch_sponsor_chip_data.py v5.5.7 (Trinity Core Final)
 ================================================================================
 資料抓取模組 — 混合模式日誌實作版
-對應資料庫實體表並支援並行調度。
+負責將 FinMind 原始數據同步至資料庫。
 
 修訂歷程：
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
   v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌。
-    - [核心] 對接 v5.5 並行調度規範與路徑修復 v3.0。
+    - [規範] 導入混合模式日誌與路徑修復 v3.0。
 
-執行範例：
-  python scripts/ingestion/fetch_sponsor_chip_data.py
+【執行範例說明】
+
+1. 手動單點調試 (僅抓取台積電 2330 作為測試)：
+   $ python scripts/ingestion/fetch_sponsor_chip_data.py
+
+2. 大規模並行抓取 (透過調度器對全市場執行)：
+   ------------------------------------------------------------
+   from ingestion.parallel_fetch import run_orchestrator
+   from ingestion.fetch_sponsor_chip_data import fetch_sponsor
+   from core.db_utils import get_db_stock_ids
+   
+   # 啟動並行調度：對全市場標的執行 fetch_sponsor
+   run_orchestrator(fetch_sponsor, get_db_stock_ids(), "all_market_fetch_sponsor")
+   ------------------------------------------------------------
 """
 
 import sys

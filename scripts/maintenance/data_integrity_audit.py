@@ -1,16 +1,27 @@
 """
-data_integrity_audit.py v5.5.2 (Trinity Core Final)
+data_integrity_audit.py v5.5.7 (Trinity Core Final)
 ================================================================================
-系統維護工具 — 混合模式日誌實作版
-負責資料庫健康檢查、API 配額監控與數據完整性維護。
+系統組件 — 混合模式日誌實作版
+目錄：maintenance
 
 修訂歷程：
-  v5.5.2 (2026-05-09):
-    - [規範] 導入混合模式日誌 (Category: sys)。
-    - [核心] 對接 db_utils v4.7 與 DictCursor 相容性。
+  v5.5.7 (2026-05-09):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.x (2026-05-09):
+    - [核心] 導入 Hybrid Logging 混合日誌與路徑標準化。
 
-執行範例：
-  python scripts/maintenance/data_integrity_audit.py
+【執行範例說明】
+
+1. 直接從命令行執行：
+   $ python scripts/maintenance/data_integrity_audit.py
+
+2. 在其他 Python 腳本中引用：
+   ------------------------------------------------------------
+   from maintenance.data_integrity_audit import ...
+   ------------------------------------------------------------
+
+3. 日誌查閱：
+   SELECT * FROM pipeline_execution_log ORDER BY created_at DESC LIMIT 10;
 """
 
 import sys
