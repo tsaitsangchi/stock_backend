@@ -1,8 +1,8 @@
 """
-fetch_macro_fundamental_data.py v5.5 (Trinity Core Edition)
+fetch_macro_fundamental_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
-宏觀與基本面交叉資料抓取器 — 混合模式日誌實作版
-此模組抓取「產業平均本益比」、「市場寬度」等混合型指標。
+市場平均估值抓取器 — 混合模式日誌實作版
+負責同步本益比/股價淨值比資料至 stock_per 表。
 """
 
 import sys
@@ -10,10 +10,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 (對接 path_setup v3.0) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -21,7 +21,7 @@ for _sub in ("", "core", "ingestion"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log
+    from core.db_utils import write_pipeline_log, get_latest_date
     from core.finmind_client import FinMindClient
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
@@ -30,19 +30,21 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_macro_fund():
+def fetch_macro_fund(stock_id: str):
     t0 = time.monotonic()
     api = FinMindClient()
-    logger.info("📐 正在抓取宏觀基本面交叉指標...")
     
-    data = api.get_data("TaiwanStockPER")
+    # 🔍 資料表對齊：stock_per
+    last_date = get_latest_date("stock_per", stock_id) or "2010-01-01"
+    
+    logger.info(f"📐 正在同步 {stock_id} 市場估值指標 (Since: {last_date})...")
+    data = api.get_data("TaiwanStockPER", stock_id, start_date=last_date)
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
-    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_macro_fundamental",
-        stock_id="MARKET_STATS",
+        stock_id=stock_id,
         status="success",
         category="ingestion",
         duration_ms=elapsed_ms,
@@ -51,4 +53,4 @@ def fetch_macro_fund():
     return len(data)
 
 if __name__ == "__main__":
-    fetch_macro_fund()
+    fetch_macro_fund("2330")

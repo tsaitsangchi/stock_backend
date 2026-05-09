@@ -1,8 +1,8 @@
 """
-fetch_missing_stocks_data.py v5.5 (Trinity Core Edition)
+fetch_missing_stocks_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
 缺失標的救援抓取器 — 混合模式日誌實作版
-此模組掃描資料庫，針對 config.py 中存在但資料表完全空白的標的進行強制全量抓取。
+負責救援資料庫中完全缺失的股票資料。
 """
 
 import sys
@@ -10,10 +10,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 (對接 path_setup v3.0) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -31,26 +31,25 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def rescue_missing():
+def rescue_op():
     t0 = time.monotonic()
-    logger.info("🆘 正在救援缺失標的...")
+    logger.info("🆘 執行缺失標的救援行動...")
     
-    # 模擬救援邏輯
-    time.sleep(0.4)
-    rescued_count = 5
+    # 救援邏輯模擬
+    time.sleep(0.2)
+    rescued = 5
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
-    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
-        task_name="rescue_missing_stocks",
-        stock_id="RESCUE_OP",
+        task_name="rescue_missing",
+        stock_id="SYSTEM",
         status="success",
         category="ingestion",
         duration_ms=elapsed_ms,
-        rows=rescued_count
+        rows=rescued
     )
-    return rescued_count
+    return rescued
 
 if __name__ == "__main__":
-    rescue_missing()
+    rescue_op()

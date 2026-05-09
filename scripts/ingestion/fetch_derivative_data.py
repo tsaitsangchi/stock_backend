@@ -1,8 +1,8 @@
 """
-fetch_derivative_data.py v5.5 (Trinity Core Edition)
+fetch_derivative_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
-期貨與衍生品資料抓取器 — 混合模式日誌實作版
-此模組抓取「台指期 (TX)」、「選擇權 (TFO)」等市場情緒指標。
+期貨量價抓取器 — 混合模式日誌實作版
+負責同步台指期等期貨資料至 futures_ohlcv 表。
 """
 
 import sys
@@ -10,10 +10,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 (對接 path_setup v3.0) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -21,7 +21,7 @@ for _sub in ("", "core", "ingestion"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log
+    from core.db_utils import write_pipeline_log, get_latest_date
     from core.finmind_client import FinMindClient
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
@@ -33,16 +33,18 @@ logger = logging.getLogger(__name__)
 def fetch_derivative():
     t0 = time.monotonic()
     api = FinMindClient()
-    logger.info("🎭 正在抓取市場衍生品 (期貨/選擇權) 資料...")
     
-    data = api.get_data("TaiwanFuturesDaily") # 範例數據集
+    # 🔍 資料表對齊：futures_ohlcv
+    last_date = get_latest_date("futures_ohlcv", "TX") or "2010-01-01"
+    
+    logger.info(f"🎭 正在同步期貨資料 (Since: {last_date})...")
+    data = api.get_data("TaiwanFuturesDaily", "TX", start_date=last_date)
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
-    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_derivative",
-        stock_id="MARKET_WIDE",
+        stock_id="TX",
         status="success",
         category="ingestion",
         duration_ms=elapsed_ms,

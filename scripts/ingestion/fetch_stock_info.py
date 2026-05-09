@@ -1,8 +1,8 @@
 """
-fetch_stock_info.py v5.5 (Trinity Core Edition)
+fetch_stock_info.py v5.5.1 (Trinity Core Final)
 ================================================================================
-股票清單與基本資訊抓取器 — 混合模式日誌實作版
-此模組抓取全市場股票代碼、產業分類與股本資訊。
+股票基本資訊抓取器 — 混合模式日誌實作版
+負責同步股票清單至 stock_info 表。
 """
 
 import sys
@@ -10,10 +10,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 (對接 path_setup v3.0) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -33,13 +33,12 @@ logger = logging.getLogger(__name__)
 def fetch_info():
     t0 = time.monotonic()
     api = FinMindClient()
-    logger.info(f"ℹ️ 正在抓取全市場股票基本資訊...")
     
+    logger.info("ℹ️ 正在抓取全市場股票基本資訊...")
     data = api.get_data("TaiwanStockInfo")
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
-    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_stock_info",
         stock_id="MARKET_WIDE",

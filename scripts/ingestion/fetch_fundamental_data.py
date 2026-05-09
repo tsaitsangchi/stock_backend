@@ -1,12 +1,8 @@
 """
-fetch_fundamental_data.py v5.5 (Trinity Core Edition)
+fetch_fundamental_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
-基本面資料抓取器 — 混合模式日誌實作版
-此模組抓取「綜合損益表」、「資產負債表」等財報資料。
-
-核心功能：
-  · 季報自動更新   ─ 自動檢測新季報發布並更新資料庫。
-  · 分類日誌紀錄     ─ 執行監控 (pipeline_execution_log) 歸類於 ingestion 類別。
+財務報表抓取器 — 混合模式日誌實作版
+負責同步綜合損益表與資產負債表至 financial_statements 表。
 """
 
 import sys
@@ -14,10 +10,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 (對接 path_setup v3.0) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -25,7 +21,7 @@ for _sub in ("", "core", "ingestion"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log
+    from core.db_utils import write_pipeline_log, get_latest_date
     from core.finmind_client import FinMindClient
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
@@ -37,13 +33,15 @@ logger = logging.getLogger(__name__)
 def fetch_fundamental(stock_id: str):
     t0 = time.monotonic()
     api = FinMindClient()
-    logger.info(f"📊 正在抓取 {stock_id} 財務報表...")
     
-    data = api.get_data("TaiwanStockFinancialStatements", stock_id)
+    # 🔍 資料表對齊：financial_statements
+    last_date = get_latest_date("financial_statements", stock_id) or "2010-01-01"
+    
+    logger.info(f"📊 正在同步 {stock_id} 財務報表 (Since: {last_date})...")
+    data = api.get_data("TaiwanStockFinancialStatements", stock_id, start_date=last_date)
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
-    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_fundamental",
         stock_id=stock_id,
