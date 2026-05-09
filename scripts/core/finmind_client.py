@@ -56,6 +56,22 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 # =====================================================================
+# Compatibility Layer (Shims for old scripts)
+# =====================================================================
+
+class BatchNotSupportedError(Exception):
+    """Shim for scripts expecting this error class."""
+    pass
+
+def finmind_get(dataset: str, data_id: str, start_date: str, end_date: str, **kwargs) -> List[Dict]:
+    """Shim for old scripts calling finmind_get directly."""
+    return FinMindClient().get_data(dataset, data_id, start_date, end_date)
+
+async def finmind_get_async(dataset: str, data_id: str, start_date: str, end_date: str, **kwargs) -> List[Dict]:
+    """Shim for old scripts calling finmind_get_async directly."""
+    return await FinMindClient().async_get_data(dataset, data_id, start_date, end_date)
+
+# =====================================================================
 # 1. 狀態統計與快取層
 # =====================================================================
 

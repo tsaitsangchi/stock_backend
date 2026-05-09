@@ -37,6 +37,7 @@ from core.db_utils import (
     ensure_ddl,
     safe_commit_rows,
     FailureLogger,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -61,23 +62,6 @@ def _ensure_fetch_log_table(conn) -> None:
         try: conn.rollback()
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="market"):
-    """v3.2 標準化日誌寫入"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
 
 
 CREATE_TABLE_SQL = """
@@ -174,14 +158,14 @@ def run_update(delay: float):
             
             if n > 0:
                 logger.info(f"✅ 成功寫入 {n} 筆標的資訊至 stocks 資料表")
-                _write_fetch_log(conn, "stocks", "ALL", "success", rows_inserted=n, duration_ms=duration_ms)
+                write_fetch_log(conn, table_name="stocks", stock_id="ALL", status="success", rows_inserted=n, duration_ms=duration_ms)
             else:
-                _write_fetch_log(conn, "stocks", "ALL", "failed", rows_inserted=0, duration_ms=duration_ms, error_message="safe_commit_rows 回傳 0")
+                write_fetch_log(conn, table_name="stocks", stock_id="ALL", status="failed", rows_inserted=0, duration_ms=duration_ms, error_message="safe_commit_rows 回傳 0")
                 
         except Exception as e:
             logger.error(f"執行失敗：{e}")
             flog.record(stock_id="ALL", error=str(e))
-            _write_fetch_log(conn, "stocks", "ALL", "failed", rows_inserted=0, duration_ms=0, error_message=str(e))
+            write_fetch_log(conn, table_name="stocks", stock_id="ALL", status="failed", rows_inserted=0, duration_ms=0, error_message=str(e))
             
     finally:
         conn.close()

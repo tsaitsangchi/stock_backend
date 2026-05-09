@@ -61,6 +61,7 @@ from core.db_utils import (
     commit_per_stock_per_day,
     commit_per_day,
     dedup_rows,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -95,34 +96,10 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
-
 DDL_SENTIMENT = """
-CREATE TABLE IF NOT EXISTS options_oi_large_holders (date DATE, option_id VARCHAR(50), put_call VARCHAR(10), contract_type VARCHAR(50), name VARCHAR(100), market_open_interest NUMERIC, buy_top5_trader_open_interest NUMERIC, buy_top5_trader_open_interest_per NUMERIC, buy_top10_trader_open_interest NUMERIC, buy_top10_trader_open_interest_per NUMERIC, sell_top5_trader_open_interest NUMERIC, sell_top5_trader_open_interest_per NUMERIC, sell_top10_trader_open_interest NUMERIC, sell_top10_trader_open_interest_per NUMERIC, buy_top5_specific_open_interest NUMERIC, buy_top5_specific_open_interest_per NUMERIC, buy_top10_specific_open_interest NUMERIC, buy_top10_specific_open_interest_per NUMERIC, sell_top5_specific_open_interest NUMERIC, sell_top5_specific_open_interest_per NUMERIC, sell_top10_specific_open_interest NUMERIC, sell_top10_specific_open_interest_per NUMERIC, PRIMARY KEY (date, option_id, put_call, contract_type));
-CREATE TABLE IF NOT EXISTS fear_greed_index (date DATE PRIMARY KEY, fear_greed NUMERIC, fear_greed_emotion VARCHAR(50));
-CREATE TABLE IF NOT EXISTS block_trading (date DATE, stock_id VARCHAR(50), securities_trader_id VARCHAR(50), securities_trader VARCHAR(100), price NUMERIC(10,2), buy NUMERIC, sell NUMERIC, trade_type VARCHAR(50), PRIMARY KEY (date, stock_id, securities_trader_id, price, trade_type));
+CREATE TABLE IF NOT EXISTS options_oi_large_holders (date DATE, option_id VARCHAR(50), put_call VARCHAR(10), contract_type VARCHAR(50), name VARCHAR(100), market_open_interest NUMERIC(20,6), buy_top5_trader_open_interest NUMERIC(20,6), buy_top5_trader_open_interest_per NUMERIC(20,6), buy_top10_trader_open_interest NUMERIC(20,6), buy_top10_trader_open_interest_per NUMERIC(20,6), sell_top5_trader_open_interest NUMERIC(20,6), sell_top5_trader_open_interest_per NUMERIC(20,6), sell_top10_trader_open_interest NUMERIC(20,6), sell_top10_trader_open_interest_per NUMERIC(20,6), buy_top5_specific_open_interest NUMERIC(20,6), buy_top5_specific_open_interest_per NUMERIC(20,6), buy_top10_specific_open_interest NUMERIC(20,6), buy_top10_specific_open_interest_per NUMERIC(20,6), sell_top5_specific_open_interest NUMERIC(20,6), sell_top5_specific_open_interest_per NUMERIC(20,6), sell_top10_specific_open_interest NUMERIC(20,6), sell_top10_specific_open_interest_per NUMERIC(20,6), PRIMARY KEY (date, option_id, put_call, contract_type));
+CREATE TABLE IF NOT EXISTS fear_greed_index (date DATE PRIMARY KEY, fear_greed NUMERIC(20,6), fear_greed_emotion VARCHAR(50));
+CREATE TABLE IF NOT EXISTS block_trading (date DATE, stock_id VARCHAR(50), securities_trader_id VARCHAR(50), securities_trader VARCHAR(100), price NUMERIC(20,6), buy NUMERIC(20,6), sell NUMERIC(20,6), trade_type VARCHAR(50), PRIMARY KEY (date, stock_id, securities_trader_id, price, trade_type));
 """
 
 UPSERT_OPTIONS_LARGE_OI = """INSERT INTO options_oi_large_holders VALUES %s ON CONFLICT (date, option_id, put_call, contract_type) DO UPDATE SET market_open_interest = EXCLUDED.market_open_interest;"""
@@ -152,7 +129,7 @@ def fetch_block_trading(conn, stock_ids, start, end, delay, force, fetch_mode_ov
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START["block_trading"], force)
         if not s:
-            _write_fetch_log(conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -172,13 +149,13 @@ def fetch_block_trading(conn, stock_ids, start, end, delay, force, fetch_mode_ov
                 res = commit_per_stock_per_day(conn, UPSERT_BLOCK_TRADING, rows, None, label_prefix=f"block/{sid}", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
                     duration_ms=dur, status="success" if n > 0 else "partial"
                 )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                     duration_ms=dur, status="no_new_data"
@@ -186,7 +163,7 @@ def fetch_block_trading(conn, stock_ids, start, end, delay, force, fetch_mode_ov
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name="block_trading", stock_id=sid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                 duration_ms=dur, status="failed", error_message=str(e)
@@ -219,7 +196,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
     
     if s_dt > e_dt:
         logger.info(f"  [{table}] 已最新，跳過")
-        _write_fetch_log(conn, table_name=table, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+        write_fetch_log(conn, table_name=table, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
         return
     
     total_rows = 0
@@ -241,7 +218,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
             
             if not data:
                 # 若無資料，則跳過一天繼續
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, fetch_mode=fetch_mode, fetch_date_from=d_str, 
                     rows_inserted=0, duration_ms=dur, status="no_new_data"
                 )
@@ -272,7 +249,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
             
             n = sum(res.values())
             total_rows += n
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, fetch_mode=fetch_mode, 
                 fetch_date_from=d_str, fetch_date_to=last_date_str, 
                 rows_inserted=n, duration_ms=dur, status="success" if n > 0 else "partial"
@@ -293,7 +270,7 @@ def fetch_sentiment(conn, dataset, table, upsert_sql, mapper, start, end, delay,
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(date=d_str, error=str(e))
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, fetch_mode=fetch_mode, fetch_date_from=d_str, 
                 rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e)
             )

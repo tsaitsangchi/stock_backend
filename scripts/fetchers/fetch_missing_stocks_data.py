@@ -39,6 +39,7 @@ from core.db_utils import (
     get_db_conn,
     ensure_ddl,
     FailureLogger,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 from core.model_metadata import atomic_write_json
@@ -79,18 +80,6 @@ _CLI_ARGS_STR = " ".join(sys.argv)
 # ─────────────────────────────────────────────
 # 工具函式
 # ─────────────────────────────────────────────
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None):
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, 'subprocess', %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        logger.warning(f"無法寫入 fetch_log: {e}")
 
 def get_missing_data_manifest() -> list[dict]:
     manifest_path = get_outputs_dir() / "integrity_gaps.json"
@@ -169,7 +158,7 @@ def main():
 
         if not args.skip_stock_info:
             ok, rc, dur, err = run_script("fetch_stock_info.py", [], args.timeout)
-            _write_fetch_log(conn, "fetch_stock_info.py", "SYSTEM", "success" if ok else "failed", duration_ms=dur, error_message=err)
+            write_fetch_log(conn, table_name="fetch_stock_info.py", stock_id="SYSTEM", status="success" if ok else "failed", duration_ms=dur, error_message=err, fetch_mode="subprocess")
 
         target_map: dict[str, str] = {}
         if args.stock_id:
@@ -189,7 +178,7 @@ def main():
                 if args.force: run_args.append("--force")
                 
                 ok, rc, dur, err = run_script(script, run_args, args.timeout)
-                _write_fetch_log(conn, script, sid, "success" if ok else "failed", fetch_date_from=start_date, duration_ms=dur, error_message=err)
+                write_fetch_log(conn, table_name=script, stock_id=sid, status="success" if ok else "failed", fetch_date_from=start_date, duration_ms=dur, error_message=err, fetch_mode="subprocess")
                 
                 if ok:
                     done_set.add((sid, script))
@@ -201,7 +190,7 @@ def main():
             for script in MACRO_SCRIPTS:
                 if ("MACRO", script) in done_set: continue
                 ok, rc, dur, err = run_script(script, [], args.timeout)
-                _write_fetch_log(conn, script, "MACRO", "success" if ok else "failed", duration_ms=dur, error_message=err)
+                write_fetch_log(conn, table_name=script, stock_id="MACRO", status="success" if ok else "failed", duration_ms=dur, error_message=err, fetch_mode="subprocess")
                 if ok:
                     done_set.add(("MACRO", script))
                     _save_checkpoint(done_set)

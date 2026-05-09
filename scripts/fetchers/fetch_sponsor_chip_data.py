@@ -57,6 +57,7 @@ from core.db_utils import (
     safe_float,
     get_all_safe_starts,
     resolve_start_cached,
+    write_fetch_log,
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
@@ -92,24 +93,8 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.2 標準化日誌寫入"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
 
-
-DDL_HOLDING = """CREATE TABLE IF NOT EXISTS holding_shares_per (date DATE, stock_id VARCHAR(50), level VARCHAR(50), people BIGINT, percent NUMERIC(10,4), unit VARCHAR(100), PRIMARY KEY (date, stock_id, level));"""
+DDL_HOLDING = """CREATE TABLE IF NOT EXISTS holding_shares_per (date DATE, stock_id VARCHAR(50), level VARCHAR(50), people BIGINT, percent NUMERIC(20,6), unit VARCHAR(100), PRIMARY KEY (date, stock_id, level));"""
 DDL_EIGHT_BANKS = """CREATE TABLE IF NOT EXISTS eight_banks_buy_sell (date DATE, stock_id VARCHAR(50), buy BIGINT, sell BIGINT, PRIMARY KEY (date, stock_id));"""
 DDL_FUTURES_LARGE_OI = """CREATE TABLE IF NOT EXISTS futures_large_oi (date DATE, contract_code VARCHAR(20), name VARCHAR(50), long_position BIGINT, long_position_over50 BIGINT, short_position BIGINT, short_position_over50 BIGINT, net_position BIGINT, market_total_oi BIGINT, PRIMARY KEY (date, contract_code, name));"""
 
@@ -148,7 +133,7 @@ def fetch_holding(conn, stock_ids: list[str], start: str, end: str, delay: float
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START["holding_shares_per"], force)
         if not s:
-            _write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         start_time = time.time()
@@ -168,13 +153,13 @@ def fetch_holding(conn, stock_ids: list[str], start: str, end: str, delay: float
                 res = commit_per_stock_per_day(conn, UPSERT_HOLDING, rows, "(%s, %s, %s, %s, %s, %s)", label_prefix="holding", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=n, duration_ms=duration_ms, status="success")
+                write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=n, duration_ms=duration_ms, status="success")
             else:
-                _write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=0, duration_ms=duration_ms, status="no_new_data")
+                write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=0, duration_ms=duration_ms, status="no_new_data")
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=0, duration_ms=duration_ms, status="failed", error_message=str(e))
+            write_fetch_log(conn, table_name="holding_shares_per", stock_id=sid, fetch_mode=fetch_mode, fetch_date_from=s, fetch_date_to=end, rows_inserted=0, duration_ms=duration_ms, status="failed", error_message=str(e))
             
     logger.info(f"  [holding_shares_per] 總共寫入 {total_rows} 筆")
     flog.summary()
@@ -202,7 +187,7 @@ def fetch_eight_banks(conn, stock_ids: list[str], start: str, end: str, delay: f
     
     if s_dt > e_dt:
         logger.info(f"  [eight_banks] 資料已是最新的。")
-        _write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+        write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
         return
 
     # ⚠️ FinMind 限制：TaiwanStockGovernmentBankBuySell 不支援 end_date，只能逐日抓取
@@ -242,15 +227,15 @@ def fetch_eight_banks(conn, stock_ids: list[str], start: str, end: str, delay: f
                     res = commit_per_stock_per_day(conn, UPSERT_EIGHT_BANKS, rows, "(%s, %s, %s, %s)", label_prefix="eight_banks", failure_logger=flog)
                     n = sum(res.values())
                     total_rows += n
-                    _write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="success", rows_inserted=n, fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
+                    write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="success", rows_inserted=n, fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
                 else:
-                    _write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
+                    write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
             else:
-                _write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
+                write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             flog.record(date=d_str, error=str(e))
-            _write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="failed", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms, error_message=str(e))
+            write_fetch_log(conn, table_name="eight_banks_buy_sell", stock_id="ALL", fetch_mode=fetch_mode, status="failed", fetch_date_from=d_str, fetch_date_to=d_str, duration_ms=duration_ms, error_message=str(e))
         
         curr += timedelta(days=1)
 
@@ -283,13 +268,13 @@ def fetch_futures_oi(conn, start: str, end: str, delay: float, force: bool, fetc
             res = commit_per_stock_per_day(conn, UPSERT_FUTURES_LARGE_OI, rows, "(%s, %s, %s, %s, %s, %s, %s, %s, %s)", stock_index=1, label_prefix="futures", failure_logger=flog)
             n = sum(res.values())
             logger.info(f"  [futures_large_oi] 寫入 {n} 筆")
-            _write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="success", rows_inserted=n, fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
+            write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="success", rows_inserted=n, fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
         else:
-            _write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
+            write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="no_new_data", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms)
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
         flog.record(stock_id="futures", error=str(e), start_date=start, end_date=end)
-        _write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="failed", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e))
+        write_fetch_log(conn, table_name="futures_large_oi", stock_id="FUTURES", fetch_mode=fetch_mode, status="failed", fetch_date_from=start, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e))
         
     flog.summary()
 

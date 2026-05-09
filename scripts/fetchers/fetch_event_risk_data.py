@@ -62,6 +62,7 @@ from core.db_utils import (
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -97,35 +98,11 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
-
 DDL_EVENT = """
 CREATE TABLE IF NOT EXISTS delisting (date DATE, stock_id VARCHAR(50), stock_name VARCHAR(200), PRIMARY KEY (date, stock_id));
 CREATE TABLE IF NOT EXISTS suspended (stock_id VARCHAR(50), date DATE, suspension_time VARCHAR(50), resumption_date DATE, resumption_time VARCHAR(50), PRIMARY KEY (stock_id, date, suspension_time));
-CREATE TABLE IF NOT EXISTS capital_reduction (date DATE, stock_id VARCHAR(50), closing_last_trading NUMERIC(20,4), post_reduction_ref NUMERIC(20,4), limit_up NUMERIC(20,4), limit_down NUMERIC(20,4), opening_ref NUMERIC(20,4), exright_ref NUMERIC(20,4), reason VARCHAR(500), PRIMARY KEY (date, stock_id));
-CREATE TABLE IF NOT EXISTS split_price (date DATE, stock_id VARCHAR(50), type VARCHAR(20), before_price NUMERIC(20,4), after_price NUMERIC(20,4), max_price NUMERIC(20,4), min_price NUMERIC(20,4), open_price NUMERIC(20,4), PRIMARY KEY (date, stock_id, type));
+CREATE TABLE IF NOT EXISTS capital_reduction (date DATE, stock_id VARCHAR(50), closing_last_trading NUMERIC(20,6), post_reduction_ref NUMERIC(20,6), limit_up NUMERIC(20,6), limit_down NUMERIC(20,6), opening_ref NUMERIC(20,6), exright_ref NUMERIC(20,6), reason VARCHAR(500), PRIMARY KEY (date, stock_id));
+CREATE TABLE IF NOT EXISTS split_price (date DATE, stock_id VARCHAR(50), type VARCHAR(20), before_price NUMERIC(20,6), after_price NUMERIC(20,6), max_price NUMERIC(20,6), min_price NUMERIC(20,6), open_price NUMERIC(20,6), PRIMARY KEY (date, stock_id, type));
 CREATE TABLE IF NOT EXISTS trading_date (date DATE PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS market_value (date DATE, stock_id VARCHAR(50), market_value BIGINT, PRIMARY KEY (date, stock_id));
 CREATE TABLE IF NOT EXISTS disposition_securities (date DATE, stock_id VARCHAR(50), stock_name VARCHAR(200), disposition_cnt INTEGER, condition VARCHAR(500), measure VARCHAR(500), period_start DATE, period_end DATE, PRIMARY KEY (date, stock_id));
@@ -162,7 +139,7 @@ def fetch_per_stock(
     for sid in stock_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START[table], force)
         if not s:
-            _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -182,13 +159,13 @@ def fetch_per_stock(
                 res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
                     duration_ms=dur, status="success" if n > 0 else "partial"
                 )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                     duration_ms=dur, status="no_new_data"
@@ -196,7 +173,7 @@ def fetch_per_stock(
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                 duration_ms=dur, status="failed", error_message=str(e)

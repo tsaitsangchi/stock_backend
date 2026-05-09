@@ -56,6 +56,7 @@ from core.db_utils import (
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -88,32 +89,8 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
-
-DDL_FUT_INST = """CREATE TABLE IF NOT EXISTS futures_inst_investors (date DATE, futures_id VARCHAR(50), institutional_investors VARCHAR(100), long_deal_volume BIGINT, long_deal_amount NUMERIC(20,2), short_deal_volume BIGINT, short_deal_amount NUMERIC(20,2), long_open_interest_balance_volume BIGINT, long_open_interest_balance_amount NUMERIC(20,2), short_open_interest_balance_volume BIGINT, short_open_interest_balance_amount NUMERIC(20,2), PRIMARY KEY (date, futures_id, institutional_investors));"""
-DDL_OPT_INST = """CREATE TABLE IF NOT EXISTS options_inst_investors (date DATE, option_id VARCHAR(50), call_put VARCHAR(10), institutional_investors VARCHAR(100), long_deal_volume BIGINT, long_deal_amount NUMERIC(20,2), short_deal_volume BIGINT, short_deal_amount NUMERIC(20,2), long_open_interest_balance_volume BIGINT, long_open_interest_balance_amount NUMERIC(20,2), short_open_interest_balance_volume BIGINT, short_open_interest_balance_amount NUMERIC(20,2), PRIMARY KEY (date, option_id, call_put, institutional_investors));"""
+DDL_FUT_INST = """CREATE TABLE IF NOT EXISTS futures_inst_investors (date DATE, futures_id VARCHAR(50), institutional_investors VARCHAR(100), long_deal_volume BIGINT, long_deal_amount NUMERIC(20,6), short_deal_volume BIGINT, short_deal_amount NUMERIC(20,6), long_open_interest_balance_volume BIGINT, long_open_interest_balance_amount NUMERIC(20,6), short_open_interest_balance_volume BIGINT, short_open_interest_balance_amount NUMERIC(20,6), PRIMARY KEY (date, futures_id, institutional_investors));"""
+DDL_OPT_INST = """CREATE TABLE IF NOT EXISTS options_inst_investors (date DATE, option_id VARCHAR(50), call_put VARCHAR(10), institutional_investors VARCHAR(100), long_deal_volume BIGINT, long_deal_amount NUMERIC(20,6), short_deal_volume BIGINT, short_deal_amount NUMERIC(20,6), long_open_interest_balance_volume BIGINT, long_open_interest_balance_amount NUMERIC(20,6), short_open_interest_balance_volume BIGINT, short_open_interest_balance_amount NUMERIC(20,6), PRIMARY KEY (date, option_id, call_put, institutional_investors));"""
 
 UPSERT_FUT_INST = """INSERT INTO futures_inst_investors VALUES %s ON CONFLICT (date, futures_id, institutional_investors) DO UPDATE SET long_deal_volume = EXCLUDED.long_deal_volume;"""
 UPSERT_OPT_INST = """INSERT INTO options_inst_investors VALUES %s ON CONFLICT (date, option_id, call_put, institutional_investors) DO UPDATE SET long_deal_volume = EXCLUDED.long_deal_volume;"""
@@ -180,13 +157,13 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
                 res = commit_per_stock_per_day(conn, upsert_sql, rows, tmpl, label_prefix=table, failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id="ALL", fetch_mode=fetch_mode, 
                     fetch_date_from=d_str, fetch_date_to=d_str, 
                     rows_inserted=n, duration_ms=dur, status="success" if n > 0 else "partial"
                 )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id="ALL", fetch_mode=fetch_mode, 
                     fetch_date_from=d_str, fetch_date_to=d_str, 
                     rows_inserted=0, duration_ms=dur, status="no_new_data"
@@ -194,7 +171,7 @@ def fetch_inst(conn, dataset, table, ddl, upsert_sql, mapper, start, end, delay,
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(stock_id="market", error=str(e), date=d_str)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id="ALL", fetch_mode=fetch_mode, 
                 fetch_date_from=d_str, fetch_date_to=d_str, 
                 rows_inserted=0, duration_ms=dur, status="failed", error_message=str(e)

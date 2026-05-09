@@ -65,6 +65,7 @@ from core.db_utils import (
     get_all_safe_starts,
     get_market_safe_start,
     resolve_start_cached,
+    write_fetch_log,
     FailureLogger,
     commit_per_stock_per_day,
     commit_per_day,
@@ -108,38 +109,22 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.2 標準化日誌寫入，失敗不影響主流程"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 DDL_US_STOCK_PRICE = """
 CREATE TABLE IF NOT EXISTS us_stock_price (
-    date DATE, stock_id VARCHAR(50), adj_close NUMERIC(20,4), close NUMERIC(20,4),
-    high NUMERIC(20,4), low NUMERIC(20,4), open NUMERIC(20,4), volume BIGINT,
+    date DATE, stock_id VARCHAR(50), adj_close NUMERIC(20,6), close NUMERIC(20,6),
+    high NUMERIC(20,6), low NUMERIC(20,6), open NUMERIC(20,6), volume BIGINT,
     PRIMARY KEY (date, stock_id)
 );
 """
 DDL_CRUDE_OIL_PRICES = """
 CREATE TABLE IF NOT EXISTS crude_oil_prices (
-    date DATE, name VARCHAR(50), price NUMERIC(20,4),
+    date DATE, name VARCHAR(50), price NUMERIC(20,6),
     PRIMARY KEY (date, name)
 );
 """
 DDL_GOLD_PRICE = """
 CREATE TABLE IF NOT EXISTS gold_price (
-    date DATE, price NUMERIC(20,4),
+    date DATE, price NUMERIC(20,6),
     PRIMARY KEY (date)
 );
 """
@@ -188,7 +173,7 @@ def fetch_us_stock_price(conn, start, end, delay, force, target_ids, fetch_mode_
     for i, sid in enumerate(stock_ids, 1):
         s = resolve_start_cached(sid, latest, start, DATASET_START_DATES["us_stock_price"], force)
         if not s: 
-            _write_fetch_log(conn, "us_stock_price", sid, "skipped", fetch_mode=fetch_mode)
+            write_fetch_log(conn, "us_stock_price", sid, "skipped", fetch_mode=fetch_mode)
             continue
         
         start_ts = time.time()
@@ -208,13 +193,13 @@ def fetch_us_stock_price(conn, start, end, delay, force, target_ids, fetch_mode_
                 res = commit_per_stock_per_day(conn, UPSERT_US_STOCK_PRICE, rows, "(%s::date,%s,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s::numeric,%s)", label_prefix="us_stock", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, "us_stock_price", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "us_stock_price", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
             else:
-                _write_fetch_log(conn, "us_stock_price", sid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "us_stock_price", sid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
         except Exception as e: 
             duration = int((time.time() - start_ts) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, "us_stock_price", sid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
+            write_fetch_log(conn, "us_stock_price", sid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
             
         if i % 20 == 0: logger.info(f"  進度：{i}/{len(stock_ids)}")
 
@@ -234,7 +219,7 @@ def fetch_crude_oil_prices(conn, start, end, delay, force, target_ids=None, fetc
     for oid in ids_to_fetch:
         s = resolve_start_cached(oid, latest, start, DATASET_START_DATES["crude_oil_prices"], force)
         if not s:
-            _write_fetch_log(conn, "crude_oil_prices", oid, "skipped", fetch_mode=fetch_mode)
+            write_fetch_log(conn, "crude_oil_prices", oid, "skipped", fetch_mode=fetch_mode)
             continue
             
         start_ts = time.time()
@@ -254,13 +239,13 @@ def fetch_crude_oil_prices(conn, start, end, delay, force, target_ids=None, fetc
                 res = commit_per_stock_per_day(conn, UPSERT_CRUDE_OIL_PRICES, rows, "(%s::date,%s,%s::numeric)", label_prefix="crude_oil", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, "crude_oil_prices", oid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "crude_oil_prices", oid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
             else:
-                _write_fetch_log(conn, "crude_oil_prices", oid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "crude_oil_prices", oid, "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
         except Exception as e: 
             duration = int((time.time() - start_ts) * 1000)
             flog.record(stock_id=oid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, "crude_oil_prices", oid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
+            write_fetch_log(conn, "crude_oil_prices", oid, "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
 
     flog.summary()
     logger.info(f"=== [crude_oil_prices] 完成：{total_rows} 筆 ===\n")
@@ -276,7 +261,7 @@ def fetch_gold_price(conn, start, end, delay, force, fetch_mode_override=None):
     s = resolve_start_cached("GOLD", latest, start, DATASET_START_DATES["gold_price"], force)
     if not s: 
         logger.info("  [gold_price] 已是最新。")
-        _write_fetch_log(conn, "gold_price", "GOLD", "skipped", fetch_mode=fetch_mode)
+        write_fetch_log(conn, "gold_price", "GOLD", "skipped", fetch_mode=fetch_mode)
         return
 
     start_ts = time.time()
@@ -308,13 +293,13 @@ def fetch_gold_price(conn, start, end, delay, force, fetch_mode_override=None):
             )
             n = sum(res.values())
             logger.info(f"  [gold_price] 寫入 {n} 筆")
-            _write_fetch_log(conn, "gold_price", "GOLD", "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
+            write_fetch_log(conn, "gold_price", "GOLD", "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration, fetch_mode=fetch_mode)
         else:
-            _write_fetch_log(conn, "gold_price", "GOLD", "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
+            write_fetch_log(conn, "gold_price", "GOLD", "no_new_data", duration_ms=duration, fetch_mode=fetch_mode)
     except Exception as e:
         duration = int((time.time() - start_ts) * 1000)
         flog.record(stock_id="GOLD", error=str(e), start_date=s, end_date=end)
-        _write_fetch_log(conn, "gold_price", "GOLD", "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
+        write_fetch_log(conn, "gold_price", "GOLD", "failed", duration_ms=duration, error_message=str(e), fetch_mode=fetch_mode)
         
     flog.summary()
     logger.info("=== [gold_price] 完成 ===\n")

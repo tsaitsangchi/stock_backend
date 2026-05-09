@@ -59,6 +59,7 @@ from core.db_utils import (
     get_db_stock_ids,
     get_core_stocks_from_db,
     resolve_start_cached,
+    write_fetch_log,
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
@@ -95,34 +96,18 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.2 標準化日誌寫入"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 DDL_PRICE_ADJ = """
 CREATE TABLE IF NOT EXISTS price_adj (
     date             DATE,
     stock_id         VARCHAR(50),
     trading_volume   BIGINT,
     trading_money    BIGINT,
-    open             NUMERIC(20,4),
-    max              NUMERIC(20,4),
-    min              NUMERIC(20,4),
-    close            NUMERIC(20,4),
-    spread           NUMERIC(20,4),
-    trading_turnover NUMERIC(20,4),
+    open             NUMERIC(20,6),
+    max              NUMERIC(20,6),
+    min              NUMERIC(20,6),
+    close            NUMERIC(20,6),
+    spread           NUMERIC(20,6),
+    trading_turnover NUMERIC(20,6),
     PRIMARY KEY (date, stock_id)
 );
 CREATE INDEX IF NOT EXISTS idx_price_adj_stock ON price_adj (stock_id, date);
@@ -145,13 +130,32 @@ DDL_PRICE_LIMIT = """
 CREATE TABLE IF NOT EXISTS price_limit (
     date            DATE,
     stock_id        VARCHAR(50),
-    reference_price NUMERIC(20,4),
-    limit_up        NUMERIC(20,4),
-    limit_down      NUMERIC(20,4),
+    reference_price NUMERIC(20,6),
+    limit_up        NUMERIC(20,6),
+    limit_down      NUMERIC(20,6),
     PRIMARY KEY (date, stock_id)
 );
 CREATE INDEX IF NOT EXISTS idx_price_limit_stock ON price_limit (stock_id, date);
 """
+
+def _upgrade_schema(conn) -> None:
+    """自動升級 price_adj 與 price_limit 欄位精度。"""
+    try:
+        with conn.cursor() as cur:
+            # price_adj
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN open TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN max TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN min TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN close TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN spread TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_adj ALTER COLUMN trading_turnover TYPE NUMERIC(20,6);")
+            # price_limit
+            cur.execute("ALTER TABLE price_limit ALTER COLUMN reference_price TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_limit ALTER COLUMN limit_up TYPE NUMERIC(20,6);")
+            cur.execute("ALTER TABLE price_limit ALTER COLUMN limit_down TYPE NUMERIC(20,6);")
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Price adjusted tables schema 自動升級失敗 (可忽略): {e}")
 
 UPSERT_PRICE_ADJ = """
 INSERT INTO price_adj
@@ -211,7 +215,7 @@ def fetch_dataset_unified(
         if s: 
             groups[s].append(sid)
         else:
-            _write_fetch_log(conn, table, sid, "skipped", error_message="up_to_date", fetch_mode=fetch_mode)
+            write_fetch_log(conn, table, sid, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
 
     if not groups:
         logger.info(f"[{table}] 資料已是最新。")
@@ -267,11 +271,11 @@ def fetch_dataset_unified(
                         
                         # 批次成功，為參與標的記錄日誌
                         for sid in actual_sids_in_chunk:
-                            _write_fetch_log(conn, table, sid, "success", rows_inserted=0, fetch_date_from=seg_start, fetch_date_to=seg_end, duration_ms=duration_ms, fetch_mode=fetch_mode)
+                            write_fetch_log(conn, table, sid, status="success", rows_inserted=0, fetch_date_from=seg_start, fetch_date_to=seg_end, duration_ms=duration_ms, fetch_mode=fetch_mode)
                     else:
                         # 整批無資料
                         for sid in sids:
-                            _write_fetch_log(conn, table, sid, "no_new_data", fetch_date_from=seg_start, fetch_date_to=seg_end, duration_ms=duration_ms, fetch_mode=fetch_mode)
+                            write_fetch_log(conn, table, sid, status="no_new_data", fetch_date_from=seg_start, fetch_date_to=seg_end, duration_ms=duration_ms, fetch_mode=fetch_mode)
 
                     seg_start = (datetime.strptime(seg_end, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
             except BatchNotSupportedError:
@@ -280,7 +284,7 @@ def fetch_dataset_unified(
             except Exception as e:
                 logger.error(f"  [{table}] 批次抓取失敗：{e}")
                 for sid in sids:
-                    _write_fetch_log(conn, table, sid, "failed", fetch_date_from=seg_start, fetch_date_to=end, error_message=str(e), fetch_mode=fetch_mode)
+                    write_fetch_log(conn, table, sid, status="failed", fetch_date_from=seg_start, fetch_date_to=end, error_message=str(e), fetch_mode=fetch_mode)
 
         if (not use_batch) or len(sids) < batch_threshold or batch_disabled:
             # ── 逐支模式 ──
@@ -299,7 +303,7 @@ def fetch_dataset_unified(
                     total_api += 1
                     
                     if not data:
-                        _write_fetch_log(conn, table, sid, "no_new_data", fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode_single)
+                        write_fetch_log(conn, table, sid, status="no_new_data", fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode_single)
                         continue
                     
                     rows = [mapper(r) for r in data]
@@ -307,11 +311,11 @@ def fetch_dataset_unified(
                     res = commit_per_stock_per_day(conn, upsert_sql, rows, template, label_prefix=table, failure_logger=flog)
                     n = sum(res.values())
                     total_rows += n
-                    _write_fetch_log(conn, table, sid, "success", rows_inserted=n, fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode_single)
+                    write_fetch_log(conn, table, sid, status="success", rows_inserted=n, fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode_single)
                 except Exception as e:
                     duration_ms = int((time.time() - start_time) * 1000)
                     flog.record(stock_id=sid, error=str(e), start_date=group_start, end_date=end)
-                    _write_fetch_log(conn, table, sid, "failed", fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode_single)
+                    write_fetch_log(conn, table, sid, status="failed", fetch_date_from=group_start, fetch_date_to=end, duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode_single)
 
     flog.summary()
     logger.info(f"[{table}] 完成  API：{total_api}  寫入：{total_rows}  失敗：{len(flog)}")
@@ -404,6 +408,7 @@ def main():
     
     try:
         _ensure_fetch_log_table(conn)
+        _upgrade_schema(conn)
         
         # 決定要抓取的標的
         if args.stock_id:

@@ -5,7 +5,7 @@ v3.4 改進（配合 db_utils v3.0, finmind_client v3.1, path_setup v2.0）：
   ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
   ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。
   ★ 修正 `finmind_get` 參數傳遞方式為具名參數 (Keyword Arguments) 避免型別崩潰。
-  ★ 捨棄舊版逐日呼叫，導入「時間切塊 (Chunking)」機制：以 30 天為一塊批次請求，保護配額。
+  ★ 捨棄「時間切塊 (Chunking)」機制：由於 FinMind API 限制新聞只能單日抓取，恢復為逐日抓取邏輯。
   ★ 預設改為讀取 `stocks` 表中 `fetch_news=True` 的核心標的。
   ★ 程式結束時自動印出 `finmind_client` 的 `RequestStats` 統計報表。
 
@@ -56,9 +56,10 @@ from core.db_utils import (
     get_db_stock_ids,
     get_core_stocks_from_db,
     FailureLogger,
-    commit_per_stock_per_day,
+    write_fetch_log,
     resolve_start_cached,
     get_all_safe_starts,
+    commit_per_stock_per_day,
     dedup_rows,
     DDL_FETCH_LOG
 )
@@ -85,22 +86,6 @@ def _ensure_fetch_log_table(conn) -> None:
         try: conn.rollback()
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.4 標準化日誌寫入，失敗不影響主流程"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
 
 DDL_NEWS = """
 CREATE TABLE IF NOT EXISTS stock_news (
@@ -157,7 +142,7 @@ def fetch_stock_news(conn, stock_ids: list[str], start: str, end: str, delay: fl
     for i, sid in enumerate(stock_ids, 1):
         s = resolve_start_cached(sid, latest, start, "2000-01-01", force)
         if not s:
-            _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -167,16 +152,14 @@ def fetch_stock_news(conn, stock_ids: list[str], start: str, end: str, delay: fl
         curr_start = s_dt
         
         try:
-            # ⭐ 導入切塊抓取 (Chunking)：每 30 天為一個請求，保護配額同時加速
+            # ⭐ 逐日抓取：由於 FinMind API 限制新聞只能單日查詢，必須逐日呼叫
             while curr_start <= e_dt:
-                curr_end = min(curr_start + timedelta(days=29), e_dt)
                 s_str = curr_start.strftime("%Y-%m-%d")
-                e_str = curr_end.strftime("%Y-%m-%d")
-
-                # 修正：全面改為具名參數 (Keyword arguments)
+                
+                # 僅帶入 start_date，不帶 end_date 以符合「單日查詢」規則
                 data = finmind_get(
                     dataset="TaiwanStockNews", 
-                    params={"data_id": sid, "start_date": s_str, "end_date": e_str}, 
+                    params={"data_id": sid, "start_date": s_str}, 
                     delay=delay,
                     raise_on_error=True
                 )
@@ -188,13 +171,13 @@ def fetch_stock_news(conn, stock_ids: list[str], start: str, end: str, delay: fl
                     res = commit_per_stock_per_day(conn, UPSERT_NEWS, rows, tmpl, stock_index=1, date_index=0, label_prefix=f"news/{sid}", failure_logger=flog)
                     stock_total_rows += sum(res.values())
                 
-                curr_start = curr_end + timedelta(days=1)
+                curr_start += timedelta(days=1)
 
             duration_ms = int((time.time() - t0) * 1000)
             total_rows += stock_total_rows
             
             status = "success" if stock_total_rows > 0 else "no_new_data"
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
                 duration_ms=duration_ms, status=status
@@ -203,7 +186,7 @@ def fetch_stock_news(conn, stock_ids: list[str], start: str, end: str, delay: fl
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
                 duration_ms=duration_ms, status="failed", error_message=str(e)

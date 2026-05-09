@@ -60,6 +60,7 @@ from core.db_utils import (
     safe_float,
     get_all_safe_starts,
     resolve_start_cached,
+    write_fetch_log,
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
@@ -96,43 +97,27 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.2 標準化日誌寫入，失敗不影響主流程"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 DDL_MACRO = """
 CREATE TABLE IF NOT EXISTS interest_rate (
     date DATE, 
     country VARCHAR(50), 
     full_country_name VARCHAR(100), 
-    interest_rate NUMERIC(20,2), 
+    interest_rate NUMERIC(20,6), 
     PRIMARY KEY (date, country)
 );
 CREATE TABLE IF NOT EXISTS exchange_rate (
     date DATE, 
     currency VARCHAR(50), 
-    cash_buy NUMERIC(20,4), 
-    cash_sell NUMERIC(20,4), 
-    spot_buy NUMERIC(20,4), 
-    spot_sell NUMERIC(20,4), 
+    cash_buy NUMERIC(20,6), 
+    cash_sell NUMERIC(20,6), 
+    spot_buy NUMERIC(20,6), 
+    spot_sell NUMERIC(20,6), 
     PRIMARY KEY (date, currency)
 );
 CREATE TABLE IF NOT EXISTS bond_yield (
     date DATE, 
     bond_id VARCHAR(50), 
-    value NUMERIC(10,4), 
+    value NUMERIC(20,6), 
     PRIMARY KEY (date, bond_id)
 );
 """
@@ -175,7 +160,7 @@ def fetch_interest_rate(conn, start, end, delay, force, target_ids=None, fetch_m
         if country not in DEFAULT_INTEREST: continue
         s = resolve_start_cached(country, latest, start, "2000-01-01", force)
         if not s:
-            _write_fetch_log(conn, table_name="interest_rate", stock_id=country, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
+            write_fetch_log(conn, table_name="interest_rate", stock_id=country, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
             continue
             
         t0 = time.time()
@@ -195,13 +180,13 @@ def fetch_interest_rate(conn, start, end, delay, force, target_ids=None, fetch_m
                 res = commit_per_stock_per_day(conn, UPSERT_INTEREST, rows, "(%s, %s, %s, %s::numeric)", stock_index=1, date_index=0, label_prefix="interest", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, "interest_rate", country, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "interest_rate", country, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
             else:
-                _write_fetch_log(conn, "interest_rate", country, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "interest_rate", country, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             flog.record(stock_id=country, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, "interest_rate", country, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
+            write_fetch_log(conn, "interest_rate", country, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
 
     logger.info(f"  [interest_rate] 總共寫入 {total_rows} 筆")
     flog.summary()
@@ -219,7 +204,7 @@ def fetch_exchange_rate(conn, start, end, delay, force, target_ids=None, fetch_m
         if curr not in DEFAULT_EXCHANGE: continue
         s = resolve_start_cached(curr, latest, start, "2000-01-01", force)
         if not s:
-            _write_fetch_log(conn, table_name="exchange_rate", stock_id=curr, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
+            write_fetch_log(conn, table_name="exchange_rate", stock_id=curr, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
             continue
             
         t0 = time.time()
@@ -238,13 +223,13 @@ def fetch_exchange_rate(conn, start, end, delay, force, target_ids=None, fetch_m
                 res = commit_per_stock_per_day(conn, UPSERT_EXCHANGE, rows, "(%s, %s, %s::numeric, %s::numeric, %s::numeric, %s::numeric)", stock_index=1, date_index=0, label_prefix="exchange", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, "exchange_rate", curr, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "exchange_rate", curr, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
             else:
-                _write_fetch_log(conn, "exchange_rate", curr, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "exchange_rate", curr, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             flog.record(stock_id=curr, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, "exchange_rate", curr, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
+            write_fetch_log(conn, "exchange_rate", curr, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
 
     logger.info(f"  [exchange_rate] 總共寫入 {total_rows} 筆")
     flog.summary()
@@ -265,7 +250,7 @@ def fetch_bond_yield(conn, start, end, delay, force, target_ids=None, fetch_mode
         
         s = resolve_start_cached(sid, latest, start, "2000-01-01", force)
         if not s:
-            _write_fetch_log(conn, table_name="bond_yield", stock_id=sid, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
+            write_fetch_log(conn, table_name="bond_yield", stock_id=sid, status="skipped", error_message="up_to_date", fetch_mode=fetch_mode)
             continue
             
         t0 = time.time()
@@ -284,13 +269,13 @@ def fetch_bond_yield(conn, start, end, delay, force, target_ids=None, fetch_mode
                 res = commit_per_stock_per_day(conn, UPSERT_BOND, rows, "(%s, %s, %s::numeric)", stock_index=1, date_index=0, label_prefix="bond", failure_logger=flog)
                 n = sum(res.values())
                 total_rows += n
-                _write_fetch_log(conn, "bond_yield", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "bond_yield", sid, "success", rows_inserted=n, fetch_date_from=s, fetch_date_to=end, duration_ms=duration_ms, fetch_mode=fetch_mode)
             else:
-                _write_fetch_log(conn, "bond_yield", sid, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
+                write_fetch_log(conn, "bond_yield", sid, "no_new_data", duration_ms=duration_ms, fetch_mode=fetch_mode)
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(conn, "bond_yield", sid, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
+            write_fetch_log(conn, "bond_yield", sid, "failed", duration_ms=duration_ms, error_message=str(e), fetch_mode=fetch_mode)
 
     logger.info(f"  [bond_yield] 總共寫入 {total_rows} 筆")
     flog.summary()

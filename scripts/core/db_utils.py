@@ -100,6 +100,70 @@ def db_transaction() -> Generator[psycopg2.extensions.cursor, None, None]:
                 raise
 
 # =====================================================================
+# Compatibility Layer (Shims for old scripts)
+# =====================================================================
+
+def get_db_conn():
+    """Shim: Returns a connection from the pool. OLD scripts expect this."""
+    if _DB_POOL is None: return None
+    return _DB_POOL.getconn()
+
+def get_db_stock_ids(conn=None) -> List[str]:
+    """Shim: Get all stock IDs from 'stocks' table."""
+    sql = "SELECT stock_id FROM stocks ORDER BY stock_id"
+    with db_session() as c:
+        with c.cursor() as cur:
+            cur.execute(sql)
+            return [r[0] for r in cur.fetchall()]
+
+def get_core_stocks_from_db() -> List[str]:
+    """Shim: Get stocks where fetch_basic is true."""
+    sql = "SELECT stock_id FROM stocks WHERE fetch_basic = True ORDER BY stock_id"
+    with db_session() as c:
+        with c.cursor() as cur:
+            cur.execute(sql)
+            return [r[0] for r in cur.fetchall()]
+
+def get_market_safe_start(table_name: str, default_start: str = "2000-01-01") -> str:
+    """Shim: Get latest date for market-level tables."""
+    latest = get_latest_date(table_name)
+    return latest if latest else default_start
+
+def get_all_safe_starts(table_name: str, stock_ids: List[str], default_start: str) -> Dict[str, str]:
+    """Shim: Get latest date for multiple stocks (Gap Fill support)."""
+    sql = f"SELECT stock_id, MAX(date) FROM {table_name} GROUP BY stock_id"
+    res_dict = {sid: default_start for sid in stock_ids}
+    try:
+        with db_session() as c:
+            with c.cursor() as cur:
+                cur.execute(sql)
+                for sid, mdate in cur.fetchall():
+                    if sid in res_dict and mdate:
+                        res_dict[sid] = mdate.strftime("%Y-%m-%d")
+    except: pass
+    return res_dict
+
+def resolve_start_cached(table_name: str, stock_id: str, default_start: str) -> str:
+    """Shim: Resolve start date for a single stock."""
+    latest = get_latest_date(table_name, stock_id)
+    return latest if latest else default_start
+
+def safe_commit_rows(conn, table_name: str, records: List[Dict], upsert_sql: str, stock_id: str = "Market") -> tuple[int, int]:
+    """Shim: Map old safe_commit_rows to new commit_per_stock_per_day."""
+    return commit_per_stock_per_day(table_name, records, upsert_sql, stock_id)
+
+def dedup_rows(rows: List[Dict], key_fields: List[str]) -> List[Dict]:
+    """Shim: Deduplicate rows based on key fields."""
+    seen = set()
+    unique = []
+    for r in rows:
+        k = tuple(r.get(f) for f in key_fields)
+        if k not in seen:
+            seen.add(k)
+            unique.append(r)
+    return unique
+
+# =====================================================================
 # 基礎設施 DDL 與 Log
 # =====================================================================
 

@@ -64,6 +64,7 @@ from core.db_utils import (
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -97,30 +98,6 @@ def _ensure_fetch_log_table(conn) -> None:
         try: conn.rollback()
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
-
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
 
 def fred_get(series_id: str, api_key: str, start: str, end: str, max_retries: int = 3) -> list:
     """從 FRED API 獲取資料，包含指數退避重試機制。"""
@@ -174,7 +151,7 @@ def fetch_fred_series(
     for sid in series_ids:
         s = resolve_start_cached(sid, latest, start, "1990-01-01", force)
         if not s:
-            _write_fetch_log(conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -197,19 +174,19 @@ def fetch_fred_series(
                     )
                     n = sum(res.values())
                     total_rows += n
-                    _write_fetch_log(
+                    write_fetch_log(
                         conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
                         fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
                         duration_ms=dur, status="success" if n > 0 else "partial"
                     )
                 else:
-                    _write_fetch_log(
+                    write_fetch_log(
                         conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
                         fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                         duration_ms=dur, status="no_new_data"
                     )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                     duration_ms=dur, status="no_new_data"
@@ -219,7 +196,7 @@ def fetch_fred_series(
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                 duration_ms=dur, status="failed", error_message=str(e)

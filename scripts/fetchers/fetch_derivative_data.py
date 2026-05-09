@@ -51,6 +51,7 @@ from core.db_utils import (
     FailureLogger,
     commit_per_stock_per_day,
     dedup_rows,
+    write_fetch_log,
     DDL_FETCH_LOG
 )
 
@@ -84,36 +85,12 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, **kwargs):
-    """寫入 fetch_log，失敗不影響主流程。"""
-    try:
-        with conn.cursor() as cur:
-            sql = """
-            INSERT INTO fetch_log (
-                run_ts, table_name, stock_id, fetch_mode,
-                fetch_date_from, fetch_date_to,
-                rows_inserted, rows_updated, duration_ms,
-                status, error_message, cli_args
-            ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """
-            cur.execute(sql, (
-                kwargs.get("table_name"), kwargs.get("stock_id"), kwargs.get("fetch_mode", "per_stock"),
-                kwargs.get("fetch_date_from"), kwargs.get("fetch_date_to"),
-                kwargs.get("rows_inserted", 0), kwargs.get("duration_ms", 0),
-                kwargs.get("status"), kwargs.get("error_message"), _CLI_ARGS_STR
-            ))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.debug(f"fetch_log 寫入失敗：{e}")
-
 DDL_FUTURES = """
 CREATE TABLE IF NOT EXISTS futures_ohlcv (
     date DATE, futures_id VARCHAR(50), contract_date VARCHAR(6), 
-    open NUMERIC(10,4), max NUMERIC(10,4), min NUMERIC(10,4), 
-    close NUMERIC(10,4), spread NUMERIC(10,4), spread_per NUMERIC(5,2), 
-    volume BIGINT, settlement_price NUMERIC(10,4), open_interest BIGINT, 
+    open NUMERIC(20,6), max NUMERIC(20,6), min NUMERIC(20,6), 
+    close NUMERIC(20,6), spread NUMERIC(20,6), spread_per NUMERIC(20,6), 
+    volume BIGINT, settlement_price NUMERIC(20,6), open_interest BIGINT, 
     trading_session VARCHAR(20), 
     PRIMARY KEY (date, futures_id, contract_date, trading_session)
 );
@@ -121,9 +98,9 @@ CREATE TABLE IF NOT EXISTS futures_ohlcv (
 DDL_OPTIONS = """
 CREATE TABLE IF NOT EXISTS options_ohlcv (
     date DATE, option_id VARCHAR(50), contract_date VARCHAR(6), 
-    strike_price NUMERIC(10,4), call_put VARCHAR(4), 
-    open NUMERIC(10,4), max NUMERIC(10,4), min NUMERIC(10,4), 
-    close NUMERIC(10,4), volume BIGINT, settlement_price NUMERIC(10,4), 
+    strike_price NUMERIC(20,6), call_put VARCHAR(4), 
+    open NUMERIC(20,6), max NUMERIC(20,6), min NUMERIC(20,6), 
+    close NUMERIC(20,6), volume BIGINT, settlement_price NUMERIC(20,6), 
     open_interest BIGINT, trading_session VARCHAR(20), 
     PRIMARY KEY (date, option_id, contract_date, strike_price, call_put, trading_session)
 );
@@ -173,7 +150,7 @@ def fetch_derivative(
     for iid in ids:
         s = resolve_start_cached(iid, latest, start, DATASET_START.get(dataset, "2000-01-01"), force)
         if not s:
-            _write_fetch_log(conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -215,13 +192,13 @@ def fetch_derivative(
             total_rows += stock_total_rows
             
             if stock_total_rows > 0:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
                     duration_ms=dur, status="success"
                 )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                     duration_ms=dur, status="no_new_data"
@@ -231,7 +208,7 @@ def fetch_derivative(
             dur = int((time.time() - t0) * 1000)
             error_msg = str(e)
             flog.record(stock_id=iid, error=error_msg, start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id=iid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=stock_total_rows, 
                 duration_ms=dur, status="failed", error_message=error_msg

@@ -39,6 +39,7 @@ from core.finmind_client import finmind_get, get_request_stats
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
+    write_fetch_log,
     safe_float,
     get_all_safe_starts,
     resolve_start_cached,
@@ -76,27 +77,11 @@ def _ensure_fetch_log_table(conn) -> None:
         except: pass
         logger.warning(f"[fetch_log] ensure DDL 失敗：{e}")
 
-def _write_fetch_log(conn, table_name, stock_id, status, rows_inserted=0, fetch_date_from=None, fetch_date_to=None, duration_ms=0, error_message=None, fetch_mode="per_stock"):
-    """v3.2 標準化日誌寫入，失敗不影響主流程"""
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO fetch_log (
-                    run_ts, table_name, stock_id, fetch_mode, status, rows_inserted, 
-                    fetch_date_from, fetch_date_to, duration_ms, error_message, cli_args
-                ) VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (table_name, stock_id, fetch_mode, status, rows_inserted, fetch_date_from, fetch_date_to, duration_ms, error_message, _CLI_ARGS_STR))
-        conn.commit()
-    except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.warning(f"無法寫入 fetch_log: {e}")
-
 DDL_TOTAL_RETURN = """
 CREATE TABLE IF NOT EXISTS total_return_index (
     date DATE, 
     stock_id VARCHAR(50), 
-    total_return_index NUMERIC(20,4), 
+    total_return_index NUMERIC(20,6), 
     PRIMARY KEY (date, stock_id)
 );
 """
@@ -168,7 +153,7 @@ def fetch_total_return_index(
     for sid in target_ids:
         s = resolve_start_cached(sid, latest, start, DATASET_START[table], force)
         if not s:
-            _write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
+            write_fetch_log(conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
         
         t0 = time.time()
@@ -189,13 +174,13 @@ def fetch_total_return_index(
                 n = sum(res.values())
                 total_rows += n
                 
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
                     duration_ms=duration_ms, status="success" if n > 0 else "partial"
                 )
             else:
-                _write_fetch_log(
+                write_fetch_log(
                     conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                     fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                     duration_ms=duration_ms, status="no_new_data"
@@ -203,7 +188,7 @@ def fetch_total_return_index(
         except Exception as e:
             duration_ms = int((time.time() - t0) * 1000)
             flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
-            _write_fetch_log(
+            write_fetch_log(
                 conn, table_name=table, stock_id=sid, fetch_mode=fetch_mode, 
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
                 duration_ms=duration_ms, status="failed", error_message=str(e)
