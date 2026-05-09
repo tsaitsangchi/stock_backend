@@ -1,46 +1,50 @@
-import os
-import shutil
-import logging
-from pathlib import Path
-from datetime import datetime, timedelta
+"""
+log_manager.py v5.5.2 (Trinity Core Final)
+================================================================================
+日誌管理器 — 混合模式日誌實作版
+負責日誌輪替 (Rotation) 與 pipeline_execution_log 的清理維護。
+"""
 
-# 設定日誌
+import sys
+import logging
+import time
+from pathlib import Path
+
+# ── 系統路徑修復 (v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import db_transaction, write_pipeline_log
+except ImportError as e:
+    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
+    sys.exit(1)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-LOG_DIRS = [
-    BASE_DIR / "outputs",
-    BASE_DIR / "training" / "outputs",
-    BASE_DIR / "fetchers" / "logs",
-]
-
-def rotate_logs(keep_days=7):
-    """
-    清理舊日誌，將超過 keep_days 的 .log 檔案刪除或壓縮。
-    """
-    logger.info(f"=== 啟動日誌維護 (保留 {keep_days} 天) ===")
-    now = datetime.now()
-    cutoff = now - timedelta(days=keep_days)
-
-    count = 0
-    for log_dir in LOG_DIRS:
-        if not log_dir.exists():
-            continue
+def cleanup_logs(days: int = 30):
+    t0 = time.monotonic()
+    logger.info(f"🧹 正在清理 {days} 天前的舊日誌紀錄...")
+    
+    try:
+        with db_transaction() as cur:
+            cur.execute("DELETE FROM pipeline_execution_log WHERE created_at < NOW() - INTERVAL '%s days'", (days,))
+            deleted = cur.rowcount
             
-        logger.info(f"檢查目錄: {log_dir}")
-        for f in log_dir.glob("*.log*"):
-            # 取得檔案最後修改時間
-            mtime = datetime.fromtimestamp(f.stat().st_mtime)
-            if mtime < cutoff:
-                try:
-                    logger.info(f"  正在清理陳舊日誌: {f.name} (日期: {mtime.date()})")
-                    f.unlink()
-                    count += 1
-                except Exception as e:
-                    logger.error(f"  清理 {f.name} 失敗: {e}")
-                    
-    logger.info(f"=== 日誌維護完成，共清理 {count} 個檔案 ===")
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        write_pipeline_log("log_cleanup", "SYSTEM", "success", "sys", elapsed_ms, deleted)
+        logger.info(f"✅ 日誌清理完成，共移除 {deleted} 筆紀錄。")
+        
+    except Exception as e:
+        logger.error(f"❌ 清理失敗: {e}")
+        write_pipeline_log("log_cleanup", "SYSTEM", "failed", "sys", 0, 0, str(e))
 
 if __name__ == "__main__":
-    rotate_logs(keep_days=7)
+    cleanup_logs()
