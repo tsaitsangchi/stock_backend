@@ -22,10 +22,10 @@ parallel_fetch.py v5.1 (Trinity Core Edition)
 
 執行範例：
     # 並發執行 Phase 1 (核心數據) 抓取，使用 8 個執行緒
-    python scripts/fetchers/parallel_fetch.py --phase 1 --workers 8
+    python scripts/ingestion/parallel_fetch.py --phase 1 --workers 8
     
     # 全量管線執行 (Phase 0 -> 1 -> 2)
-    python scripts/fetchers/parallel_fetch.py --phase all
+    python scripts/ingestion/parallel_fetch.py --phase all
 """
 
 import sys

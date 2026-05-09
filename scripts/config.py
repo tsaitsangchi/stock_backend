@@ -30,9 +30,9 @@ for _d in [OUTPUT_DIR, MODEL_DIR, LOG_DIR]:
 
 # ─────────────────────────────────────────────
 # [P0-SECURITY] FinMind API Token
-# 若 .env 中沒有設定，直接拋出 KeyError，防止靜默失敗
+# 安全讀取模式：若無 Token 則設為空字串，由 FinMindClient 統一處理後續邏輯
 # ─────────────────────────────────────────────
-FINMIND_TOKEN: str = os.environ["FINMIND_TOKEN"]
+FINMIND_TOKEN: str = os.environ.get("FINMIND_TOKEN", "")
 
 # ─────────────────────────────────────────────
 # [P0] 統一的 PostgreSQL 連線設定（全系統唯一定義處）

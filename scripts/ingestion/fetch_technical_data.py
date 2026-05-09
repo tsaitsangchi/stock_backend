@@ -27,10 +27,10 @@ fetch_technical_data.py v5.1 (Trinity Core Edition)
 
 執行範例：
     # 範例 1：抓取核心標的最近 30 天技術面資料 (增量更新)
-    python scripts/fetchers/fetch_technical_data.py --all --days 30
+    python scripts/ingestion/fetch_technical_data.py --all --days 30
     
     # 範例 2：並發抓取全市場最近 7 天資料
-    python scripts/fetchers/fetch_technical_data.py --all --days 7 --workers 5
+    python scripts/ingestion/fetch_technical_data.py --all --days 7 --workers 5
 """
 
 import sys
