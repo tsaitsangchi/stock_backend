@@ -1,13 +1,21 @@
 """
-db_utils.py v4.0
-量化系統核心：資料庫連線池與自動事務管理模組
+db_utils.py v4.2 (Secure Env Edition)
+量化系統核心：資料庫連線池與自動事務管理模組 (支援 .env 架構)
 ================================================================================
-v4.0 重大升級：
-  · 實作 ThreadedConnectionPool：解決並行任務（如 parallel > 1）頻繁建立連線的效能瓶頸。
-  · 引入 @contextmanager db_transaction：自動處理 commit 與 rollback，杜絕髒連線。
-  · 增強可靠性：所有 SQL 操作均受 Context Manager 保護，異常時自動回滾並釋放連線。
+v4.2 重大升級：
+  · 整合 dotenv：啟動時自動尋找專案根目錄的 .env 檔案，徹底將機密配置與程式碼脫鉤。
+  · 安全預設值：若偵測不到密碼會發出明確的警告，並攔截錯誤，防止系統崩潰。
+  · 繼承 v4.0 優勢：保留 ThreadedConnectionPool 與 db_transaction 上下文管理器。
 
-執行範例（開發建議）：
+【環境變數配置規範】
+請在專案根目錄 (stock_backend/) 建立 .env 檔案，內容範例：
+    DB_HOST=localhost
+    DB_NAME=trinity
+    DB_USER=stock
+    DB_PASSWORD=your_secure_password
+    DB_PORT=5432
+
+【執行範例（開發建議）】：
     from core.db_utils import db_session, db_transaction
     
     # 方式 A：單純查詢 (自動歸還連線)
@@ -25,7 +33,6 @@ v4.0 重大升級：
 import os
 import json
 import logging
-import time
 from datetime import datetime
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,31 +41,46 @@ from typing import Optional, List, Dict, Any, Generator
 import psycopg2
 from psycopg2 import pool, extras
 
+# ── 安全環境變數載入 (dotenv) ──
+try:
+    from dotenv import load_dotenv, find_dotenv
+    # 自動往上層目錄尋找 .env 檔案並載入系統環境變數中
+    # 這樣即使腳本在不同的子目錄執行，也能正確讀取到專案根目錄的 .env
+    env_path = find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(dotenv_path=env_path)
+    else:
+        logging.getLogger(__name__).warning("⚠️ 未偵測到 .env 檔案，將使用系統預設環境變數。")
+except ImportError:
+    logging.getLogger(__name__).warning("⚠️ 未安裝 python-dotenv，請執行 `pip install python-dotenv` 以啟用安全的配置管理。")
+
 # ── 系統設定 ──
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── 資料庫連線池設定 ──
-# 使用環境變數或預設值
+# ── 資料庫連線池設定 (以環境變數為主) ──
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "localhost"),
-    "database": os.environ.get("DB_NAME", "trinity"),
-    "user": os.environ.get("DB_USER", "hugo"),
-    "password": os.environ.get("DB_PASS", ""),
+    "database": os.environ.get("DB_NAME", "stock"),
+    "user": os.environ.get("DB_USER", "stock"),
+    "password": os.environ.get("DB_PASSWORD", ""),  # 嚴格依賴環境變數
     "port": os.environ.get("DB_PORT", "5432"),
 }
 
 # 初始化執行緒安全的連線池 (最小 2 條, 最大 10 條，視並行數調整)
+_DB_POOL = None
 try:
+    if not DB_CONFIG["password"]:
+        logger.warning("⚠️ 注意：DB_PASSWORD 環境變數為空，若 PostgreSQL 需要密碼驗證將會導致連線失敗。")
+        
     _DB_POOL = psycopg2.pool.ThreadedConnectionPool(
         minconn=2,
         maxconn=10,
         **DB_CONFIG
     )
-    logger.info("✅ 成功初始化 ThreadedConnectionPool (maxconn=10)")
+    logger.info("✅ 成功初始化 ThreadedConnectionPool (Secure Env Mode)")
 except Exception as e:
     logger.error(f"❌ 無法建立連線池: {e}")
-    _DB_POOL = None
 
 # =====================================================================
 # 核心：上下文管理器 (Context Managers)
@@ -71,7 +93,7 @@ def db_session() -> Generator[psycopg2.extensions.connection, None, None]:
     退出時自動將連線歸還給連線池，不關閉實體連線。
     """
     if _DB_POOL is None:
-        raise ConnectionError("資料庫連線池未正確初始化")
+        raise ConnectionError("資料庫連線池未正確初始化。請檢查專案根目錄的 .env 檔案與 DB_PASSWORD。")
     
     conn = _DB_POOL.getconn()
     try:
@@ -269,7 +291,7 @@ def safe_date(val: Any) -> Optional[str]:
     except: return None
 
 # =====================================================================
-# Error Tracking and Protection
+# 錯誤追蹤與防護
 # =====================================================================
 
 class FailureLogger:

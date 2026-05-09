@@ -50,7 +50,7 @@ class IntegrityAuditor:
         else:
             try:
                 # 優先從資料庫讀取活耀標的
-                db_stocks = _query("SELECT stock_id FROM system_assets WHERE is_active = TRUE")
+                db_stocks = _query("SELECT stock_id FROM stocks WHERE is_active = TRUE")
                 if not db_stocks.empty:
                     self.stock_ids = db_stocks["stock_id"].astype(str).tolist()
                 else:
