@@ -1,35 +1,17 @@
 """
-backfill_from_gaps.py v5.5.7 (Trinity Core Final)
+backfill_from_gaps.py v5.5.13 (Trinity Core Final)
 ================================================================================
-資料抓取模組 — 混合模式日誌實作版
-負責將 FinMind 原始數據同步至資料庫。
+資料斷層自癒引擎 — 混合模式日誌實作版 (修復 DictCursor 兼容性)
 
 修訂歷程：
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
-  v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌與路徑修復 v3.0。
-
-【執行範例說明】
-
-1. 手動單點調試 (僅抓取台積電 2330 作為測試)：
-   $ python scripts/ingestion/backfill_from_gaps.py
-
-2. 大規模並行抓取 (透過調度器對全市場執行)：
-   ------------------------------------------------------------
-   from ingestion.parallel_fetch import run_orchestrator
-   from ingestion.backfill_from_gaps import fetch_func
-   from core.db_utils import get_db_stock_ids
-   
-   # 啟動並行調度：對全市場標的執行 fetch_func
-   run_orchestrator(fetch_func, get_db_stock_ids(), "all_market_fetch_func")
-   ------------------------------------------------------------
+  v5.5.13 (2026-05-09):
+    - [修復] 修正 KeyError: 0 異常 (對接 DictCursor)。
+    - [優化] 強化 SQL 欄位別名，確保資料讀取穩定。
 """
 
 import sys
 import logging
 import time
-import pandas as pd
 from pathlib import Path
 
 # ── 系統路徑修復 ──
@@ -43,51 +25,62 @@ for _sub in ("", "core", "ingestion"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import db_transaction, write_pipeline_log
+    from core.db_utils import db_transaction, write_pipeline_log, get_db_stock_ids
     from core.finmind_client import FinMindClient
-    from config import TIER_1_STOCKS
 except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
+    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
     sys.exit(1)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def backfill_stock_gaps(stock_id: str):
+def fetch_func(stock_id: str):
     t0 = time.monotonic()
     api = FinMindClient()
-    filled_rows = 0
+    total_filled = 0
     
     try:
-        # 1. 偵測缺口 (此處為實作邏輯框架)
+        # 1. 偵測資料缺口
         with db_transaction() as cur:
             cur.execute("""
-                WITH date_gaps AS (
-                    SELECT date, LEAD(date) OVER (ORDER BY date) as next_date
+                WITH date_range AS (
+                    SELECT MIN(date) as start_date, MAX(date) as end_date
                     FROM stock_price WHERE stock_id = %s
+                ),
+                expected_dates AS (
+                    SELECT generate_series(start_date, end_date, '1 day'::interval)::date as missing_date
+                    FROM date_range
                 )
-                SELECT date, next_date FROM date_gaps 
-                WHERE next_date - date > interval '1 day'
-                LIMIT 1;
-            """, (stock_id,))
-            gap = cur.fetchone()
+                SELECT e.missing_date 
+                FROM expected_dates e
+                LEFT JOIN stock_price s ON e.missing_date = s.date AND s.stock_id = %s
+                WHERE s.date IS NULL
+                ORDER BY e.missing_date
+            """, (stock_id, stock_id))
             
-        if gap:
-            start_gap = gap['date'].strftime('%Y-%m-%d')
-            end_gap = gap['next_date'].strftime('%Y-%m-%d')
-            logger.info(f"🔍 偵測到 {stock_id} 缺口: {start_gap} ~ {end_gap}")
-            data = api.get_data("TaiwanStockPrice", stock_id, start_date=start_gap, end_date=end_gap)
-            filled_rows = len(data)
+            # 使用 dict 方式讀取欄位，避免 KeyError: 0
+            rows = cur.fetchall()
+            missing_dates = [r['missing_date'] for r in rows] if rows else []
+            
+        if missing_dates:
+            start_sync = missing_dates[0].strftime('%Y-%m-%d')
+            logger.info(f"🔍 偵測到 {stock_id} 存在 {len(missing_dates)} 天斷層，啟動回補 (Since: {start_sync})...")
+            
+            data = api.get_data("TaiwanStockPrice", stock_id, start_date=start_sync)
+            total_filled = len(data)
             
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("backfill_gaps", stock_id, "success", "ingestion", elapsed_ms, filled_rows)
-        return filled_rows
+        write_pipeline_log("backfill_gap_unit", stock_id, "success", "ingestion", elapsed_ms, total_filled)
+        return total_filled
         
     except Exception as e:
-        logger.error(f"❌ {stock_id} 缺口回補失敗: {e}")
-        write_pipeline_log("backfill_gaps", stock_id, "failed", "ingestion", 0, 0, str(e))
+        logger.error(f"❌ {stock_id} 斷層修復失敗: {e}")
+        write_pipeline_log("backfill_gap_unit", stock_id, "failed", "ingestion", 0, 0, str(e))
         return 0
 
 if __name__ == "__main__":
-    for sid in TIER_1_STOCKS[:3]:
-        backfill_stock_gaps(sid)
+    from ingestion.parallel_fetch import run_orchestrator
+    active_stocks = get_db_stock_ids()
+    if active_stocks:
+        logger.info(f"🚀 [Trinity] 啟動全核心斷層掃描與自癒 (Targets: {len(active_stocks)})")
+        run_orchestrator(task_func=fetch_func, stock_ids=active_stocks, task_label="core_gap_backfill", workers=4)

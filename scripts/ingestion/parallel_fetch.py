@@ -117,6 +117,22 @@ def run_orchestrator(task_func, stock_ids: list, task_label: str = "batch_fetch"
         write_pipeline_log(f"parallel_{task_label}", "SYSTEM", "failed", "ingestion", 0, 0, str(e))
 
 if __name__ == "__main__":
-    # 範例：並行執行全市場基本資訊抓取 (測試用)
+    from core.db_utils import get_db_stock_ids
     from ingestion.fetch_technical_data import fetch_tech
-    run_orchestrator(fetch_tech, TIER_1_STOCKS[:5], "tech_sync_v5.5")
+    
+    # 🎯 模式 A：屬性驅動同步 (僅抓取 fetch_basic=True 的標的)
+    basic_stocks = get_db_stock_ids(fetch_type='basic')
+    
+    # 🎯 模式 B：產業精準同步 (範例：僅抓取半導體產業)
+    # semi_stocks = get_db_stock_ids(industry='Semiconductor')
+    
+    if basic_stocks:
+        run_orchestrator(
+            task_func=fetch_tech, 
+            stock_ids=basic_stocks, 
+            task_label="attribute_driven_basic_sync", 
+            workers=4
+        )
+    else:
+        from config import TIER_1_STOCKS
+        run_orchestrator(fetch_tech, TIER_1_STOCKS[:5], "fallback_sync")

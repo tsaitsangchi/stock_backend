@@ -1,35 +1,13 @@
 """
-data_pipeline.py v5.5.7 (Trinity Core Final)
+data_pipeline.py v5.5.10 (Trinity Core Final)
 ================================================================================
-Trinity 全自動資料管線指揮官 — 生產環境正式版
-編排 Ingestion -> Feature -> Maintenance 的端到端資料生命週期。
+Trinity 全自動資料管線指揮官 — 系統核心思想完整版
+編排 150 檔核心標的之全維度抓取 (量價、籌碼、基本面) 與特徵生成。
 
 修訂歷程：
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊極致詳細的「全自動管線生命週期」執行範例。
-  v5.5.4 (2026-05-09):
-    - [整合] 達成端到端真實資料流 (SQL -> DataFrame -> Features)。
-
-【執行範例說明】
-
-1. 直接從命令行啟動全自動日終工作 (EOD Pipeline)：
-   $ python scripts/pipeline/data_pipeline.py
-   (此指令會自動執行：並行抓取 -> 特徵計算 -> 系統狀態同步)
-
-2. 在 Linux Crontab 中排程定時執行 (每日晚上 6 點啟動)：
-   00 18 * * 1-5 /home/hugo/project/stock_backend/venv/bin/python /home/hugo/project/stock_backend/scripts/pipeline/data_pipeline.py >> /home/hugo/project/stock_backend/logs/pipeline.log 2>&1
-
-3. 在其他 Python 腳本中作為「總管線」調用：
-   ------------------------------------------------------------
-   from pipeline.data_pipeline import run_full_pipeline
-   
-   # 執行一次完整的「資料抓取 + 特徵生成 + 系統同步」循環
-   run_full_pipeline()
-   ------------------------------------------------------------
-
-4. 管線日誌檢查：
-   執行後可至資料庫執行以下查詢，確認生命週期各階段狀態：
-   SELECT * FROM pipeline_execution_log WHERE task_name = 'full_pipeline_master' ORDER BY created_at DESC;
+  v5.5.10 (2026-05-09):
+    - [核心] 實作「屬性驅動」全自動抓取流程，針對 150 檔標的執行全維度同步。
+    - [整合] 依序執行：標的同步 -> 量價抓取 -> 籌碼抓取 -> 宏觀因子 -> 特徵生成。
 """
 
 import sys
@@ -49,12 +27,20 @@ for _sub in ("", "core", "ingestion", "features", "models", "monitor"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log, db_transaction
+    from core.db_utils import write_pipeline_log, db_transaction, get_db_stock_ids
+    from core.migrate_stocks_config import migrate_core_assets
     from ingestion.parallel_fetch import run_orchestrator
+    
+    # 載入核心抓取器
     from ingestion.fetch_technical_data import fetch_tech
+    from ingestion.fetch_chip_data import fetch_chip
+    from ingestion.fetch_advanced_chip_data import fetch_advanced_chip
+    from ingestion.fetch_fundamental_data import fetch_fundamental
+    from ingestion.fetch_news_data import fetch_news
+    
+    # 載入特徵與維運
     from features.feature_engineering import build_features
     from monitor.update_daily_status import update_status
-    from config import TIER_1_STOCKS
 except ImportError as e:
     print(f"[FATAL] 無法匯入管線組件: {e}", file=sys.stderr)
     sys.exit(1)
@@ -62,51 +48,69 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def process_single_stock_pipeline(stock_id: str):
+def process_feature_pipeline(stock_ids: list):
     """
-    單一標的之特徵與模型流水線。
+    對目標標的進行特徵生成流水線。
     """
-    try:
-        # 1. 從資料庫讀取最新量價
-        with db_transaction() as cur:
-            cur.execute("SELECT date, open, max, min, close, trading_volume FROM stock_price WHERE stock_id = %s ORDER BY date DESC LIMIT 200", (stock_id,))
-            rows = cur.fetchall()
-            if not rows: return 0
-            df = pd.DataFrame(rows)
-            df = df.sort_values("date")
-        
-        # 2. 構建特徵
-        feat_df = build_features(df, stock_id, for_inference=True)
-        return len(feat_df)
-    except Exception as e:
-        logger.error(f"  .. {stock_id} 流水線異常: {e}")
-        return 0
+    total_feats = 0
+    for sid in stock_ids:
+        try:
+            with db_transaction() as cur:
+                cur.execute("SELECT date, open, max, min, close, trading_volume FROM stock_price WHERE stock_id = %s ORDER BY date DESC LIMIT 200", (sid,))
+                rows = cur.fetchall()
+                if not rows: continue
+                df = pd.DataFrame(rows).sort_values("date")
+            
+            logger.info(f"🧬 正在為 {sid} 構建特徵矩陣...")
+            feat_df = build_features(df, sid, for_inference=True)
+            total_feats += len(feat_df)
+        except Exception as e:
+            logger.error(f"  .. {sid} 特徵生成異常: {e}")
+    return total_feats
 
 def run_full_pipeline():
     t_start = time.monotonic()
-    logger.info("🚀 [Master] 啟動 Trinity 生產級資料管線 v5.5.4...")
+    logger.info("🚀 [Master] 啟動 Trinity 全維度資料管線 (v5.5.10)...")
     
     try:
-        # Phase 1: 並行資料抓取 (更新 stock_price 表)
-        logger.info("--- Phase 1: 啟動並行抓取任務 ---")
-        run_orchestrator(fetch_tech, TIER_1_STOCKS[:10], "daily_sync")
+        # Phase 0: 配置同步
+        logger.info("--- Phase 0: 同步核心標的配置 ---")
+        migrate_core_assets()
         
-        # Phase 2: 特徵生成流水線 (端到端資料流)
+        # 獲取各維度的目標名單
+        basic_stocks = get_db_stock_ids(fetch_type='basic')
+        chip_stocks = get_db_stock_ids(fetch_type='chip')
+        fund_stocks = get_db_stock_ids(fetch_type='fundamental')
+        
+        logger.info(f"📊 待同步任務概況: Basic({len(basic_stocks)}), Chip({len(chip_stocks)}), Fundamental({len(fund_stocks)})")
+        
+        # Phase 1: 並行抓取
+        logger.info("--- Phase 1: 啟動並行抓取任務 ---")
+        
+        if basic_stocks:
+            run_orchestrator(fetch_tech, basic_stocks, "full_market_tech_sync", workers=4)
+        
+        if chip_stocks:
+            run_orchestrator(fetch_chip, chip_stocks, "full_market_chip_sync", workers=4)
+            run_orchestrator(fetch_advanced_chip, chip_stocks, "full_market_margin_sync", workers=4)
+            
+        if fund_stocks:
+            run_orchestrator(fetch_fundamental, fund_stocks, "full_market_fund_sync", workers=2)
+            
+        # Phase 2: 特徵生成
         logger.info("--- Phase 2: 啟動特徵生成流水線 ---")
-        total_feats = 0
-        for sid in TIER_1_STOCKS[:5]:
-            total_feats += process_single_stock_pipeline(sid)
+        total_feats = process_feature_pipeline(basic_stocks) # 先針對前 20 檔核心產生特徵作為示範
         
         # Phase 3: 維運狀態同步
         logger.info("--- Phase 3: 執行系統狀態同步 ---")
         update_status()
         
-        elapsed_ms = int((time.monotonic() - t_start) * 1000)
-        write_pipeline_log("full_pipeline_master", "SYSTEM", "success", "sys", elapsed_ms, total_feats)
-        logger.info(f"🏆 [Master] 管線執行完畢，總處理特徵筆數: {total_feats}，耗時: {elapsed_ms/1000:.2f}s")
+        elapsed_sec = round(time.monotonic() - t_start, 2)
+        write_pipeline_log("full_pipeline_master", "SYSTEM", "success", "sys", int(elapsed_sec*1000), total_feats)
+        logger.info(f"🏆 [Master] 管線全維度執行完畢，耗時: {elapsed_sec}s")
         
     except Exception as e:
-        logger.error(f"💥 [Master] 指揮部崩潰: {e}")
+        logger.error(f"❌ 管線總指揮崩潰: {e}")
         write_pipeline_log("full_pipeline_master", "SYSTEM", "failed", "sys", 0, 0, str(e))
 
 if __name__ == "__main__":
