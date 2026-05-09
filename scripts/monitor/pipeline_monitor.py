@@ -1,8 +1,8 @@
 """
-pipeline_monitor.py v5.5.2 (Trinity Core Final)
+pipeline_monitor.py v5.5.3 (Trinity Core Final)
 ================================================================================
 管線生命週期監測器 — 混合模式日誌實作版
-即時偵測 pipeline_execution_log 中的 failed 狀態並發出告警。
+偵測失敗任務並具備警報擴展介面。
 """
 
 import sys
@@ -29,27 +29,31 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+def send_alert(task_name: str, err: str):
+    """
+    發送警報介面 (可擴展至 LINE/Telegram/Email)。
+    """
+    logger.critical(f"🚨 [ALERT] Task '{task_name}' failed: {err}")
+
 def monitor_pipeline():
     t0 = time.monotonic()
-    logger.info("📡 正在掃描近一小時內的異常任務...")
+    logger.info("📡 正在掃描全系統任務狀態...")
     
     try:
         with db_transaction() as cur:
             cur.execute("""
-                SELECT count(*) as cnt 
+                SELECT task_name, error_msg 
                 FROM pipeline_execution_log 
-                WHERE status = 'failed' AND created_at > NOW() - INTERVAL '1 hour';
+                WHERE status = 'failed' AND created_at > NOW() - INTERVAL '10 minutes';
             """)
-            fail_count = cur.fetchone()['cnt']
+            failures = cur.fetchall()
+            
+        for f in failures:
+            send_alert(f['task_name'], f['error_msg'])
             
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("pipeline_failure_scan", "SYSTEM", "success", "sys", elapsed_ms, fail_count)
+        write_pipeline_log("pipeline_failure_scan", "SYSTEM", "success", "sys", elapsed_ms, len(failures))
         
-        if fail_count > 0:
-            logger.warning(f"⚠️ 偵測到 {fail_count} 筆失敗任務，請檢查日誌！")
-        else:
-            logger.info("✅ 管線運作完美，無失敗紀錄。")
-            
     except Exception as e:
         logger.error(f"❌ 監測失敗: {e}")
         write_pipeline_log("pipeline_failure_scan", "SYSTEM", "failed", "sys", 0, 0, str(e))

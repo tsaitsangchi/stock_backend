@@ -1,13 +1,14 @@
 """
-action_runner.py v5.5.2 (Trinity Core Final)
+action_runner.py v5.5.3 (Trinity Core Final)
 ================================================================================
 自動化任務執行器 — 混合模式日誌實作版
-負責調用各種維護任務並確保它們按順序執行。
+負責循環調用全系統的維護、監控與優化任務。
 """
 
 import sys
 import logging
 import time
+import subprocess
 from pathlib import Path
 
 # ── 系統路徑修復 (v3.0) ──
@@ -29,22 +30,39 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def run_actions():
-    t0 = time.monotonic()
-    logger.info("⚙️ 啟動自動化任務隊列執行器...")
-    
+def run_script(script_path: str):
+    """
+    執行子腳本並獲取返回碼。
+    """
+    logger.info(f"  .. 正在執行: {script_path}")
     try:
-        # 模擬執行多個維護任務
-        time.sleep(0.4)
-        actions_count = 3
-        
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("action_runner", "SYSTEM", "success", "sys", elapsed_ms, actions_count)
-        logger.info(f"✅ 所有任務執行成功，共處理 {actions_count} 個項目。")
-        
+        # 使用目前的 python 解譯器執行
+        res = subprocess.run([sys.executable, script_path], capture_output=True, text=True, timeout=300)
+        return res.returncode == 0
     except Exception as e:
-        logger.error(f"❌ 執行器失敗: {e}")
-        write_pipeline_log("action_runner", "SYSTEM", "failed", "sys", 0, 0, str(e))
+        logger.error(f"  .. 執行出錯: {e}")
+        return False
+
+def run_daily_maintenance_suite():
+    t0 = time.monotonic()
+    logger.info("⚙️ 啟動 Trinity 每日自動化維運套裝任務...")
+    
+    tasks = [
+        "scripts/monitor/db_health_check.py",
+        "scripts/monitor/update_daily_status.py",
+        "scripts/maintenance/data_integrity_audit.py",
+        "scripts/monitor/dashboard.py"
+    ]
+    
+    success_count = 0
+    for task in tasks:
+        full_path = str(_SCRIPTS_DIR.parent / task)
+        if run_script(full_path):
+            success_count += 1
+            
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    write_pipeline_log("daily_maintenance_runner", "SYSTEM", "success", "sys", elapsed_ms, success_count)
+    logger.info(f"✅ 維運套裝執行完畢，成功率: {success_count}/{len(tasks)}")
 
 if __name__ == "__main__":
-    run_actions()
+    run_daily_maintenance_suite()
