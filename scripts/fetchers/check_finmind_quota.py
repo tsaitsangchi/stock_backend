@@ -35,32 +35,35 @@ except ImportError as e:
 # 端點清單 (優先權排序)
 ENDPOINTS = [
     "https://api.finmindtrade.com/api/v4/user_info",
+    "https://api.finmindtrade.com/api/v4/login",
     "https://api.web.finmindtrade.com/v2/user_info"
 ]
 
 def identify_tier(limit: int) -> str:
     if limit <= 300: return "免費版 (Free)"
     elif limit <= 600: return "個人版 (Personal)"
-    elif limit <= 3000: return "專業版 (Professional)"
-    return "企業版 / 高階贊助 (Enterprise/VIP)"
+    elif limit <= 6000: return "專業版 / 高級贊助 (Premium / Institutional)"
+    return "企業版 / 機構版 (Enterprise/VIP)"
 
 def try_fetch_user_info(url: str, token: str) -> dict:
-    """嘗試以不同方法從指定 URL 獲取資訊"""
-    # 方法 1: GET with params
-    try:
-        res = requests.get(url, params={"token": token}, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("msg") == "success": return data
-    except: pass
-
-    # 方法 2: POST with data
-    try:
-        res = requests.post(url, data={"token": token}, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("msg") == "success": return data
-    except: pass
+    """嘗試多種驗證模式 (Params vs Headers)"""
+    token = token.strip()
+    
+    for method in ["GET", "POST"]:
+        try:
+            if method == "GET":
+                res = requests.get(url, params={"token": token}, timeout=10)
+            else:
+                res = requests.post(url, data={"token": token}, timeout=10)
+                
+            if res.status_code == 200:
+                data = res.json()
+                # 只要 msg 是 success 且有內容就嘗試回傳
+                if data.get("msg") == "success":
+                    # 有些端點資料在 data 欄位，有些直接在根目錄
+                    if data.get("data"): return data
+                    if "api_request_limit" in data: return {"data": data}
+        except: pass
     
     return None
 
