@@ -1,8 +1,16 @@
 """
 check_db_locks.py v5.5.2 (Trinity Core Final)
 ================================================================================
-資料庫鎖定監測器 — 混合模式日誌實作版
-偵測 PostgreSQL 中長時間運行的查詢與被阻塞的鎖定 (Locks)。
+系統維護工具 — 混合模式日誌實作版
+負責資料庫健康檢查、API 配額監控與數據完整性維護。
+
+修訂歷程：
+  v5.5.2 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 對接 db_utils v4.7 與 DictCursor 相容性。
+
+執行範例：
+  python scripts/maintenance/check_db_locks.py
 """
 
 import sys

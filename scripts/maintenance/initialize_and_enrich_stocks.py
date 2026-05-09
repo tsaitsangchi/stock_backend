@@ -1,8 +1,16 @@
 """
 initialize_and_enrich_stocks.py v5.5.2 (Trinity Core Final)
 ================================================================================
-系統初始化與元數據總成腳本 — 混合模式日誌實作版
-此腳本為系統首次執行時的指揮官，負責 DDL 建立、配置同步與元數據補全。
+系統維護工具 — 混合模式日誌實作版
+負責資料庫健康檢查、API 配額監控與數據完整性維護。
+
+修訂歷程：
+  v5.5.2 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 對接 db_utils v4.7 與 DictCursor 相容性。
+
+執行範例：
+  python scripts/maintenance/initialize_and_enrich_stocks.py
 """
 
 import sys

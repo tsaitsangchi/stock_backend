@@ -1,18 +1,16 @@
 """
-signal_filter.py v5.5 (Trinity Core Edition)
+signal_filter.py v5.5 (Trinity Core Final)
 ================================================================================
-實務訊號過濾引擎 — 混合模式日誌實作版
-此模組執行「五大過濾維度」審計，決定是否發出 LONG 交易建議。
-
-核心功能：
-  · 多維度過濾     ─ 模型機率、波動率 Regime、趨勢 Regime、籌碼與基本面。
-  · 80/20 風險掃描  ─ 偵測熵值激增與康波風險，淘汰平庸訊號。
-  · 分類日誌紀錄     ─ 執行監控 (pipeline_execution_log) 歸類於 inference 類別。
+量化運算核心 — 混合模式日誌實作版
+負責機器學習模型建構與生產環境交易訊號生成。
 
 修訂歷程：
   v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌，紀錄過濾決策分佈。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+    - [規範] 導入混合模式日誌 (Category: inference)。
+    - [核心] 對接 Model Registry 與實體資料流。
+
+執行範例：
+  python scripts/inference/signal_filter.py
 """
 
 import sys

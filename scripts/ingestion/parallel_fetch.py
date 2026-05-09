@@ -4,10 +4,15 @@ parallel_fetch.py v5.5.2 (Trinity Core Final)
 並行資料抓取引擎 — 混合模式日誌實作版
 負責調度多個抓取器並執行任務匯總，支援真實執行緒池。
 
-核心功能：
-  · 並行調度       ─ 真實調用傳入的任務函式 (task_func)。
-  · 指標歸集       ─ 統計總成功數與總抓取筆數。
-  · 混合日誌紀錄     ─ 對接 pipeline_execution_log (Category: ingestion)。
+修訂歷程：
+  v5.5.2 (2026-05-09):
+    - [核心] 導入 Hybrid Logging 混合日誌規範 (Category: ingestion)。
+    - [效能] 實作 ThreadPoolExecutor 並行調度機制。
+
+執行範例：
+  # 作為模組匯入
+  from ingestion.parallel_fetch import run_orchestrator
+  run_orchestrator(fetch_tech, STOCK_LIST, "daily_sync")
 """
 
 import sys

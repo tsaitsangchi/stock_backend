@@ -1,18 +1,16 @@
 """
-portfolio_optimizer.py v5.5 (Trinity Core Edition)
+portfolio_optimizer.py v5.5.1 (Trinity Core Final)
 ================================================================================
-宏觀感知組合優化器 — 混合模式日誌實作版
-此模組負責執行 80/20 槓鈴策略，結合市場寬度 (Market Breadth) 與流動性修正。
-
-核心功能：
-  · 槓鈴分配       ─ 自動區分攻擊端 (20%) 與防禦端 (80%)。
-  · 宏觀感知       ─ 依據美元匯率與市場寬度自動動態調整風險閘門。
-  · 分類日誌紀錄   ─ 執行監控 (pipeline_execution_log) 歸類於 backtest 類別。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌，紀錄優化任務狀態。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 連線池。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+
+執行範例：
+  python scripts/evaluation/portfolio_optimizer.py
 """
 
 import sys

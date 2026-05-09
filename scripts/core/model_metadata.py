@@ -2,18 +2,17 @@
 model_metadata.py v5.5 (Trinity Core Edition)
 ================================================================================
 模型元資料管理核心 — 混合模式日誌實作版
-此模組負責管理模型指標、特徵指紋 (Fingerprint) 與 Model Registry 註冊表。
-
-核心功能：
-  · 模型註冊       ─ 自動將模型評估指標 (DA, Sharpe) 同步至資料庫。
-  · 特徵指紋校驗   ─ 確保預測階段的特徵集合與訓練階段完全一致。
-  · 原子寫入機制   ─ 防止在模型封存過程發生檔案毀損。
-  · 執行紀錄       ─ 對接 write_pipeline_log，標記為 training_v5.1 (Pipeline)。
+負責管理模型指標、特徵指紋 (Fingerprint) 與 Model Registry 註冊表。
 
 修訂歷程：
   v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+    - [規範] 導入混合模式日誌，紀錄模型訓練品質 (DA/Sharpe)。
+    - [核心] 對接 Model Registry 實體表，提供自動註冊介面。
+
+執行範例：
+  from core.model_metadata import save_model_registry, ModelMetadata
+  meta = ModelMetadata(stock_id="2330", oof_da=0.55, oof_sharpe=1.8, feature_count=150)
+  save_model_registry(meta)
 """
 
 import sys

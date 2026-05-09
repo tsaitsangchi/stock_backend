@@ -4,15 +4,16 @@ finmind_client.py v5.5 (Trinity Core Edition)
 FinMind API 企業級客戶端 — 混合模式日誌實作版
 此模組負責與 FinMind V4 API 通訊，具備自動重試、斷路器保護與「請求可觀測性」。
 
-核心功能：
-  · 402/429 自適應   ─ 遇到頻率限制或配額耗盡時自動執行指數回退 (Exponential Backoff)。
-  · 智慧斷路器       ─ 區分業務錯誤與網路異常，防止無效請求拖垮系統。
-  · 請求日誌紀錄     ─ 對接 write_pipeline_log，標記為 ingestion_v5.1。
-
 修訂歷程：
   v5.5 (2026-05-09):
     - [規範] 導入混合模式日誌，紀錄 API 請求成功率與耗時。
     - [核心] 對接 db_utils v4.7 的連線監控邏輯。
+
+執行範例：
+  from core.finmind_client import FinMindClient
+  api = FinMindClient()
+  data = api.get_data("TaiwanStockPrice", "2330")
+"""
 """
 
 import os

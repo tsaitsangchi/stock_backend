@@ -2,17 +2,16 @@
 migrate_stocks_config.py v5.5 (Trinity Core Edition)
 ================================================================================
 資產矩陣同步引擎 — 混合模式日誌實作版
-此模組負責將 config.py 中的股票配置與 PostgreSQL 資料庫同步，並執行 DDL 自動擴展。
-
-核心功能：
-  · 冪等性同步     ─ 自動檢測並補齊 stocks 資料表缺失欄位。
-  · 批次寫入       ─ 使用 execute_batch 實作高效能資料更新。
-  · 執行紀錄       ─ 對接 write_pipeline_log，標記為 sys_v5.1 (Maintenance)。
+負責將 config.py 中的股票配置與 PostgreSQL 資料庫同步。
 
 修訂歷程：
   v5.5 (2026-05-09):
     - [規範] 導入混合模式日誌紀錄同步狀態。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+    - [核心] 支援自動建立 last_sync_at 與 is_active 欄位。
+
+執行範例：
+  python scripts/core/migrate_stocks_config.py
+"""
 """
 
 import sys

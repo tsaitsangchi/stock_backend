@@ -4,15 +4,18 @@ db_utils.py v4.7 (Trinity Core Edition)
 資料庫核心工具組：全管線日誌系統 (Hybrid Logging Architecture)
 對接 Trinity Core v5.5 規範，實現「生命週期監控」與「業務指標分析」的雙層管理。
 
-核心功能：
-  · 統一執行日誌 (pipeline_execution_log) ─ 紀錄全系統 (抓取、特徵、訓練、回測) 的啟動與狀態。
-  · 專項結果日誌 (evaluation_log)        ─ 紀錄量化模型的回測指標 (Sharpe, MDD, Returns)。
-  · 自動事務控制與連線池管理               ─ 確保高併發下的數據一致性。
-
 修訂歷程：
   v4.7 (2026-05-09):
     - [核心] 導入「混合模式」日誌架構，新增 pipeline_execution_log 與 evaluation_log。
     - [監控] 新增 write_pipeline_log 與 write_evaluation_log 標準介面。
+
+執行範例：
+  # 作為模組匯入使用
+  from core.db_utils import db_transaction, write_pipeline_log
+  
+  with db_transaction() as cur:
+      cur.execute("SELECT * FROM stocks LIMIT 5")
+"""
   v4.6 (2026-05-09):
     - [監控] write_fetch_log 補齊 rows_inserted 欄位。
 """

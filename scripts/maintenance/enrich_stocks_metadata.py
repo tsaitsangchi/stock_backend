@@ -1,8 +1,16 @@
 """
 enrich_stocks_metadata.py v5.5.2 (Trinity Core Final)
 ================================================================================
-標的元數據豐富化腳本 — 混合模式日誌實作版
-從外部來源獲取個股產業地位、股本組成等進階元數據。
+系統維護工具 — 混合模式日誌實作版
+負責資料庫健康檢查、API 配額監控與數據完整性維護。
+
+修訂歷程：
+  v5.5.2 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 對接 db_utils v4.7 與 DictCursor 相容性。
+
+執行範例：
+  python scripts/maintenance/enrich_stocks_metadata.py
 """
 
 import sys

@@ -1,8 +1,16 @@
 """
-model_health_check.py v5.5.2 (Trinity Core Final)
+model_health_check.py v5.5.3 (Trinity Core Final)
 ================================================================================
-模型健康檢查器 — 混合模式日誌實作版
-偵測模型是否存在權重漂移、加載錯誤或推理耗時異常。
+自動化監控與運維中心 — 混合模式日誌實作版
+負責全系統狀態掃描、異常告警與資料庫自動優化。
+
+修訂歷程：
+  v5.5.3 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 實作 DDL 自癒機制與自動化維運調度。
+
+執行範例：
+  python scripts/monitor/model_health_check.py
 """
 
 import sys

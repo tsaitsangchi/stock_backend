@@ -3,6 +3,14 @@ fetch_cash_flows_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
 現金流量表抓取器 — 混合模式日誌實作版
 負責同步現金流量資料至 cash_flows_statement 表。
+
+修訂歷程：
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌。
+    - [核心] 對接 v5.5 並行調度規範。
+
+執行範例：
+  python scripts/ingestion/fetch_cash_flows_data.py
 """
 
 import sys

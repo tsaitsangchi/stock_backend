@@ -3,6 +3,14 @@ fetch_advanced_chip_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
 融資融券與進階籌碼抓取器 — 混合模式日誌實作版
 負責同步信用交易資料至 margin_purchase_short_sale 表。
+
+修訂歷程：
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌。
+    - [核心] 對接 v5.5 並行調度規範。
+
+執行範例：
+  python scripts/ingestion/fetch_advanced_chip_data.py
 """
 
 import sys

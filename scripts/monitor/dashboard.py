@@ -1,8 +1,16 @@
 """
-dashboard.py v5.5.2 (Trinity Core Final)
+dashboard.py v5.5.3 (Trinity Core Final)
 ================================================================================
-系統狀況儀表板 — 混合模式日誌實作版
-從 pipeline_execution_log 提取摘要，產出每日運行健康報告。
+自動化監控與運維中心 — 混合模式日誌實作版
+負責全系統狀態掃描、異常告警與資料庫自動優化。
+
+修訂歷程：
+  v5.5.3 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 實作 DDL 自癒機制與自動化維運調度。
+
+執行範例：
+  python scripts/monitor/dashboard.py
 """
 
 import sys

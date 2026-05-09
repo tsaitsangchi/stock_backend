@@ -1,20 +1,16 @@
 """
-backtest_engine.py v5.5 (Trinity Core Edition)
+backtest_engine.py v5.5.1 (Trinity Core Final)
 ================================================================================
-多因子量化回測引擎 — 混合模式日誌實作版
-此模組負責載入訓練好的模型，並在歷史數據上模擬交易邏輯，產出量化指標。
-
-核心功能：
-  · 雙層日誌機制   ─ 完美對接 core/ v4.7 規範。
-  · 生命週期監控   ─ 寫入 pipeline_execution_log (類別: backtest)。
-  · 指標成果落盤   ─ 寫入 evaluation_log (紀錄 Sharpe, MDD, Returns)。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌，實現執行監控與業務指標的分離儲存。
-    - [核心] 整合 write_pipeline_log 與 write_evaluation_log。
-  v5.2 (2026-05-09):
-    - [架構] 搬遷至 scripts/evaluation/ 目錄。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+
+執行範例：
+  python scripts/evaluation/backtest_engine.py
 """
 
 import sys

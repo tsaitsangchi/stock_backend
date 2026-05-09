@@ -1,25 +1,16 @@
 """
-faithful_portfolio_backtest.py v5.5 (Trinity Core Edition)
+faithful_portfolio_backtest.py v5.5.1 (Trinity Core Final)
 ================================================================================
-真實生產級投資組合回測系統 — 混合模式日誌實作版
-此模組模擬真實交易環境中的「訊號過濾 -> 組合優化 -> 換倉損益」全流程。
-
-核心功能：
-  · 模組化匯入     ─ 自動對接 ingestion, evaluation, inference 等重構目錄。
-  · 真實換倉模擬   ─ 考慮交易手續費、滑價與 SignalFilter 門檻。
-  · 雙層日誌機制   ─ 執行監控 (pipeline_execution_log) + 指標成果 (evaluation_log)。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [修復] 解決目錄重構後的 ModuleNotFoundError (對接 inference/signal_filter)。
-    - [規範] 導入混合模式日誌，自動歸類於 backtest 類別。
-    - [核心] 使用 path_setup v3.0 標準化匯入邏輯。
-  v4.0 (2026-04-20):
-    - [基礎] 建立生產級回測框架。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
 
 執行範例：
-    # 對大型股 TIER_1_STOCKS 執行組合回測
-    python scripts/evaluation/faithful_portfolio_backtest.py
+  python scripts/evaluation/faithful_portfolio_backtest.py
 """
 
 import sys

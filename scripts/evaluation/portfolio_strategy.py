@@ -1,18 +1,16 @@
 """
-portfolio_strategy.py v5.5 (Trinity Core Edition)
+portfolio_strategy.py v5.5.1 (Trinity Core Final)
 ================================================================================
-量子金融槓鈴資產分配器 — 混合模式日誌實作版
-此模組定義了 80% 核心防禦 (Core) + 20% 量子進取 (Quantum) 的分配哲學。
-
-核心功能：
-  · DNA 分類       ─ 將標的自動歸類為「核心端」與「量子端」。
-  · 戰略分配       ─ 依據市場熵值 (Entropy) 動態決定安全邊際。
-  · 分類日誌紀錄   ─ 執行監控 (pipeline_execution_log) 歸類於 backtest 類別。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+
+執行範例：
+  python scripts/evaluation/portfolio_strategy.py
 """
 
 import sys

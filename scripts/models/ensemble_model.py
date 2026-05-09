@@ -1,8 +1,16 @@
 """
-ensemble_model.py v5.5.2 (Trinity Core Final)
+ensemble_model.py v5.5 (Trinity Core Final)
 ================================================================================
-整合模型架構 — 混合模式日誌實作版
-負責 XGBoost、LightGBM 與 Random Forest 的多層整合 (Stacking)。
+量化運算核心 — 混合模式日誌實作版
+負責機器學習模型建構與生產環境交易訊號生成。
+
+修訂歷程：
+  v5.5 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: training)。
+    - [核心] 對接 Model Registry 與實體資料流。
+
+執行範例：
+  python scripts/models/ensemble_model.py
 """
 
 import sys

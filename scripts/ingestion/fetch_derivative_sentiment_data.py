@@ -1,8 +1,16 @@
 """
 fetch_derivative_sentiment_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
-選擇權情緒抓取器 — 混合模式日誌實作版
-負責同步選擇權未平倉與 Put/Call Ratio 至 options_oi_large_holders 表。
+資料抓取模組 — 混合模式日誌實作版
+對應資料庫實體表並支援並行調度。
+
+修訂歷程：
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌。
+    - [核心] 對接 v5.5 並行調度規範與路徑修復 v3.0。
+
+執行範例：
+  python scripts/ingestion/fetch_derivative_sentiment_data.py
 """
 
 import sys

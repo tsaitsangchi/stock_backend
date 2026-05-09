@@ -1,8 +1,16 @@
 """
-tft_model.py v5.5.2 (Trinity Core Final)
+tft_model.py v5.5 (Trinity Core Final)
 ================================================================================
-Temporal Fusion Transformer (TFT) 模型 — 混合模式日誌實作版
-負責處理長短期記憶與多變量時間序列預測。
+量化運算核心 — 混合模式日誌實作版
+負責機器學習模型建構與生產環境交易訊號生成。
+
+修訂歷程：
+  v5.5 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: training)。
+    - [核心] 對接 Model Registry 與實體資料流。
+
+執行範例：
+  python scripts/models/tft_model.py
 """
 
 import sys

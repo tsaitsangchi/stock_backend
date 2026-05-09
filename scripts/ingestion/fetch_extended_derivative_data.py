@@ -1,8 +1,16 @@
 """
 fetch_extended_derivative_data.py v5.5.1 (Trinity Core Final)
 ================================================================================
-擴展期權抓取器 — 混合模式日誌實作版
-負責同步選擇權量價至 options_ohlcv 表。
+資料抓取模組 — 混合模式日誌實作版
+對應資料庫實體表並支援並行調度。
+
+修訂歷程：
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌。
+    - [核心] 對接 v5.5 並行調度規範與路徑修復 v3.0。
+
+執行範例：
+  python scripts/ingestion/fetch_extended_derivative_data.py
 """
 
 import sys

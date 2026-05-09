@@ -1,18 +1,16 @@
 """
-compute_stock_dynamics.py v5.5 (Trinity Core Edition)
+compute_stock_dynamics.py v5.5 (Trinity Core Final)
 ================================================================================
-個股動力學參數計算器 — 混合模式日誌實作版
-此模組計算個股的第一性原理參數（如資訊力敏感度、重力回歸彈性等）。
-
-核心功能：
-  · 動力學建模       ─ 定義個股在資訊衝擊下的反應係數。
-  · 參數註冊表       ─ 將計算結果持久化至 stock_dynamics_registry 表。
-  · 分類日誌紀錄     ─ 執行監控 (pipeline_execution_log) 歸類於 inference 類別。
+量化運算核心 — 混合模式日誌實作版
+負責機器學習模型建構與生產環境交易訊號生成。
 
 修訂歷程：
   v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌，紀錄計算耗時。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+    - [規範] 導入混合模式日誌 (Category: inference)。
+    - [核心] 對接 Model Registry 與實體資料流。
+
+執行範例：
+  python scripts/inference/compute_stock_dynamics.py
 """
 
 import sys

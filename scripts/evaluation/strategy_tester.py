@@ -1,18 +1,16 @@
 """
-strategy_tester.py v5.5 (Trinity Core Edition)
+strategy_tester.py v5.5.1 (Trinity Core Final)
 ================================================================================
-策略統一測試框架 — 混合模式日誌實作版
-此模組負責對特定物理特徵策略（如重力拉力、資訊衝擊）進行回測驗證。
-
-核心功能：
-  · 策略多樣化     ─ 支援動態門檻與固定門檻兩大回測模式。
-  · 批量測試       ─ 可針對「第六波賽道」標的進行快速回測。
-  · 分類日誌紀錄   ─ 執行監控 (pipeline_execution_log) 歸類於 backtest 類別。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌。
-    - [核心] 對接 path_setup v3.0 標準。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+
+執行範例：
+  python scripts/evaluation/strategy_tester.py
 """
 
 import sys

@@ -1,8 +1,16 @@
 """
-model_quality_audit.py v5.5.2 (Trinity Core Final)
+model_quality_audit.py v5.5.3 (Trinity Core Final)
 ================================================================================
-模型品質審計器 — 混合模式日誌實作版
-執行 Out-of-Sample 交叉驗證，偵測模型準確度是否跌破「止損線」。
+自動化監控與運維中心 — 混合模式日誌實作版
+負責全系統狀態掃描、異常告警與資料庫自動優化。
+
+修訂歷程：
+  v5.5.3 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 實作 DDL 自癒機制與自動化維運調度。
+
+執行範例：
+  python scripts/monitor/model_quality_audit.py
 """
 
 import sys

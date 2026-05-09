@@ -1,18 +1,16 @@
 """
-portfolio_backtest.py v5.5 (Trinity Core Edition)
+portfolio_backtest.py v5.5.1 (Trinity Core Final)
 ================================================================================
-投資組合層回測引擎 — 混合模式日誌實作版
-此模組模擬多標的持倉組合的表現，計算夏普比率、最大回撤與 Beta 暴露。
-
-核心功能：
-  · 多標的聚合     ─ 整合所有 OOF 預測並模擬每日換倉邏輯。
-  · 壓力測試       ─ 計算 Calmar Ratio 與 Worst Month 回撤。
-  · 分類日誌紀錄   ─ 執行監控 (pipeline_execution_log) 歸類於 backtest 類別。
+策略回測與績效評估 — 混合模式日誌實作版
+負責計算 Sharpe, MDD 並生成量化分析報表。
 
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌。
-    - [核心] 對接 path_setup v3.0 與 db_utils v4.7 標準。
+  v5.5.1 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: backtest)。
+    - [核心] 對接 evaluation_log 實體表進行持久化儲存。
+
+執行範例：
+  python scripts/evaluation/portfolio_backtest.py
 """
 
 import sys

@@ -1,8 +1,16 @@
 """
 sync_stocks_from_config.py v5.5.2 (Trinity Core Final)
 ================================================================================
-配置同步腳本 — 混合模式日誌實作版
-將 config.py 中的標的名單與資料庫 stocks 表進行最終同步。
+系統維護工具 — 混合模式日誌實作版
+負責資料庫健康檢查、API 配額監控與數據完整性維護。
+
+修訂歷程：
+  v5.5.2 (2026-05-09):
+    - [規範] 導入混合模式日誌 (Category: sys)。
+    - [核心] 對接 db_utils v4.7 與 DictCursor 相容性。
+
+執行範例：
+  python scripts/maintenance/sync_stocks_from_config.py
 """
 
 import sys
