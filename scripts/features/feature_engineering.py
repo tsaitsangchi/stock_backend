@@ -11,9 +11,24 @@ feature_engineering.py v5.5 (Trinity Core Edition)
   · 執行紀錄       ─ 對接 write_pipeline_log，標記為 feature_v5.1 (Pipeline)。
 
 修訂歷程：
+  v5.6.1 (2026-05-10):
+    - [規範] 補齊極致詳細的執行範例與 SQL 稽核指令。
   v5.5 (2026-05-09):
     - [規範] 導入混合模式日誌，紀錄特徵矩陣維度與生成耗時。
     - [核心] 對接 path_setup v3.0 與 db_utils v4.7 連線池。
+
+【執行範例說明】
+
+1. Python 模組化調用 (對單一標的生成特徵)：
+   from features.feature_engineering import FeatureEngine
+   engine = FeatureEngine("2330")
+   df = engine.generate_matrix()
+
+2. SQL 數據稽核 (驗證特徵工程任務日誌)：
+   SELECT task_name, stock_id, status, rows_processed, duration_ms 
+   FROM pipeline_execution_log 
+   WHERE category = 'feature_engineering' 
+   ORDER BY created_at DESC LIMIT 20;
 """
 
 import sys
