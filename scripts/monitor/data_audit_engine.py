@@ -47,20 +47,27 @@ def audit_completeness():
     with db_session() as conn:
         with conn.cursor() as cur:
             for sid in stocks[:150]:
-                # 取得股票名稱與數據筆數
                 cur.execute("""
                     SELECT 
                         COALESCE(i.stock_name, '未知') as name,
-                        COUNT(p.*) as count
+                        COUNT(p.*) as count,
+                        (SELECT close FROM stock_price WHERE stock_id = %s ORDER BY date DESC LIMIT 1) as price,
+                        (SELECT sharpe_ratio FROM evaluation_log WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as sharpe,
+                        (SELECT signal FROM predictions WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as signal,
+                        (SELECT confidence FROM predictions WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as confidence
                     FROM (SELECT %s as sid) s
                     LEFT JOIN stock_info i ON s.sid = i.stock_id
                     LEFT JOIN stock_price p ON s.sid = p.stock_id
                     GROUP BY i.stock_name
-                """, (sid,))
+                """, (sid, sid, sid, sid, sid))
                 res = cur.fetchone()
                 
                 price_count = res['count']
                 stock_name = res['name']
+                curr_price = float(res['price']) if res['price'] else 0.0
+                sharpe = float(res['sharpe']) if res['sharpe'] else 0.0
+                signal = res['signal'] or "N/A"
+                confidence = float(res['confidence']) if res['confidence'] else 0.0
                 
                 # 計算分數
                 score = min(100, round((price_count / 1000) * 100, 1))
@@ -71,12 +78,31 @@ def audit_completeness():
                     "name": stock_name,
                     "score": score,
                     "status": status,
-                    "count": price_count,
+                    "price": curr_price,
+                    "sharpe": sharpe,
+                    "signal": signal,
+                    "conf": confidence,
                     "last_sync": datetime.now().strftime("%Y-%m-%d %H:%M")
                 })
 
     generate_html(report_data)
+    generate_simulator_html(report_data)
     write_pipeline_log("dashboard_generation", "SYSTEM", "success", "sys")
+
+def generate_simulator_html(data):
+    # 此處邏輯為讀取 template 並取代 placeholder
+    path = _PROJECT_ROOT / "monitor" / "portfolio_simulator.html"
+    if not path.exists(): return
+    
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    
+    json_str = json.dumps(data)
+    new_content = content.replace("const rawData = []; // [PLACEHOLDER_DATA]", f"const rawData = {json_str};")
+    
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    logger.info(f"🏆 [Monitor] 投資模擬器數據已同步: {path}")
 
 def generate_html(data):
     html_path = _PROJECT_ROOT / "monitor" / "dashboard.html"
