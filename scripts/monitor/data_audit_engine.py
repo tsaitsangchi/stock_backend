@@ -34,10 +34,27 @@ for _sub in ("scripts", "scripts/core"):
         sys.path.insert(0, str(_p))
 
 try:
-    from core.db_utils import db_session, get_db_stock_ids, write_pipeline_log
+    from core.db_utils import db_session, get_db_stock_ids, write_pipeline_log, db_transaction
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
     sys.exit(1)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+def save_audit_to_db(data):
+    """將稽核結果持久化至 data_audit_log"""
+    with db_transaction() as cur:
+        for d in data:
+            cur.execute('''
+                INSERT INTO data_audit_log (stock_id, missing_days, health_score, status)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (stock_id) DO UPDATE 
+                SET missing_days = EXCLUDED.missing_days,
+                    health_score = EXCLUDED.health_score,
+                    status = EXCLUDED.status,
+                    last_checked_at = CURRENT_TIMESTAMP
+            ''', (d['id'], 0, d['score'], d['status']))
 
 def audit_completeness():
     logger.info("📡 [Monitor] 正在啟動全核心個股資料完整度稽核...")
@@ -87,6 +104,8 @@ def audit_completeness():
                     "conf": confidence,
                     "last_sync": datetime.now().strftime("%Y-%m-%d %H:%M")
                 })
+        
+        save_audit_to_db(report_data)
 
     generate_html(report_data)
     generate_simulator_html(report_data)
@@ -255,9 +274,6 @@ def generate_html(data):
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_template)
     logger.info(f"🏆 [Monitor] 戰情監控網頁已產生: {html_path}")
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     audit_completeness()

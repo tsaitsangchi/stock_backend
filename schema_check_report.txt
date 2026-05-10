@@ -1,0 +1,79 @@
+2026-05-10 12:13:35,857 [INFO] 🔍 正在稽核: TaiwanStockPrice -> stock_price
+2026-05-10 12:13:35,869 [INFO] ✅ 連線池已重置與就緒 (PID: 1741)
+2026-05-10 12:13:35,876 [INFO] 🟢 FinMindClient v5.5 初始化完成
+2026-05-10 12:13:36,044 [INFO] 🔍 正在稽核: TaiwanStockPER -> stock_per
+2026-05-10 12:13:36,232 [INFO] 🔍 正在稽核: TaiwanStockFinancialStatements -> financial_statements
+2026-05-10 12:13:36,588 [INFO] 🔍 正在稽核: TaiwanStockMonthRevenue -> month_revenue
+2026-05-10 12:13:36,591 [INFO] 🔍 正在稽核: TaiwanStockDividend -> dividend_result
+2026-05-10 12:13:36,755 [INFO] 🔍 正在稽核: TaiwanStockInstitutionalInvestorsBuySell -> institutional_investors_buy_sell
+2026-05-10 12:13:36,929 [INFO] 🔍 正在稽核: TaiwanStockMarginPurchaseShortSale -> margin_purchase_short_sale
+2026-05-10 12:13:37,102 [INFO] 🔍 正在稽核: TaiwanStockNews -> stock_news
+2026-05-10 12:13:37,278 [INFO] 🔍 正在稽核: USStockPrice -> us_stock_price
+2026-05-10 12:13:37,453 [INFO] 🔍 正在稽核: TaiwanStockPriceAdj -> price_adj
+2026-05-10 12:13:37,630 [INFO] 🔍 正在稽核: TaiwanStockTotalReturnIndex -> total_return_index
+2026-05-10 12:13:37,945 [INFO] 🔍 正在稽核: TaiwanStockBlockTrading -> block_trading
+
+================================================================================
+ Trinity Core - FinMind 與資料庫 Schema 一致性稽核報告
+ 稽核標準: VARCHAR >= 50 | NUMERIC >= (20, 6)
+================================================================================
+✅ TaiwanStockPrice -> stock_price 稽核通過
+--------------------------------------------------------------------------------
+✅ TaiwanStockPER -> stock_per 稽核通過
+--------------------------------------------------------------------------------
+❌ TaiwanStockFinancialStatements -> financial_statements 稽核未通過:
+   - 設計過弱 'stock_id': VARCHAR(20) 小於建議值 50
+   - 設計過弱 'value': NUMERIC 小數位 4 小於建議值 6
+--------------------------------------------------------------------------------
+❌ 錯誤: 資料表 'month_revenue' 不存在於資料庫中。
+--------------------------------------------------------------------------------
+❌ TaiwanStockDividend -> dividend_result 稽核未通過:
+   - 缺失欄位: 'year' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'stockearningsdistribution' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'stockstatutorysurplus' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'stockexdividendtradingdate' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'totalemployeestockdividend' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'totalemployeestockdividendamount' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'ratioofemployeestockdividendoftotal' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'ratioofemployeestockdividend' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashearningsdistribution' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashstatutorysurplus' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashexdividendtradingdate' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashdividendpaymentdate' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'totalemployeecashdividend' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'totalnumberofcashcapitalincrease' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashincreasesubscriptionrate' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'cashincreasesubscriptionprrice' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'remunerationofdirectorsandsupervisors' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'participatedistributionoftotalshares' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'announcementdate' (FinMind 有，但 DB 沒有)
+   - 缺失欄位: 'announcementtime' (FinMind 有，但 DB 沒有)
+   - 設計過弱 'stock_or_cache_dividend': VARCHAR(20) 小於建議值 50
+--------------------------------------------------------------------------------
+❌ TaiwanStockInstitutionalInvestorsBuySell -> institutional_investors_buy_sell 稽核未通過:
+   - 設計過弱 'stock_id': VARCHAR(20) 小於建議值 50
+--------------------------------------------------------------------------------
+❌ TaiwanStockMarginPurchaseShortSale -> margin_purchase_short_sale 稽核未通過:
+   - 設計過弱 'stock_id': VARCHAR(20) 小於建議值 50
+--------------------------------------------------------------------------------
+✅ TaiwanStockNews -> stock_news 稽核通過
+--------------------------------------------------------------------------------
+❌ USStockPrice -> us_stock_price 稽核未通過:
+   - 設計過弱 'adj_close': NUMERIC 小數位 4 小於建議值 6
+   - 設計過弱 'close': NUMERIC 小數位 4 小於建議值 6
+   - 設計過弱 'high': NUMERIC 小數位 4 小於建議值 6
+   - 設計過弱 'low': NUMERIC 小數位 4 小於建議值 6
+   - 設計過弱 'open': NUMERIC 小數位 4 小於建議值 6
+--------------------------------------------------------------------------------
+✅ TaiwanStockPriceAdj -> price_adj 稽核通過
+--------------------------------------------------------------------------------
+❌ TaiwanStockTotalReturnIndex -> total_return_index 稽核未通過:
+   - 設計過弱 'total_return_index': NUMERIC 小數位 4 小於建議值 6
+--------------------------------------------------------------------------------
+❌ TaiwanStockBlockTrading -> block_trading 稽核未通過:
+   - 設計過弱 'price': NUMERIC 精度 10 小於建議值 20
+   - 設計過弱 'price': NUMERIC 小數位 2 小於建議值 6
+--------------------------------------------------------------------------------
+
+[稽核結束]
+

@@ -1,66 +1,61 @@
 """
-parallel_fetch.py v5.5.26 (Trinity Core Final)
+parallel_fetch.py v6.5 (Trinity Core Final)
 ================================================================================
-數據抓取單元指揮官 — 混合模式日誌實作版
-負責單一標的全量數據 (價格, 籌碼, 基本面) 的並行同步邏輯。
+數據抓取單元指揮官 — 混合模式日誌標準版
+負責單一標的全量數據 (價格, 籌碼, 基本面, 營收) 的整合同步邏輯。
 
 修訂歷程：
-  v5.5.26 (2026-05-10):
-    - [文檔] 補齊極致詳細的執行範例說明。
-  v5.5.10 (2026-05-09):
-    - [核心] 整合斷層自動偵測與補齊邏輯。
+  v6.5 (2026-05-10): [修正] 強化對 fetch_chip 參數傳遞的嚴謹性。
+  v6.4 (2026-05-10): [核心] 導入終極路徑自癒 Bootstrap。
 
-【執行範例說明】
-
-1. 單一標的抓取測試：
-   ------------------------------------------------------------
-   from ingestion.parallel_fetch import fetch_stock_data_unit
-   fetch_stock_data_unit("2330")
-   ------------------------------------------------------------
-
-2. 日誌查閱 (追蹤原始數據抓取狀態)：
-   SELECT task_name, stock_id, status, rows_processed, duration_ms 
-   FROM pipeline_execution_log 
-   WHERE category = 'ingestion' 
-   ORDER BY created_at DESC LIMIT 20;
+【執行範例矩陣 — 數據同步方案】
+1. 個股 x 所有表： $ python scripts/ingestion/parallel_fetch.py --stock_id 2330
+2. 強制深層同步： $ python scripts/ingestion/parallel_fetch.py --stock_id 2330 --start 2010-01-01
+================================================================================
 """
-
-import sys
-import logging
-import time
+import sys, logging, time, argparse
 from pathlib import Path
 
-# ── 系統路徑修復 ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "pipeline"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS = None
+for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent, _THIS_DIR.parent.parent.parent]:
+    if p.name == "scripts" or (p / "scripts").exists():
+        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
+        break
+if _SCRIPTS:
+    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
+    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
 
 try:
-    from core.db_utils import write_pipeline_log
+    from core.db_utils import write_pipeline_log, get_db_stock_ids
+    from ingestion.fetch_technical_data import fetch_tech
+    from ingestion.fetch_chip_data import fetch_chip
+    from ingestion.fetch_fundamental_data import fetch_fundamental
+    from ingestion.fetch_month_revenue import fetch_month_revenue
 except ImportError:
-    pass
+    from db_utils import write_pipeline_log, get_db_stock_ids
+    from fetch_technical_data import fetch_tech
+    from fetch_chip_data import fetch_chip
+    from fetch_fundamental_data import fetch_fundamental
+    from fetch_month_revenue import fetch_month_revenue
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
-
-def fetch_stock_data_unit(stock_id: str):
+def fetch_stock_data_unit(stock_id: str, start_date: str = None):
+    """ 執行單一標的之多維度數據補齊任務 """
     t0 = time.monotonic()
-    logger.info(f"🚀 [Fetch] 正在同步 {stock_id} 全量數據...")
-    try:
-        # 模擬抓取邏輯
-        time.sleep(0.4)
-        rows = 100
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("backfill_gap_unit", stock_id, "success", "ingestion", elapsed_ms, rows)
-        logger.info(f"✅ {stock_id} 同步完畢 (共 {rows} 筆紀錄)")
-        return True
-    except Exception as e:
-        logger.error(f"❌ {stock_id} 同步失敗: {e}")
-        write_pipeline_log("backfill_gap_unit", stock_id, "failed", "ingestion", 0, 0, str(e))
-        return False
+    logging.info(f"🚀 [Fetch] 正在同步 {stock_id} 多維度數據 (Start: {start_date})...")
+    total_rows = 0; success_count = 0
+    fetchers = [("Price", fetch_tech), ("Chip", fetch_chip), ("Fundamental", fetch_fundamental), ("Revenue", fetch_month_revenue)]
+    for name, func in fetchers:
+        try:
+            # 💡 確保傳遞 start 參數以對齊強制更新邏輯
+            rows = func(stock_id, start=start_date)
+            total_rows += (rows or 0); success_count += 1
+        except Exception as e: logging.error(f"  - [{name}] 失敗: {e}")
+    write_pipeline_log("stock_data_unit_master", stock_id, "success" if success_count>0 else "failed", "ingestion", int((time.monotonic()-t0)*1000), total_rows)
+    return total_rows
 
 if __name__ == "__main__":
-    fetch_stock_data_unit("2330")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    parser = argparse.ArgumentParser(); parser.add_argument("--stock_id", type=str, default="2330"); parser.add_argument("--start", type=str); args = parser.parse_args()
+    fetch_stock_data_unit(args.stock_id, args.start)

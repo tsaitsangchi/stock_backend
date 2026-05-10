@@ -1,29 +1,19 @@
 """
-fetch_derivative_data.py v5.5.7 (Trinity Core Final)
+fetch_derivative_data.py v6.0 (Trinity Core Final)
 ================================================================================
-資料抓取模組 — 混合模式日誌實作版
-負責將 FinMind 原始數據同步至資料庫。
+資料抓取模組 — 混合模式日誌標準版
+負責將 FinMind 原始數據 (TaiwanFuturesDaily) 同步至資料庫。
 
 修訂歷程：
+  v6.0 (2026-05-10):
+    - [核心] 升級至 Trinity Core v6.0 標準，確保 futures_ohlcv 表對齊。
   v5.5.7 (2026-05-09):
     - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
-  v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌與路徑修復 v3.0。
 
 【執行範例說明】
-
-1. 手動單點調試 (僅抓取台積電 2330 作為測試)：
-   $ python scripts/ingestion/fetch_derivative_data.py
-
-2. 大規模並行抓取 (透過調度器對全市場執行)：
-   ------------------------------------------------------------
-   from ingestion.parallel_fetch import run_orchestrator
-   from ingestion.fetch_derivative_data import fetch_derivative
-   from core.db_utils import get_db_stock_ids
-   
-   # 啟動並行調度：對全市場標的執行 fetch_derivative
-   run_orchestrator(fetch_derivative, get_db_stock_ids(), "all_market_fetch_derivative")
-   ------------------------------------------------------------
+1. 手動抓取期貨資料 (例如 台指期 TX)：
+   $ python scripts/ingestion/fetch_derivative_data.py --stock_id TX
+================================================================================
 """
 
 import sys
@@ -31,10 +21,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 ──
+# ── 系統路徑修復 (v3.1) ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core"):
+for _sub in ("", "core", "pipeline"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -51,22 +41,29 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_derivative(stock_id: str = "TX"):
+def fetch_derivative(futures_id: str = "TX"):
+    """
+    抓取特定期貨標的之日資料。
+    
+    執行範例：
+    $ python scripts/ingestion/fetch_derivative_data.py --futures_id TX
+    """
     t0 = time.monotonic()
     api = FinMindClient()
     
     # 🔍 資料表對齊：futures_ohlcv
-    last_date = get_latest_date("futures_ohlcv", stock_id, id_column="futures_id") or "2010-01-01"
+    last_date = get_latest_date("futures_ohlcv", futures_id, id_column="futures_id") or "2010-01-01"
     
-    logger.info(f"🎭 正在同步 {stock_id} 期貨資料 (Since: {last_date})...")
-    data = api.get_data("TaiwanFuturesDaily", stock_id, start_date=last_date)
+    logger.info(f"🎭 正在同步 {futures_id} 期貨資料 (Since: {last_date})...")
+    data = api.get_data("TaiwanFuturesDaily", futures_id, start_date=last_date)
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
+    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_derivative",
-        stock_id=stock_id,
-        status="success",
+        stock_id=futures_id,
+        status="success" if data is not None else "failed",
         category="ingestion",
         duration_ms=elapsed_ms,
         rows=len(data)
@@ -74,4 +71,8 @@ def fetch_derivative(stock_id: str = "TX"):
     return len(data)
 
 if __name__ == "__main__":
-    fetch_derivative()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--futures_id", type=str, default="TX")
+    args = parser.parse_args()
+    fetch_derivative(args.futures_id)

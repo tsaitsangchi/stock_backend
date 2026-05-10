@@ -58,6 +58,25 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+def save_features_to_db(stock_id: str, df: pd.DataFrame):
+    """將特徵資料持久化至 features 表格"""
+    from core.db_utils import db_transaction
+    import json
+    
+    with db_transaction() as cur:
+        for date, row in df.iterrows():
+            feature_cols = [c for c in row.index if c not in ["target_30d"]]
+            feature_json = row[feature_cols].to_json()
+            target = float(row["target_30d"]) if "target_30d" in row and not pd.isna(row["target_30d"]) else 0.0
+            
+            cur.execute('''
+                INSERT INTO features (stock_id, date, feature_data, target_value)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (stock_id, date) DO UPDATE 
+                SET feature_data = EXCLUDED.feature_data, 
+                    target_value = EXCLUDED.target_value
+            ''', (stock_id, date, feature_json, target))
+
 def build_features(df: pd.DataFrame, stock_id: str, for_inference: bool = False) -> pd.DataFrame:
     """
     特徵生成主入口 (v5.5)
@@ -79,6 +98,8 @@ def build_features(df: pd.DataFrame, stock_id: str, for_inference: bool = False)
         # --- 3. 目標變數 (僅在訓練模式) ---
         if not for_inference:
             df["target_30d"] = df["close"].shift(-30) / df["close"] - 1
+            # 實施資料鏈：持久化特徵
+            save_features_to_db(stock_id, df.dropna(subset=["close"]))
         
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         

@@ -1,77 +1,52 @@
 """
-fetch_technical_data.py v5.5.7 (Trinity Core Final)
+fetch_technical_data.py v6.4 (Trinity Core Final)
 ================================================================================
-資料抓取模組 — 混合模式日誌實作版
-負責將 FinMind 原始數據同步至資料庫。
+資料抓取模組 — 技術面 (量價)
+負責同步 FinMind 量價數據 (TaiwanStockPrice) 至資料庫。
 
 修訂歷程：
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
-  v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌與路徑修復 v3.0。
+  v6.4 (2026-05-10): [核心] 導入終極路徑自癒 Bootstrap。
+  v6.3 (2026-05-10): [功能] 支援 start 參數，對齊強制更新矩陣。
 
-【執行範例說明】
-
-1. 手動單點調試 (僅抓取台積電 2330 作為測試)：
-   $ python scripts/ingestion/fetch_technical_data.py
-
-2. 大規模並行抓取 (透過調度器對全市場執行)：
-   ------------------------------------------------------------
-   from ingestion.parallel_fetch import run_orchestrator
-   from ingestion.fetch_technical_data import fetch_tech
-   from core.db_utils import get_db_stock_ids
-   
-   # 啟動並行調度：對全市場標的執行 fetch_tech
-   run_orchestrator(fetch_tech, get_db_stock_ids(), "all_market_fetch_tech")
-   ------------------------------------------------------------
+【執行範例矩陣 — 量價同步方案】
+1. 單一個股同步： $ python scripts/ingestion/fetch_technical_data.py --stock_id 2330
+2. 全核心股同步： $ python scripts/ingestion/fetch_technical_data.py --all
+3. 強制日期重刷： $ python scripts/ingestion/fetch_technical_data.py --stock_id 2330 --start 2010-01-01
+================================================================================
 """
-
-import sys
-import logging
-import time
+import sys, logging, time, argparse
 from pathlib import Path
 
-# ── 系統路徑修復 ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS = None
+for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent, _THIS_DIR.parent.parent.parent]:
+    if p.name == "scripts" or (p / "scripts").exists():
+        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
+        break
+if _SCRIPTS:
+    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
+    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
 
 try:
-    from core.path_setup import ensure_scripts_on_path
-    ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log, get_latest_date
+    from core.db_utils import write_pipeline_log, get_latest_date, get_db_stock_ids, bulk_upsert
     from core.finmind_client import FinMindClient
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
-    sys.exit(1)
+except ImportError:
+    from db_utils import write_pipeline_log, get_latest_date, get_db_stock_ids, bulk_upsert
+    from finmind_client import FinMindClient
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
-
-def fetch_tech(stock_id: str):
-    t0 = time.monotonic()
-    api = FinMindClient()
-    
-    # 🔍 資料表對齊：stock_price
-    last_date = get_latest_date("stock_price", stock_id) or "2010-01-01"
-    
-    logger.info(f"📈 正在抓取 {stock_id} 量價資料 (Since: {last_date})...")
-    data = api.get_data("TaiwanStockPrice", stock_id, start_date=last_date)
-    
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-    
-    write_pipeline_log(
-        task_name="fetch_technical",
-        stock_id=stock_id,
-        status="success",
-        category="ingestion",
-        duration_ms=elapsed_ms,
-        rows=len(data)
-    )
-    return len(data)
+def fetch_tech(stock_id: str, start: str = None):
+    t0 = time.monotonic(); api = FinMindClient()
+    last_date = start or get_latest_date("stock_price", stock_id) or "2010-01-01"
+    logging.info(f"📈 正在同步 {stock_id} 量價資料 (Since: {last_date})...")
+    data = api.get_data("TaiwanStockPrice", stock_id, last_date)
+    rows = bulk_upsert("stock_price", data, ["date", "stock_id"]) if data else 0
+    write_pipeline_log("fetch_technical", stock_id, "success" if data is not None else "failed", "ingestion", int((time.monotonic()-t0)*1000), rows)
+    return rows
 
 if __name__ == "__main__":
-    fetch_tech("2330")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    parser = argparse.ArgumentParser(); parser.add_argument("--stock_id", type=str); parser.add_argument("--all", action="store_true"); parser.add_argument("--start", type=str); args = parser.parse_args()
+    if args.all:
+        for sid in get_db_stock_ids(): fetch_tech(sid, args.start)
+    else: fetch_tech(args.stock_id or "2330", args.start)

@@ -1,18 +1,16 @@
 """
-fetch_news_data.py v6.0 (Trinity Core Final)
+fetch_block_trading.py v6.0 (Trinity Core Final)
 ================================================================================
 資料抓取模組 — 混合模式日誌標準版
-負責將 FinMind 原始數據 (TaiwanStockNews) 同步至資料庫。
+負責將 FinMind 原始數據 (TaiwanStockBlockTrading) 同步至資料庫。
 
 修訂歷程：
   v6.0 (2026-05-10):
-    - [核心] 升級至 Trinity Core v6.0 標準，確保 stock_news 表對齊。
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
+    - [核心] 建立 Trinity Core v6.0 標準抓取腳本，對應 block_trading 表。
 
 【執行範例說明】
-1. 手動抓取特定標的相關新聞 (例如 台積電 2330)：
-   $ python scripts/ingestion/fetch_news_data.py --stock_id 2330
+1. 手動抓取特定標的鉅額交易 (例如 台積電 2330)：
+   $ python scripts/ingestion/fetch_block_trading.py --stock_id 2330
 ================================================================================
 """
 
@@ -41,27 +39,27 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_news(stock_id: str):
+def fetch_block_trading(stock_id: str):
     """
-    抓取特定標的之新聞數據。
+    抓取特定標的之鉅額交易數據。
     
     執行範例：
-    $ python scripts/ingestion/fetch_news_data.py --stock_id 2330
+    $ python scripts/ingestion/fetch_block_trading.py --stock_id 2330
     """
     t0 = time.monotonic()
     api = FinMindClient()
     
-    # 🔍 資料表對齊：stock_news
-    last_date = get_latest_date("stock_news", stock_id) or "2024-01-01"
+    # 🔍 資料表對齊：block_trading
+    last_date = get_latest_date("block_trading", stock_id) or "2010-01-01"
     
-    logger.info(f"📰 正在同步 {stock_id} 相關新聞 (Since: {last_date})...")
-    data = api.get_data("TaiwanStockNews", stock_id, start_date=last_date)
+    logger.info(f"🧱 正在同步 {stock_id} 鉅額交易數據 (Since: {last_date})...")
+    data = api.get_data("TaiwanStockBlockTrading", stock_id, start_date=last_date)
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
     # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
-        task_name="fetch_news",
+        task_name="fetch_block_trading",
         stock_id=stock_id,
         status="success" if data is not None else "failed",
         category="ingestion",
@@ -75,4 +73,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--stock_id", type=str, default="2330")
     args = parser.parse_args()
-    fetch_news(args.stock_id)
+    fetch_block_trading(args.stock_id)

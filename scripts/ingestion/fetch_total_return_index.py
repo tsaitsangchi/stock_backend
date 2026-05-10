@@ -1,29 +1,19 @@
 """
-fetch_total_return_index.py v5.5.7 (Trinity Core Final)
+fetch_total_return_index.py v6.0 (Trinity Core Final)
 ================================================================================
-資料抓取模組 — 混合模式日誌實作版
-負責將 FinMind 原始數據同步至資料庫。
+資料抓取模組 — 混合模式日誌標準版
+負責將 FinMind 原始數據 (TaiwanStockTotalReturnIndex) 同步至資料庫。
 
 修訂歷程：
+  v6.0 (2026-05-10):
+    - [核心] 升級至 Trinity Core v6.0 標準，確保 total_return_index 表對齊。
   v5.5.7 (2026-05-09):
     - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
-  v5.5.1 (2026-05-09):
-    - [規範] 導入混合模式日誌與路徑修復 v3.0。
 
 【執行範例說明】
-
-1. 手動單點調試 (僅抓取台積電 2330 作為測試)：
-   $ python scripts/ingestion/fetch_total_return_index.py
-
-2. 大規模並行抓取 (透過調度器對全市場執行)：
-   ------------------------------------------------------------
-   from ingestion.parallel_fetch import run_orchestrator
-   from ingestion.fetch_total_return_index import fetch_taiex_tr
-   from core.db_utils import get_db_stock_ids
-   
-   # 啟動並行調度：對全市場標的執行 fetch_taiex_tr
-   run_orchestrator(fetch_taiex_tr, get_db_stock_ids(), "all_market_fetch_taiex_tr")
-   ------------------------------------------------------------
+1. 手動抓取特定標的報酬指數 (例如 台積電 2330)：
+   $ python scripts/ingestion/fetch_total_return_index.py --stock_id 2330
+================================================================================
 """
 
 import sys
@@ -31,10 +21,10 @@ import logging
 import time
 from pathlib import Path
 
-# ── 系統路徑修復 ──
+# ── 系統路徑修復 (v3.1) ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core"):
+for _sub in ("", "core", "pipeline"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -52,6 +42,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 def fetch_taiex_tr():
+    """
+    抓取台股總報酬指數。
+    
+    執行範例：
+    $ python scripts/ingestion/fetch_total_return_index.py
+    """
     t0 = time.monotonic()
     api = FinMindClient()
     
@@ -63,10 +59,11 @@ def fetch_taiex_tr():
     
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     
+    # 🔴 混合日誌紀錄 (Category: ingestion)
     write_pipeline_log(
         task_name="fetch_taiex_tr",
         stock_id="TAIEX_INDEX",
-        status="success",
+        status="success" if data is not None else "failed",
         category="ingestion",
         duration_ms=elapsed_ms,
         rows=len(data)

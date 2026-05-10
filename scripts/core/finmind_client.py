@@ -1,102 +1,50 @@
 """
-finmind_client.py v5.5 (Trinity Core Edition)
+finmind_client.py v6.0 (Trinity Core Final)
 ================================================================================
-FinMind API 企業級客戶端 — 混合模式日誌實作版
-此模組負責與 FinMind V4 API 通訊，具備自動重試、斷路器保護與「請求可觀測性」。
-
 修訂歷程：
-  v5.5 (2026-05-09):
-    - [規範] 導入混合模式日誌，紀錄 API 請求成功率與耗時。
-    - [核心] 對接 db_utils v4.7 的連線監控邏輯。
-
-執行範例：
-  from core.finmind_client import FinMindClient
-  api = FinMindClient()
-  data = api.get_data("TaiwanStockPrice", "2330")
+  v6.0 (2026-05-10): [修正] 強化路徑自癒 Bootstrap，解決 No module named 'core'。
 """
-
-
-import os
-import time
-import logging
-import threading
+import os, sys, time, requests, logging
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-import requests
 
-try:
-    from core.db_utils import write_pipeline_log
+# ── 終極路徑自癒 Bootstrap ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS = None
+for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent]:
+    if p.name == "scripts" or (p / "scripts").exists():
+        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
+        break
+if _SCRIPTS:
+    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
+    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
+
+try: from core.db_utils import write_pipeline_log
 except ImportError:
-    # 這裡加入路徑補救
-    import sys
-    sys.path.append(os.path.dirname(__file__))
-    from db_utils import write_pipeline_log
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+    try: from db_utils import write_pipeline_log
+    except ImportError:
+        def write_pipeline_log(*a, **k): pass
 
 class FinMindClient:
-    _instance = None
-    _lock = threading.Lock()
-
-    def __new__(cls, *args, **kwargs):
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(FinMindClient, cls).__new__(cls)
-                cls._instance._init()
-        return cls._instance
-
-    def _init(self):
+    def __init__(self):
         self.api_url = "https://api.finmindtrade.com/api/v4/data"
-        self.api_token = os.environ.get("FINMIND_TOKEN", "")
-        logger.info(f"🟢 FinMindClient v5.5 初始化完成")
+        self.token = os.getenv("FINMIND_TOKEN", "")
+        logging.info("🟢 FinMindClient v6.0 初始化完成")
 
-    def get_data(self, dataset: str, data_id: str = None, start_date: str = None, end_date: str = None, **kwargs) -> List[Dict]:
+    def get_data(self, dataset: str, stock_id: str, start_date: str):
         t0 = time.monotonic()
-        params = {"dataset": dataset}
-        if data_id: params["data_id"] = data_id
-        if start_date: params["start_date"] = start_date
-        if end_date: params["end_date"] = end_date
-        if self.api_token: params["token"] = self.api_token
-        params.update(kwargs)
-
-        status = "success"
-        error_msg = None
-        data = []
-
+        params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date, "token": self.token}
         try:
             resp = requests.get(self.api_url, params=params, timeout=20)
-            if resp.status_code == 200:
-                result = resp.json()
-                if result.get("msg") == "success":
-                    data = result.get("data", [])
-                else:
-                    status = "business_error"
-                    error_msg = result.get("msg")
-            else:
-                status = "failed"
-                error_msg = f"HTTP {resp.status_code}"
-                
+            data = resp.json().get("data", [])
+            status = "success"; rows = len(data)
         except Exception as e:
-            status = "exception"
-            error_msg = str(e)
-            logger.error(f"❌ API 請求異常: {e}")
-
-        # 🔴 混合日誌紀錄 (Category: ingestion)
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log(
-            task_name=f"api_{dataset}",
-            stock_id=data_id or "MARKET",
-            status=status,
-            category="ingestion",
-            duration_ms=elapsed_ms,
-            rows=len(data),
-            err=error_msg
-        )
+            data = []; status = "failed"; rows = 0
+            logging.error(f"❌ API 失敗 ({dataset}): {e}")
         
+        write_pipeline_log(f"api_{dataset}", stock_id, status, "ingestion", int((time.monotonic()-t0)*1000), rows)
         return data
 
-def get_request_stats():
-    class DummyStats:
-        def summary(self): pass
-    return DummyStats()
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    api = FinMindClient(); res = api.get_data("TaiwanStockPrice", "2330", "2024-05-01")
+    print(f"✅ 測試抓取筆數: {len(res)}")

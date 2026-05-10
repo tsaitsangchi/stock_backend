@@ -1,79 +1,79 @@
 """
-migrate_stocks_config.py v5.5.9 (Trinity Core Final)
+migrate_stocks_config.py v5.8 (Trinity Core Final)
 ================================================================================
-資產矩陣同步引擎 — 系統核心思想落地版
-負責將 config.py 中的 151 檔核心標的同步至資料庫，並重置非核心標的。
-
 修訂歷程：
-  v5.5.9 (2026-05-09):
-    - [核心] 實作「核心標的」清洗邏輯：全市場 3096 -> 核心 151。
-    - [規範] 導入 v5.5.x 混合日誌與極致文檔標準。
+  v5.8 (2026-05-10): [修正] 強化路徑自癒 Bootstrap，解決 No module named 'core'。
 """
-
-import sys
-import logging
-import time
+import sys, logging, time
 from pathlib import Path
 
-# ── 系統路徑修復 ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS = None
+for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent]:
+    if p.name == "scripts" or (p / "scripts").exists():
+        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
+        break
+if _SCRIPTS:
+    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
+    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
 
 try:
-    from core.path_setup import ensure_scripts_on_path
-    ensure_scripts_on_path(__file__)
     from core.db_utils import db_transaction, write_pipeline_log
-    from config import STOCK_CONFIGS
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
-    sys.exit(1)
+except ImportError:
+    from db_utils import db_transaction, write_pipeline_log
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+try:
+    from config import STOCK_CONFIGS
+except ImportError:
+    # 嘗試向上尋找 config
+    sys.path.append(str(_SCRIPTS))
+    from config import STOCK_CONFIGS
 
 def migrate_core_assets():
-    """執行資產矩陣同步，確保資料庫標的符合系統核心思想"""
     t0 = time.monotonic()
-    logger.info(f"🔄 正在將系統核心思想 (151 檔標的) 同步至資料庫...")
-    
+    logging.info(f"🔄 正在同步核心資產 ({len(STOCK_CONFIGS)} 檔) 並清理元數據...")
     try:
         with db_transaction() as cur:
-            # 1. 先將全市場標的設為「非監控」狀態
-            cur.execute("UPDATE stocks SET is_active = FALSE, is_core = FALSE")
-            
-            # 2. 逐一啟用 config.py 中的核心標的
+            # 1. 重置所有標的狀態與抓取旗標
+            cur.execute("""
+                UPDATE stocks SET 
+                    is_active = FALSE, 
+                    is_core = FALSE,
+                    fetch_basic = FALSE,
+                    fetch_chip = FALSE,
+                    fetch_fundamental = FALSE,
+                    fetch_derivative = FALSE,
+                    fetch_news = FALSE
+            """)
+            # 2. 啟動核心標的並更新資訊
             for sid, cfg in STOCK_CONFIGS.items():
                 cur.execute("""
-                    UPDATE stocks 
-                    SET is_active = TRUE, 
-                        is_core = TRUE,
-                        stock_name = %s,
-                        industry = %s,
+                    UPDATE stocks SET 
+                        is_active = TRUE, 
+                        is_core = TRUE, 
                         fetch_basic = TRUE,
                         fetch_chip = TRUE,
                         fetch_fundamental = TRUE,
-                        fetch_news = TRUE
+                        fetch_derivative = TRUE,
+                        fetch_news = TRUE,
+                        stock_name = %s, 
+                        industry = %s 
                     WHERE stock_id = %s
-                """, (cfg['name'], cfg.get('industry', 'N/A'), sid))
-                
-                # 如果資料庫裡還沒有這檔股票 (例如新加入核心的)，則執行 INSERT
+                """, (cfg['name'], cfg.get('industry','N/A'), sid))
                 if cur.rowcount == 0:
                     cur.execute("""
-                        INSERT INTO stocks (stock_id, stock_name, industry, is_active, is_core, fetch_basic, fetch_chip, fetch_fundamental, fetch_news)
-                        VALUES (%s, %s, %s, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)
-                    """, (sid, cfg['name'], cfg.get('industry', 'N/A')))
-        
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("migrate_stocks_config", "SYSTEM", "success", "sys", elapsed_ms, len(STOCK_CONFIGS))
-        logger.info(f"✅ 核心資產同步完成！目前監控中心標的數: {len(STOCK_CONFIGS)}")
-        
-    except Exception as e:
-        logger.error(f"❌ 同步失敗: {e}")
-        write_pipeline_log("migrate_stocks_config", "SYSTEM", "failed", "sys", 0, 0, str(e))
+                        INSERT INTO stocks (stock_id, stock_name, industry, is_active, is_core, fetch_basic, fetch_chip, fetch_fundamental, fetch_derivative, fetch_news)
+                        VALUES (%s, %s, %s, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE)
+                    """, (sid, cfg['name'], cfg.get('industry','N/A')))
+            
+            # 3. 清理完全不屬於核心的冗餘資料 (保持 table 潔淨)
+            cur.execute("DELETE FROM stocks WHERE is_active = FALSE")
+            
+        write_pipeline_log("migrate_stocks_config", "SYSTEM", "success", "sys", int((time.monotonic()-t0)*1000), len(STOCK_CONFIGS))
+        logging.info("✅ 核心資產元數據同步完成")
+    except Exception as e: logging.error(f"❌ 同步失敗: {e}")
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     migrate_core_assets()

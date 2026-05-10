@@ -1,17 +1,17 @@
 """
-fetch_chip_data.py v6.5 (Trinity Core Final)
+fetch_month_revenue.py v6.4 (Trinity Core Final)
 ================================================================================
-資料抓取模組 — 籌碼面 (三大法人)
-負責將 FinMind 原始數據同步至資料庫，對齊複合主鍵 (date, stock_id, name)。
+資料抓取模組 — 營收面 (每月營收)
+負責同步 FinMind 每月營收數據 (TaiwanStockMonthRevenue) 至資料庫。
 
 修訂歷程：
-  v6.5 (2026-05-10): [修正] 補齊 start 參數，解決 fetch_chip() got an unexpected keyword argument 'start'。
   v6.4 (2026-05-10): [核心] 導入終極路徑自癒 Bootstrap。
+  v6.3 (2026-05-10): [功能] 支援 start 參數，對齊強制更新矩陣。
 
-【執行範例矩陣 — 籌碼同步方案】
-1. 單一個股同步： $ python scripts/ingestion/fetch_chip_data.py --stock_id 2330
-2. 全核心股同步： $ python scripts/ingestion/fetch_chip_data.py --all
-3. 強制日期重刷： $ python scripts/ingestion/fetch_chip_data.py --stock_id 2330 --start 2010-01-01
+【執行範例矩陣 — 營收同步方案】
+1. 單一個股同步： $ python scripts/ingestion/fetch_month_revenue.py --stock_id 2330
+2. 全核心股同步： $ python scripts/ingestion/fetch_month_revenue.py --all
+3. 強制日期重刷： $ python scripts/ingestion/fetch_month_revenue.py --stock_id 2330 --start 2010-01-01
 ================================================================================
 """
 import sys, logging, time, argparse
@@ -35,19 +35,18 @@ except ImportError:
     from db_utils import write_pipeline_log, get_latest_date, get_db_stock_ids, bulk_upsert
     from finmind_client import FinMindClient
 
-def fetch_chip(stock_id: str, start: str = None):
-    """ 抓取特定標的之三大法人籌碼數據 """
+def fetch_month_revenue(stock_id: str, start: str = None):
     t0 = time.monotonic(); api = FinMindClient()
-    last_date = start or get_latest_date("institutional_investors_buy_sell", stock_id) or "2010-01-01"
-    logging.info(f"🤝 正在同步 {stock_id} 三大法人籌碼 (Since: {last_date})...")
-    data = api.get_data("TaiwanStockInstitutionalInvestorsBuySell", stock_id, last_date)
-    rows = bulk_upsert("institutional_investors_buy_sell", data, ["date", "stock_id", "name"]) if data else 0
-    write_pipeline_log("fetch_chip", stock_id, "success" if data is not None else "failed", "ingestion", int((time.monotonic()-t0)*1000), rows)
+    last_date = start or get_latest_date("month_revenue", stock_id) or "2010-01-01"
+    logging.info(f"💰 正在同步 {stock_id} 營收數據 (Since: {last_date})...")
+    data = api.get_data("TaiwanStockMonthRevenue", stock_id, last_date)
+    rows = bulk_upsert("month_revenue", data, ["date", "stock_id"]) if data else 0
+    write_pipeline_log("fetch_month_revenue", stock_id, "success" if data is not None else "failed", "ingestion", int((time.monotonic()-t0)*1000), rows)
     return rows
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     parser = argparse.ArgumentParser(); parser.add_argument("--stock_id", type=str); parser.add_argument("--all", action="store_true"); parser.add_argument("--start", type=str); args = parser.parse_args()
     if args.all:
-        for sid in get_db_stock_ids(): fetch_chip(sid, args.start)
-    else: fetch_chip(args.stock_id or "2330", args.start)
+        for sid in get_db_stock_ids(): fetch_month_revenue(sid, args.start)
+    else: fetch_month_revenue(args.stock_id or "2330", args.start)

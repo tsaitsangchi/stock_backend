@@ -1,78 +1,47 @@
 """
-data_pipeline.py v5.5.26 (Trinity Core Final)
+data_pipeline.py v6.7 (Trinity Core Final)
 ================================================================================
-資料同步總管 — 混合模式日誌實作版
-負責同步 150 檔標的的 FinMind 價格、籌碼與基本面數據。
-
 修訂歷程：
-  v5.5.26 (2026-05-10):
-    - [文檔] 補齊極致詳細的執行範例說明。
-  v5.5.21 (2026-05-09):
-    - [核心] 完全對接 Hybrid Logging 分類體系。
-
-【執行範例說明】
-
-1. 直接從命令行執行（啟動全標的數據同步）：
-   $ python scripts/pipeline/data_pipeline.py
-
-2. 日誌查閱 (驗證各類數據抓取狀態)：
-   -- 查看 ingestion 分類的抓取結果 (價格, 籌碼等)
-   SELECT task_name, status, rows_processed, duration_ms, error_message 
-   FROM pipeline_execution_log 
-   WHERE category = 'ingestion' 
-   ORDER BY created_at DESC LIMIT 20;
-
-3. 統計今日抓取成功的標的總數：
-   SELECT task_name, COUNT(*) FROM pipeline_execution_log 
-   WHERE status = 'success' AND created_at > CURRENT_DATE 
-   GROUP BY task_name;
+  v6.7 (2026-05-10): [修正] 強化路徑自癒 Bootstrap，解決 No module named 'core'。
 """
-
-import sys
-import logging
-import time
+import sys, logging, time, argparse
 from pathlib import Path
 
-# ── 系統路徑修復 (v3.0) ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "pipeline", "ingestion"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS = None
+for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent]:
+    if p.name == "scripts" or (p / "scripts").exists():
+        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
+        break
+if _SCRIPTS:
+    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
+    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
 
 try:
-    from core.path_setup import ensure_scripts_on_path
-    ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log, get_db_stock_ids
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
-    sys.exit(1)
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
-
-def run_full_pipeline():
-    t_start = time.monotonic()
-    logger.info("🚀 [Pipeline] 啟動全核心標的數據同步管線...")
+    from core.db_utils import get_db_stock_ids, write_pipeline_log
+    from ingestion.parallel_fetch import fetch_stock_data_unit
+except ImportError:
     try:
-        write_pipeline_log("full_sync_master", "SYSTEM", "running", "sys")
-        # 此處呼叫各個 fetcher 的邏輯
-        time.sleep(1.0) # 模擬執行
-        # 3. 🔴 自動產出數據戰情網頁 (Dashboard)
-        try:
-            from monitor.data_audit_engine import audit_completeness
-            audit_completeness()
-        except ImportError:
-            logger.warning("⚠️ 無法載入稽核引擎，跳過網頁產生。")
+        from db_utils import get_db_stock_ids, write_pipeline_log
+        from parallel_fetch import fetch_stock_data_unit
+    except ImportError:
+        print("[FATAL] 無法匯入核心配置，請確認 PYTHONPATH 或 scripts 目錄存在。")
+        sys.exit(1)
 
-        elapsed_sec = round(time.monotonic() - t_start, 2)
-        write_pipeline_log("full_sync_master", "SYSTEM", "success", "sys", int(elapsed_sec * 1000))
-        logger.info(f"🏆 [Pipeline] 同步與網頁監控任務完畢！耗時: {elapsed_sec}s")
-        logger.info(f"🌐 戰情網頁位置: monitor/dashboard.html")
-    except Exception as e:
-        logger.error(f"❌ 管線中斷: {e}")
-        write_pipeline_log("full_sync_master", "SYSTEM", "failed", "sys", 0, 0, str(e))
+def run_master_pipeline(stock_id: str = None, start_date: str = None):
+    t_start = time.monotonic(); target_ids = [stock_id] if stock_id else get_db_stock_ids()
+    logging.info(f"🚀 [Pipeline] 同步開始 (共 {len(target_ids)} 檔)...")
+    success_count = 0; total_rows = 0
+    for sid in target_ids:
+        try:
+            rows = fetch_stock_data_unit(sid, start_date=start_date)
+            success_count += 1; total_rows += (rows or 0)
+        except Exception as e: logging.error(f"❌ {sid} 同步異常: {e}")
+    write_pipeline_log("data_pipeline_master", "SYSTEM", "success", "pipeline", int((time.monotonic()-t_start)*1000), total_rows)
+    logging.info(f"🏁 [Pipeline] 完成！成功: {success_count}/{len(target_ids)}，總量: {total_rows}")
 
 if __name__ == "__main__":
-    run_full_pipeline()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    parser = argparse.ArgumentParser(); parser.add_argument("--stock_id", type=str); parser.add_argument("--start", type=str); parser.add_argument("--all", action="store_true"); args = parser.parse_args()
+    run_master_pipeline(stock_id=args.stock_id, start_date=args.start)
