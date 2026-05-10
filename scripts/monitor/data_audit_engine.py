@@ -46,17 +46,29 @@ def audit_completeness():
     
     with db_session() as conn:
         with conn.cursor() as cur:
-            for sid in stocks[:150]: # 稽核前 150 檔
-                # 模擬稽核邏輯 (實際應查詢 count)
-                cur.execute("SELECT COUNT(*) FROM stock_price WHERE stock_id = %s", (sid,))
-                price_count = cur.fetchone()['count']
+            for sid in stocks[:150]:
+                # 取得股票名稱與數據筆數
+                cur.execute("""
+                    SELECT 
+                        COALESCE(i.stock_name, '未知') as name,
+                        COUNT(p.*) as count
+                    FROM (SELECT %s as sid) s
+                    LEFT JOIN stock_info i ON s.sid = i.stock_id
+                    LEFT JOIN stock_price p ON s.sid = p.stock_id
+                    GROUP BY i.stock_name
+                """, (sid,))
+                res = cur.fetchone()
                 
-                # 計算分數 (假設滿分為 1000 筆資料)
+                price_count = res['count']
+                stock_name = res['name']
+                
+                # 計算分數
                 score = min(100, round((price_count / 1000) * 100, 1))
                 status = "Healthy" if score > 90 else "Warning" if score > 50 else "Critical"
                 
                 report_data.append({
                     "id": sid,
+                    "name": stock_name,
                     "score": score,
                     "status": status,
                     "count": price_count,
@@ -144,8 +156,9 @@ def generate_html(data):
             overflow: hidden;
         }}
         .stock-card:hover {{ transform: translateY(-5px); border-color: var(--accent); background: rgba(0, 242, 255, 0.05); }}
-        .stock-id {{ font-weight: 600; font-size: 1.1rem; }}
-        .stock-score {{ font-size: 0.8rem; margin-top: 5px; }}
+        .stock-id {{ font-weight: 600; font-size: 1.1rem; color: var(--accent); }}
+        .stock-name {{ font-size: 0.85rem; opacity: 0.8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .stock-score {{ font-size: 0.8rem; margin-top: 8px; font-family: monospace; }}
         .status-dot {{
             width: 8px; height: 8px; border-radius: 50%;
             display: inline-block; margin-right: 5px;
@@ -192,6 +205,7 @@ def generate_html(data):
             card.style.animationDelay = (i * 0.01) + 's';
             card.innerHTML = `
                 <div class="stock-id">${{s.id}}</div>
+                <div class="stock-name">${{s.name}}</div>
                 <div class="stock-score">
                     <span class="status-dot"></span>${{s.score}}%
                 </div>
