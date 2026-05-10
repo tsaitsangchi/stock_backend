@@ -53,19 +53,21 @@ def audit_completeness():
                         COUNT(p.*) as count,
                         (SELECT close FROM stock_price WHERE stock_id = %s ORDER BY date DESC LIMIT 1) as price,
                         (SELECT sharpe_ratio FROM evaluation_log WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as sharpe,
+                        (SELECT win_rate FROM evaluation_log WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as win_rate,
                         (SELECT signal FROM predictions WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as signal,
                         (SELECT confidence FROM predictions WHERE stock_id = %s ORDER BY created_at DESC LIMIT 1) as confidence
                     FROM (SELECT %s as sid) s
                     LEFT JOIN stock_info i ON s.sid = i.stock_id
                     LEFT JOIN stock_price p ON s.sid = p.stock_id
                     GROUP BY i.stock_name
-                """, (sid, sid, sid, sid, sid))
+                """, (sid, sid, sid, sid, sid, sid))
                 res = cur.fetchone()
                 
                 price_count = res['count']
                 stock_name = res['name']
                 curr_price = float(res['price']) if res['price'] else 0.0
                 sharpe = float(res['sharpe']) if res['sharpe'] else 0.0
+                win_rate = float(res['win_rate']) if res['win_rate'] else 0.0
                 signal = res['signal'] or "N/A"
                 confidence = float(res['confidence']) if res['confidence'] else 0.0
                 
@@ -80,6 +82,7 @@ def audit_completeness():
                     "status": status,
                     "price": curr_price,
                     "sharpe": sharpe,
+                    "win_rate": win_rate,
                     "signal": signal,
                     "conf": confidence,
                     "last_sync": datetime.now().strftime("%Y-%m-%d %H:%M")
