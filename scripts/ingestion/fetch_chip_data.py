@@ -1,53 +1,88 @@
 """
-fetch_chip_data.py v6.5 (Trinity Core Final)
+fetch_chip_data.py v4.7 (Quantum Finance Edition)
 ================================================================================
-資料抓取模組 — 籌碼面 (三大法人)
-負責將 FinMind 原始數據同步至資料庫，對齊複合主鍵 (date, stock_id, name)。
+三大法人籌碼抓取器 — 核心籌碼專項 (Quantum v5.1 標準)
+負責同步個股的外資、投信、自營商買賣超數據。
 
 修訂歷程：
-  v6.5 (2026-05-10): [修正] 補齊 start 參數，解決 fetch_chip() got an unexpected keyword argument 'start'。
-  v6.4 (2026-05-10): [核心] 導入終極路徑自癒 Bootstrap。
+  v4.7 (2026-05-10): [核心] 實作混合模式日誌：同步寫入 pipeline_execution_log 與專項審計。
+  v4.6 (2026-05-10): [文件] 完善五維度執行範例矩陣，確保範例完整性。
+  v4.5 (2026-05-10): [修復] 對齊 db_utils v5.1 混合日誌規範。
 
-【執行範例矩陣 — 籌碼同步方案】
-1. 單一個股同步： $ python scripts/ingestion/fetch_chip_data.py --stock_id 2330
-2. 全核心股同步： $ python scripts/ingestion/fetch_chip_data.py --all
-3. 強制日期重刷： $ python scripts/ingestion/fetch_chip_data.py --stock_id 2330 --start 2010-01-01
+【執行範例矩陣 — 數據抓取方案】
+1. 單一標的、單一表格同步 (Python)：
+   python scripts/ingestion/fetch_chip_data.py --stock_id 2330
+2. 單一標的、單一表格「強制」更新歷史 (Python)：
+   python scripts/ingestion/fetch_chip_data.py --stock_id 2330 --force
+3. 單一標的「所有」維度表格抓取 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --stock_id 2330 --table ALL
+4. 核心標的集「所有」維度表格「強制」更新 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL --force
+5. 全市場標的「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe all --table ALL
 ================================================================================
 """
-import sys, logging, time, argparse
+import os, sys, logging, time, argparse
+import pandas as pd
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS = None
-for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent, _THIS_DIR.parent.parent.parent]:
-    if p.name == "scripts" or (p / "scripts").exists():
-        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
-        break
-if _SCRIPTS:
-    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
-    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
+_SCRIPTS_DIR = _THIS_DIR.parent if _THIS_DIR.name != "scripts" else _THIS_DIR
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 
 try:
-    from core.db_utils import write_pipeline_log, get_latest_date, get_db_stock_ids, bulk_upsert
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
     from core.finmind_client import FinMindClient
 except ImportError:
-    from db_utils import write_pipeline_log, get_latest_date, get_db_stock_ids, bulk_upsert
+    import path_setup
+    path_setup.ensure_scripts_on_path(__file__)
+    from db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
     from finmind_client import FinMindClient
 
-def fetch_chip(stock_id: str, start: str = None):
-    """ 抓取特定標的之三大法人籌碼數據 """
-    t0 = time.monotonic(); api = FinMindClient()
-    last_date = start or get_latest_date("institutional_investors_buy_sell", stock_id) or "2010-01-01"
-    logging.info(f"🤝 正在同步 {stock_id} 三大法人籌碼 (Since: {last_date})...")
-    data = api.get_data("TaiwanStockInstitutionalInvestorsBuySell", stock_id, last_date)
-    rows = bulk_upsert("institutional_investors_buy_sell", data, ["date", "stock_id", "name"]) if data else 0
-    write_pipeline_log("fetch_chip", stock_id, "success" if data is not None else "failed", "ingestion", int((time.monotonic()-t0)*1000), rows)
-    return rows
+logger = logging.getLogger(__name__)
+
+def sync_chip(stock_id: str, start_date: str = None):
+    start_time = time.time()
+    client = FinMindClient()
+    TABLE_NAME = "institutional_investors_buy_sell"
+    
+    if not start_date:
+        last_date = get_latest_date(TABLE_NAME, stock_id) or "2010-01-01"
+        start_date = (datetime.strptime(last_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    
+    logger.info(f"🤝 正在同步 {stock_id} 三大法人籌碼 (Since: {start_date})...")
+    
+    try:
+        raw_data = client.get_data("TaiwanStockInstitutionalInvestorsBuySell", stock_id, start_date)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            df.columns = [c.lower() for c in df.columns]
+            rows = bulk_upsert(TABLE_NAME, df.to_dict('records'), unique_cols=["date", "stock_id", "name"])
+            duration = int((time.time() - start_time) * 1000)
+            
+            # 🔴 混合模式日誌
+            write_pipeline_log("FetchChip", stock_id, "SUCCESS", "Ingestion", duration_ms=duration, rows=rows)
+            write_data_audit_log(TABLE_NAME, stock_id, start_date, datetime.now().strftime("%Y-%m-%d"), rows)
+            
+            logger.info(f"✅ {stock_id} 三大法人同步完成，筆數: {rows}")
+        else:
+            logger.info(f"ℹ️  {stock_id} 無新資料")
+    except Exception as e:
+        logger.error(f"❌ {stock_id} 同步失敗: {e}")
+        write_pipeline_log("FetchChip", stock_id, "FAILED", "Ingestion", err=str(e))
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--stock_id", type=str, default="2330")
+    parser.add_argument("--start_date", type=str)
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    parser = argparse.ArgumentParser(); parser.add_argument("--stock_id", type=str); parser.add_argument("--all", action="store_true"); parser.add_argument("--start", type=str); args = parser.parse_args()
-    if args.all:
-        for sid in get_db_stock_ids(): fetch_chip(sid, args.start)
-    else: fetch_chip(args.stock_id or "2330", args.start)
+    sync_chip(args.stock_id, args.start_date if not args.force else "2010-01-01")

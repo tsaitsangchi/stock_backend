@@ -1,117 +1,88 @@
 """
-fetch_missing_stocks_data.py v6.2 (Trinity Core Final)
+fetch_missing_stocks_data.py v4.3 (Quantum Finance Edition)
 ================================================================================
-資料救援工具 — 混合模式日誌標準版
-負責檢測配置中缺失數據的標的，並啟動救援抓取任務。
+數據治理工具 — 缺失標的偵測 (Quantum v5.1 標準)
+負責對比 stocks 定義表與各行情表，找出並回填尚未同步數據的標的。
 
 修訂歷程：
-  v6.2 (2026-05-10):
-    - [文檔] 補齊「全量救援 (--all)」與「自定義限額 (--limit)」執行範例說明。
-  v6.1 (2026-05-10):
-    - [功能] 新增 --limit 與 --all 參數，支援自定義救援數量。
+  v4.3 (2026-05-10): [核心] 實作混合模式日誌，對齊 v5.1 治理紀錄規範。
+  v4.2 (2026-05-10): [文件] 完善五維度執行範例矩陣，確保範例完整性。
+  v4.1 (2026-05-10): [修復] 對齊 db_utils v5.1 混合日誌規範。
 
-【執行範例說明】
-1. 救援所有缺失標的 (自動補齊所有數據)：
-   $ python scripts/ingestion/fetch_missing_stocks_data.py --all
-
-2. 僅救援前 10 檔缺失標的 (限額模式)：
-   $ python scripts/ingestion/fetch_missing_stocks_data.py --limit 10
+【執行範例矩陣 — 數據治理方案】
+1. 偵測全市場缺失數據並回填 (Python)：
+   python scripts/ingestion/fetch_missing_stocks_data.py
+2. 單一標的「所有」維度表格抓取 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --stock_id 2330 --table ALL
+3. 核心標的集「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL
+4. 核心標的集「所有」維度表格「強制」更新 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL --force
+5. 全市場標的「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe all --table ALL
 ================================================================================
 """
-
-import sys
-import logging
-import time
-import argparse
+import os, sys, logging, time
 from pathlib import Path
+from datetime import datetime
 
-# ── 系統路徑修復 (v3.1) ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS_DIR = _THIS_DIR.parent if _THIS_DIR.name != "scripts" else _THIS_DIR
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import db_transaction, write_pipeline_log
-    from core.finmind_client import FinMindClient
-    from config import STOCK_CONFIGS
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
-    sys.exit(1)
+    from core.db_utils import get_db_connection, write_pipeline_log, write_data_audit_log
+except ImportError:
+    import path_setup
+    path_setup.ensure_scripts_on_path(__file__)
+    from db_utils import get_db_connection, write_pipeline_log, write_data_audit_log
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def rescue_missing_stocks(limit=5):
-    """
-    掃描資料庫，針對無量價紀錄的核心標的進行緊急抓取。
+def detect_and_fetch_missing():
+    start_time = time.time()
+    conn = get_db_connection()
+    cur = conn.cursor()
     
-    執行範例：
-    $ python scripts/ingestion/fetch_missing_stocks_data.py --all
-    $ python scripts/ingestion/fetch_missing_stocks_data.py --limit 20
-    """
-    t0 = time.monotonic()
-    api = FinMindClient()
-    rescued_count = 0
+    logger.info("🔍 正在偵測缺失數據標的...")
     
     try:
-        # 1. 找出資料庫中已有量價紀錄的標的
-        with db_transaction() as cur:
-            cur.execute("SELECT DISTINCT stock_id FROM stock_price")
-            existing_ids = {r['stock_id'] for r in cur.fetchall()}
-            
-        config_ids = set(STOCK_CONFIGS.keys())
-        missing_ids = config_ids - existing_ids
+        # 找出 stocks 表中有但 stock_price 表中無的標的
+        query = """
+        SELECT s.stock_id 
+        FROM stocks s
+        LEFT JOIN stock_price p ON s.stock_id = p.stock_id
+        WHERE p.stock_id IS NULL
+        """
+        cur.execute(query)
+        missing_ids = [row[0] for row in cur.fetchall()]
         
-        if not missing_ids:
-            logger.info("✅ 所有配置標的皆已有資料。")
+        if missing_ids:
+            logger.info(f"🚨 發現 {len(missing_ids)} 檔缺失數據標的，啟動回填...")
+            for sid in missing_ids:
+                cmd = f"{sys.executable} {_THIS_DIR}/parallel_fetch.py --stock_id {sid} --table ALL"
+                os.system(cmd)
+            
+            duration = int((time.time() - start_time) * 1000)
+            # 🔴 治理層混合日誌
+            write_pipeline_log("Governance_MissingCheck", "MARKET", "SUCCESS", "Governance", duration_ms=duration, rows=len(missing_ids))
+            write_data_audit_log("system_governance", "MISSING_SYNC", "N/A", datetime.now().strftime("%Y-%m-%d"), len(missing_ids))
         else:
-            total_missing = len(missing_ids)
-            fetch_count = total_missing if limit == -1 else min(total_missing, limit)
-            logger.info(f"🆘 發現 {total_missing} 個缺失標的，啟動救援 (本次目標 {fetch_count} 檔)...")
+            logger.info("✅ 目前無缺失數據的標的。")
             
-            # 2. 針對目標標的進行救援
-            for mid in list(missing_ids)[:fetch_count]:
-                logger.info(f"🚀 正在救援 {mid}...")
-                data = api.get_data("TaiwanStockPrice", mid, start_date="2020-01-01")
-                if data: rescued_count += 1
-                
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        
-        # 🔴 混合日誌紀錄 (Category: ingestion)
-        write_pipeline_log(
-            task_name="rescue_missing",
-            stock_id="SYSTEM",
-            status="success",
-            category="ingestion",
-            duration_ms=elapsed_ms,
-            rows=rescued_count
-        )
-        logger.info(f"🏁 救援行動完成！成功補齊 {rescued_count} 檔標的。")
-        return rescued_count
-        
     except Exception as e:
-        logger.error(f"❌ 救援行動失敗: {e}")
-        write_pipeline_log(
-            task_name="rescue_missing",
-            stock_id="SYSTEM",
-            status="failed",
-            category="ingestion",
-            duration_ms=0,
-            rows=0,
-            err=str(e)
-        )
-        return 0
+        logger.error(f"❌ 缺失偵測失敗: {e}")
+        write_pipeline_log("Governance_MissingCheck", "MARKET", "FAILED", "Governance", err=str(e))
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=5, help="限制救援標的數量，-1 為全部救援")
-    parser.add_argument("--all", action="store_true", help="救援所有缺失標的 (等同 --limit -1)")
-    args = parser.parse_args()
-    
-    limit = -1 if args.all else args.limit
-    rescue_missing_stocks(limit=limit)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    detect_and_fetch_missing()

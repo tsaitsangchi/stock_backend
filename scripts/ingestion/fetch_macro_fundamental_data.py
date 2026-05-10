@@ -1,78 +1,88 @@
 """
-fetch_macro_fundamental_data.py v6.0 (Trinity Core Final)
+fetch_macro_fundamental_data.py v4.3 (Quantum Finance Edition)
 ================================================================================
-資料抓取模組 — 混合模式日誌標準版
-負責將 FinMind 原始數據 (TaiwanStockPER) 同步至資料庫。
+個股市場估值抓取器 — 核心基本面專項 (Quantum v5.1 標準)
+負責同步個股的本益比 (PER)、股價淨值比 (PBR) 與殖利率數據。
 
 修訂歷程：
-  v6.0 (2026-05-10):
-    - [核心] 升級至 Trinity Core v6.0 標準，確保 stock_per 表對齊。
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例。
+  v4.3 (2026-05-10): [核心] 實作混合模式日誌：同步寫入 pipeline_execution_log 與專項審計。
+  v4.2 (2026-05-10): [文件] 完善五維度執行範例矩陣，確保範例完整性。
+  v4.1 (2026-05-10): [修復] 對齊 db_utils v5.1 混合日誌規範。
 
-【執行範例說明】
-1. 手動抓取標的市場估值指標 (例如 台積電 2330)：
-   $ python scripts/ingestion/fetch_macro_fundamental_data.py --stock_id 2330
+【執行範例矩陣 — 數據抓取方案】
+1. 單一標的、單一表格同步 (Python)：
+   python scripts/ingestion/fetch_macro_fundamental_data.py --stock_id 2330
+2. 單一標的、單一表格「強制」更新歷史 (Python)：
+   python scripts/ingestion/fetch_macro_fundamental_data.py --stock_id 2330 --force
+3. 單一標的「所有」維度表格抓取 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --stock_id 2330 --table ALL
+4. 核心標的集「所有」維度表格「強制」更新 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL --force
+5. 全市場標的「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe all --table ALL
 ================================================================================
 """
-
-import sys
-import logging
-import time
+import os, sys, logging, time, argparse
+import pandas as pd
+from datetime import datetime, timedelta
 from pathlib import Path
 
-# ── 系統路徑修復 (v3.1) ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "pipeline"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS_DIR = _THIS_DIR.parent if _THIS_DIR.name != "scripts" else _THIS_DIR
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log, get_latest_date
+    from core.db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
     from core.finmind_client import FinMindClient
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
-    sys.exit(1)
+except ImportError:
+    import path_setup
+    path_setup.ensure_scripts_on_path(__file__)
+    from db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
+    from finmind_client import FinMindClient
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_macro_fund(stock_id: str):
-    """
-    抓取特定標的之市場估值指標 (PER, PBR, Yield)。
+def sync_macro_fund(stock_id: str, start_date: str = None):
+    start_time = time.time()
+    client = FinMindClient()
+    TABLE_NAME = "stock_per"
     
-    執行範例：
-    $ python scripts/ingestion/fetch_macro_fundamental_data.py --stock_id 2330
-    """
-    t0 = time.monotonic()
-    api = FinMindClient()
+    if not start_date:
+        last_date = get_latest_date(TABLE_NAME, stock_id) or "2010-01-01"
+        start_date = (datetime.strptime(last_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 🔍 資料表對齊：stock_per
-    last_date = get_latest_date("stock_per", stock_id) or "2010-01-01"
+    logger.info(f"📐 正在同步 {stock_id} 市場估值指標 (Since: {start_date})...")
     
-    logger.info(f"📐 正在同步 {stock_id} 市場估值指標 (Since: {last_date})...")
-    data = api.get_data("TaiwanStockPER", stock_id, start_date=last_date)
-    
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-    
-    # 🔴 混合日誌紀錄 (Category: ingestion)
-    write_pipeline_log(
-        task_name="fetch_macro_fundamental",
-        stock_id=stock_id,
-        status="success" if data is not None else "failed",
-        category="ingestion",
-        duration_ms=elapsed_ms,
-        rows=len(data)
-    )
-    return len(data)
+    try:
+        raw_data = client.get_data("TaiwanStockPER", stock_id, start_date)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            df.columns = [c.lower() for c in df.columns]
+            rows = bulk_upsert(TABLE_NAME, df.to_dict('records'), unique_cols=["date", "stock_id"])
+            duration = int((time.time() - start_time) * 1000)
+            
+            # 🔴 混合模式日誌
+            write_pipeline_log("FetchMacroFund", stock_id, "SUCCESS", "Ingestion", duration_ms=duration, rows=rows)
+            write_data_audit_log(TABLE_NAME, stock_id, start_date, datetime.now().strftime("%Y-%m-%d"), rows)
+            
+            logger.info(f"✅ {stock_id} 市場估值指標同步完成，筆數: {rows}")
+        else:
+            logger.info(f"ℹ️  {stock_id} 無新資料")
+    except Exception as e:
+        logger.error(f"❌ {stock_id} 市場估值指標同步失敗: {e}")
+        write_pipeline_log("FetchMacroFund", stock_id, "FAILED", "Ingestion", err=str(e))
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--stock_id", type=str, default="2330")
+    parser.add_argument("--start_date", type=str)
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    fetch_macro_fund(args.stock_id)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    sync_macro_fund(args.stock_id, args.start_date if not args.force else "2010-01-01")

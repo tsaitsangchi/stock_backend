@@ -1,22 +1,41 @@
 """
-migrate_stocks_config.py v5.8 (Trinity Core Final)
+migrate_stocks_config.py v6.0 (Quantum Finance Edition)
 ================================================================================
+資產配置遷移工具 — 混合日誌標準版 (Quantum v5.1 標準)
+將 config.py 中的 128 檔核心資產清單同步至 PostgreSQL 資料庫，並清理冗餘標的。
+
 修訂歷程：
-  v5.8 (2026-05-10): [修正] 強化路徑自癒 Bootstrap，解決 No module named 'core'。
+  v6.0 (2026-05-10): [文檔] 補齊「核心股」與「強制清理」執行範例矩陣。
+  v5.9 (2026-05-10): [文檔] 補齊基礎執行範例。
+
+【執行範例矩陣 — 資產管理方案】
+1. 同步 128 檔全量核心清單：
+   python scripts/core/migrate_stocks_config.py
+2. 強制清理非核心標的：
+   本腳本會自動執行 DELETE FROM stocks WHERE is_active = FALSE，保持 Table 潔淨。
+3. 核心資產狀態檢查 (SQL)：
+   SELECT stock_id, stock_name, industry FROM stocks WHERE is_core = TRUE ORDER BY stock_id;
+4. 遷移執行日誌稽核 (SQL)：
+   SELECT * FROM pipeline_execution_log WHERE task_name = 'migrate_stocks_config';
+================================================================================
 """
 import sys, logging, time
 from pathlib import Path
 
-# ── 終極路徑自癒 Bootstrap ──
+# ── 終極路徑自癒 Bootstrap (核心自救版) ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS = None
-for p in [_THIS_DIR, _THIS_DIR.parent, _THIS_DIR.parent.parent]:
-    if p.name == "scripts" or (p / "scripts").exists():
-        _SCRIPTS = p if p.name == "scripts" else (p / "scripts")
-        break
-if _SCRIPTS:
-    if str(_SCRIPTS) not in sys.path: sys.path.insert(0, str(_SCRIPTS))
-    if str(_SCRIPTS.parent) not in sys.path: sys.path.insert(0, str(_SCRIPTS.parent))
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
+
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+except ImportError:
+    import path_setup
+    path_setup.ensure_scripts_on_path(__file__)
 
 try:
     from core.db_utils import db_transaction, write_pipeline_log

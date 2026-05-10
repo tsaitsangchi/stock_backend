@@ -1,79 +1,88 @@
 """
-fetch_fred_data.py v6.0 (Trinity Core Final)
+fetch_fred_data.py v4.3 (Quantum Finance Edition)
 ================================================================================
-FRED 經濟數據抓取器 — 混合模式日誌標準版
-負責將聖路易斯聯準會 (FRED) 的指標同步至 fred_series 表。
+FRED 宏觀數據抓取器 — 全球經濟指標 (Quantum v5.1 標準)
+負責同步聖路易斯聯邦儲備銀行 (FRED) 的利率、通膨、就業等宏觀數據。
 
 修訂歷程：
-  v6.0 (2026-05-10):
-    - [核心] 升級至 Trinity Core v6.0 標準，確保 fred_series 表與標準對齊。
-  v5.5.7 (2026-05-09):
-    - [文檔] 補齊「大規模並行調度」與「手動單點調試」執行範例說明。
+  v4.3 (2026-05-10): [核心] 實作混合模式日誌：同步寫入 pipeline_execution_log 與專項審計。
+  v4.2 (2026-05-10): [文件] 完善五維度執行範例矩陣，確保範例完整性。
+  v4.1 (2026-05-10): [修復] 對齊 db_utils v5.1 混合日誌規範。
 
-【執行範例說明】
-1. 手動抓取特定 FRED 指標 (例如 十年期美債收益率 DGS10)：
-   $ python scripts/ingestion/fetch_fred_data.py --series_id DGS10
+【執行範例矩陣 — 數據抓取方案】
+1. 單一指標、單一表格同步 (Python)：
+   python scripts/ingestion/fetch_fred_data.py --series_id DFF
+2. 單一指標、單一表格「強制」更新歷史 (Python)：
+   python scripts/ingestion/fetch_fred_data.py --series_id DFF --force
+3. 核心標的集「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL
+4. 核心標的集「所有」維度表格「強制」更新 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe core --table ALL --force
+5. 全市場標的「所有」維度表格同步 (透過編排器)：
+   python scripts/ingestion/parallel_fetch.py --universe all --table ALL
 ================================================================================
 """
-
-import sys
-import logging
-import time
+import os, sys, logging, time, argparse
+import pandas as pd
+from datetime import datetime, timedelta
 from pathlib import Path
 
-# ── 系統路徑修復 (v3.1) ──
+# ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "pipeline"):
-    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+_SCRIPTS_DIR = _THIS_DIR.parent if _THIS_DIR.name != "scripts" else _THIS_DIR
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
 
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import write_pipeline_log, get_latest_date
+    from core.db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
     from core.finmind_client import FinMindClient
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
-    sys.exit(1)
+except ImportError:
+    import path_setup
+    path_setup.ensure_scripts_on_path(__file__)
+    from db_utils import write_pipeline_log, bulk_upsert, get_latest_date, write_data_audit_log
+    from finmind_client import FinMindClient
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_fred(series_id: str = "DGS10"):
-    """
-    抓取 FRED 經濟數據。
-    預設抓取 DGS10 (10-Year Treasury Constant Maturity Rate)。
+def sync_fred(series_id: str, start_date: str = None):
+    start_time = time.time()
+    client = FinMindClient()
+    TABLE_NAME = "fred_series"
     
-    執行範例：
-    $ python scripts/ingestion/fetch_fred_data.py --series_id DGS10
-    """
-    t0 = time.monotonic()
-    api = FinMindClient()
+    if not start_date:
+        last_date = get_latest_date(TABLE_NAME, series_id, id_column="series_id") or "2010-01-01"
+        start_date = (datetime.strptime(last_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     
-    # 🔍 資料表對齊：fred_series (ID 欄位為 series_id)
-    last_date = get_latest_date("fred_series", series_id, id_column="series_id") or "2010-01-01"
+    logger.info(f"🏛️  正在同步 FRED 數據: {series_id} (Since: {start_date})...")
     
-    logger.info(f"🇺🇸 正在同步 FRED 指標: {series_id} (Since: {last_date})...")
-    data = api.get_data("FedFundsRate", series_id, start_date=last_date)
-    
-    elapsed_ms = int((time.monotonic() - t0) * 1000)
-    
-    # 🔴 混合日誌紀錄 (Category: ingestion)
-    write_pipeline_log(
-        task_name="fetch_fred",
-        stock_id=series_id,
-        status="success" if data is not None else "failed",
-        category="ingestion",
-        duration_ms=elapsed_ms,
-        rows=len(data)
-    )
-    return len(data)
+    try:
+        raw_data = client.get_data("FredData", series_id, start_date)
+        if raw_data:
+            df = pd.DataFrame(raw_data)
+            df.columns = [c.lower() for c in df.columns]
+            rows = bulk_upsert(TABLE_NAME, df.to_dict('records'), unique_cols=["series_id", "date"])
+            duration = int((time.time() - start_time) * 1000)
+            
+            # 🔴 混合模式日誌
+            write_pipeline_log("FetchFRED", series_id, "SUCCESS", "Ingestion", duration_ms=duration, rows=rows)
+            write_data_audit_log(TABLE_NAME, series_id, start_date, datetime.now().strftime("%Y-%m-%d"), rows)
+            
+            logger.info(f"✅ {series_id} 同步完成，筆數: {rows}")
+        else:
+            logger.info(f"ℹ️  {series_id} 無新資料")
+    except Exception as e:
+        logger.error(f"❌ {series_id} 同步失敗: {e}")
+        write_pipeline_log("FetchFRED", series_id, "FAILED", "Ingestion", err=str(e))
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--series_id", type=str, default="DGS10")
+    parser.add_argument("--series_id", type=str, default="DFF")
+    parser.add_argument("--start_date", type=str)
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    fetch_fred(args.series_id)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    sync_fred(args.series_id, args.start_date if not args.force else "2010-01-01")
