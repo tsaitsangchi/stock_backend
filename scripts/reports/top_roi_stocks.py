@@ -1,100 +1,183 @@
-"""
-top_roi_stocks.py v5.5.26 (Trinity Core Final)
-================================================================================
-投資潛力戰報工具 — 核心金股篩選版
-負責比對最新預測價格與市場實時收盤價，精算出預期投報率最高的前三名標的。
-
-修訂歷程：
-  v5.5.26 (2026-05-10):
-    - [核心] 整合 stock_price 與 predictions 資料表，實作自動 ROI 排名。
-    - [文檔] 補齊極致詳細的執行範例說明。
-
-【執行範例說明】
-
-1. 直接從命令行執行（產出前三名潛力股戰報）：
-   $ python scripts/reports/top_roi_stocks.py
-
-2. SQL 查閱 (手動驗證資料庫中的預測與現價對齊狀況)：
-   WITH LatestPrices AS (
-       SELECT DISTINCT ON (stock_id) stock_id, close FROM stock_price ORDER BY stock_id, date DESC
-   ),
-   LatestPreds AS (
-       SELECT DISTINCT ON (stock_id) stock_id, pred_price, confidence FROM predictions ORDER BY stock_id, created_at DESC
-   )
-   SELECT p.stock_id, lp.close as current_price, p.pred_price, 
-          ((p.pred_price - lp.close) / lp.close) as expected_return
-   FROM LatestPreds p JOIN LatestPrices lp ON p.stock_id = lp.stock_id
-   ORDER BY expected_return DESC LIMIT 3;
-"""
-
 import sys
+import os
+import json
 import logging
 from pathlib import Path
+from datetime import datetime
 
-# ── 系統路徑修復 (v3.1) ──
+# ── 系統路徑修復 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent.parent
-for _sub in ("scripts", "scripts/core"):
-    _p = _PROJECT_ROOT / _sub
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+sys.path.append(str(_PROJECT_ROOT / "scripts"))
 
 try:
-    from core.db_utils import db_session, write_pipeline_log
-except ImportError as e:
-    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
-    sys.exit(1)
+    from core.db_utils import db_transaction, write_pipeline_log
+except ImportError:
+    pass
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def generate_top_roi_report():
-    logger.info("📊 [Report] 正在精算全核心標的預期投報率排行...")
+def generate_top_sharpe_report():
+    logger.info("📊 [Report] 正在產出高夏普值 Top 3 菁英戰報...")
     
-    sql = """
-        WITH LatestPrices AS (
-            SELECT DISTINCT ON (stock_id) stock_id, close 
-            FROM stock_price 
-            ORDER BY stock_id, date DESC
-        ),
-        LatestPredictions AS (
-            SELECT DISTINCT ON (stock_id) stock_id, pred_price, confidence, signal
-            FROM predictions 
-            WHERE created_at > (NOW() - INTERVAL '24 hours')
-            ORDER BY stock_id, created_at DESC
-        )
-        SELECT 
-            p.stock_id, 
-            lp.close as current_price, 
-            p.pred_price, 
-            p.confidence,
-            ((p.pred_price - lp.close) / lp.close) as expected_return
-        FROM LatestPredictions p
-        JOIN LatestPrices lp ON p.stock_id = lp.stock_id
-        WHERE p.signal = 'BUY'
-        ORDER BY expected_return DESC
-        LIMIT 3
-    """
+    with db_transaction() as cur:
+        # 取得夏普值前三名且具備名稱的標的
+        cur.execute("""
+            SELECT 
+                e.stock_id, 
+                i.stock_name, 
+                e.sharpe_ratio, 
+                e.total_return, 
+                e.max_drawdown,
+                e.win_rate
+            FROM evaluation_log e
+            JOIN stocks s ON e.stock_id = s.stock_id
+            LEFT JOIN stock_info i ON e.stock_id = i.stock_id
+            WHERE s.is_active = TRUE
+            AND e.created_at > CURRENT_DATE - INTERVAL '7 days'
+            ORDER BY e.sharpe_ratio DESC
+            LIMIT 3
+        """)
+        top_stocks = cur.fetchall()
+
+    if not top_stocks:
+        logger.warning("⚠️ 查無回測數據，請先執行 run_batch_backtest.py")
+        return
+
+    html_path = _PROJECT_ROOT / "monitor" / "investment_report.html"
     
-    try:
-        with db_session() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql)
-                rows = cur.fetchall()
-                
-                print('\n💎 【Trinity 2026 Core - 投資價值潛力前三名】')
-                print('=' * 75)
-                print(f'排名 | 標代 | 目前價格 | 預測價格 | 預期漲幅 | 信心度')
-                print('-' * 75)
-                for i, r in enumerate(rows, 1):
-                    print(f'{i:02d}   | {r["stock_id"]} | {float(r["current_price"]):>8.2f} | {float(r["pred_price"]):>8.2f} | {r["expected_return"]:>8.2%} | {r["confidence"]:>6.2%}')
-                print('=' * 75)
-                
-        write_pipeline_log("generate_top_roi_report", "SYSTEM", "success", "analysis")
+    html_template = f"""
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Trinity Elite - Top 3 投資戰報</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {{
+            --bg: #05070a;
+            --gold: #d4af37;
+            --gold-light: #f9e272;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --accent: #00f2ff;
+        }}
+        body {{
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 60px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }}
+        .header {{ text-align: center; margin-bottom: 60px; }}
+        .header h1 {{ 
+            font-size: 3rem; 
+            margin: 0; 
+            background: linear-gradient(to bottom, var(--gold-light), var(--gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+        }}
+        .podium {{
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }}
+        .stock-card {{
+            background: var(--card-bg);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+        }}
+        .rank-1 {{ width: 350px; border-color: var(--gold); box-shadow: 0 0 30px rgba(212, 175, 55, 0.2); z-index: 2; }}
+        .rank-2, .rank-3 {{ width: 300px; opacity: 0.8; }}
+        .stock-card:hover {{ transform: translateY(-15px) scale(1.05); opacity: 1; border-color: var(--gold); }}
         
-    except Exception as e:
-        logger.error(f"❌ 報表產出失敗: {e}")
-        write_pipeline_log("generate_top_roi_report", "SYSTEM", "failed", "analysis", 0, 0, str(e))
+        .crown {{ font-size: 2.5rem; margin-bottom: 10px; }}
+        .stock-id {{ font-size: 1.2rem; color: var(--gold); opacity: 0.8; }}
+        .stock-name {{ font-size: 2rem; font-weight: 600; margin: 10px 0; }}
+        .metric-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 30px; }}
+        .metric-box {{ text-align: left; padding: 10px; border-left: 2px solid var(--gold); }}
+        .m-label {{ font-size: 0.7rem; opacity: 0.5; text-transform: uppercase; }}
+        .m-value {{ font-size: 1.2rem; font-weight: 600; color: var(--gold-light); }}
+        
+        .back-btn {{
+            margin-top: 50px;
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.9rem;
+            border: 1px solid var(--accent);
+            padding: 10px 25px;
+            border-radius: 30px;
+            transition: all 0.3s;
+        }}
+        .back-btn:hover {{ background: var(--accent); color: #000; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Trinity Elite</h1>
+        <p style="opacity:0.6; letter-spacing: 2px;">140 核心標的 — 高夏普值 Top 3 戰報</p>
+    </div>
+
+    <div class="podium">
+        <!-- Rank 2 -->
+        <div class="stock-card rank-2">
+            <div class="crown">🥈</div>
+            <div class="stock-id">{top_stocks[1]['stock_id'] if len(top_stocks)>1 else '-'}</div>
+            <div class="stock-name">{top_stocks[1]['stock_name'] if len(top_stocks)>1 else 'N/A'}</div>
+            <div class="metric-grid">
+                <div class="metric-box"><div class="m-label">Sharpe</div><div class="m-value">{top_stocks[1]['sharpe_ratio'] if len(top_stocks)>1 else '-'}</div></div>
+                <div class="metric-box"><div class="m-label">ROI</div><div class="m-value">{f"{top_stocks[1]['total_return']*100:.1f}%" if len(top_stocks)>1 else '-'}</div></div>
+            </div>
+        </div>
+
+        <!-- Rank 1 -->
+        <div class="stock-card rank-1">
+            <div class="crown">👑</div>
+            <div class="stock-id">{top_stocks[0]['stock_id']}</div>
+            <div class="stock-name">{top_stocks[0]['stock_name']}</div>
+            <div class="metric-grid">
+                <div class="metric-box"><div class="m-label">Sharpe Ratio</div><div class="m-value">{top_stocks[0]['sharpe_ratio']}</div></div>
+                <div class="metric-box"><div class="m-label">Total Return</div><div class="m-value">{top_stocks[0]['total_return']*100:.1f}%</div></div>
+                <div class="metric-box"><div class="m-label">Win Rate</div><div class="m-value">{top_stocks[0]['win_rate']*100:.1f}%</div></div>
+                <div class="metric-box"><div class="m-label">Max Drawdown</div><div class="m-value">{top_stocks[0]['max_drawdown']*100:.1f}%</div></div>
+            </div>
+        </div>
+
+        <!-- Rank 3 -->
+        <div class="stock-card rank-3">
+            <div class="crown">🥉</div>
+            <div class="stock-id">{top_stocks[2]['stock_id'] if len(top_stocks)>2 else '-'}</div>
+            <div class="stock-name">{top_stocks[2]['stock_name'] if len(top_stocks)>2 else 'N/A'}</div>
+            <div class="metric-grid">
+                <div class="metric-box"><div class="m-label">Sharpe</div><div class="m-value">{top_stocks[2]['sharpe_ratio'] if len(top_stocks)>2 else '-'}</div></div>
+                <div class="metric-box"><div class="m-label">ROI</div><div class="m-value">{f"{top_stocks[2]['total_return']*100:.1f}%" if len(top_stocks)>2 else '-'}</div></div>
+            </div>
+        </div>
+    </div>
+
+    <a href="dashboard.html" class="back-btn">← 返回全核心監控室</a>
+    <p style="margin-top:40px; font-size: 0.7rem; opacity: 0.3;">報告產出時間: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+</body>
+</html>
+    """
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html_template)
+    
+    logger.info(f"🏆 [Report] 投資戰報已產出: {html_path}")
+    write_pipeline_log("elite_report_generation", "MARKET", "success", "report")
 
 if __name__ == "__main__":
-    generate_top_roi_report()
+    generate_top_sharpe_report()
