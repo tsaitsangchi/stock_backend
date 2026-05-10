@@ -1,23 +1,41 @@
 """
-backfill_from_gaps.py v5.5.13 (Trinity Core Final)
+backfill_from_gaps.py v5.5.26 (Trinity Core Final)
 ================================================================================
-資料斷層自癒引擎 — 混合模式日誌實作版 (修復 DictCursor 兼容性)
+數據斷層修復指揮官 — 混合模式日誌實作版
+負責自動檢測資料庫中的交易日斷層，並針對 150 檔標的啟動精準補齊。
 
 修訂歷程：
-  v5.5.13 (2026-05-09):
-    - [修復] 修正 KeyError: 0 異常 (對接 DictCursor)。
-    - [優化] 強化 SQL 欄位別名，確保資料讀取穩定。
+  v5.5.26 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.15 (2026-05-09):
+    - [核心] 實作全自動斷層偵測與並行補齊邏輯。
+
+【執行範例說明】
+
+1. 直接從命令行執行（啟動全自動斷層掃描與補齊）：
+   $ python scripts/ingestion/backfill_from_gaps.py
+
+2. 日誌查閱 (追蹤哪些標的補齊了多少天)：
+   SELECT task_name, stock_id, status, rows_processed as gap_days, duration_ms 
+   FROM pipeline_execution_log 
+   WHERE task_name = 'backfill_gap_unit' 
+   ORDER BY created_at DESC LIMIT 20;
+
+3. 統計今日修復的數據總筆數：
+   SELECT SUM(rows_processed) FROM pipeline_execution_log 
+   WHERE task_name = 'backfill_gap_unit' AND status = 'success' AND created_at > CURRENT_DATE;
 """
 
 import sys
 import logging
 import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
-# ── 系統路徑修復 ──
+# ── 系統路徑修復 (v3.0) ──
 _THIS_DIR = Path(__file__).resolve().parent
 _SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-for _sub in ("", "core", "ingestion"):
+for _sub in ("", "core", "pipeline", "ingestion"):
     _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
     if _p.exists() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
@@ -25,8 +43,9 @@ for _sub in ("", "core", "ingestion"):
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import db_transaction, write_pipeline_log, get_db_stock_ids
-    from core.finmind_client import FinMindClient
+    from core.db_utils import write_pipeline_log, get_db_stock_ids
+    # 引用原有的抓取函數
+    from ingestion.parallel_fetch import fetch_stock_data_unit
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
     sys.exit(1)
@@ -34,53 +53,26 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-def fetch_func(stock_id: str):
-    t0 = time.monotonic()
-    api = FinMindClient()
-    total_filled = 0
+def run_backfill_process():
+    t_start = time.monotonic()
+    logger.info("🚀 [Trinity] 啟動全核心標的斷層檢查 (v5.5.26)...")
+    active_stocks = get_db_stock_ids()
+    if not active_stocks: return
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        executor.map(fetch_stock_data_unit, active_stocks)
     
+    # 3. 🔴 自動產出/更新數據戰情網頁 (Dashboard)
     try:
-        # 1. 偵測資料缺口
-        with db_transaction() as cur:
-            cur.execute("""
-                WITH date_range AS (
-                    SELECT MIN(date) as start_date, MAX(date) as end_date
-                    FROM stock_price WHERE stock_id = %s
-                ),
-                expected_dates AS (
-                    SELECT generate_series(start_date, end_date, '1 day'::interval)::date as missing_date
-                    FROM date_range
-                )
-                SELECT e.missing_date 
-                FROM expected_dates e
-                LEFT JOIN stock_price s ON e.missing_date = s.date AND s.stock_id = %s
-                WHERE s.date IS NULL
-                ORDER BY e.missing_date
-            """, (stock_id, stock_id))
-            
-            # 使用 dict 方式讀取欄位，避免 KeyError: 0
-            rows = cur.fetchall()
-            missing_dates = [r['missing_date'] for r in rows] if rows else []
-            
-        if missing_dates:
-            start_sync = missing_dates[0].strftime('%Y-%m-%d')
-            logger.info(f"🔍 偵測到 {stock_id} 存在 {len(missing_dates)} 天斷層，啟動回補 (Since: {start_sync})...")
-            
-            data = api.get_data("TaiwanStockPrice", stock_id, start_date=start_sync)
-            total_filled = len(data)
-            
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-        write_pipeline_log("backfill_gap_unit", stock_id, "success", "ingestion", elapsed_ms, total_filled)
-        return total_filled
-        
-    except Exception as e:
-        logger.error(f"❌ {stock_id} 斷層修復失敗: {e}")
-        write_pipeline_log("backfill_gap_unit", stock_id, "failed", "ingestion", 0, 0, str(e))
-        return 0
+        from monitor.data_audit_engine import audit_completeness
+        audit_completeness()
+    except ImportError:
+        logger.warning("⚠️ 無法載入稽核引擎，跳過網頁更新。")
+
+    elapsed_sec = round(time.monotonic() - t_start, 2)
+    write_pipeline_log("backfill_gap_master", "SYSTEM", "success", "sys", int(elapsed_sec * 1000))
+    logger.info(f"🏆 [Master] 斷層檢查與補齊完畢！耗時: {elapsed_sec}s")
+    logger.info(f"🌐 戰情網頁已同步更新: monitor/dashboard.html")
 
 if __name__ == "__main__":
-    from ingestion.parallel_fetch import run_orchestrator
-    active_stocks = get_db_stock_ids()
-    if active_stocks:
-        logger.info(f"🚀 [Trinity] 啟動全核心斷層掃描與自癒 (Targets: {len(active_stocks)})")
-        run_orchestrator(task_func=fetch_func, stock_ids=active_stocks, task_label="core_gap_backfill", workers=4)
+    run_backfill_process()

@@ -1,29 +1,61 @@
+"""
+test_adj_access.py v5.5.26 (Trinity Core Final)
+================================================================================
+測試工具 — 混合模式日誌實作版
+負責驗證資料庫中 price_adj 表格的存取權限與數據完整性。
+
+修訂歷程：
+  v5.5.26 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.25 (2026-05-10):
+    - [標準化] 對接 db_utils (v4.13)。
+
+【執行範例說明】
+
+1. 直接從命令行執行（執行 DB 存取測試）：
+   $ python scripts/training/test_adj_access.py
+
+2. 日誌查閱 (確認測試結果紀錄)：
+   SELECT task_name, status, error_message, created_at 
+   FROM pipeline_execution_log 
+   WHERE task_name = 'db_access_test' 
+   ORDER BY created_at DESC LIMIT 5;
+"""
 
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core.finmind_client import finmind_get
 import logging
+from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
+# ── 系統路徑修復 (v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-def test_access():
-    print("=== FinMind 權限深度測試 ===")
-    
-    # 1. 測試八大行庫 (個股模式)
-    print("\n[1] 測試：八大行庫 (1101 個股模式)")
-    res1 = finmind_get("TaiwanStockGovernmentBankBuySell", {"data_id": "1101", "start_date": "2024-04-01", "end_date": "2024-04-02"})
-    print(f"    結果：成功獲取 {len(res1)} 筆" if res1 else "    結果：失敗 (403 or empty)")
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import db_transaction, write_pipeline_log
+except ImportError as e:
+    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
+    sys.exit(1)
 
-    # 2. 測試八大行庫 (全市場模式)
-    print("\n[2] 測試：八大行庫 (全市場模式)")
-    res2 = finmind_get("TaiwanStockGovernmentBankBuySell", {"start_date": "2024-04-01", "end_date": "2024-04-01"})
-    print(f"    結果：成功獲取 {len(res2)} 筆" if res2 else "    結果：失敗 (403 or empty)")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
-    # 3. 測試還原股價 (個股模式)
-    print("\n[3] 測試：還原股價 (1101)")
-    res3 = finmind_get("TaiwanStockPriceAdj", {"data_id": "1101", "start_date": "2024-04-01", "end_date": "2024-04-01"})
-    print(f"    結果：成功獲取 {len(res3)} 筆" if res3 else "    結果：失敗 (403 or empty)")
+def test_db_access():
+    logger.info("🔍 [DB Test] 正在驗證 price_adj 資料表存取...")
+    try:
+        with db_transaction() as cur:
+            cur.execute("SELECT COUNT(*) FROM price_adj LIMIT 1")
+            count = cur.fetchone()['count']
+            logger.info(f"✅ 成功！price_adj 表格正常 (紀錄數: {count})")
+            write_pipeline_log("db_access_test", "SYSTEM", "success", "sys")
+    except Exception as e:
+        logger.error(f"❌ 存取失敗: {e}")
+        write_pipeline_log("db_access_test", "SYSTEM", "failed", "sys", 0, 0, str(e))
 
 if __name__ == "__main__":
-    test_access()
+    test_db_access()

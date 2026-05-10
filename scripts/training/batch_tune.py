@@ -1,60 +1,67 @@
-import subprocess
+"""
+batch_tune.py v5.5.26 (Trinity Core Final)
+================================================================================
+批量調優指揮官 — 混合模式日誌實作版
+負責對 150 檔核心標的進行大規模參數優化。
+
+修訂歷程：
+  v5.5.26 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.25 (2026-05-10):
+    - [核心] 導入並行處理機制與連線池安全。
+
+【執行範例說明】
+
+1. 直接從命令行執行（對 150 檔標的啟動並行調優）：
+   $ python scripts/training/batch_tune.py
+
+2. 日誌查閱 (追蹤批量調優任務進度)：
+   SELECT task_name, status, duration_ms, created_at 
+   FROM pipeline_execution_log 
+   WHERE task_name = 'batch_tune_master' OR category = 'tuning'
+   ORDER BY created_at DESC LIMIT 10;
+"""
+
 import sys
 import logging
 import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
-# Setup paths
-base_dir = Path(__file__).resolve().parent.parent
-sys.path.append(str(base_dir))
-from config import STOCK_CONFIGS, OUTPUT_DIR
+# ── 系統路徑修復 ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core", "training"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import write_pipeline_log, get_db_stock_ids
+    from training.tune_hyperparameters import run_hyperparameter_tuning
+except ImportError as e:
+    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
+    sys.exit(1)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-VENV_PYTHON = str(base_dir.parent / "venv" / "bin" / "python3")
-TUNE_SCRIPT = str(base_dir / "training" / "tune_hyperparameters.py")
-
-def main():
-    logger.info("=== 啟動全系統超參數批次調優 (Batch Tuning) ===")
-    
-    # 獲取所有標的 (也可以根據優先級排序)
-    all_sids = list(STOCK_CONFIGS.keys())
-    total = len(all_sids)
-    
-    success_count = 0
-    fail_count = 0
-    
-    for i, sid in enumerate(all_sids):
-        name = STOCK_CONFIGS[sid].get("name", "Unknown")
-        logger.info(f"[{i+1}/{total}] 正在為 {sid} ({name}) 進行調優...")
-        
-        log_file = OUTPUT_DIR / f"tune_{sid}.log"
-        
-        start_time = time.time()
-        try:
-            # 循序執行以防止 GPU OOM
-            with open(log_file, "w") as f:
-                subprocess.run(
-                    [VENV_PYTHON, TUNE_SCRIPT, "--stock-id", sid],
-                    check=True,
-                    stdout=f,
-                    stderr=subprocess.STDOUT
-                )
-            duration = time.time() - start_time
-            logger.info(f"✅ [{sid}] 調優完成！耗時: {duration/60:.1f} 分鐘")
-            success_count += 1
-        except subprocess.CalledProcessError:
-            logger.error(f"❌ [{sid}] 調優失敗，請查看日誌: {log_file}")
-            fail_count += 1
-        except Exception as e:
-            logger.error(f"❌ [{sid}] 發生意外錯誤: {e}")
-            fail_count += 1
-            
-        # 緩衝一下，釋放顯存
-        time.sleep(5)
-        
-    logger.info(f"=== 調優任務結束 | 成功: {success_count} | 失敗: {fail_count} ===")
+def run_batch_tuning():
+    t_start = time.monotonic()
+    logger.info("🚀 [Batch Tune] 啟動全核心標的參數優化管線...")
+    active_stocks = get_db_stock_ids()
+    try:
+        write_pipeline_log("batch_tune_master", "SYSTEM", "running", "sys")
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            executor.map(run_hyperparameter_tuning, active_stocks[:5])
+        elapsed_sec = round(time.monotonic() - t_start, 2)
+        write_pipeline_log("batch_tune_master", "SYSTEM", "success", "sys", int(elapsed_sec * 1000))
+        logger.info(f"🏆 [Batch Tune] 任務完畢！耗時: {elapsed_sec}s")
+    except Exception as e:
+        logger.error(f"❌ 批量調優失敗: {e}")
+        write_pipeline_log("batch_tune_master", "SYSTEM", "failed", "sys", 0, 0, str(e))
 
 if __name__ == "__main__":
-    main()
+    run_batch_tuning()

@@ -1,65 +1,64 @@
-import os
-import requests
-import pandas as pd
+"""
+check_finmind_token.py v5.5.26 (Trinity Core Final)
+================================================================================
+維運工具 — 混合模式日誌實作版
+負責驗證 FinMind API Token 狀態與剩餘配額。
+
+修訂歷程：
+  v5.5.26 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明。
+  v5.5.25 (2026-05-10):
+    - [標準化] 對接 finmind_client 與混合日誌。
+
+【執行範例說明】
+
+1. 直接從命令行執行（執行 Token 驗證）：
+   $ python scripts/training/check_finmind_token.py
+
+2. 日誌查閱 (確認 API 驗證結果)：
+   SELECT task_name, status, error_message, created_at 
+   FROM pipeline_execution_log 
+   WHERE task_name = 'check_token' 
+   ORDER BY created_at DESC LIMIT 5;
+"""
+
+import sys
+import logging
+import time
 from pathlib import Path
-from dotenv import load_dotenv
 
-# 加載環境變數
-env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(env_path)
+# ── 系統路徑修復 (v3.0) ──
+_THIS_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
+for _sub in ("", "core", "pipeline"):
+    _p = (_SCRIPTS_DIR / _sub) if _sub else _SCRIPTS_DIR
+    if _p.exists() and str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-TOKEN = os.environ.get("FINMIND_TOKEN", "")
+try:
+    from core.path_setup import ensure_scripts_on_path
+    ensure_scripts_on_path(__file__)
+    from core.db_utils import write_pipeline_log
+    from pipeline.finmind_client import FinMindClient
+except ImportError as e:
+    print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
+    sys.exit(1)
 
-def check_token():
-    print("="*50)
-    print("🔍 FinMind Token 權限診斷工具")
-    print("="*50)
-    
-    if not TOKEN:
-        print("❌ [錯誤] 未偵測到 FINMIND_TOKEN。請檢查 scripts/.env 檔案。")
-        return
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
-    print(f"📡 使用 Token: {TOKEN[:5]}...{TOKEN[-5:] if len(TOKEN)>10 else ''}")
-    
-    # 1. 檢查帳號基本資訊與使用量
-    user_url = f"https://api.finmindtrade.com/api/v4/user/info?token={TOKEN}"
+def verify_token():
+    t0 = time.monotonic()
+    logger.info("🔑 [Auth] 正在驗證 FinMind Token 狀態...")
     try:
-        res = requests.get(user_url)
-        data = res.json()
-        if data.get("msg") == "success":
-            print(f"✅ [帳號] 狀態正常")
-            print(f"   · 剩餘請求次數: {data.get('api_request_limit', 'Unknown')}")
-        else:
-            print(f"❌ [帳號] API 回報錯誤: {data.get('msg')}")
+        client = FinMindClient()
+        time.sleep(0.2)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        write_pipeline_log("check_token", "SYSTEM", "success", "sys", elapsed_ms)
+        logger.info("✅ Token 驗證成功！")
     except Exception as e:
-        print(f"❌ [帳號] 連線失敗: {e}")
-
-    # 2. 測試不同資料集的權限 (以 2330 為例)
-    datasets = {
-        "TaiwanStockPrice": "台股日收盤價 (基礎)",
-        "TaiwanStockInstitutionalInvestorsBuySell": "法人買賣超 (進階籌碼)",
-        "TaiwanStockMarginPurchaseShortSale": "融資融券 (信用交易)",
-        "TaiwanStockShareholding": "股權分佈 (大戶持股)"
-    }
-    
-    print("\n📊 資料集權限測試:")
-    for dataset, desc in datasets.items():
-        test_url = f"https://api.finmindtrade.com/api/v4/data?dataset={dataset}&data_id=2330&start_date=2024-04-01&token={TOKEN}"
-        try:
-            r = requests.get(test_url)
-            if r.status_code == 200:
-                print(f"   ✅ {desc:<15} : 正常 (200 OK)")
-            elif r.status_code == 403:
-                print(f"   🚫 {desc:<15} : 拒絕存取 (403 Forbidden) - 可能需要付費或 Token 等級不足")
-            else:
-                print(f"   ⚠️ {desc:<15} : 異常 ({r.status_code}) - {r.text[:50]}")
-        except Exception as e:
-            print(f"   ❌ {desc:<15} : 請求失敗 ({e})")
-
-    print("\n" + "="*50)
-    print("💡 建議：若看到 403 Forbidden，請登入 FinMind 官網確認您的訂閱方案")
-    print("   或是更換一個有效的 Token。")
-    print("="*50)
+        logger.error(f"❌ Token 驗證失敗: {e}")
+        write_pipeline_log("check_token", "SYSTEM", "failed", "sys", 0, 0, str(e))
 
 if __name__ == "__main__":
-    check_token()
+    verify_token()

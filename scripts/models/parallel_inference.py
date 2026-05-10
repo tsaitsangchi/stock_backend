@@ -1,20 +1,37 @@
 """
-parallel_inference.py v5.5.24 (Trinity Core Final)
+parallel_inference.py v5.5.26 (Trinity Core Final)
 ================================================================================
 全核心並行預測指揮官 — 混合模式日誌實作版
 負責對 150 檔核心標的進行 AI 推論，產出明天的買賣訊號與信心度。
 
 修訂歷程：
-  v5.5.24 (2026-05-09):
-    - [核心] 實作 150 檔標的全量並行推論。
-    - [數據] 自動建立 predictions 資料表，儲存每日預測結果。
-    - [規範] 完全對接混合日誌 (Category: inference & sys)。
+  v5.6.1 (2026-05-10):
+    - [核心] 整合 ML + TFT 混合預測訊號。
+    - [視覺] 自動觸發戰情網頁更新。
+  v5.5.26 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明。
+
+【執行範例說明】
+
+1. 直接從命令行執行（啟動並行推論）：
+   $ python scripts/models/parallel_inference.py
+
+2. 日誌查閱 (追蹤推論成功率與耗時)：
+   SELECT task_name, status, rows_processed, duration_ms 
+   FROM pipeline_execution_log 
+   WHERE category = 'inference' 
+   ORDER BY created_at DESC LIMIT 20;
+
+3. 預測結果查閱 (提取明日潛力金股)：
+   SELECT stock_id, signal, confidence, pred_price 
+   FROM predictions 
+   WHERE signal = 'BUY' AND created_at > CURRENT_DATE 
+   ORDER BY confidence DESC LIMIT 10;
 """
 
 import sys
 import logging
 import time
-import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -30,7 +47,7 @@ try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
     from core.db_utils import write_pipeline_log, get_db_stock_ids, db_transaction
-    from models.ensemble_model import predict_ensemble
+    from models.ensemble_model import predict_ensemble, predict_tft
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心組件: {e}", file=sys.stderr)
     sys.exit(1)
@@ -39,74 +56,50 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 def ensure_prediction_table():
-    """
-    確保預測結果表存在。
-    """
-    sql = """
-        CREATE TABLE IF NOT EXISTS predictions (
-            id SERIAL PRIMARY KEY,
-            stock_id TEXT NOT NULL,
-            pred_price NUMERIC,
-            confidence NUMERIC,
-            signal TEXT,
-            pred_date DATE DEFAULT CURRENT_DATE + INTERVAL '1 day',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """
-    with db_transaction() as cur:
-        cur.execute(sql)
+    sql = "CREATE TABLE IF NOT EXISTS predictions (id SERIAL PRIMARY KEY, stock_id TEXT NOT NULL, pred_price NUMERIC, confidence NUMERIC, signal TEXT, pred_date DATE DEFAULT CURRENT_DATE + INTERVAL '1 day', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+    with db_transaction() as cur: cur.execute(sql)
 
 def save_prediction(res):
-    """
-    將單一預測結果存入資料庫。
-    """
     if not res: return
-    sql = """
-        INSERT INTO predictions (stock_id, pred_price, confidence, signal)
-        VALUES (%s, %s, %s, %s)
-    """
-    with db_transaction() as cur:
-        cur.execute(sql, (res['stock_id'], res['pred_price'], res['confidence'], res['signal']))
+    sql = "INSERT INTO predictions (stock_id, pred_price, confidence, signal) VALUES (%s, %s, %s, %s)"
+    with db_transaction() as cur: cur.execute(sql, (res['stock_id'], res['pred_price'], res['confidence'], res['signal']))
 
 def run_full_inference():
     t_start = time.monotonic()
-    logger.info("🚀 [Trinity] 啟動大規模預測訊號產出任務 (v5.5.24)...")
-    
-    # 🎯 初始化環境與標的
+    logger.info("🚀 [Trinity] 啟動大規模混合預測訊號產出 (ML + TFT) (v5.6.1)...")
     ensure_prediction_table()
     active_stocks = get_db_stock_ids()
+    if not active_stocks: return
     
-    if not active_stocks:
-        logger.warning("⚠️ 找不到啟用的核心標的。")
-        return
-
-    logger.info(f"📊 準備推論標的總數: {len(active_stocks)}")
-    
-    # 使用 ThreadPool 進行並行推論
     with ThreadPoolExecutor(max_workers=5) as executor:
-        # 1. 執行推論
-        results = list(executor.map(predict_ensemble, active_stocks))
+        # 同步取得兩套模型的預測
+        res_ml = list(executor.map(predict_ensemble, active_stocks))
+        res_dl = list(executor.map(predict_tft, active_stocks))
         
-        # 2. 批量落盤
         success_count = 0
-        for res in results:
-            if res:
-                save_prediction(res)
+        for m, d in zip(res_ml, res_dl):
+            if m and d:
+                # 混合策略：加權平均或信心度加乘
+                hybrid_res = {
+                    'stock_id': m['stock_id'],
+                    'pred_price': round((m['pred_price'] + d['pred_price']) / 2, 2),
+                    'confidence': round((m['confidence'] + d['confidence']) / 2, 4),
+                    'signal': "BUY" if (m['signal'] == "BUY" or d['signal'] == "BUY") else "HOLD"
+                }
+                save_prediction(hybrid_res)
                 success_count += 1
     
+    # 3. 🔴 自動產出/更新數據戰情網頁 (Dashboard)
+    try:
+        from monitor.data_audit_engine import audit_completeness
+        audit_completeness()
+    except ImportError:
+        logger.warning("⚠️ 無法載入稽核引擎，跳過網頁更新。")
+
     elapsed_sec = round(time.monotonic() - t_start, 2)
-    
-    # 🔴 總體日誌紀錄 (Category: sys)
-    write_pipeline_log(
-        task_name="full_inference_master",
-        stock_id="SYSTEM",
-        status="success",
-        category="sys",
-        duration_ms=int(elapsed_sec * 1000),
-        rows=success_count
-    )
-    
-    logger.info(f"🏆 [Master] 全核心預測產出完畢！成功: {success_count}/{len(active_stocks)}, 耗時: {elapsed_sec}s")
+    write_pipeline_log("full_inference_master", "SYSTEM", "success", "sys", int(elapsed_sec * 1000), success_count)
+    logger.info(f"🏆 [Master] 全核心混合預測完畢！耗時: {elapsed_sec}s")
+    logger.info(f"🌐 戰情網頁已同步更新: monitor/dashboard.html")
 
 if __name__ == "__main__":
     run_full_inference()

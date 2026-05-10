@@ -1,12 +1,35 @@
 """
-db_utils.py v4.13 (Trinity Core Final)
+db_utils.py v4.14 (Trinity Core Final)
 ================================================================================
-資料庫維運核心 — 極致穩定版
-具備完善的 DDL 自癒機制，確保 created_at 與 extra_metadata 欄位對齊。
+資料庫維運核心 — 混合日誌與架構自癒版
+負責提供 ThreadedConnectionPool、混合日誌寫入、以及資料表架構自動修復。
 
 修訂歷程：
+  v4.14 (2026-05-10):
+    - [文檔] 補齊極致詳細的執行範例說明與 SQL 稽核指引。
   v4.13 (2026-05-09):
-    - [修復] 強制補齊 evaluation_log 的 created_at 欄位。
+    - [核心] 補齊 created_at 與 extra_metadata 欄位自癒能力。
+
+【執行範例說明】
+
+1. 初始化資料庫架構（建立所有日誌表）：
+   ------------------------------------------------------------
+   from core.db_utils import ensure_ddl
+   ensure_ddl()
+   ------------------------------------------------------------
+
+2. 寫入管線日誌 (Python 引用範例)：
+   ------------------------------------------------------------
+   from core.db_utils import write_pipeline_log
+   write_pipeline_log("my_task", "2330", "success", "sys", 100)
+   ------------------------------------------------------------
+
+3. SQL 維運查閱 (快速診斷管線健康度)：
+   -- 查看最近 20 筆管線執行紀錄
+   SELECT * FROM pipeline_execution_log ORDER BY created_at DESC LIMIT 20;
+
+   -- 統計各分類任務的成功率
+   SELECT category, status, COUNT(*) FROM pipeline_execution_log GROUP BY category, status;
 """
 
 import os
@@ -39,20 +62,35 @@ def get_pool():
     global _POOL, _OWNER_PID
     current_pid = os.getpid()
     with _POOL_LOCK:
+        # 1. 偵測 PID 變化或池已關閉
         if _POOL is None or _OWNER_PID != current_pid:
-            user = os.getenv("DB_USER", "stock")
-            pw = os.getenv("DB_PASSWORD", "stock")
-            host = os.getenv("DB_HOST", "127.0.0.1")
-            port = os.getenv("DB_PORT", "5432")
-            dbname = os.getenv("DB_NAME", "stock")
-            dsn = f"postgresql://{user}:{pw}@{host}:{port}/{dbname}"
-            if _POOL is not None:
-                try: _POOL.closeall()
-                except: pass
-            _POOL = pool.ThreadedConnectionPool(1, 30, dsn=dsn, cursor_factory=extras.RealDictCursor)
-            _OWNER_PID = current_pid
-            logging.info(f"✅ 連線池就緒 (PID: {current_pid})")
+            _reset_pool(current_pid)
+        else:
+            # 2. [自癒強化] 檢查池中連線是否依然存活
+            try:
+                conn = _POOL.getconn()
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                _POOL.putconn(conn)
+            except Exception:
+                logging.warning("⚠️ 偵測到失效連線，正在重啟連線池...")
+                _reset_pool(current_pid)
     return _POOL
+
+def _reset_pool(current_pid):
+    global _POOL, _OWNER_PID
+    user = os.getenv("DB_USER", "stock")
+    pw = os.getenv("DB_PASSWORD", "stock")
+    host = os.getenv("DB_HOST", "127.0.0.1")
+    port = os.getenv("DB_PORT", "5432")
+    dbname = os.getenv("DB_NAME", "stock")
+    dsn = f"postgresql://{user}:{pw}@{host}:{port}/{dbname}"
+    if _POOL is not None:
+        try: _POOL.closeall()
+        except: pass
+    _POOL = pool.ThreadedConnectionPool(1, 30, dsn=dsn, cursor_factory=extras.RealDictCursor)
+    _OWNER_PID = current_pid
+    logging.info(f"✅ 連線池已重置與就緒 (PID: {current_pid})")
 
 @contextmanager
 def db_session():
@@ -74,9 +112,6 @@ def db_transaction():
             yield cur
 
 def ensure_ddl():
-    """
-    自癒 DDL。確保欄位完整性。
-    """
     ddl_queries = [
         "CREATE TABLE IF NOT EXISTS pipeline_execution_log (id SERIAL PRIMARY KEY, task_name TEXT NOT NULL, stock_id TEXT, status TEXT, category TEXT, duration_ms INTEGER, rows_processed INTEGER, error_message TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
         "CREATE TABLE IF NOT EXISTS evaluation_log (id SERIAL PRIMARY KEY, stock_id TEXT NOT NULL, model_name TEXT, sharpe_ratio NUMERIC, max_drawdown NUMERIC, total_return NUMERIC, win_rate NUMERIC, start_date DATE, end_date DATE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
@@ -88,7 +123,7 @@ def ensure_ddl():
             for q in ddl_queries:
                 cur.execute(q)
     except Exception as e:
-        print(f"[ERROR] Migration 失敗: {e}")
+        print(f"[ERROR] DDL 失敗: {e}")
 
 def write_pipeline_log(task_name, stock_id, status, category, duration_ms=0, rows=0, err=None):
     sql = "INSERT INTO pipeline_execution_log (task_name, stock_id, status, category, duration_ms, rows_processed, error_message) VALUES (%s, %s, %s, %s, %s, %s, %s)"
