@@ -65,11 +65,11 @@ def audit_completeness():
                 
                 price_count = res['count']
                 stock_name = res['name']
-                curr_price = float(res['price']) if res['price'] else 0.0
-                sharpe = float(res['sharpe']) if res['sharpe'] else 0.0
-                win_rate = float(res['win_rate']) if res['win_rate'] else 0.0
-                signal = res['signal'] or "N/A"
-                confidence = float(res['confidence']) if res['confidence'] else 0.0
+                curr_price = float(res['price']) if res['price'] is not None else 0.0
+                sharpe = float(res['sharpe']) if res['sharpe'] is not None else 0.0
+                win_rate = float(res['win_rate']) if res['win_rate'] is not None else 0.0
+                signal = res['signal'] or "HOLD"
+                confidence = float(res['confidence']) if res['confidence'] is not None else 0.0
                 
                 # 計算分數
                 score = min(100, round((price_count / 1000) * 100, 1))
