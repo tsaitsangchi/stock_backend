@@ -1,27 +1,31 @@
 """
-check_db_locks.py v2.1 (Quantum Finance Edition)
+check_db_locks.py v2.2 (Quantum Finance Edition)
 ================================================================================
-資料庫鎖定掃描器 — 系統穩定性工具 (Quantum v5.2 標準)
-負責監測資料庫連線狀態、活躍鎖定 (Locks) 以及掛起的長時間查詢。
+資料庫監控工具 — 即時連線與鎖定狀態審計器 (Quantum v5.2 標準)
+負責掃描 PostgreSQL 中的活躍連線、交易鎖定 (Locks) 以及超過 30 秒的長查詢。
 
 修訂歷程：
-  v2.1 (2026-05-11): [標準化] 導入 Quantum 標準檔頭、生命週期監測與連線儀表板。
-  v5.5.7 (2026-05-09): [核心] 整合基礎混合日誌。
+  v2.2 (2026-05-11): [標準化] 補全全場景維運範例矩陣、對齊 Hybrid Logging 規範。
+  v2.1 (2026-05-11): [標準化] 導入生命週期紀錄與健康報告儀表板。
 
-執行範例 (Comprehensive Usage Examples):
-  1. [系統健康掃描] 掃描目前所有活躍鎖定與掛起查詢:
-     python scripts/maintenance/check_db_locks.py
+【執行範例矩陣 (Maintenance Usage Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議指令 / SQL                                         │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [即時連線健康檢查]        │ $ python scripts/maintenance/check_db_locks.py         │
+│ 2. [診斷潛在死鎖問題]        │ 儀表板將自動顯示 "🔒 活躍鎖定數"，若大於 0 則需警惕。  │
+│ 3. [查閱歷史阻塞紀錄]        │ SELECT * FROM pipeline_execution_log WHERE task_name = 'db_lock_check'; │
+│ 4. [強制終止長查詢]          │ SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE ...; │
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
 
-  2. [系統監控] 查看過去 24 小時的鎖定紀錄 (SQL):
-     SELECT * FROM pipeline_execution_log WHERE task_name = 'db_lock_check' ORDER BY created_at DESC;
-
-  3. [強制終止異常連線] 若發現長查詢，可手動終止 (SQL 參考):
-     SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'active' AND now() - query_start > interval '5 minutes';
+【監控指標說明】
+  - 活躍連線數: 目前連接到資料庫的 Session 總數。
+  - 活躍鎖定數: 正在等待或持有的資料列/資料表鎖定數量。
+  - 長查詢數: 執行時間超過 30 秒的 SQL，通常是平行入庫時的瓶頸。
 ================================================================================
 """
 import sys, logging, time
 from pathlib import Path
-from datetime import datetime
 
 # ── 終極路徑自癒 Bootstrap ──
 _THIS_DIR = Path(__file__).resolve().parent
@@ -34,7 +38,7 @@ if str(_SCRIPTS_DIR.parent) not in sys.path:
 try:
     from core.path_setup import ensure_scripts_on_path
     ensure_scripts_on_path(__file__)
-    from core.db_utils import db_transaction, record_lifecycle, write_data_audit_log
+    from core.db_utils import db_transaction, record_lifecycle
 except ImportError as e:
     print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
     sys.exit(1)
@@ -42,55 +46,48 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 def show_lock_dashboard(stats: dict):
-    """執行後的連線儀表板回報。"""
+    """執行後的連線健康儀表板。"""
     print("\n" + "="*50)
-    print("🕵️ Quantum Finance: 資料庫連線健康報告 (v2.1)")
+    print("🕵️  Quantum Finance: 資料庫連線健康報告 (v2.2)")
     print("="*50)
     print(f"✅ 掃描狀態  : 完成")
-    print(f"🏊 活躍連線數: {stats.get('total_active', 0)}")
-    print(f"🔒 活躍鎖定數: {stats.get('lock_count', 0)}")
-    print(f"⏳ 長查詢數  : {stats.get('long_queries', 0)} (超過 30 秒)")
+    print(f"🏊 活躍連線數: {stats['active_conns']}")
+    print(f"🔒 活躍鎖定數: {stats['lock_count']}")
+    print(f"⏳ 長查詢數  : {stats['long_queries']} (超過 30 秒)")
     
-    if stats.get('lock_count', 0) > 0:
-        print("⚠️ 警告：偵測到活躍鎖定，請注意數據寫入衝突！")
+    if stats['lock_count'] > 0:
+        print("🔴 警報：偵測到活躍鎖定，可能存在交易阻塞 (Transaction Blocking)！")
+    elif stats['active_conns'] > 25:
+        print("🟡 警告：連線數較高，請檢查連線池是否正確釋放。")
     else:
         print("🟢 系統目前運行流暢，無阻塞查詢。")
-    
+        
     print("-" * 50)
     print("📝 日誌同步: pipeline_execution_log (db_lock_check)")
     print("="*50 + "\n")
 
 def check_locks():
-    """執行多維度鎖定與連線掃描。"""
-    stats = {}
-    with record_lifecycle("db_lock_check", category="sys", stock_id="SYSTEM"):
+    """執行連線與鎖定稽核。"""
+    with record_lifecycle("db_lock_check", category="maintenance", stock_id="DB_SYSTEM"):
+        stats = {"active_conns": 0, "lock_count": 0, "long_queries": 0}
         try:
             with db_transaction() as cur:
-                # 1. 掃描活躍鎖定
-                cur.execute("""
-                    SELECT count(*) as cnt FROM pg_stat_activity 
-                    WHERE wait_event_type IS NOT NULL AND state = 'active';
-                """)
-                stats['lock_count'] = cur.fetchone()['cnt']
+                # 1. 查詢活躍連線
+                cur.execute("SELECT count(*) FROM pg_stat_activity WHERE state = 'active';")
+                stats['active_conns'] = cur.fetchone()['count']
                 
-                # 2. 掃描總活躍連線
-                cur.execute("SELECT count(*) as cnt FROM pg_stat_activity WHERE state = 'active';")
-                stats['total_active'] = cur.fetchone()['cnt']
+                # 2. 查詢鎖定數
+                cur.execute("SELECT count(*) FROM pg_locks WHERE granted = true;")
+                stats['lock_count'] = cur.fetchone()['count']
                 
-                # 3. 掃描長查詢 (超過 30 秒)
-                cur.execute("""
-                    SELECT count(*) as cnt FROM pg_stat_activity 
-                    WHERE state = 'active' AND now() - query_start > interval '30 seconds';
-                """)
-                stats['long_queries'] = cur.fetchone()['cnt']
-                
-                # 4. 混合模式：系統維護審計
-                write_data_audit_log("pg_stat_activity", "SYSTEM", datetime.now().strftime("%Y-%m-%d"), "SCAN", stats['lock_count'])
-                
+                # 3. 查詢長查詢
+                cur.execute("SELECT count(*) FROM pg_stat_activity WHERE (now() - query_start) > interval '30 seconds' AND state = 'active';")
+                stats['long_queries'] = cur.fetchone()['count']
+            
             show_lock_dashboard(stats)
             return True
         except Exception as e:
-            logger.error(f"❌ 鎖定掃描失敗: {e}")
+            logger.error(f"❌ 資料庫監控失敗: {e}")
             raise e
 
 if __name__ == "__main__":
