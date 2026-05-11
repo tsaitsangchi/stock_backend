@@ -1,12 +1,36 @@
 """
-finmind_client.py v3.4 (Quantum Finance Edition)
+finmind_client.py v3.8 (Quantum Finance Edition)
 ================================================================================
 FinMind API 客戶端 — 混合日誌與韌性觀測版 (Quantum v5.1 標準)
-整合 Token Bucket 速率限制、斷路器、以及多層級異常捕獲。
+整合 Token Bucket 速率限制、斷路器、以及生命週期監測。
 
 修訂歷程：
-  v3.4 (2026-05-10): [修正] 修復重試邏輯中 e 變數範圍問題，優化 422 錯誤日誌。
-  v3.2 (2026-05-10): [修正] 導入 load_dotenv 自動加載根目錄 .env。
+  v3.8 (2026-05-11): [標準化] 擴充全場景執行範例，強化配額診斷邏輯。
+  v3.7 (2026-05-11): [診斷] 強化 user_info 偵錯，支援 v4 端點與暴力解析。
+  v3.6 (2026-05-11): [修復] 強化驗證相容性，支援 Header/Param 雙傳參。
+
+執行範例 (Comprehensive Usage Examples):
+  1. [配額與帳號診斷] 查看 API 剩餘配額與 Token 狀態:
+     python scripts/core/finmind_client.py
+
+  2. [個股 + 單表] 抓取台積電(2330)日成交資料:
+     client = FinMindClient()
+     data = client.get_data("TaiwanStockPrice", "2330", "2024-05-01")
+
+  3. [單一個股 + 所有表] 檢查特定個股並補全缺失數據:
+     sid = "2330"
+     datasets = ["TaiwanStockPrice", "TaiwanStockFinancialStatements"]
+     for ds in datasets:
+         # 結合 db_utils.get_latest_date 獲取 start_date
+         pass
+
+  4. [所有核心股 + 所有表] 強制更新 (Forced Update / Full Reload):
+     from core.db_utils import get_db_stock_ids
+     stocks = get_db_stock_ids()
+     for sid in stocks:
+         for ds in datasets:
+             # 強制從遠古日期重抓數據
+             data = client.get_data(ds, sid, "2010-01-01")
 ================================================================================
 """
 import os, sys, time, requests, logging, random
@@ -105,37 +129,66 @@ class FinMindClient:
     def __init__(self):
         self.api_url = "https://api.finmindtrade.com/api/v4/data"
         self.token = os.getenv("FINMIND_TOKEN", "")
-        if self.token: logger.info(f"🟢 FinMindClient v3.2 初始化完成 (Token: Yes, Limit: 6000/hr)")
-        else: logger.warning(f"🟡 FinMindClient v3.2 初始化完成 (Token: No, Limit: 600/hr)")
+        if self.token:
+            logger.info(f"🟢 FinMindClient v3.8 初始化 (Token: Yes, Limit: 6000/hr)")
+        else:
+            logger.warning(f"🟡 FinMindClient v3.8 初始化 (Token: No, Limit: 600/hr)")
+
+    def get_user_info(self) -> Dict[str, Any]:
+        """多重測試不同的 UserInfo 端點以獲獲取資訊"""
+        if not self.token: return {}
+        endpoints = ["https://api.web.finmindtrade.com/v2/user_info", "https://api.finmindtrade.com/api/v4/user_info"]
+        for url in endpoints:
+            try:
+                resp = requests.get(url, headers={"Authorization": f"Bearer {self.token}"}, timeout=10)
+                if resp.status_code != 200:
+                    resp = requests.get(url, params={"token": self.token}, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if "data" in data and isinstance(data["data"], dict): return data["data"]
+                    return data
+            except: continue
+        return {}
 
     def get_data(self, dataset: str, stock_id: str, start_date: str, max_retries: int = 3):
         t0 = time.monotonic()
         if not global_circuit_breaker.check(dataset): return []
-
         while not global_rate_limiter.acquire(): time.sleep(0.5)
-
         params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date, "token": self.token}
-        last_err = "Unknown Error"
-        
+        last_err = None
         for attempt in range(max_retries):
             try:
                 resp = requests.get(self.api_url, params=params, timeout=20)
-                if resp.status_code == 402:
-                    time.sleep(65); continue
-                if resp.status_code == 422:
-                    logger.error(f"❌ [API] 422 參數錯誤: Dataset={dataset}, ID={stock_id}, Start={start_date}")
-                    break # 參數錯誤不需要重試
-                
+                if resp.status_code == 402: time.sleep(65); continue
+                if resp.status_code == 422: break
                 resp.raise_for_status()
                 data = resp.json().get("data", [])
                 global_circuit_breaker.record_success(dataset)
-                write_pipeline_log(f"api_{dataset}", stock_id, "success", "ingestion", int((time.monotonic()-t0)*1000), len(data))
+                duration = int((time.monotonic() - t0) * 1000)
+                write_pipeline_log(f"api_{dataset}", stock_id, "success", "ingestion", duration, len(data))
                 return data
             except Exception as e:
-                last_err = str(e)
-                logger.error(f"❌ [API] {dataset} 抓取失敗 ({attempt+1}): {e}")
+                last_err = e
                 global_circuit_breaker.record_failure(dataset)
                 time.sleep(2 ** attempt)
-        
-        write_pipeline_log(f"api_{dataset}", stock_id, "failed", "ingestion", int((time.monotonic()-t0)*1000), 0, last_err)
+        duration = int((time.monotonic() - t0) * 1000)
+        write_pipeline_log(f"api_{dataset}", stock_id, "failed", "ingestion", duration, 0, err=last_err)
         return []
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
+    client = FinMindClient()
+    info = client.get_user_info()
+    print("\n" + "="*45)
+    print("📊 Quantum Finance: FinMind 配額診斷報告 (v3.8)")
+    print("="*45)
+    if info:
+        u_id = info.get('user_id') or info.get('user_name') or info.get('uid') or info.get('account', 'N/A')
+        print(f"帳號 (User Identity) : {u_id}")
+        print(f"電子郵件 (Email)      : {info.get('email', 'N/A')}")
+        is_verified = info.get("email_verify") or info.get("is_verify")
+        print(f"驗證狀態 (Verified)  : {'✅ 已驗證' if is_verified else '❌ 未驗證 / 狀態未知'}")
+        print(f"每小時使用上限 (Limit): {info.get('api_request_limit', '6000')}")
+        print(f"已使用次數 (Used)     : {info.get('user_count', '0')}")
+    else: print("❌ 無法獲取使用者資訊。請檢查 Token 有效性。")
+    print("="*45 + "\n")

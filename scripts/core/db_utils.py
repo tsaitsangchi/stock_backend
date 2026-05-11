@@ -1,20 +1,19 @@
 """
-db_utils.py v2.5 (Quantum Finance Edition)
+db_utils.py v2.10 (Quantum Finance Edition)
 ================================================================================
 資料庫公用工具函式庫 — 高吞吐二進位版 (Quantum v5.1 標準)
-提供連線池管理、PID 自癒、批量寫入 (UPSERT) 以及混合模式日誌介面。
+提供連線池管理、PID 自癒、以及包含 model_metadata 的基礎設施自癒功能。
 
 修訂歷程：
-  v2.5 (2026-05-10): [修復] 補回 get_db_connection 確保維護工具與治理腳本相容性。
-  v2.4 (2026-05-10): [核心] 新增 write_data_audit_log 實作混合模式審計紀錄。
-  v2.2-2.3: 實作連線池與日期偵測。
+  v2.10(2026-05-11): [自癒] 新增 model_metadata 表格自動建立功能。
+  v2.9 (2026-05-11): [標準化] 擴充全場景執行範例，涵蓋強制更新與核心股遍歷。
 ================================================================================
 """
 import os, sys, logging, threading
 from typing import Optional, Dict, Any, List
 from contextlib import contextmanager
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import psycopg2
 from psycopg2 import pool, extras
 
@@ -34,6 +33,7 @@ except ImportError:
     path_setup.ensure_scripts_on_path(__file__)
     from path_setup import get_scripts_dir
 
+_ENV_PATH = "N/A"
 try:
     from dotenv import load_dotenv
     _ENV_PATH = get_scripts_dir().parent / ".env"
@@ -58,9 +58,86 @@ def get_pool():
     return _POOL
 
 def get_db_connection():
-    """獲取單次連線 (支援舊版治理工具)。"""
     dsn = f"postgresql://{os.getenv('DB_USER','stock')}:{os.getenv('DB_PASSWORD','stock')}@{os.getenv('DB_HOST','127.0.0.1')}:{os.getenv('DB_PORT','5432')}/{os.getenv('DB_NAME','stock')}"
     return psycopg2.connect(dsn)
+
+def ensure_infrastructure():
+    """確保所有基礎日誌與元數據表格存在。"""
+    sql_statements = [
+        # 1. 生命週期日誌
+        """CREATE TABLE IF NOT EXISTS pipeline_execution_log (
+            id SERIAL PRIMARY KEY,
+            task_name VARCHAR(100),
+            stock_id VARCHAR(50),
+            status VARCHAR(20),
+            category VARCHAR(50),
+            duration_ms INTEGER,
+            rows_processed INTEGER,
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );""",
+        # 2. 數據審計日誌
+        """CREATE TABLE IF NOT EXISTS data_audit_log (
+            id SERIAL PRIMARY KEY,
+            table_name VARCHAR(100),
+            stock_id VARCHAR(50),
+            start_date DATE,
+            end_date DATE,
+            rows_affected INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );""",
+        # 3. 模型元數據註冊中心
+        """CREATE TABLE IF NOT EXISTS model_metadata (
+            stock_id VARCHAR(50),
+            model_name VARCHAR(100),
+            model_path TEXT,
+            accuracy FLOAT,
+            oof_da FLOAT,
+            oof_sharpe FLOAT,
+            feature_count INTEGER,
+            params JSONB,
+            trained_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (stock_id, model_name)
+        );"""
+    ]
+    try:
+        with db_transaction() as cur:
+            for sql in sql_statements:
+                cur.execute(sql)
+        return True
+    except Exception as e:
+        print(f"❌ 初始化基礎設施失敗: {e}"); return False
+
+def check_db_health():
+    print("\n" + "="*60)
+    print("🚀 Quantum Finance: 系統核心與日誌儀表板 (v2.10)")
+    print("="*60)
+    try:
+        ensure_infrastructure()
+        with db_transaction() as cur:
+            cur.execute("SELECT version(), now();")
+            res = cur.fetchone()
+            print(f"📡 環境配置  : {str(_ENV_PATH)[:50]}...")
+            print(f"⏰ 資料庫時間: {res['now'].strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            p = get_pool()
+            used = len(getattr(p, '_used', [])) if isinstance(getattr(p, '_used', []), (list, dict)) else 0
+            print(f"🏊 連線池狀態: {used} / {getattr(p, 'maxconn', '30')}")
+            print("-" * 30)
+            
+            yesterday = datetime.now() - timedelta(days=1)
+            cur.execute("SELECT count(*) as total, count(*) FILTER (WHERE status = 'success') as success, count(*) FILTER (WHERE status = 'failed') as failed FROM pipeline_execution_log WHERE created_at > %s", (yesterday,))
+            stats = cur.fetchone()
+            print(f"📊 最近 24H 生命周期 (Lifecycle): {stats['total']} 筆 ({stats['success']} ✅ / {stats['failed']} ❌)")
+            
+            cur.execute("SELECT count(*) as total FROM data_audit_log;")
+            print(f"📋 分類審計紀錄 (Audit Log): {cur.fetchone()['total']} 筆紀錄")
+            
+            cur.execute("SELECT count(*) as total FROM model_metadata;")
+            print(f"🤖 模型註冊中心 (Models): {cur.fetchone()['total']} 個已註冊模型")
+        return True
+    except Exception as e:
+        print(f"❌ 儀表板回報失敗: {e}"); return False
 
 @contextmanager
 def db_session():
@@ -97,40 +174,42 @@ def write_pipeline_log(task_name, stock_id, status, category, duration_ms=0, row
 def write_data_audit_log(table_name, stock_id, start_date, end_date, rows_affected):
     sql = "INSERT INTO data_audit_log (table_name, stock_id, start_date, end_date, rows_affected) VALUES (%s, %s, %s, %s, %s)"
     try:
-        with db_transaction() as cur:
-            cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_affected))
-    except Exception as e:
-        print(f"[WARNING] 正在嘗試自動修復 Audit Log 表: {e}")
+        with db_transaction() as cur: cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_affected))
+    except:
+        ensure_infrastructure()
         try:
-            with db_transaction() as cur:
-                cur.execute("DROP TABLE IF EXISTS data_audit_log CASCADE;")
-                cur.execute("""
-                    CREATE TABLE data_audit_log (
-                        id SERIAL PRIMARY KEY,
-                        table_name VARCHAR(100),
-                        stock_id VARCHAR(50),
-                        start_date DATE,
-                        end_date DATE,
-                        rows_affected INTEGER,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_affected))
-        except: print(f"[ERROR] Data Audit Log 最終失敗")
+            with db_transaction() as cur: cur.execute(sql, (table_name, stock_id, start_date, end_date, rows_affected))
+        except: pass
+
+@contextmanager
+def record_lifecycle(task_name: str, category: str, stock_id: str = "GLOBAL"):
+    t0 = datetime.now()
+    try:
+        yield
+        duration = int((datetime.now() - t0).total_seconds() * 1000)
+        write_pipeline_log(task_name, stock_id, "success", category, duration)
+    except Exception as e:
+        duration = int((datetime.now() - t0).total_seconds() * 1000)
+        write_pipeline_log(task_name, stock_id, "failed", category, duration, err=e)
+        raise e
 
 def get_db_stock_ids(active_only=True):
     sql = "SELECT stock_id FROM stocks"
     if active_only: sql += " WHERE is_active = TRUE"
     with db_transaction() as cur:
-        cur.execute(sql)
-        return [r['stock_id'] for r in cur.fetchall()]
+        cur.execute(sql); return [r['stock_id'] for r in cur.fetchall()]
 
 def get_latest_date(table_name: str, stock_id: str = None, id_column: str = "stock_id") -> str:
     sql = f"SELECT MAX(date) as last_date FROM {table_name}"
-    if stock_id: 
-        sql += f" WHERE {id_column} = '{stock_id}'"
+    if stock_id: sql += f" WHERE {id_column} = '{stock_id}'"
     try:
         with db_transaction() as cur:
             cur.execute(sql); res = cur.fetchone()
             return res['last_date'].strftime("%Y-%m-%d") if res and res['last_date'] else None
     except: return None
+
+if __name__ == "__main__":
+    if check_db_health():
+        print("\n🚀 Quantum 基礎架構運行良好。已確認 model_metadata 表格可用。")
+        print("="*60 + "\n")
+    else: sys.exit(1)
