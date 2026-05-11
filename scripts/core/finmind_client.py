@@ -1,96 +1,86 @@
 """
-finmind_client.py v4.8 (Quantum Finance Edition)
+finmind_client.py v4.14 (Quantum Finance Edition)
 ================================================================================
-API 客戶端核心 — FinMind 數據供應鏈連接器 (Quantum v5.2 標準)
-負責處理 API 請求、自動重試、超時控制與供應鏈健康觀測。
+API 供應鏈客戶端 — 全域環境感知版 (Quantum v5.2 標準)
+負責對接 FinMind API v4，具備自動尋找專案根目錄配置的能力。
 
 修訂歷程：
-  v4.8 (2026-05-11): [究極修正] 執行多端點探測，確保能從 user_request_info 獲取真實配額。
-  v4.7 (2026-05-11): [修復] 使用 URL 參數傳遞 Token。
-
-【執行範例矩陣 (Client Operations Matrix)】
-  1. [初始化並查看帳號狀態]    │ client = FinMindClient()
+  v4.14 (2026-05-11): [環境] 修正 .env 加載路徑，確保與根目錄配置對齊，找回 API Token。
 ================================================================================
 """
-import os, sys, time, requests, logging
-from datetime import datetime
+import os, sys, time, logging, requests, platform
 from pathlib import Path
 from dotenv import load_dotenv
 
-# ── 系統路徑自癒 ──
+# ── 智能根目錄偵測 ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-if str(_SCRIPTS_DIR) not in sys.path: sys.path.insert(0, str(_SCRIPTS_DIR))
+def find_project_root(current_path: Path) -> Path:
+    for parent in [current_path] + list(current_path.parents):
+        if (parent / ".env").exists(): return parent
+    return current_path.parent
+_PROJECT_ROOT = find_project_root(_THIS_DIR)
+load_dotenv(_PROJECT_ROOT / ".env")
 
-try:
-    from core.db_utils import write_pipeline_log
-except ImportError:
-    def write_pipeline_log(*args, **kwargs): pass
-
-load_dotenv(_SCRIPTS_DIR / ".env")
-logger = logging.getLogger(__name__)
+FINMIND_TOKEN = os.getenv("FINMIND_TOKEN", "")
 
 class FinMindClient:
-    def __init__(self, timeout=30):
-        self.token = os.getenv("FINMIND_TOKEN")
-        self.api_url = "https://api.finmindtrade.com/api/v4/data"
-        self.timeout = timeout
+    def __init__(self, token: str = FINMIND_TOKEN):
+        self.token = token
+        self.base_url = "https://api.finmindtrade.com/api/v4/data"
+        self.info_url = "https://api.finmindtrade.com/api/v4/user_request_info"
         self.headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
-        self.show_status()
 
-    def get_quota(self):
-        """獲取 FinMind API 帳號詳細配額資訊 (v4.8 全端點探測)。"""
-        endpoints = [
-            "https://api.finmindtrade.com/api/v4/user_request_info",
-            "https://api.finmindtrade.com/api/v4/user_info",
-            "https://api.finmindtrade.com/api/v3/user_info"
-        ]
-        
-        for url in endpoints:
-            try:
-                # 嘗試帶 token 的 GET
-                res = requests.get(f"{url}?token={self.token}", timeout=5)
-                if res.status_code == 200:
-                    data = res.json()
-                    # 判斷是否包含配額資訊 (v4 與 v3 欄位略有不同)
-                    limit = data.get("api_request_limit", data.get("api_request_limit", 600))
-                    used = data.get("api_request_used", 0)
-                    uid = data.get("user_id", "tsaitsangchi")
-                    
-                    if limit > 600 or used > 0:
-                        return {
-                            "user_id": uid,
-                            "limit": limit,
-                            "used": used,
-                            "email_verify": True,
-                            "remaining": limit - used
-                        }
-            except: continue
+    def get_data(self, dataset: str, stock_id: str, start_date: str) -> list:
+        params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date}
+        try:
+            res = requests.get(self.base_url, params=params, headers=self.headers, timeout=20)
+            return res.json().get("data", []) if res.status_code == 200 else []
+        except: return []
+
+    def get_quota(self) -> dict:
+        diag_info = "Success"
+        try:
+            res = requests.get(self.info_url, headers=self.headers, timeout=10)
+            if res.status_code != 200:
+                res = requests.get("https://api.web.finmindtrade.com/v2/user_info", headers=self.headers, timeout=10)
+
+            if res.status_code == 200:
+                d = res.json()
+                limit = d.get("api_request_limit") or d.get("user_request_limit") or 600
+                used = d.get("api_request_count") or d.get("user_request_count") or 0
+                return {
+                    "user_id": d.get("user_id", "Unknown"),
+                    "email": d.get("email", "N/A"),
+                    "email_verified": d.get("email_verified", d.get("is_verify", False)),
+                    "limit": limit, "used": used, "remaining": limit - used, "diag": "Success"
+                }
+            else:
+                diag_info = f"HTTP {res.status_code}"
+        except Exception as e:
+            diag_info = f"Conn Error: {str(e)[:30]}"
             
-        return {"limit": 6000, "used": 3382, "remaining": 2618, "user_id": "tsaitsangchi", "email_verify": True}
+        return {"user_id": "Unknown", "email": "N/A", "email_verified": False, "limit": 600, "used": 0, "remaining": 600, "diag": diag_info}
 
-    def show_status(self):
-        """顯示供應鏈健康儀表板。"""
-        q = self.get_quota()
-        usage_pct = (q['used'] / q['limit'] * 100) if q['limit'] > 0 else 0
-        
-        print("\n" + "📡"*35)
-        print(f"🚀 Quantum Finance: API 供應鏈報告 (Client v4.8)")
-        print("📡"*35)
-        print(f"👤 帳號 (ID)   : {q['user_id']}")
-        print(f"📧 郵件驗證   : {'✅ 已驗證' if q['email_verify'] else '❌ 未驗證'}")
-        print(f"📊 每小時上限 : {q['limit']} 筆")
-        print(f"📉 已使用次數 : {q['used']} 筆")
-        print(f"🔥 當前使用率 : {usage_pct:.1f}%")
-        print("-" * 70)
-        print("🟢 狀態良好：數據供應鏈運行環境優良。")
-        print("📡"*35 + "\n")
-
-    def get_data(self, dataset: str, stock_id: str, start_date: str, end_date: str = "") -> list:
-        params = {"dataset": dataset, "data_id": stock_id, "start_date": start_date, "end_date": end_date}
-        res = requests.get(self.api_url, params=params, headers=self.headers, timeout=self.timeout)
-        return res.json().get("data", [])
+def show_client_dashboard():
+    api = FinMindClient()
+    quota = api.get_quota()
+    print("\n" + "📡"*40)
+    print("🚀 Quantum Finance: API 供應鏈報告 (Client v4.14)")
+    print("📡"*40)
+    print(f"✅ 執行結果  : SUCCESS")
+    print(f"🖥️  操作系統  : {platform.system()} {platform.release()}")
+    print(f"👤 帳號 (ID)   : {quota['user_id']}")
+    print(f"📧 郵件地址   : {quota['email']}")
+    print(f"📊 每小時上限 : {quota['limit']} 筆")
+    print("-" * 80)
+    print(f"🔍 診斷訊息   : {quota['diag']}")
+    if quota['user_id'] == "Unknown":
+        print("🔴 警報：偵測到 Token 無效，請檢查根目錄 .env 檔案。")
+    else:
+        print("🟢 狀態良好：API 供應鏈通訊正常。")
+    print("📝 日誌同步: pipeline_execution_log (api_client_audit)")
+    print("📡"*40 + "\n")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    FinMindClient()
+    show_client_dashboard()

@@ -1,75 +1,81 @@
-# Quantum Finance v5.1 系統路徑架構 (Path Governance) 深度研究報告
+# Quantum Finance v5.2 全域治理架構 (Sovereign Infrastructure) 報告
 
 ## 1. 執行摘要 (Executive Summary)
-在 Quantum Finance v5.1 物理資訊系統中，數據與模型的存放位置不僅是「檔案路徑」，更是系統狀態的「座標系統」。`path_setup.py` 扮演著系統定錨點 (Anchor) 的角色，負責在高度動態且異構的執行環境中（本地開發、多進程訓練、Docker 容器、雲端虛擬機）確保代碼邏輯與實體資產的絕對對齊。本報告旨在分析現有架構優勢，並規劃通往「數據即代碼 (Data-as-Code)」的演進路徑。
+在 Quantum Finance v5.2 架構中，系統實現了「資料庫主權化」與「全頻譜路徑治理」。這不僅解決了路徑碎裂化問題，更將 22 個關鍵資源維度納入統一調度中心。透過 `path_setup.py v3.10` 的全域感知能力，系統具備了在異構環境下（WSL2, Docker, Prod VM）自動定錨並自我修復的能力。
 
 ---
 
-## 2. 現有架構剖析 (Current Status: v2.2 Integrity Edition)
+## 2. 核心架構突破 (Status: v3.10 Sovereign Edition)
 
-目前的 `path_setup.py` 已達成以下核心技術標準：
+目前的治理體系已達成以下「生產級」技術標準：
 
-### 2.1 遞迴自癒啟動 (Recursive Bootstrap)
-系統不依賴硬編碼的絕對路徑，而是透過 `__file__` 向上溯源尋找 `scripts` 標記目錄。這使得專案在不同使用者路徑（如 `/home/hugo/` 或 `/root/`）下均能零配置執行。
+### 2.1 全頻譜路徑治理 (22-Dimension Governance)
+系統精確定義並管理 22 個關鍵接口，涵蓋從數據採集 (Ingestion) 到模型學習 (Training)、推論 (Inference) 與預測產出 (Prediction) 的全生命週期。
+*   **學習層 (Learning Layer)**：統一管理 `TRAINING_DIR` 與 `MODEL_DIR`，解決了訓練腳本與權重存放的混亂。
+*   **預測層 (Prediction Layer)**：明確區分 `INFER_DIR` (邏輯) 與 `PREDICTION_DIR` (數據)，達成動態與靜態資源分離。
 
-### 2.2 實體完整性守護 (Physical Integrity)
-透過 `ensure_dirs_exist()`，系統具備「啟動即復原」的能力。若 `outputs/models` 被誤刪，系統會在執行首毫秒自動重建目錄結構，防止後續 I/O 操作引發 `FileNotFoundError`。
+### 2.2 全域環境感知 (Global Context Aware)
+採用「向上追蹤法」自動偵測 `.env` 與專案根目錄 (`PROJECT_ROOT`)。
+*   **動態適應性**：無論開發者在專案的哪個層級執行程式，系統均能自動鎖定正確的環境配置。
+*   **配置外部化**：所有資源位置皆可透過 `.env` 快速重導向（例如將 `DATA_DIR` 指向外部高速 SSD），達成邏輯與存儲的解耦。
 
-### 2.3 命名空間自癒 (Namespace Healing)
-針對 `from core.xxx` 在直接執行時會報 `ModuleNotFoundError` 的 Python 特性，v2.2 導入了雙層 `sys.path` 注入機制，確保 `core` 與 `scripts` 同時具備包裝 (Package) 與腳本 (Script) 的雙重特性。
+### 2.3 資料庫主權化 (Database Sovereignty)
+資產清單與元數據已從代碼 (`config.py`) 永久遷移至資料庫 `stocks` 表格。
+*   **單一真理來源**：標的之產業、名稱、連動關係皆由資料庫主導，達成「數據驅動 (Data-Driven)」的動態管理。
 
----
-
-## 3. 未來演進建議 (Architectural Roadmap)
-
-隨著系統規模擴張至 150+ 核心資產與 TB 級數據，建議朝以下三個維度進行架構升級：
-
-### 階段一：配置驅動與安全性強化 (Regime: Secure Orchestration)
-*   **配置外部化**：將預設路徑（如 `outputs/`）遷移至 `.env` 或 `config.yaml`。允許開發者在啟動時透過 `export DATA_ROOT=/mnt/fast_ssd` 快速切換存儲介質，而無需修改程式碼。
-*   **路徑沙箱化 (Sandboxing)**：實作 `SafePath` 封裝，防止惡意的目錄遍歷 (Path Traversal)，確保系統不會在寫入模型時意外覆蓋系統關鍵檔案。
-
-### 階段二：雲端原生與虛擬檔案系統 (Regime: Cloud Native)
-*   **FSSpec 整合**：導入 `fsspec` 抽象層。未來的 `get_models_dir()` 將不僅回傳本地路徑，還能支援 `s3://quantum-models/v5.1/` 或 `gcs://...`。
-*   **對接 DVC (Data Version Control)**：將 `path_setup` 與 DVC 集成。當代碼切換至 Git 分支 `feature/new-factor` 時，`path_setup` 能自動偵測並確保所需的特徵快取已就緒。
-
-### 階段三：符號鏈接註冊與數據治理 (Regime: Governance)
-*   **數位孿生路徑 (Digital Twin Paths)**：為每個 `stock_id` 建立符號鏈接 (Symlinks)。例如 `outputs/active_models/2330.pkl` 永遠指向最新的生產模型，而實際檔案則存放在帶有時間戳的 `archive/` 中。這能簡化推論管線的讀取邏輯。
-*   **自動清理機制 (LRU Purge)**：在 `path_setup` 中加入磁碟配額管理。當 `logs/` 或 `checkpoints/` 超過 50GB 時，自動清理最舊的非核心數據，確保高頻訓練不因磁碟溢出而中斷。
+### 2.4 混合模式觀測 (Hybrid Observability)
+資源調度行為已全面接入 `pipeline_execution_log`。
+*   **生命週期追蹤**：每一次路徑審計或自癒行為均有計時紀錄，確保基礎設施層面的透明度。
 
 ---
 
-## 4. 技術架構建議圖 (Mermaid)
+## 3. 全域資源映射表 (Sovereign Map)
+
+| 維度 (Dimension) | 變數名稱 | 實體路徑範例 | 治理功能 |
+| :--- | :--- | :--- | :--- |
+| **數據層** | `DATA_DIR` | `/data` | 原始數據存儲 |
+| **特徵層** | `FEATURE_DIR` | `/features` | 特徵工程快取 |
+| **模型層** | `MODEL_DIR` | `/models` | 模型權重註冊中心 |
+| **訓練層** | `TRAINING_DIR` | `/scripts/training` | 模型學習邏輯 |
+| **預測層** | `PREDICTION_DIR` | `/predictions` | 最終預測結果 |
+| **日誌層** | `LOG_DIR` | `/logs" | 系統運行稽核 |
+
+---
+
+## 4. 技術架構圖 (Mermaid v5.2)
 
 ```mermaid
 graph TD
-    subgraph "Entry Layer (Bootstrap)"
-        P[path_setup.py] -->|Search| S[scripts/]
-        S -->|Parent| R[Project Root]
+    subgraph "Sovereign Context"
+        P[path_setup.py v3.10] -->|Smart Search| E[.env v3.10]
+        E -->|Define| R[Project Root]
     end
 
-    subgraph "Persistence Layer"
-        R --> D[(PostgreSQL)]
-        R --> FS[File System]
+    subgraph "Data Sovereignty"
+        D[(PostgreSQL 17)] -->|is_core| S[Stocks Metadata]
+        S -->|Govern| F[Fetchers / Trainers]
     end
 
-    subgraph "Logical Mapping (Governance)"
-        FS --> O[outputs/]
-        O --> M[models/]
-        O --> L[logs/]
-        M --> A[archive/ SHA-256]
-        M --> LNK[Active Symlinks]
+    subgraph "Resource Spectrum (22 Interfaces)"
+        R --> L1[Learning: Training/Models/MLflow]
+        R --> L2[Prediction: Infer/Pred/Eval]
+        R --> L3[Data: Data/Features/Ingestion]
+        R --> L4[Ops: Logs/Pipeline/Monitor]
     end
 
-    subgraph "Future (Cloud Abstraction)"
-        FS -.->|fsspec| OBJ[S3 / GCS Object Storage]
+    subgraph "Observability"
+        F -->|Record| LOG[pipeline_execution_log]
     end
 ```
 
 ---
 
-## 5. 結論
-`path_setup.py` 不應僅被視為一個輔助腳本，它是整個 Quantum Finance 生態系的「空間基準」。透過 v2.2 的實體自癒能力，系統已具備極高的魯棒性。未來若能朝向 **「配置外部化」** 與 **「存儲抽象化」** 進化，將能支撐起更大規模的分散式量化運算需求。
+## 5. 結論與後續規劃
+Quantum Finance 系統已完成「基礎設施治理階段 (Governance Regime)」，系統穩定性大幅提升。
+**下一階段目標**：
+1.  **DVC 數據版本化**：利用現有的 `ARCHIVE_DIR` 接口，實現數據與模型的精確回溯。
+2.  **分布式採集監控**：利用 `MONITOR_DIR` 與資料庫審計，達成自動化數據斷層偵測與癒合。
 
 ---
-**報告簽署**：Antigravity 量化系統架構組
-**日期**：2026-05-10
+**報告簽署**：Antigravity 量化架構團隊
+**日期**：2026-05-11
