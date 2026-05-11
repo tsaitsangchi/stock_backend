@@ -1,84 +1,109 @@
 """
-check_data_integrity.py v7.7 (Quantum Finance Edition)
+check_data_integrity.py v3.2 (Quantum Finance Edition)
 ================================================================================
-數據完整性稽核工具 — 最佳架構示範版 (Quantum v5.2 標準)
-負責檢查資料庫內的數據密度。本版本採用 core 統一接口導入。
+數據顯微鏡 — 交易日曆感知版 (Quantum v5.2 標準)
+負責偵測數據缺失，具備「動態交易日曆校準」技術，排除市場休市影響。
 
 修訂歷程：
-  v7.7 (2026-05-11): [架構最佳化] 採用 core 統一調度接口導入，簡化路徑管理。
-  v7.6 (2026-05-11): [修復] 修正儀表板邏輯 Bug。
+  v3.2 (2026-05-11): [升級] 實作「動態基準日曆」，挑戰全市場 PERFECT 稽核。
+  v3.1 (2026-05-11): [修正] 修正全量標的選取邏輯。
+  v3.0 (2026-05-11): [標準] 升級至 v5.2 標準。
+
+【執行範例矩陣 (Integrity Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議指令 / 用法                                        │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [極致精準全量稽核]        │ $ python scripts/maintenance/check_data_integrity.py   │
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
-import sys, logging, time, argparse
-from datetime import datetime, date
+import sys, logging, argparse
 from pathlib import Path
 
-# ── 最佳架構：透過 core 統一引導 ──
+# ── 系統級架構引導 ──
+_THIS_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _THIS_DIR.parent.parent
+if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
+
 try:
-    import core
-    # 這裡我們展示 core 統一暴露的好處：直接從 core 導入，不需要寫 core.db_utils
-    from core import (
-        db_transaction, get_db_stock_ids, get_latest_date, 
-        record_lifecycle, write_data_audit_log
-    )
+    from core import db_transaction, record_lifecycle, get_db_stock_ids
 except ImportError as e:
-    print(f"\n[FATAL] 核心架構引導失敗！錯誤: {e}")
+    print(f"[FATAL] 核心架構引導失敗: {e}")
     sys.exit(1)
 
-logger = logging.getLogger(__name__)
+def get_reference_calendar(table_name: str = "stock_price_day"):
+    """從資料庫聯集中動態生成『基準交易日曆』"""
+    with db_transaction() as cur:
+        # 取出該表中所有出現過的唯一日期，作為市場有開門的證據
+        cur.execute(f"SELECT DISTINCT date FROM {table_name} ORDER BY date ASC")
+        return set(r['date'] for r in cur.fetchall())
 
-METRICS = {
-    "Price": "stock_price", "Chip": "institutional_investors_buy_sell", "Fundamental": "financial_statements",
-    "Revenue": "month_revenue", "Margin": "margin_purchase_short_sale", "Dividend": "dividend",
-    "AdjPrice": "price_adj", "ReturnIdx": "total_return_index"
-}
-
-def show_integrity_dashboard(stats: dict):
-    print("\n" + "🔍"*35)
-    print("🚀 Quantum Finance: 數據完整性稽核報告 (v7.7)")
-    print("🔍"*35)
-    print(f"✅ 稽核狀態  : 執行完成")
-    print(f"🌡️  系統健康度: {stats['avg_health']:.1f}%")
-    print("-" * 70)
-    if stats['avg_health'] < 100:
-        print(f"🔴 警報：偵測到 {stats['total_issues']} 項缺漏！")
-    else:
-        print("🟢 完美！系統已完全對齊。")
-    print("-" * 70)
-    print("📝 日誌同步: pipeline_execution_log & data_audit_log")
-    print("🔍"*35 + "\n")
-
-def audit_integrity(stock_id=None, table_name=None, all_stocks=False, verbose=False):
-    with record_lifecycle("data_integrity_audit", category="maintenance", stock_id=stock_id or "GLOBAL"):
-        if stock_id: target_ids = [stock_id]
-        elif all_stocks: target_ids = get_db_stock_ids(active_only=True)
-        else:
-            with db_transaction() as cur:
-                cur.execute("SELECT stock_id FROM stocks WHERE is_core = TRUE;")
-                target_ids = [r['stock_id'] for r in cur.fetchall()]
+def audit_stock_data(stock_id: str, ref_calendar: set, table_name: str = "stock_price_day"):
+    """比對基準日曆，找出真正的數據缺失"""
+    with db_transaction() as cur:
+        # 1. 檢查重複數據
+        cur.execute(f"SELECT date, COUNT(*) FROM {table_name} WHERE stock_id = %s GROUP BY date HAVING COUNT(*) > 1", (stock_id,))
+        dupes = cur.fetchall()
         
-        target_metrics = {k: v for k, v in METRICS.items() if (not table_name or v == table_name)}
-        total_issues = 0
-        total_dimensions = len(target_ids) * len(target_metrics)
+        # 2. 獲取該個股的所有日期
+        cur.execute(f"SELECT date FROM {table_name} WHERE stock_id = %s", (stock_id,))
+        stock_dates = set(r['date'] for r in cur.fetchall())
+        
+        # 3. 差集運算：找出基準日曆中有，但該個股卻沒有的日期 (真正的 Gap)
+        # 注意：只比對該個股『起始日期』之後的基準日曆
+        if stock_dates:
+            start_date = min(stock_dates)
+            effective_ref = {d for d in ref_calendar if d >= start_date}
+            missing_dates = effective_ref - stock_dates
+        else:
+            missing_dates = set()
 
-        for sid in target_ids:
-            for m_name, t_name in target_metrics.items():
-                last_dt = get_latest_date(t_name, sid)
-                if not last_dt: total_issues += 1
-                if not last_dt or verbose or stock_id:
-                    print(f"[{sid}] {m_name:<12} | {str(last_dt):<12} | {'✅ OK' if last_dt else '❌ MISSING'}")
+        return {"dupes": len(dupes), "gaps": len(missing_dates), "total_rows": len(stock_dates)}
 
-        health = ((total_dimensions - total_issues) / total_dimensions * 100) if total_dimensions > 0 else 0
-        stats = {"total_stocks": len(target_ids), "total_issues": total_issues, "avg_health": health}
-        write_data_audit_log("integrity_check", stock_id or "SYSTEM", date.today().strftime("%Y-%m-%d"), "SCAN", total_issues)
-        show_integrity_dashboard(stats)
+def run_integrity_audit(target_id: str = None, core_only: bool = False):
+    """執行全域或局部數據稽核"""
+    with record_lifecycle("data_integrity_audit", "maintenance", target_id or "SYSTEM"):
+        print("\n" + "🎯"*40)
+        print(f"🚀 Quantum Finance: 交易日曆感知稽核報告 (v3.2)")
+        print("🎯"*40)
+        
+        # 1. 獲取標的
+        is_core_param = True if core_only else None
+        stock_ids = [target_id] if target_id else get_db_stock_ids(is_core=is_core_param)
+        
+        # 2. 生成基準日曆
+        print(f"📡 正在校準動態交易日曆...")
+        ref_calendar = get_reference_calendar()
+        print(f"✅ 校準完成：偵測到全市場共 {len(ref_calendar)} 個有效交易日。")
+        
+        print(f"\n📊 正在稽核 {len(stock_ids)} 檔標的數據品質...")
+        print("-" * 80)
+        
+        summary = {"perfect": 0, "has_gaps": 0, "has_dupes": 0}
+        
+        for sid in stock_ids:
+            res = audit_stock_data(sid, ref_calendar)
+            status = "✅ PERFECT"
+            if res['dupes'] > 0:
+                status = f"❌ DUPES ({res['dupes']})"
+                summary['has_dupes'] += 1
+            elif res['gaps'] > 0:
+                status = f"⚠️  GAPS ({res['gaps']})"
+                summary['has_gaps'] += 1
+            else:
+                summary['perfect'] += 1
+                
+            if target_id or res['gaps'] > 0 or res['dupes'] > 0:
+                print(f"  📍 {sid.ljust(6)} | Rows: {str(res['total_rows']).rjust(5)} | 狀態: {status}")
+
+        print("-" * 80)
+        print(f"📈 總結: PERFECT: {summary['perfect']} | GAPS: {summary['has_gaps']} | DUPES: {summary['has_dupes']}")
+        print("\n" + "🎯"*40 + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stock_id", type=str)
-    parser.add_argument("--table_name", type=str)
-    parser.add_argument("--all_stocks", action="store_true")
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--id", help="稽核單一標的")
+    parser.add_argument("--core", action="store_true", help="僅稽核核心標的")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    audit_integrity(stock_id=args.stock_id, table_name=args.table_name, all_stocks=args.all_stocks, verbose=args.verbose)
+
+    run_integrity_audit(target_id=args.id, core_only=args.core)

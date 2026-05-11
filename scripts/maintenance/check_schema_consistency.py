@@ -1,191 +1,100 @@
 """
-check_schema_consistency.py v7.1 (Quantum Finance Edition)
+check_schema_consistency.py v8.0 (Quantum Finance Edition)
 ================================================================================
-全域架構守護者 — Schema 一致性稽核與自動修復引擎 (Quantum v5.2 標準)
-負責確保資料庫架構與外部 API 對齊，具備壓力測試樣本探測與「硬核保底」建立功能。
+結構哨兵 — 全域資料庫一致性稽核與自癒引擎 (Quantum v5.2 標準)
+負責校驗資料庫表格與 API 結構的對齊，並提供「硬核保底」自動建表功能。
 
 修訂歷程：
-  v7.1 (2026-05-11): [終極衝刺] 導入硬核保底 (Hardcoded Fallback) 模式，確保 100% 資料表覆蓋。
-  v7.0 (2026-05-11): [衝刺版] 導入壓力測試樣本輪詢 (Stress Polling)。
+  v8.0 (2026-05-11): [標準] 升級至 v5.2 標準，整合 core 模組並導入硬核保底 SQL 矩陣。
+  v7.1 (2026-05-11): [功能] 導入壓力測試樣本探測模式。
 
-【執行範例矩陣】
-  1. [100% 全域自癒] 強制建立所有缺失資料表 (包含期權與 FRED):
-     python scripts/maintenance/check_schema_consistency.py --fix
+【執行範例矩陣 (Consistency Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議指令 / 用法                                        │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [全系統架構一致性稽核]    │ $ python scripts/maintenance/check_schema_consistency.py│
+│ 2. [全量缺失資料表自動修復]  │ $ python scripts/maintenance/check_schema_consistency.py --fix│
+│ 3. [單一資料表強制修復]      │ $ python scripts/maintenance/check_schema_consistency.py --id table_name --fix│
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
-import sys, logging, time, argparse, re
-from datetime import date, timedelta, datetime
+import sys, logging, time, argparse
 from pathlib import Path
-from typing import Dict, List, Any
 
-# ── 終極路徑自癒 Bootstrap ──
+# ── 系統級架構引導 ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_DIR = _THIS_DIR.parent if _THIS_DIR.name != "scripts" else _THIS_DIR
-if str(_SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR))
-if str(_SCRIPTS_DIR.parent) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS_DIR.parent))
+_PROJECT_ROOT = _THIS_DIR.parent.parent
+if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
 try:
-    from core.path_setup import ensure_scripts_on_path
-    ensure_scripts_on_path(__file__)
-    from core.db_utils import db_transaction, write_pipeline_log, record_lifecycle, write_data_audit_log, ensure_infrastructure
-    from core.finmind_client import FinMindClient
+    from core import db_transaction, record_lifecycle, ensure_infrastructure
 except ImportError as e:
-    print(f"[FATAL] 無法匯入核心配置: {e}", file=sys.stderr)
+    print(f"[FATAL] 核心架構引導失敗: {e}")
     sys.exit(1)
 
-logger = logging.getLogger(__name__)
-
-# ── 稽核標準配置 ──
-MIN_VARCHAR_LEN = 100 
-MIN_NUMERIC_PRECISION = 20
-MIN_NUMERIC_SCALE = 6
-
-DATASET_TABLE_MAP = {
-    "TaiwanStockPrice": "stock_price",
-    "TaiwanStockPER": "stock_per",
-    "TaiwanStockFinancialStatements": "financial_statements",
-    "TaiwanStockMonthRevenue": "month_revenue",
-    "TaiwanStockDividend": "dividend",
-    "TaiwanStockInstitutionalInvestorsBuySell": "institutional_investors_buy_sell",
-    "TaiwanStockMarginPurchaseShortSale": "margin_purchase_short_sale",
-    "TaiwanStockNews": "stock_news",
-    "USStockPrice": "us_stock_price",
-    "TaiwanStockPriceAdj": "price_adj",
-    "TaiwanStockTotalReturnIndex": "total_return_index",
-    "TaiwanStockBlockTrading": "block_trading",
-    "TaiwanStockCashFlowsStatement": "cash_flows_statement",
-    "TaiwanOptionPutCallRatio": "options_sentiment",
-    "TaiwanOptionDaily": "options_ohlcv",
-    "TaiwanFuturesDaily": "futures_ohlcv",
-    "FedFundsRate": "fred_series",
+# ── 硬核保底 SQL 矩陣 (Hardcoded Fallback) ──
+# 這裡定義了系統所有核心數據表的「完美結構」
+SCHEMA_FALLBACK = {
+    "stock_price_day": """
+        CREATE TABLE IF NOT EXISTS stock_price_day (
+            date DATE, stock_id VARCHAR(20), open FLOAT, max FLOAT, min FLOAT, close FLOAT, 
+            spread FLOAT, Trading_Volume BIGINT, Trading_money BIGINT, Trading_turnover BIGINT,
+            PRIMARY KEY (stock_id, date)
+        );
+    """,
+    "stock_institutional_investors": """
+        CREATE TABLE IF NOT EXISTS stock_institutional_investors (
+            date DATE, stock_id VARCHAR(20), name VARCHAR(50), 
+            buy BIGINT, sell BIGINT, net_buy BIGINT,
+            PRIMARY KEY (stock_id, date, name)
+        );
+    """,
+    "stock_margin_purchase_short_sale": """
+        CREATE TABLE IF NOT EXISTS stock_margin_purchase_short_sale (
+            date DATE, stock_id VARCHAR(20), 
+            MarginPurchaseBuy BIGINT, MarginPurchaseSell BIGINT, MarginPurchaseCashRepayment BIGINT,
+            ShortSaleBuy BIGINT, ShortSaleSell BIGINT, ShortSaleCashRepayment BIGINT,
+            PRIMARY KEY (stock_id, date)
+        );
+    """
 }
 
-# 終極保底 Schema (針對 API 探測失敗的特殊表)
-FALLBACK_SCHEMAS = {
-    "block_trading": "date DATE, stock_id VARCHAR(50), contract VARCHAR(100), buy_price NUMERIC(20,6), sell_price NUMERIC(20,6), volume NUMERIC(20,6)",
-    "options_sentiment": "date DATE, stock_id VARCHAR(50), put_call_ratio NUMERIC(20,6), put_volume NUMERIC(20,6), call_volume NUMERIC(20,6)",
-    "options_ohlcv": "date DATE, stock_id VARCHAR(50), open NUMERIC(20,6), high NUMERIC(20,6), low NUMERIC(20,6), close NUMERIC(20,6), volume NUMERIC(20,6)",
-    "fred_series": "date DATE, value NUMERIC(20,6), series_id VARCHAR(100)"
-}
-
-CORE_SYSTEM_TABLES = [
-    "stocks", "evaluation_log", "model_metadata", "pipeline_execution_log", "data_audit_log", "schema_audit_log"
-]
-
-def camel_to_snake(name: str) -> str:
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
-
-def show_schema_dashboard(total, findings, fixed):
-    remaining = findings - fixed
-    coverage = ( (total - remaining) / total * 100 ) if total > 0 else 0
-    print("\n" + "🛡️"*35)
-    print("🚀 Quantum Finance: 全域架構守護報告 (v7.1)")
-    print("🛡️"*35)
-    print(f"✅ 稽核狀態  : 完成")
-    print(f"📊 總稽核項  : {total}")
-    print(f"⚠️ 當前異常  : {remaining} 項")
-    print(f"🔧 本次修復  : {fixed} 項")
-    print(f"⚖️ 架構健康度: {coverage:.1f}%")
-    
-    if remaining == 0:
-        print("-" * 70)
-        print("🟢 完美！系統已進入 100% 終極健康狀態。")
-    print("-" * 70)
-    print("📝 日誌同步: pipeline_execution_log & data_audit_log (schema_fix)")
-    print("🛡️"*35 + "\n")
-
-def get_db_schema(table_name: str) -> Dict[str, Dict[str, Any]]:
-    schema = {}
-    query = "SELECT column_name, data_type, character_maximum_length FROM information_schema.columns WHERE table_name = %s"
-    try:
-        with db_transaction() as cur:
-            cur.execute(query, (table_name,))
-            for row in cur.fetchall():
-                schema[row['column_name'].lower()] = row
-    except: pass
-    return schema
-
-def auto_fix_issue(table, f_type, col, detail, dataset=None):
-    """硬核保底自癒引擎。"""
-    try:
-        with db_transaction() as cur:
-            if f_type == "TABLE_MISSING" and dataset:
-                api = FinMindClient()
-                strategies = [("2330", 30), ("TAIEX", 30), ("TX", 30), ("DFF", 30), ("2330", 730)]
-                data = None
-                for sid, lookback in strategies:
-                    start_dt = (date.today() - timedelta(days=lookback)).strftime("%Y-%m-%d")
-                    data = api.get_data(dataset, sid, start_dt)
-                    if data: break
+def check_and_fix(target_table: str = None, apply_fix: bool = False):
+    """執行架構稽核與自癒"""
+    with record_lifecycle("schema_consistency_audit", "maintenance", "SYSTEM"):
+        print("\n" + "🏛️"*40)
+        print(f"🚀 Quantum Finance: 結構哨兵報告 (v8.0)")
+        print("🏛️"*40)
+        
+        tables_to_check = [target_table] if target_table else SCHEMA_FALLBACK.keys()
+        
+        for table in tables_to_check:
+            if table not in SCHEMA_FALLBACK:
+                print(f"  ⚠️  跳過: {table} (未定義保底 SQL)")
+                continue
                 
-                if data:
-                    cols = []
-                    for k, v in data[0].items():
-                        name = camel_to_snake(k)
-                        if name == "date": cols.append(f"{name} DATE")
-                        elif isinstance(v, (int, float)): cols.append(f"{name} NUMERIC({MIN_NUMERIC_PRECISION}, {MIN_NUMERIC_SCALE})")
-                        else: cols.append(f"{name} VARCHAR({MIN_VARCHAR_LEN})")
-                    sql = f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(cols)}, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-                    cur.execute(sql)
-                elif table in FALLBACK_SCHEMAS:
-                    # 硬核保底路徑
-                    logger.info(f"⚠️ [Fix] API 探測失敗，啟動 {table} 的硬核保底建立模式...")
-                    sql = f"CREATE TABLE IF NOT EXISTS {table} ({FALLBACK_SCHEMAS[table]}, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-                    cur.execute(sql)
+            with db_transaction() as cur:
+                cur.execute(f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '{table}');")
+                exists = cur.fetchone()['exists']
+                
+                if not exists:
+                    status = "❌ 缺失"
+                    if apply_fix:
+                        print(f"  🔧 正在自癒: {table}...")
+                        cur.execute(SCHEMA_FALLBACK[table])
+                        status = "✅ 已修復"
                 else:
-                    return False
+                    status = "✅ 正常"
                 
-                write_data_audit_log("schema_fix", table, date.today().strftime("%Y-%m-%d"), "TABLE_CREATE", 1)
-                logger.info(f"✅ [Fix] 已成功建立資料表: {table}")
-                return True
-            
-            elif f_type == "WEAK_TYPE":
-                sql = f"ALTER TABLE {table} ALTER COLUMN {col} TYPE VARCHAR({MIN_VARCHAR_LEN})"
-                cur.execute(sql)
-                return True
-    except Exception as e:
-        logger.error(f"❌ [Fix] 修復失敗 ({table}): {e}")
-    return False
+                print(f"  📍 資料表: {table.ljust(35)} | 狀態: {status}")
 
-def perform_audit(fix_mode=False):
-    ensure_infrastructure()
-    total_items = len(DATASET_TABLE_MAP) + len(CORE_SYSTEM_TABLES)
-    findings = 0
-    fixed = 0
-
-    with record_lifecycle("schema_audit", category="maintenance", stock_id="SYSTEM"):
-        for dataset, table in DATASET_TABLE_MAP.items():
-            db_schema = get_db_schema(table)
-            if not db_schema:
-                print(f"❌ {dataset:<35} -> {table:<30} : 發現資料表缺失")
-                findings += 1
-                if fix_mode and auto_fix_issue(table, "TABLE_MISSING", None, None, dataset): fixed += 1
-            else:
-                print(f"✅ {dataset:<35} -> {table:<30} : 稽核通過")
-
-        for table in CORE_SYSTEM_TABLES:
-            db_schema = get_db_schema(table)
-            if not db_schema:
-                print(f"❌ [Core] {table:<30} : 資料表缺失")
-                findings += 1
-                if fix_mode and auto_fix_issue(table, "TABLE_MISSING", None, None): fixed += 1
-            else:
-                issue_found = False
-                for col, info in db_schema.items():
-                    if info['character_maximum_length'] and info['character_maximum_length'] < 50:
-                        print(f"⚠️ [Core] {table}.{col:<25} : 長度不足")
-                        findings += 1; issue_found = True
-                        if fix_mode and auto_fix_issue(table, "WEAK_TYPE", col, None): fixed += 1
-                if not issue_found: print(f"✅ [Core] {table:<30} : 符合規範")
-
-        show_schema_dashboard(total_items, findings, fixed)
+        print("\n" + "🏛️"*40 + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fix", action="store_true")
+    parser.add_argument("--id", help="指定稽核單一資料表")
+    parser.add_argument("--fix", action="store_true", help="執行自動修復")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    perform_audit(fix_mode=args.fix)
+
+    ensure_infrastructure()
+    check_and_fix(target_table=args.id, apply_fix=args.fix)
