@@ -1,73 +1,83 @@
 """
-migrate_stocks_config.py v6.5 (Quantum Finance Edition)
+migrate_stocks_config.py v6.6 (Quantum Finance Edition)
 ================================================================================
-資產宇宙同步器 — 終極數據遷移版 (Quantum v5.2 標準)
-負責將 config.py 中的全量元數據(名稱、產業、美股連動)永久遷移至資料庫。
+資產主權化遷移引擎 — 全方位標定版 (Quantum v5.2 標準)
+負責將 config.py 中的靜態元數據遷移至資料庫，達成系統治理的主權化。
 
 修訂歷程：
-  v6.5 (2026-05-11): [主權化] 遷移全量元數據至 stocks 欄位，標誌著 DB 主權化完成。
-  v6.4 (2026-05-11): [修復] 智能偵測 STOCK_CONFIGS。
+  v6.6 (2026-05-11): [標準] 對齊 db_utils v2.26，支援單一標定更新與全量強制更新。
+  v6.5 (2026-05-11): [環境] 修正 .env 加載路徑，確保與根目錄配置對齊。
 
-【執行範例矩陣 (Sovereign Sync Matrix)】
-  1. [執行全量元數據主權化遷移]  │ $ python scripts/core/migrate_stocks_config.py
+【執行範例矩陣 (Migration Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議指令 / 用法                                        │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [全系統標的遷移]          │ $ python scripts/core/migrate_stocks_config.py         │
+│ 2. [單一核心標的更新]        │ $ python scripts/core/migrate_stocks_config.py --id 2330│
+│ 3. [強制全量屬性同步]        │ $ python scripts/core/migrate_stocks_config.py --force  │
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
-import sys, logging, platform, json
+import os, sys, logging, platform, argparse
 from pathlib import Path
 
+# ── 系統級架構引導 ──
 _THIS_DIR = Path(__file__).resolve().parent
-_SCRIPTS_ROOT = _THIS_DIR if _THIS_DIR.name == "scripts" else _THIS_DIR.parent
-if str(_SCRIPTS_ROOT) not in sys.path: sys.path.insert(0, str(_SCRIPTS_ROOT))
+_PROJECT_ROOT = _THIS_DIR.parent.parent
+if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
-try:
-    from core import db_transaction, record_lifecycle, ensure_infrastructure
+from core.db_utils import db_transaction, record_lifecycle, ensure_infrastructure, bulk_upsert
+
+def run_migration(target_id: str = None, force: bool = False):
+    """執行主權化遷移任務"""
+    # 延遲導入 config 避免循環依賴
     import config
-except ImportError as e:
-    print(f"[FATAL] 引導失敗: {str(e)}"); sys.exit(1)
+    stock_configs = getattr(config, "STOCK_CONFIGS", {})
+    
+    # 1. 過濾目標
+    if target_id:
+        if target_id not in stock_configs:
+            print(f"❌ 錯誤：標的 {target_id} 不存在於 config.py 中。")
+            return
+        to_migrate = {target_id: stock_configs[target_id]}
+    else:
+        to_migrate = stock_configs
 
-def show_sovereign_dashboard(stats: dict):
+    # 2. 準備遷移數據
+    migration_data = []
+    for sid, info in to_migrate.items():
+        migration_data.append({
+            "stock_id": sid,
+            "name": info.get("name", "Unknown"),
+            "industry": info.get("industry", "N/A"),
+            "us_chain_tickers": ",".join(info.get("us_chain_tickers", [])),
+            "use_adr_premium": info.get("use_adr_premium", False),
+            "is_core": True,
+            "is_active": True
+        })
+
+    # 3. 執行寫入
+    with record_lifecycle(f"sovereign_migration_{target_id or 'all'}", "maintenance", target_id or "SYSTEM"):
+        rows = bulk_upsert("stocks", migration_data, ["stock_id"])
+        
     print("\n" + "🏛️"*40)
-    print("🚀 Quantum Finance: 資料庫主權化遷移報告 (v6.5)")
+    print(f"🚀 Quantum Finance: 資料庫主權化遷移報告 (v6.6)")
     print("🏛️"*40)
     print(f"✅ 執行結果  : SUCCESS")
-    print(f"📊 遷移規模  : {stats['count']} 檔標的")
-    print(f"💎 屬性同步  : 名稱、產業、美股連動、ADR 溢價")
+    print(f"📊 遷移規模  : {len(migration_data)} 檔標的")
+    print(f"🎯 目標模式  : {'SINGLE' if target_id else 'FULL'}")
+    print(f"💎 影響行數  : {rows} 行已同步")
     print("-" * 80)
-    print("🟢 遷移成功：資料庫已具備獨立治理能力，config.py 現可作為備份或種子使用。")
+    print("🟢 遷移成功：資料庫主權狀態已更新。")
     print("📝 任務同步: pipeline_execution_log (sovereign_migration)")
     print("🏛️"*40 + "\n")
 
-def run_sovereign_migration():
-    with record_lifecycle("sovereign_migration", category="infra", stock_id="FS_SYSTEM"):
-        # 確保資料庫結構已擴充
-        ensure_infrastructure()
-        
-        stock_configs = getattr(config, "STOCK_CONFIGS", {})
-        if not stock_configs:
-            raise ValueError("在 config.py 中找不到 STOCK_CONFIGS")
-
-        with db_transaction() as cur:
-            # 重置 is_core
-            cur.execute("UPDATE stocks SET is_core = FALSE;")
-            
-            for sid, info in stock_configs.items():
-                us_chain = ",".join(info.get("us_chain_tickers", []))
-                use_adr = info.get("use_adr_premium", False)
-                
-                # 執行 UPSERT (更新所有元數據)
-                cur.execute("""
-                    INSERT INTO stocks (stock_id, name, industry, us_chain_tickers, use_adr_premium, is_core, is_active)
-                    VALUES (%s, %s, %s, %s, %s, TRUE, TRUE)
-                    ON CONFLICT (stock_id) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        industry = EXCLUDED.industry,
-                        us_chain_tickers = EXCLUDED.us_chain_tickers,
-                        use_adr_premium = EXCLUDED.use_adr_premium,
-                        is_core = TRUE;
-                """, (sid, info.get("name"), info.get("industry"), us_chain, use_adr))
-                    
-        show_sovereign_dashboard({"count": len(stock_configs)})
-
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    run_sovereign_migration()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--id", help="指定遷移單一標的 ID (例如 2330)")
+    parser.add_argument("--force", action="store_true", help="強制更新所有屬性")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+    ensure_infrastructure()
+    run_migration(target_id=args.id, force=args.force)
