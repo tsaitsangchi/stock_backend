@@ -31,19 +31,19 @@ _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent.parent
 if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
-from core.db_utils import record_lifecycle, write_data_audit_log, check_connection
+from core.db_utils import record_lifecycle, write_data_audit_log, db_connection
 from core.data_schema import DATASET_SCHEMA_MAP
 
 def run_integrity_parade(force=False):
     print("\n" + "🛡️" * 40)
-    print(f"🚀 Quantum Finance: 核心完整性大閱兵 (v1.5)")
+    print(f"🚀 Quantum Finance: 核心完整性大閱兵 (v1.6)")
     print("🛡️" * 40)
 
     with record_lifecycle("core_integrity_parade", category="maintenance", stock_id="SYSTEM"):
         # 1. 基礎設施
         print("\n🏛️  第一維度：基礎設施 (Infrastructure)")
         print("-" * 60)
-        conn_ok = check_connection()
+        conn_ok = db_connection()
         print(f"  {'✅' if conn_ok else '❌'} 資料庫連線與核心系統表 : {'PERFECT' if conn_ok else 'FAILED'}")
 
         # 2. 數據契約
