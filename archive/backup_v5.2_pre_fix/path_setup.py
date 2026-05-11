@@ -1,0 +1,54 @@
+"""
+path_setup.py v4.1 (Quantum Finance Edition)
+================================================================================
+全域路徑治理引擎 — 極致範例版 (Quantum v5.2 標準)
+負責將全系統 27 個關鍵目錄映射為絕對路徑。
+
+修訂歷程：
+  v4.1 (2026-05-11): [標準] 補全極致範例矩陣。
+  v4.0 (2026-05-11): [架構] 新增 5 個 DDD 接口。
+
+【執行範例矩陣 (Path Governance Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議指令 / 用法                                        │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [全系統路徑治理地圖]      │ $ python scripts/core/path_setup.py                    │
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
+================================================================================
+"""
+import os, sys, shutil
+from pathlib import Path
+from dotenv import load_dotenv
+
+_THIS_DIR = Path(__file__).resolve().parent
+def find_project_root(current_path: Path) -> Path:
+    for parent in [current_path] + list(current_path.parents):
+        if (parent / ".env").exists(): return parent
+    return current_path.parent
+
+_PROJECT_ROOT = find_project_root(_THIS_DIR)
+load_dotenv(_PROJECT_ROOT / ".env")
+
+def get_abs_path(env_key: str, default_rel_path: str) -> Path:
+    raw_path = os.getenv(env_key)
+    p = Path(raw_path) if raw_path else _PROJECT_ROOT / default_rel_path
+    return p if p.is_absolute() else _PROJECT_ROOT / p
+
+def get_root_dir(): return _PROJECT_ROOT
+def get_core_dir(): return get_abs_path("CORE_DIR", "scripts/core")
+def get_data_dir(): return get_abs_path("DATA_DIR", "data")
+def get_raw_data_dir(): return get_abs_path("RAW_DATA_DIR", "data/raw")
+def get_feature_store_dir(): return get_abs_path("FEATURE_STORE_DIR", "data/feature_store")
+def get_model_weights_dir(): return get_abs_path("MODEL_WEIGHTS_DIR", "models/weights")
+def get_model_scalers_dir(): return get_abs_path("MODEL_SCALERS_DIR", "models/scalers")
+def get_evaluation_dir(): return get_abs_path("EVALUATION_DIR", "evaluations")
+def get_ingestion_dir(): return get_abs_path("INGESTION_DIR", "scripts/ingestion")
+def get_log_dir(): return get_abs_path("LOG_DIR", "logs")
+
+def ensure_all_dirs():
+    dirs = [get_core_dir(), get_data_dir(), get_raw_data_dir(), get_feature_store_dir(), get_model_weights_dir(), get_model_scalers_dir(), get_evaluation_dir(), get_log_dir()]
+    for d in dirs: d.mkdir(parents=True, exist_ok=True)
+
+if __name__ == "__main__":
+    ensure_all_dirs()
+    print(f"Path Sovereignty OK: {_PROJECT_ROOT}")
