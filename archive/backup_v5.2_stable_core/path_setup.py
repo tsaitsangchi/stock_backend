@@ -2,17 +2,21 @@
 path_setup.py v4.1 (Quantum Finance Edition)
 ================================================================================
 全域路徑治理引擎 — 極致範例版 (Quantum v5.2 標準)
-負責將全系統 27 個關鍵目錄映射為絕對路徑。
+負責將全系統 27 個關鍵目錄映射為絕對路徑，確保物理與邏輯邊界對齊。
 
 修訂歷程：
-  v4.1 (2026-05-11): [標準] 補全極致範例矩陣。
-  v4.0 (2026-05-11): [架構] 新增 5 個 DDD 接口。
+  v4.1 (2026-05-11): [標準] 補全極致範例矩陣，包含路徑地圖生成與單一接口查詢範例。
+  v4.0 (2026-05-11): [架構] 新增 5 個 DDD 接口 (Raw, Store, Weights, Scalers, Eval)。
+  v3.11 (2026-05-11): [修復] 強制絕對路徑解析。
 
 【執行範例矩陣 (Path Governance Matrix)】
 ┌──────────────────────────────┬────────────────────────────────────────────────────────┐
 │ 需求場景                     │ 建議指令 / 用法                                        │
 ├──────────────────────────────┼────────────────────────────────────────────────────────┤
 │ 1. [全系統路徑治理地圖]      │ $ python scripts/core/path_setup.py                    │
+│ 2. [單一接口：獲取權重目錄]  │ path = get_model_weights_dir()                         │
+│ 3. [單一接口：獲取特徵目錄]  │ path = get_feature_store_dir()                         │
+│ 4. [強制執行：全目錄同步建立]│ ensure_all_dirs()                                      │
 └──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
@@ -49,6 +53,12 @@ def ensure_all_dirs():
     dirs = [get_core_dir(), get_data_dir(), get_raw_data_dir(), get_feature_store_dir(), get_model_weights_dir(), get_model_scalers_dir(), get_evaluation_dir(), get_log_dir()]
     for d in dirs: d.mkdir(parents=True, exist_ok=True)
 
-if __name__ == "__main__":
+def show_path_dashboard():
     ensure_all_dirs()
-    print(f"Path Sovereignty OK: {_PROJECT_ROOT}")
+    print("\n" + "👑"*40)
+    print(f"🚀 Quantum Finance: 路徑治理地圖 (v4.1)\n✅ 根目錄: {_PROJECT_ROOT}")
+    print(f"📊 核心接口: RawData={get_raw_data_dir().name} | Weights={get_model_weights_dir().name}")
+    print("👑"*40 + "\n")
+
+if __name__ == "__main__":
+    show_path_dashboard()

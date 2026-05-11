@@ -2,11 +2,14 @@
 db_utils.py v2.27 (Quantum Finance Edition)
 ================================================================================
 資料庫核心引擎 — 極致範例與自癒加強版 (Quantum v5.2 標準)
-負責管理資產元數據、結構自癒與高效能批量寫入。
+負責管理資產元數據、結構自癒與高效能批量寫入，具備自動檢查日誌表結構的功能。
 
 修訂歷程：
   v2.27 (2026-05-11): [修復] 將 ensure_infrastructure 整合進 record_lifecycle，確保引導不崩潰。
-  v2.26 (2026-05-11): [標準] 對齊 .env v4.0。
+  v2.26 (2026-05-11): [標準] 對齊 .env v4.0，改由 path_setup 統一提供。
+  v2.25 (2026-05-11): [修復] 補齊遺漏的 bulk_upsert, get_latest_date 等核心函式。
+  v2.24 (2026-05-11): [環境] 修正 .env 加載路徑，確保與根目錄配置對齊，修復連線失敗。
+  v2.23 (2025-12-25): [功能] 擴展 stocks 表格欄位，支援美股連動 (ADR) 與核心股標記。
 
 【執行範例矩陣 (Database Operation Matrix)】
 ┌──────────────────────────────┬────────────────────────────────────────────────────────┐
@@ -14,24 +17,31 @@ db_utils.py v2.27 (Quantum Finance Edition)
 ├──────────────────────────────┼────────────────────────────────────────────────────────┤
 │ 1. [基礎設施手動自癒]        │ $ python scripts/core/db_utils.py                      │
 │ 2. [單一個股：獲取元數據]    │ info = get_stock_metadata("2330")                      │
-│ 3. [核心標的：強制批量更新]  │ bulk_upsert("stocks", core_list, ["stock_id"])         │
-│ 4. [全量標的：所有Table稽核] │ check_all_tables_integrity()                           │
+│ 3. [單一個股：所有Table清空] │ clear_stock_data("2330", ["stock_price_day", "feat_v1"])│
+│ 4. [核心標的：強制批量更新]  │ bulk_upsert("stocks", core_list, ["stock_id"])         │
+│ 5. [全量標的：所有Table稽核] │ check_all_tables_integrity()                           │
+│ 6. [跨 Table 生命週期監控]    │ with record_lifecycle("Task", "Cat", "2330"): ...      │
 └──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
-import os, sys, logging, time, platform
+import os, sys, logging, time, platform, json
+from datetime import datetime, date
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
+
+import psycopg2
 from psycopg2 import pool, extras
 from psycopg2.extras import execute_values
 
+# ── 系統級架構引導 ──
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent.parent
 if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
 
-from core.path_setup import get_log_dir
+from core.path_setup import get_log_dir, get_root_dir
 
+# 載入資料庫憑證
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_NAME = os.getenv("DB_NAME", "stock")
 DB_USER = os.getenv("DB_USER", "stock")
@@ -44,7 +54,11 @@ _infra_ready = False
 def get_pool():
     global _pool
     if _pool is None:
-        _pool = pool.ThreadedConnectionPool(1, 20, host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD, port=DB_PORT)
+        try:
+            _pool = pool.ThreadedConnectionPool(1, 20, host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASSWORD, port=DB_PORT)
+        except Exception as e:
+            logging.error(f"資料庫連線池初始化失敗: {e}")
+            raise e
     return _pool
 
 @contextmanager
@@ -61,20 +75,39 @@ def db_transaction():
             yield cur
 
 def ensure_infrastructure():
+    """基礎設施自癒：確保核心元數據表與日誌系統存在"""
     global _infra_ready
-    with db_transaction() as cur:
-        cur.execute("CREATE TABLE IF NOT EXISTS stocks (stock_id VARCHAR(20) PRIMARY KEY);")
-        cur.execute("CREATE TABLE IF NOT EXISTS pipeline_execution_log (id SERIAL PRIMARY KEY, task_name VARCHAR(100), stock_id VARCHAR(20), status VARCHAR(20), category VARCHAR(50), duration_ms INTEGER, rows_affected INTEGER, error_msg TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
-        cur.execute("CREATE TABLE IF NOT EXISTS data_audit_log (id SERIAL PRIMARY KEY, table_name VARCHAR(100), stock_id VARCHAR(20), data_date DATE, action_type VARCHAR(50), rows_affected INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
-    _infra_ready = True
-    return 0
+    try:
+        with db_transaction() as cur:
+            # 1. 核心標的主權表
+            cur.execute("CREATE TABLE IF NOT EXISTS stocks (stock_id VARCHAR(20) PRIMARY KEY);")
+            stock_cols = {
+                "name": "VARCHAR(100)", "industry": "VARCHAR(100)", 
+                "us_chain_tickers": "TEXT", "use_adr_premium": "BOOLEAN DEFAULT FALSE",
+                "is_core": "BOOLEAN DEFAULT FALSE", "is_active": "BOOLEAN DEFAULT TRUE"
+            }
+            for col, col_type in stock_cols.items():
+                cur.execute(f"SELECT column_name FROM information_schema.columns WHERE table_name = 'stocks' AND column_name = '{col}';")
+                if not cur.fetchone(): 
+                    cur.execute(f"ALTER TABLE stocks ADD COLUMN {col} {col_type};")
+            
+            # 2. 混合日誌系統
+            cur.execute("CREATE TABLE IF NOT EXISTS pipeline_execution_log (id SERIAL PRIMARY KEY, task_name VARCHAR(100), stock_id VARCHAR(20), status VARCHAR(20), category VARCHAR(50), duration_ms INTEGER, rows_affected INTEGER, error_msg TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+            cur.execute("CREATE TABLE IF NOT EXISTS data_audit_log (id SERIAL PRIMARY KEY, table_name VARCHAR(100), stock_id VARCHAR(20), data_date DATE, action_type VARCHAR(50), rows_affected INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+        _infra_ready = True
+        return 0
+    except Exception as e:
+        logging.error(f"基礎設施修復失敗: {e}"); return -1
 
 def get_db_stock_ids(is_core=None, active_only=True):
     sql = "SELECT stock_id FROM stocks WHERE 1=1"
-    if is_core is not None: sql += f" AND is_core = {is_core}"
-    if active_only: sql += " AND is_active = TRUE"
+    params = []
+    if is_core is not None:
+        sql += " AND is_core = %s"; params.append(is_core)
+    if active_only:
+        sql += " AND is_active = TRUE"
     with db_transaction() as cur:
-        cur.execute(sql); return [r['stock_id'] for r in cur.fetchall()]
+        cur.execute(sql, params); return [r['stock_id'] for r in cur.fetchall()]
 
 def bulk_upsert(table_name: str, data: List[Dict], unique_cols: List[str]):
     if not data: return 0
@@ -89,6 +122,7 @@ def get_latest_date(table_name: str, stock_id: str):
         cur.execute(f"SELECT MAX(date) as last_date FROM {table_name} WHERE stock_id = %s", (stock_id,))
         res = cur.fetchone(); return res['last_date'] if res else None
 
+# ── 混合模式日誌系統 ──
 def write_pipeline_log(task_name, stock_id, status, category, duration=0, rows=0, error=None):
     if not _infra_ready: ensure_infrastructure()
     with db_transaction() as cur:
@@ -113,4 +147,12 @@ def write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affe
         cur.execute("INSERT INTO data_audit_log (table_name, stock_id, data_date, action_type, rows_affected) VALUES (%s, %s, %s, %s, %s)", (table_name, stock_id, data_date, action_type, rows_affected))
 
 if __name__ == "__main__":
-    ensure_infrastructure()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    h_count = ensure_infrastructure()
+    print("\n" + "💎"*40)
+    print(f"🚀 Quantum Finance: 資料庫核心診斷報告 (v2.27)")
+    print(f"✅ 執行結果  : {'SUCCESS' if h_count >= 0 else 'FAILED'}")
+    print(f"🖥️  操作系統  : {platform.system()} {platform.release()}")
+    print("-" * 80)
+    print("📝 日誌同步: pipeline_execution_log & data_audit_log (DB_HEAL)")
+    print("💎"*40 + "\n")
