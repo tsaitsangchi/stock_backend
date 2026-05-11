@@ -83,7 +83,8 @@ def run_debug():
                 stats['scanned_tasks'] = len(failures)
                 if failures:
                     stats['anomaly_found'] = len(failures)
-                    stats['last_error'] = failures[0]['error_msg'] or "Unknown Error"
+                    raw_msg = failures[0]['error_msg']
+                    stats['last_error'] = raw_msg if raw_msg else "(Legacy log without error details)"
                     
                     # 將關鍵診斷紀錄到審計表
                     write_data_audit_log("crash_diagnosis", "SYSTEM", 
