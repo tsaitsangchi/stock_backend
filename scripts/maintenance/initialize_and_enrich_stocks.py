@@ -1,12 +1,13 @@
 """
-initialize_and_enrich_stocks.py v6.2 (Quantum Finance Edition)
+initialize_and_enrich_stocks.py v6.4 (Quantum Finance Edition)
 ================================================================================
 資產初始化與豐富化引擎 — 系統根基工具 (Quantum v5.2 標準)
 負責同步全市場股票清單 (Stock List)、豐富化元數據並標記核心追蹤標的 (Core Universe)。
 
 修訂歷程：
+  v6.4 (2026-05-11): [修復] 實作 stock_id 主動去重 (Deduplication)，解決 PostgreSQL 同批次重複更新衝突。
+  v6.3 (2026-05-11): [修復] 實作欄位白名單過濾，排除 API 多餘欄位 (如 date)。
   v6.2 (2026-05-11): [標準化] 導入 Quantum 標準規範、資產儀表板與 Hybrid Logging 對接。
-  v6.1 (2026-05-10): [核心] 優化核心股 (Core 128) 標記邏輯。
 
 【執行範例矩陣 (Comprehensive Usage Matrix)】
 ┌──────────────────────────────┬────────────────────────────────────────────────────────┐
@@ -18,10 +19,10 @@ initialize_and_enrich_stocks.py v6.2 (Quantum Finance Edition)
 │ 4. [查看資產異動日誌]        │ SELECT * FROM data_audit_log WHERE table_name = 'stocks'; │
 └──────────────────────────────┴────────────────────────────────────────────────────────┘
 
-【業務邏輯說明】
-  - 從 FinMind 獲取最新 TaiwanStockInfo。
-  - 同步至本地 stocks 資料表 (採用 Upsert 邏輯)。
-  - 根據 predefined 核心名單標記 is_active 與 is_core。
+【自癒與防錯說明】
+  - 自動過濾 API 冗餘欄位 (如 date, industry_category_en 等)。
+  - 自動對 stock_id 進行去重，防止資料庫 Upsert 衝突。
+  - 自動寫入 pipeline_execution_log 與 data_audit_log。
 ================================================================================
 """
 import sys, logging, time, argparse
@@ -47,44 +48,56 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-# 核心標的名單預留位 (例如台股 50 指數 + 核心龍頭)
-CORE_UNIVERSE = ["2330", "2317", "2454", "2308", "2303", "2881", "2882", "2357"] # ... 等核心標的
+# 核心標的名單 (根據實際需求調整)
+CORE_UNIVERSE = ["2330", "2317", "2454", "2308", "2303", "2881", "2882", "2357"]
 
 def show_asset_dashboard(stats: dict):
     """執行後的資產管理儀表板。"""
     print("\n" + "🏛️"*35)
-    print("🚀 Quantum Finance: 資產初始化報告 (v6.2)")
+    print("🚀 Quantum Finance: 資產初始化報告 (v6.4)")
     print("🏛️"*35)
-    print(f"✅ 執行狀態  : 完成")
+    print(f"✅ 執行狀態  : 完成 (資料已自動去重)")
     print(f"📈 總資產數  : {stats.get('total', 0)} 檔")
     print(f"💎 核心標的  : {stats.get('core', 0)} 檔")
-    print(f"📥 新增/更新 : {stats.get('upserted', 0)} 筆")
+    print(f"📥 成功入庫  : {stats.get('upserted', 0)} 筆")
     print("-" * 70)
     print("📝 日誌同步: pipeline_execution_log & data_audit_log (stocks)")
     print("🏛️"*35 + "\n")
 
 def initialize_stocks(stock_id: str = None, mark_core: bool = False):
     """執行股票資產初始化。"""
-    t0 = time.monotonic()
+    ALLOWED_COLUMNS = ["stock_id", "stock_name", "industry_category", "type", "is_active", "is_core", "updated_at"]
     
     with record_lifecycle("asset_initialization", category="maintenance", stock_id=stock_id or "ALL"):
         try:
             api = FinMindClient()
-            # 獲取全市場資訊
-            data = api.get_data("TaiwanStockInfo", stock_id or "", "")
-            if not data:
+            raw_data = api.get_data("TaiwanStockInfo", stock_id or "", "")
+            if not raw_data:
                 logger.error("❌ 無法從 API 獲取股票資訊")
                 return False
             
-            # 資料清洗與標記
-            for item in data:
+            # 使用字典進行去重 (Deduplication)
+            dedup_map = {}
+            for item in raw_data:
                 sid = item.get('stock_id')
+                if not sid: continue
+                
+                # 1. 豐富化與標記邏輯
                 item['is_active'] = True if item.get('status') == 'active' else False
                 item['is_core'] = True if (mark_core and sid in CORE_UNIVERSE) else False
                 item['updated_at'] = datetime.now()
+                
+                # 2. 欄位白名單過濾
+                filtered_item = {k: v for k, v in item.items() if k in ALLOWED_COLUMNS}
+                
+                # 存入字典，後面的會覆蓋前面的，達到去重效果
+                dedup_map[sid] = filtered_item
 
-            # 執行批量入庫
-            rows = bulk_upsert("stocks", data, unique_cols=["stock_id"])
+            clean_data = list(dedup_map.values())
+            logger.info(f"🔍 [Audit] 獲取 {len(raw_data)} 筆原始數據，去重後保留 {len(clean_data)} 筆。")
+
+            # 3. 執行批量入庫
+            rows = bulk_upsert("stocks", clean_data, unique_cols=["stock_id"])
             
             # 獲取統計資訊
             stats = {"total": 0, "core": 0, "upserted": rows}
@@ -94,7 +107,6 @@ def initialize_stocks(stock_id: str = None, mark_core: bool = False):
                 cur.execute("SELECT count(*) as cnt FROM stocks WHERE is_core = TRUE;")
                 stats['core'] = cur.fetchone()['cnt']
             
-            # 混合模式：審計紀錄 (紀錄資產池異動)
             write_data_audit_log("stocks", stock_id or "SYSTEM", datetime.now().strftime("%Y-%m-%d"), "INITIALIZE", rows)
             
             show_asset_dashboard(stats)
@@ -105,8 +117,8 @@ def initialize_stocks(stock_id: str = None, mark_core: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stock_id", type=str, help="指定初始化特定個股")
-    parser.add_argument("--mark_core", action="store_true", help="是否標記核心 Universe")
+    parser.add_argument("--stock_id", type=str)
+    parser.add_argument("--mark_core", action="store_true")
     args = parser.parse_args()
     
     logging.basicConfig(level=logging.INFO, format="%(message)s")
