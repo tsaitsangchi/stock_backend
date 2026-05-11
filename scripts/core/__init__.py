@@ -28,6 +28,5 @@ from core.db_utils import (
 
 from core.finmind_client import FinMindClient
 
-from core.model_metadata import (
-    audit_registry, register_model, ensure_model_table_integrity
-)
+from core.model_metadata import ModelMetadata
+

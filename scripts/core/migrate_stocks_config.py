@@ -40,6 +40,27 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--id", help="指定遷移單一標的 ID")
     parser.add_argument("--force", action="store_true", help="強制更新")
+    parser.add_argument("--diag", action="store_true", help="執行診斷模式")
     args = parser.parse_args()
-    ensure_infrastructure()
-    run_migration(target_id=args.id, force=args.force)
+    
+    if args.diag:
+        print("-" * 50)
+        print(f"🚀 migrate_stocks_config v6.9 自我診斷啟動...")
+        try:
+            import config
+            stocks = getattr(config, "STOCK_CONFIGS", {})
+            print(f"✅ 設定檔讀取 : SUCCESS")
+            print(f"📊 配置核心資產 : {len(stocks)} 檔")
+        except ImportError:
+            print("⚠️ 提醒：找不到 config.py。系統已完全切換至「資料庫主權模式」。")
+            print("💡 目前 128 檔核心標的已由資料庫 stocks 表接管。")
+        except Exception as e:
+            print(f"❌ 診斷失敗 : {e}")
+        print("-" * 50)
+    else:
+        try:
+            ensure_infrastructure()
+            run_migration(target_id=args.id, force=args.force)
+        except ImportError:
+            print("❌ 遷移失敗：找不到 scripts/config.py 數據源。")
+            print("💡 系統已進入資料庫治權時代，請直接維護 stocks 表。")

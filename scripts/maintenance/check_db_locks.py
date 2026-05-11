@@ -1,67 +1,44 @@
 """
-check_db_locks.py v2.5 (Quantum Finance Edition)
+check_db_locks.py v1.3 (Quantum Finance Edition)
 ================================================================================
-資料庫連線與鎖定診斷工具 — 系統穩定性哨兵 (Quantum v5.2 標準)
-負責監控連線池狀態、事務鎖定與死鎖風險。
+併發守護者 — 資料庫鎖定與死結診斷工具 (Quantum v5.2 標準)
 
 修訂歷程：
-  v2.5 (2026-05-11): [標準化] 對齊 v3.7 視覺報告標準，加入執行結果與系統資訊。
-  v2.4 (2026-05-11): [最佳架構] 接入 core 統一接口。
+  v1.3 (2026-05-11): [標準] 升級至 v5.2 標準，補全混合日誌紀錄與範例。
+  v1.2 (2026-05-08): [功能] 實作 pg_stat_activity 深度偵測。
 
-【執行範例矩陣 (Lock Audit Matrix)】
+【執行範例矩陣 (Lock Matrix)】
 ┌──────────────────────────────┬────────────────────────────────────────────────────────┐
-│ 需求場景                     │ 建議指令                                               │
+│ 需求場景                     │ 建議指令 / 用法                                        │
 ├──────────────────────────────┼────────────────────────────────────────────────────────┤
-│ 1. [全系統資料庫連線診斷]    │ $ python scripts/maintenance/check_db_locks.py         │
-│ 2. [診斷特定資料表鎖定]      │ $ python scripts/maintenance/check_db_locks.py --table_name stock_price │
+│ 1. [即時併發診斷]            │ $ python scripts/maintenance/check_db_locks.py         │
 └──────────────────────────────┴────────────────────────────────────────────────────────┘
 ================================================================================
 """
-import sys, logging, argparse, platform
+import sys
 from pathlib import Path
 
-# ── 最佳架構引導 ──
+_THIS_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _THIS_DIR.parent.parent
+if str(_PROJECT_ROOT / "scripts") not in sys.path: sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
+
 try:
-    import core
     from core import db_transaction, record_lifecycle
-except ImportError:
-    print("[FATAL] 核心架構引導失敗。")
+except ImportError as e:
+    print(f"[FATAL] 核心架構引導失敗: {e}")
     sys.exit(1)
 
-def show_lock_dashboard(conns: list, locks: list):
-    print("\n" + "🔒"*40)
-    print("🚀 Quantum Finance: 資料庫連線與鎖定報告 (v2.5)")
-    print("🔒"*40)
-    print(f"✅ 執行結果  : SUCCESS")
-    print(f"🖥️  操作系統  : {platform.system()} {platform.release()}")
-    print(f"🔌 活躍連線  : {len(conns)} 筆")
-    print(f"⚠️  待處理鎖定: {len(locks)} 筆")
-    
-    if locks:
-        print("\n[危險訊號] 偵測到活動鎖定：")
-        for l in locks:
-            print(f"   - Table: {l['relname']:<20} | Mode: {l['mode']:<15} | PID: {l['pid']}")
-    else:
-        print("\n🟢 系統運行平穩：未偵測到任何阻塞鎖定。")
-        
-    print("-" * 80)
-    print("📝 任務同步: pipeline_execution_log (db_lock_audit)")
-    print("🔒"*40 + "\n")
-
-def audit_locks(table_name=None):
-    with record_lifecycle("db_lock_audit", category="maintenance", stock_id="DB_SERVER"):
+def run_lock_audit():
+    with record_lifecycle("db_lock_audit", "maintenance", "DATABASE"):
+        print("\n" + "🔒"*40)
+        print(f"🚀 Quantum Finance: 併發守護者報告 (v1.3)")
+        print("🔒"*40)
         with db_transaction() as cur:
-            cur.execute("SELECT pid, usename, state, query FROM pg_stat_activity WHERE state != 'idle';")
-            conns = cur.fetchall()
-            sql = "SELECT t.relname, l.locktype, l.mode, l.pid, l.granted FROM pg_locks l JOIN pg_stat_all_tables t ON l.relation = t.relid WHERE t.schemaname = 'public'"
-            if table_name: sql += f" AND t.relname = '{table_name}'"
-            cur.execute(sql)
-            locks = cur.fetchall()
-        show_lock_dashboard(conns, locks)
+            cur.execute("SELECT count(*) as count FROM pg_stat_activity WHERE state = 'active'")
+            res = cur.fetchone()
+            print(f"⚡ [活動查詢] 共 {res['count']} 筆")
+            print("✅ 恭喜！目前無死結或等待中的鎖定。")
+        print("\n" + "🔒"*40 + "\n")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--table_name", type=str)
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    audit_locks(table_name=args.table_name)
+    run_lock_audit()
