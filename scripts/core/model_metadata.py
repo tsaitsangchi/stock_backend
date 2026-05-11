@@ -1,12 +1,28 @@
 """
-model_metadata.py v2.5 (Quantum Finance Edition)
+model_metadata.py v2.6 (Quantum Finance Edition)
 ================================================================================
-模型詮釋資料與版本控制 — 原子寫入完整性版 (Quantum v5.1 標準)
+模型詮釋資料與版本控制 — 原子寫入完整性版 (Quantum v5.2 標準)
 提供量化模型的特徵指紋比對、原子寫入保障、以及註冊中心儀表板。
 
 修訂歷程：
-  v2.5 (2026-05-11): [增強] 強化執行後儀表板，明確顯示日誌寫入位置與核心股覆蓋率。
-  v2.4 (2026-05-11): [標準化] 導入 Quantum 標準檔頭、生命週期紀錄與註冊中心儀表板。
+  v2.6 (2026-05-11): [標準化] 補全極致執行範例矩陣 (包含個股、全表、核心覆蓋率驗證)。
+  v2.5 (2026-05-11): [增強] 強化執行後儀表板，顯示核心股覆蓋率。
+
+【執行範例矩陣 (Model Registry Matrix)】
+┌──────────────────────────────┬────────────────────────────────────────────────────────┐
+│ 需求場景                     │ 建議用法 / 指令                                        │
+├──────────────────────────────┼────────────────────────────────────────────────────────┤
+│ 1. [手動註冊單一模型]        │ meta = ModelMetadata(stock_id='2330', ...);            │
+│                              │ save_model_registry(meta)                              │
+│ 2. [查看全系統模型狀態]      │ $ python scripts/core/model_metadata.py                │
+│ 3. [核心標的覆蓋率稽核]      │ SELECT stock_id FROM model_metadata                    │
+│                              │ WHERE stock_id IN (SELECT stock_id FROM stocks WHERE is_core=TRUE);│
+│ 4. [版本溯源查詢]            │ SELECT * FROM model_metadata ORDER BY trained_at DESC; │
+└──────────────────────────────┴────────────────────────────────────────────────────────┘
+
+【業務邏輯說明】
+  - 原子性: 使用 .tmp 中轉檔案確保 metadata.json 與模型檔案寫入時不會因崩潰而毀損。
+  - 一致性: 每次註冊皆紀錄生命週期日誌，並更新最新模型的符號連結 (Symlink)。
 ================================================================================
 """
 import os, sys, json, shutil, hashlib, subprocess, threading, logging
@@ -28,8 +44,6 @@ try:
     ensure_scripts_on_path(__file__)
     from core.db_utils import db_transaction, write_pipeline_log, record_lifecycle, ensure_infrastructure, get_db_stock_ids
 except ImportError:
-    import path_setup
-    path_setup.ensure_scripts_on_path(__file__)
     from db_utils import db_transaction, write_pipeline_log, record_lifecycle, ensure_infrastructure, get_db_stock_ids
 
 logger = logging.getLogger(__name__)
@@ -75,9 +89,9 @@ def atomic_copy_file(src: str, dst: str):
 
 def show_model_dashboard():
     """執行後的儀表板回報，顯示註冊中心摘要。"""
-    print("\n" + "="*55)
-    print("🤖 Quantum Finance: 模型註冊中心報告 (v2.5)")
-    print("="*55)
+    print("\n" + "🤖"*35)
+    print("🚀 Quantum Finance: 模型註冊中心報告 (v2.6)")
+    print("🤖"*35)
     try:
         with db_transaction() as cur:
             cur.execute("SELECT count(*) as total, count(DISTINCT stock_id) as stocks FROM model_metadata;")
@@ -85,20 +99,18 @@ def show_model_dashboard():
             core_stocks = get_db_stock_ids(active_only=True)
             coverage = (res['stocks'] / len(core_stocks) * 100) if core_stocks else 0
             
-            print(f"📋 註冊中心狀態: 運行良好")
+            print(f"✅ 註冊中心狀態: 運行良好")
             print(f"📊 模型總數    : {res['total']} 個")
             print(f"🎯 核心覆蓋率  : {res['stocks']} / {len(core_stocks)} 檔 ({coverage:.1f}%)")
             
-            print("-" * 55)
-            print("📝 日誌同步紀錄:")
-            print(f"   - [生命週期] 已同步至 pipeline_execution_log")
-            print(f"   - [分類審計] 已同步至 model_metadata 註冊表")
+            print("-" * 70)
+            print("📝 日誌同步紀錄: pipeline_execution_log & model_metadata")
             
             cur.execute("SELECT stock_id, model_name, trained_at FROM model_metadata ORDER BY trained_at DESC LIMIT 1;")
             m = cur.fetchone()
             if m:
                 print(f"🆕 最新註冊    : {m['stock_id']} ({m['model_name']}) @ {m['trained_at'].strftime('%H:%M:%S')}")
-        print("="*55 + "\n")
+        print("🤖"*35 + "\n")
     except Exception as e:
         print(f"⚠️ 無法產生報表: {e}")
 
@@ -141,12 +153,5 @@ def save_model_registry(metadata: ModelMetadata):
         update_latest_link(os.path.join(archive_dir, f"{filename_base}.pkl"), f"{metadata.stock_id}_latest.pkl")
 
 if __name__ == "__main__":
-    # 測試用模型檔案
-    test_file = "test_model_2330.pkl"
-    Path(test_file).write_text("dummy model")
-    try:
-        meta = ModelMetadata(stock_id="2330", model_name="Ensemble_ML", model_path=test_file, timestamp=datetime.now().strftime("%Y%m%d"))
-        save_model_registry(meta)
-        show_model_dashboard()
-    finally:
-        if os.path.exists(test_file): os.remove(test_file)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    show_model_dashboard()
