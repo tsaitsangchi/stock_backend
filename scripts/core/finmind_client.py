@@ -1,13 +1,13 @@
 """
-finmind_client.py v3.8 (Quantum Finance Edition)
+finmind_client.py v3.9 (Quantum Finance Edition)
 ================================================================================
 FinMind API 客戶端 — 混合日誌與韌性觀測版 (Quantum v5.1 標準)
 整合 Token Bucket 速率限制、斷路器、以及生命週期監測。
 
 修訂歷程：
+  v3.9 (2026-05-11): [核心] 正式新增 get_quota() 介面，支援維護工具調用。
   v3.8 (2026-05-11): [標準化] 擴充全場景執行範例，強化配額診斷邏輯。
   v3.7 (2026-05-11): [診斷] 強化 user_info 偵錯，支援 v4 端點與暴力解析。
-  v3.6 (2026-05-11): [修復] 強化驗證相容性，支援 Header/Param 雙傳參。
 
 執行範例 (Comprehensive Usage Examples):
   1. [配額與帳號診斷] 查看 API 剩餘配額與 Token 狀態:
@@ -23,14 +23,6 @@ FinMind API 客戶端 — 混合日誌與韌性觀測版 (Quantum v5.1 標準)
      for ds in datasets:
          # 結合 db_utils.get_latest_date 獲取 start_date
          pass
-
-  4. [所有核心股 + 所有表] 強制更新 (Forced Update / Full Reload):
-     from core.db_utils import get_db_stock_ids
-     stocks = get_db_stock_ids()
-     for sid in stocks:
-         for ds in datasets:
-             # 強制從遠古日期重抓數據
-             data = client.get_data(ds, sid, "2010-01-01")
 ================================================================================
 """
 import os, sys, time, requests, logging, random
@@ -58,10 +50,8 @@ except ImportError:
 try:
     from dotenv import load_dotenv
     _ENV_PATH = get_scripts_dir().parent / ".env"
-    if _ENV_PATH.exists():
-        load_dotenv(_ENV_PATH)
-    else:
-        load_dotenv()
+    if _ENV_PATH.exists(): load_dotenv(_ENV_PATH)
+    else: load_dotenv()
 except: pass
 
 try:
@@ -130,12 +120,12 @@ class FinMindClient:
         self.api_url = "https://api.finmindtrade.com/api/v4/data"
         self.token = os.getenv("FINMIND_TOKEN", "")
         if self.token:
-            logger.info(f"🟢 FinMindClient v3.8 初始化 (Token: Yes, Limit: 6000/hr)")
+            logger.info(f"🟢 FinMindClient v3.9 初始化 (Token: Yes, Limit: 6000/hr)")
         else:
-            logger.warning(f"🟡 FinMindClient v3.8 初始化 (Token: No, Limit: 600/hr)")
+            logger.warning(f"🟡 FinMindClient v3.9 初始化 (Token: No, Limit: 600/hr)")
 
     def get_user_info(self) -> Dict[str, Any]:
-        """多重測試不同的 UserInfo 端點以獲獲取資訊"""
+        """多重測試不同的 UserInfo 端點以獲取資訊"""
         if not self.token: return {}
         endpoints = ["https://api.web.finmindtrade.com/v2/user_info", "https://api.finmindtrade.com/api/v4/user_info"]
         for url in endpoints:
@@ -149,6 +139,17 @@ class FinMindClient:
                     return data
             except: continue
         return {}
+
+    def get_quota(self) -> Dict[str, Any]:
+        """封裝獲取配額的簡便介面。"""
+        info = self.get_user_info()
+        limit = info.get("api_request_limit", 6000)
+        used = info.get("api_request_count", 0)
+        return {
+            "limit": limit,
+            "remaining": limit - used,
+            "used": used
+        }
 
     def get_data(self, dataset: str, stock_id: str, start_date: str, max_retries: int = 3):
         t0 = time.monotonic()
@@ -180,7 +181,7 @@ if __name__ == "__main__":
     client = FinMindClient()
     info = client.get_user_info()
     print("\n" + "="*45)
-    print("📊 Quantum Finance: FinMind 配額診斷報告 (v3.8)")
+    print("📊 Quantum Finance: FinMind 配額診斷報告 (v3.9)")
     print("="*45)
     if info:
         u_id = info.get('user_id') or info.get('user_name') or info.get('uid') or info.get('account', 'N/A')
@@ -189,6 +190,6 @@ if __name__ == "__main__":
         is_verified = info.get("email_verify") or info.get("is_verify")
         print(f"驗證狀態 (Verified)  : {'✅ 已驗證' if is_verified else '❌ 未驗證 / 狀態未知'}")
         print(f"每小時使用上限 (Limit): {info.get('api_request_limit', '6000')}")
-        print(f"已使用次數 (Used)     : {info.get('user_count', '0')}")
+        print(f"已使用次數 (Used)     : {info.get('api_request_count', '0')}")
     else: print("❌ 無法獲取使用者資訊。請檢查 Token 有效性。")
     print("="*45 + "\n")
