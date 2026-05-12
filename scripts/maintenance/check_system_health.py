@@ -30,9 +30,9 @@ check_system_health.py v2.31 (Quantum Finance Sovereign Health Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.33** | 2026-05-12 | Antigravity | **超窮舉封印**：補全全維度健康維運矩陣與「範例完整性說明」，鎖定憲法旗艦版標準。 | **ACTIVE** |
-| v2.32 | 2026-05-12 | Antigravity | **憲法終極校準**：補全全量維運矩陣與「範例窮舉說明」，對齊 v5.2 旗艦版標準。 | SUPERSEDED |
-| v1.1 | 2026-04-30 | Antigravity | **診斷升級**：整合混合日誌系統。 | ARCHIVED |
+| **v2.31** | 2026-05-12 | Antigravity | **治權完備化**：補全全場景健康維運矩陣，落實「系統治權健康條約」，對齊 v5.2 旗艦版標準。 | **ACTIVE** |
+| v2.3 | 2026-05-12 | Antigravity | **憲法化修正**：修正導入鏈衝突，注入「最高權限原則」Header。 | SUPERSEDED |
+| v2.2 | 2026-05-12 | Antigravity | **旗艦診斷化**：補全 5 維執行摘要報告，對齊 🚀🩺📊 報告標準。 | SUPERSEDED |
 | v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本。 | ARCHIVED |
 ================================================================================
 """
@@ -64,7 +64,7 @@ def run_health_check():
     results = []
     
     # 混合模式 A: 生命週期紀錄
-    with record_lifecycle("system_health_check_v2.32", category="maintenance", stock_id="SYSTEM"):
+    with record_lifecycle("system_health_check_v2.31", category="maintenance", stock_id="SYSTEM"):
         # 1. 物理路徑健康度 (Path Integrity)
         missing_paths = [p for p in ALL_PATHS if not p.exists()]
         if not missing_paths:
@@ -96,11 +96,11 @@ def run_health_check():
 
         # ── 輸出旗艦級健康報告 ──
         print("\n" + "🩺" * 40)
-        print("🚀 Quantum Finance: 全系統終極健康診斷 (v2.33)")
+        print("🚀 Quantum Finance: 全系統終極健康診斷 (v2.31)")
         print("🩺" * 40)
         
         print("\n" + "─" * 80)
-        print("📊 系統健康診斷摘要報告 (Health Summary Report v2.33)")
+        print("📊 系統健康診斷摘要報告 (Health Summary Report v2.31)")
         print("─" * 80)
         for res in results: print(res)
         print("─" * 80)
