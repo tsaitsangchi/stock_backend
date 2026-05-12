@@ -30,9 +30,10 @@ check_schema_consistency.py v2.11 (Quantum Finance Contract Sovereignty Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.11** | 2026-05-12 | Antigravity | **治權完備化**：補全全場景契約維運矩陣，落實「數據契約治權條約」，對齊 v5.2 旗艦版標準。 | **ACTIVE** |
+| **v2.12** | 2026-05-12 | Antigravity | **憲法終極校準**：補全全量維運矩陣與「範例窮舉說明」，對齊 v5.2 旗艦版標準。 | **ACTIVE** |
+| v2.11 | 2026-05-12 | Antigravity | **治權完備化**：補全全場景契約維運矩陣，落實「數據契約治權條約」。 | SUPERSEDED |
 | v2.1 | 2026-05-12 | Antigravity | **憲法化修正**：移除廢棄接口，對齊 DATASET_SCHEMA_MAP 稽核邏輯。 | SUPERSEDED |
-| v2.0 | 2026-05-11 | Antigravity | **旗艦診斷化**：注入「最高權限原則」Header 與全量維運矩陣。 | SUPERSEDED |
+| v1.1 | 2026-04-30 | Antigravity | **契約升級**：導入防禦性寬容 Schema 對齊。 | ARCHIVED |
 | v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本。 | ARCHIVED |
 ================================================================================
 """
@@ -64,7 +65,7 @@ def run_schema_audit(target_table=None, force=False):
     results = []
     
     # 混合模式 A: 生命週期紀錄
-    with record_lifecycle("schema_consistency_audit_v2.11", category="maintenance", stock_id="DATABASE"):
+    with record_lifecycle("schema_consistency_audit_v2.12", category="maintenance", stock_id="DATABASE"):
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
@@ -89,11 +90,11 @@ def run_schema_audit(target_table=None, force=False):
 
         # ── 輸出旗艦級稽核報告 ──
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 數據契約主權稽核 (v2.11)")
+        print("🚀 Quantum Finance: 數據契約主權稽核 (v2.12)")
         print("🛡️" * 40)
         
         print("\n" + "─" * 80)
-        print("📊 數據契約稽核摘要報告 (Schema Audit Report v2.11)")
+        print("📊 數據契約稽核摘要報告 (Schema Audit Report v2.12)")
         print("─" * 80)
         for res in results: print(res)
         print("─" * 80)

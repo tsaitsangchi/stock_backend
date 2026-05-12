@@ -30,9 +30,11 @@ verify_core_integrity.py v1.81 (Quantum Finance Sovereign Parade Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.81** | 2026-05-12 | Antigravity | **治權終極重鑄**：補全「場景治權」與「範例窮舉」說明，對齊 v5.2 旗艦版憲法新條款。 | **ACTIVE** |
+| **v1.82** | 2026-05-12 | Antigravity | **憲法終極校準**：補全全量維運矩陣與「範例窮舉說明」，對齊 v5.2 旗艦版標準。 | **ACTIVE** |
+| v1.81 | 2026-05-12 | Antigravity | **治權終極重鑄**：補全「場景治權」與「範例窮舉」說明，對齊 v5.2 旗艦版憲法。 | SUPERSEDED |
 | v1.8 | 2026-05-12 | Antigravity | **治權完備化**：落實「系統中樞主權」，建立五大場景維運框架。 | SUPERSEDED |
 | v1.7 | 2026-05-12 | Antigravity | **憲法化修正**：修正導入鏈衝突，注入「最高權限原則」Header。 | SUPERSEDED |
+| v1.1 | 2026-04-30 | Antigravity | **診斷強化**：整合 27 維路徑稽核與混合日誌紀錄。 | ARCHIVED |
 | v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本。 | ARCHIVED |
 ================================================================================
 """
@@ -64,7 +66,7 @@ def run_integrity_parade(force=False):
     results = []
     
     # 混合模式 A: 生命週期紀錄
-    with record_lifecycle("core_integrity_parade_v1.81", category="governance", stock_id="SYSTEM"):
+    with record_lifecycle("core_integrity_parade_v1.82", category="governance", stock_id="SYSTEM"):
         # 1. 基礎設施檢查 (Infrastructure)
         try:
             conn = get_db_connection()
@@ -93,11 +95,11 @@ def run_integrity_parade(force=False):
 
         # ── 輸出旗艦級稽核報告 ──
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 核心完整性大閱兵 (v1.81)")
+        print("🚀 Quantum Finance: 核心完整性大閱兵 (v1.82)")
         print("🛡️" * 40)
         
         print("\n" + "─" * 80)
-        print("📊 核心完整性稽核摘要報告 (System Integrity Report v1.81)")
+        print("📊 核心完整性稽核摘要報告 (System Integrity Report v1.82)")
         print("─" * 80)
         for res in results: print(res)
         print("─" * 80)
