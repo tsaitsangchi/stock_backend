@@ -1,5 +1,5 @@
 """
-data_schema.py v1.7 (Quantum Finance Edition)
+data_schema.py v1.8 (Quantum Finance Edition)
 ================================================================================
 數據契約中心 — 旗艦編年史版 (Quantum v5.2 標準)
 負責全系統數據字典註冊、SQL 自動生成與資料庫結構主權維護。
@@ -21,6 +21,7 @@ data_schema.py v1.7 (Quantum Finance Edition)
 └──────────────────────────────────────┴────────────────────────────────────────────────────────┘
 
 【全修訂歷程 (Full Revision History)】
+  v1.8 (2026-05-12): [憲法] 注入今日詳細核心定義、舊歷程保留規範，對齊 2026-05-12 旗艦要求。
   v1.7 (2026-05-11): [主權] 建立 Registry 治權，實現 1:1 API 鏡像，確立 v5.2 數據憲法。
   v1.6 (2026-05-11): [標準] 整合「混合日誌」與「極致維運矩陣」Header。
   v1.5 (2026-05-10): [治理] 強制執行 NUMERIC(20, 6) 高精度存儲規範。
@@ -133,7 +134,7 @@ if __name__ == "__main__":
 
     if args.init:
         print("\n" + "=" * 60)
-        print("🚀 Quantum Finance: 終極數據契約初始化任務 (v1.7)")
+        print("🚀 Quantum Finance: 終極數據契約初始化任務 (v1.8)")
         print("=" * 60)
         init_schema(force=args.force)
         print("=" * 60 + "\n")
