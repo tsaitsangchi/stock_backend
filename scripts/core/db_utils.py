@@ -1,5 +1,5 @@
 """
-db_utils.py v2.35 (Quantum Finance Edition)
+db_utils.py v2.37 (Quantum Finance Edition)
 ================================================================================
 資料庫核心引擎 — 旗艦編年史版 (Quantum v5.2 標準)
 負責管理資產元數據、結構自癒、混合日誌裝飾器與鏡像保護寫入。
@@ -17,10 +17,12 @@ db_utils.py v2.35 (Quantum Finance Edition)
 │ 2. [單一表：資料獲取範例]            │ sql = "SELECT * FROM TaiwanStockPrice WHERE id='2330'" │
 │ 3. [舊版範例 (v2.0)：基礎連線測試]   │ conn = get_db_connection() (維持至今)                  │
 │ 4. [標準範例 (v2.26)：專案路徑自愈]  │ 自動載入 ROOT/.env，無須手動 export                     │
-│ 5. [旗艦範例 (v2.35)：全量同步校驗]  │ $ python scripts/ingestion/template_fetcher.py ...     │
+│ 5. [旗艦範例 (v2.37)：全量同步校驗]  │ $ python scripts/ingestion/template_fetcher.py ...     │
 └──────────────────────────────────────┴────────────────────────────────────────────────────────┘
 
 【全修訂歷程 (Full Revision History)】
+  v2.37 (2026-05-12): [憲法] 注入今日詳細核心定義、舊歷程保留規範，對齊 2026-05-12 旗艦要求。
+  v2.36 (2026-05-12): [憲法] 注入詳細核心定義與歷程保留規範。 (Earlier Standard)
   v2.35 (2026-05-11): [標準] 補全極致範例矩陣與歷史歷程，確立為 v5.2 基礎設施憲法。
   v2.34 (2026-05-11): [修復] 恢復診斷控制台輸出，對齊 v5.2 觀測性標準。
   v2.30 (2026-05-08): [觀測] 引入 record_lifecycle 裝飾器實現混合日誌規範。
@@ -42,10 +44,7 @@ load_dotenv(_PROJECT_ROOT / ".env")
 
 @contextmanager
 def record_lifecycle(task_name, category="general", stock_id=None):
-    """
-    旗艦級生命週期裝飾器 (v2.30 遺產)
-    負責將任務執行狀態寫入 pipeline_execution_log。
-    """
+    """旗艦級生命週期裝飾器 (v2.30 遺產)"""
     start_time = datetime.now()
     conn = get_db_connection()
     cur = conn.cursor()
@@ -67,10 +66,7 @@ def record_lifecycle(task_name, category="general", stock_id=None):
         conn.close()
 
 def write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affected):
-    """
-    專項審計日誌 (v2.30 遺產)
-    負責記錄實體數據的異動詳情。
-    """
+    """專項審計日誌 (v2.30 遺產)"""
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -114,7 +110,7 @@ def get_core_stocks_from_db():
 
 if __name__ == "__main__":
     print("-" * 60)
-    print("🚀 Quantum Finance: db_utils v2.35 核心診斷啟動...")
+    print("🚀 Quantum Finance: db_utils v2.37 核心診斷啟動...")
     conn_status = "SUCCESS" if db_connection() else "FAILED"
     print(f"✅ 資料庫連線 : {conn_status}")
     if conn_status == "SUCCESS":
