@@ -8,7 +8,7 @@ API 供應鏈配額哨兵 — 旗艦級深度稽核版 (Quantum v5.2 標準)
 1. [Supply Chain Sovereignty]: API 配額為系統運行的「生命線」，配額耗盡判定為治權中斷。
 2. [Hybrid Observability]: 強制觸發 pipeline_execution_log (行為) 與 data_audit_log (審計) 雙軌同步。
 3. [Historical Reference Authority]: 保留從 v1.0 到 v1.4 的所有歷史歷程，作為判定供應鏈變遷的基準。
-4. [Boundary Integrity]: 確保無論執行路徑如何，日誌必須 100% 寫入資料庫 (REAL 模式)。
+4. [Boundary Integrity]: 遵循最高權限原則，確保在不改動 core 接口的前提下實現精確稽核。
 
 【全量執行範例矩陣 (The Complete Operational Matrix)】
 ┌──────────────────────────────────────────┬────────────────────────────────────────────────────────┐
@@ -24,12 +24,12 @@ API 供應鏈配額哨兵 — 旗艦級深度稽核版 (Quantum v5.2 標準)
 └──────────────────────────────────────────┴────────────────────────────────────────────────────────┘
 
 【全修訂歷程 (Full Revision History)】
-  v1.4 (2026-05-12): [憲法] 修復 get_quota 接口錯誤，注入「最高權限原則」Header 與全量矩陣。
+  v1.4 (2026-05-12): [修復] 在不改動 core 的前提下實作內部配額查詢，修復調用錯誤。
   v1.3 (2026-05-11): [標準] 補全旗艦級配額診斷範例矩陣，對齊混合日誌規範。
   v1.0 (2026-04-20): [奠基] 初始配額檢查腳本開發。
 ================================================================================
 """
-import sys, time, logging
+import sys, time, requests, os
 from pathlib import Path
 from datetime import datetime
 
@@ -53,14 +53,23 @@ def run_quota_check():
     # ── 旗艦級生命週期裝飾 ──
     with record_lifecycle("api_quota_check_v1.4", category="maintenance", stock_id="SYSTEM"):
         client = FinMindClient()
-        quota_info = client.get_user_info() # 對齊 v4.40 接口
+        # 治權修復：在腳本內部實作調用，不依賴 core 接口
+        token = os.getenv("FINMIND_TOKEN")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        url = "https://api.finmindtrade.com/api/v4/user_info"
         
-        if quota_info and quota_info.get("msg") == "success":
-            results.append(f"✅ 帳號標識 : {quota_info.get('user_id', 'tsaitsangchi')} (Verified)")
-            results.append(f"✅ 配額上限 : {quota_info.get('api_request_limit', '6000')} / Hour")
-            results.append(f"✅ 剩餘配額 : {quota_info.get('api_request_limit', '6000')}")
-        else:
-            results.append(f"❌ 認證狀態 : FAILED (建議檢查 .env 中的 FINMIND_TOKEN)")
+        try:
+            res = requests.get(url, headers=headers, timeout=5)
+            quota_info = res.json() if res.status_code == 200 else {}
+            
+            if quota_info and quota_info.get("msg") == "success":
+                results.append(f"✅ 帳號標識 : {quota_info.get('user_id', 'tsaitsangchi')} (Verified)")
+                results.append(f"✅ 配額上限 : {quota_info.get('api_request_limit', '6000')} / Hour")
+                results.append(f"✅ 剩餘配額 : {quota_info.get('api_request_limit', '6000')}")
+            else:
+                results.append(f"❌ 認證狀態 : FAILED (建議檢查 .env 中的 FINMIND_TOKEN)")
+        except Exception as e:
+            results.append(f"❌ 關鍵錯誤 : {e}")
 
         # 寫入專項數據審計日誌
         write_data_audit_log("SYSTEM", "API_QUOTA", datetime.now().strftime("%Y-%m-%d"), "QUOTA_CHECK", 1)
@@ -80,9 +89,9 @@ def run_quota_check():
         print("─" * 80)
         
         print("\n💡 供應鏈維運建議 (Reference Information):")
-        print("1. [認證提示]: 若帳號標識不符，請立即更新環境配置文件。")
+        print("1. [認證提示]: 系統目前遵循最高權限原則，嚴禁修改 core 接口。")
         print("2. [範例提示]: 請參閱 Header 矩陣執行「通訊路徑與延遲偵測」。")
-        print("3. [歷史提示]: 所有配額變動建議每小時進行一次基線稽核。")
+        print("3. [歷史提示]: 所有配額稽核結果已歸檔至 pipeline_execution_log。")
         print("─" * 80 + "\n")
 
 if __name__ == "__main__":
