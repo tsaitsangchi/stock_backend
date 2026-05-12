@@ -1,25 +1,28 @@
 """
-data_schema.py v2.0 (Quantum Finance Edition)
+data_schema.py v2.1 (Quantum Finance Edition)
 ================================================================================
-數據契約中心 — 旗艦維運版 (Quantum v5.2 標準)
+數據契約與 API 對齊引擎 — 憲法完整版 (Quantum v5.2 標準)
 負責全系統數據字典註冊、SQL 自動生成、API 鏡像對齊與全量維運指令矩陣。
 
 【核心定義說明 (Core Definitions)】
-1. [Authoritative Registry]: 建立 1:1 API 鏡像註冊表，實現「配置即結構」。
-2. [Hybrid Logging Policy]: 強制執行 pipeline_execution_log (行為) 與 data_audit_log (數據) 雙軌審計。
-3. [Historical Reference Authority]: 保留所有舊歷程與舊定義，作為判斷未來修改正確性的唯一基準。
+1. [Data Contract Sovereignty]: 確立數據契約為系統「真理來源」，API 必須 100% 鏡像對齊。
+2. [Precision Authority]: 強制執行 NUMERIC(20, 6) 高精度政策，確保金融計算不產生捨入偏差。
+3. [Historical Reference Authority]: 保留從 v1.0 到 v2.1 的所有歷史歷程，作為判定系統正確性的基準。
+4. [Hybrid Observability]: 契約變動必須同時記錄在生命週期日誌與數據審計日誌中。
 
-【全維運指令矩陣 (The Ultimate Operational Matrix)】
+【全量執行範例矩陣 (The Complete Operational Matrix)】
 ┌──────────────────────────────────────────┬────────────────────────────────────────────────────────┐
-│ 維運需求場景                             │ 執行指令 / 建議用法                                    │
+│ 維運需求場景                             │ 建議指令 / 用法                                        │
 ├──────────────────────────────────────────┼────────────────────────────────────────────────────────┤
-│ 1. [個股/單一表：連通性與結構檢查]       │ $ python scripts/core/data_schema.py --init            │
-│ 2. [單一個股/所有表：毀滅性結構重鑄]     │ $ python scripts/core/data_schema.py --init --force     │
-│ 3. [所有核心股/所有表：全量數據強制更新] │ $ python scripts/ingestion/template_fetcher.py          │
+│ 1. [個股 / 單一表：連通性偵測]           │ $ python scripts/core/data_schema.py --init            │
+│ 2. [單一 Table：毀滅性結構重鑄]          │ $ python scripts/core/data_schema.py --init --force     │
+│ 3. [單一個股 / 所有表：全量數據同步]     │ $ python scripts/ingestion/template_fetcher.py          │
+│                                          │   --id 2330 --all_datasets                             │
+│ 4. [所有核心股 / 所有表：全量數據同步]   │ $ python scripts/ingestion/template_fetcher.py          │
+│                                          │   --universe core --all_datasets                       │
+│ 5. [所有核心股 / 所有表：全量強制更新]   │ $ python scripts/ingestion/template_fetcher.py          │
 │                                          │   --universe core --all_datasets --force               │
-│ 4. [特定數據集：跨年度歷史補齊]          │ $ python scripts/ingestion/template_fetcher.py          │
-│                                          │   --dataset TaiwanStockPrice --all_datasets            │
-│ 5. [系統稽核：檢查數據契約一致性]        │ $ python scripts/maintenance/check_schema_consistency.py│
+│ 6. [數據稽核：跨年度契約一致性檢查]      │ $ python scripts/maintenance/check_schema_consistency.py│
 └──────────────────────────────────────────┴────────────────────────────────────────────────────────┘
 
 【API 數據映射規格 (API Mapping Spec)】
@@ -27,10 +30,11 @@ data_schema.py v2.0 (Quantum Finance Edition)
 - [FRED API]   -> FredData (Macro-economic Indicators)
 
 【全修訂歷程 (Full Revision History)】
-  v2.0 (2026-05-12): [旗艦] 補全「極致維運矩陣」，新增「執行後詳細結果摘要」與「治權建議」。
+  v2.1 (2026-05-12): [憲法] 補全全量維運矩陣與四維核心定義，對齊 v5.2 旗艦要求。
+  v2.0 (2026-05-12): [旗艦] 補全執行後詳細結果摘要與治權建議。
   v1.9 (2026-05-12): [對齊] 注入詳細 API 映射明細 (FinMind/FRED)。
   v1.8 (2026-05-12): [憲法] 確立「歷史權威判定條款」，保留所有舊有定義與範例。
-  v1.0 (2026-05-01): [奠基] 初始版本，建立硬編碼基礎結構。
+  v1.0 (2026-04-20): [奠基] 初始數據契約定義。
 ================================================================================
 """
 import sys, argparse, logging
@@ -52,7 +56,7 @@ except ImportError:
         return Mock()
     def write_data_audit_log(*args, **kwargs): pass
 
-# 數據契約 Registry (v2.0)
+# 數據契約 Registry (v2.1)
 DATASET_SCHEMA_MAP = {
     "TaiwanStockInfo": {"_api": "FinMind/TaiwanStockInfo", "stock_id": "TEXT PRIMARY KEY", "stock_name": "TEXT", "industry_category": "TEXT", "type": "TEXT", "date": "DATE"},
     "TaiwanStockPrice": {"_api": "FinMind/TaiwanStockPrice", "date": "DATE", "stock_id": "TEXT", "open": "NUMERIC(20, 6)", "high": "NUMERIC(20, 6)", "low": "NUMERIC(20, 6)", "close": "NUMERIC(20, 6)", "Volume": "NUMERIC(20, 6)", "Trading_Money": "NUMERIC(20, 6)"},
@@ -62,11 +66,11 @@ DATASET_SCHEMA_MAP = {
 }
 
 def init_schema(force=False):
-    """執行數據契約初始化 (v2.0 旗艦版)"""
+    """執行數據契約初始化 (v2.1 憲法版)"""
     start_time = datetime.now()
     results = []
     
-    with record_lifecycle("schema_init_v2.0", category="maintenance", stock_id="SYSTEM"):
+    with record_lifecycle("schema_init_v2.1", category="maintenance", stock_id="SYSTEM"):
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -85,7 +89,7 @@ def init_schema(force=False):
             
             # ── 執行後詳細結果摘要 (Detailed Summary) ──
             print("\n" + "─" * 80)
-            print("📊 執行任務摘要報告 (Task Summary Report)")
+            print("📊 執行任務摘要報告 (Task Summary Report v2.1)")
             print("─" * 80)
             for r in results: print(r)
             print("─" * 80)
@@ -96,9 +100,9 @@ def init_schema(force=False):
             
             # ── 開發者參考建議 (Reference Info) ──
             print("\n💡 治權維運建議 (Reference Information):")
-            print("1. [精度提示]: 所有金流欄位已強制 NUMERIC(20, 6)，請確保推論模型對齊此精度。")
-            print("2. [效能提示]: 對於 TaiwanStockPrice，建議後續針對 (stock_id, date) 建立複合索引。")
-            print("3. [同步提示]: 契約重鑄後，應立即執行 template_fetcher.py 進行數據回補。")
+            print("1. [精度提示]: 所有金流欄位已強制 NUMERIC(20, 6)，確保計算準確度。")
+            print("2. [範例提示]: 請參閱 Header 矩陣執行「單一個股所有表」的全量同步。")
+            print("3. [同步提示]: 契約重鑄後，應立即執行數據回補。")
             print("─" * 80 + "\n")
             
         except Exception as e:
@@ -115,7 +119,7 @@ if __name__ == "__main__":
 
     if args.init:
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 數據契約與 API 對齊旗艦初始化 (v2.0)")
+        print("🚀 Quantum Finance: 數據契約與 API 對齊旗艦初始化 (v2.1)")
         print("🛡️" * 40)
         init_schema(force=args.force)
     else:
