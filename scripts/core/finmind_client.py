@@ -1,5 +1,5 @@
 """
-finmind_client.py v4.46 (Quantum Finance Supply Chain Sovereign Edition)
+finmind_client.py v4.45 (Quantum Finance Supply Chain Sovereign Edition)
 ================================================================================
 **最後更新日期**: 2026-05-12
 **主權狀態**: PERFECT (全譜治權對齊)
@@ -30,13 +30,10 @@ finmind_client.py v4.46 (Quantum Finance Supply Chain Sovereign Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v4.46** | 2026-05-12 | Antigravity | **歷史治權重鑄**：補全 v1.0 至今全量修訂歷程，強化場景矩陣窮舉。 | **ACTIVE** |
-| v4.45 | 2026-05-12 | Antigravity | **憲法終極校準**：補全全量維運矩陣，達成 100% 憲法範例合規。 | SUPERSEDED |
+| **v4.45** | 2026-05-12 | Antigravity | **憲法終極校準**：補全全量維運矩陣，達成 100% 憲法範例合規。 | **ACTIVE** |
 | v4.44 | 2026-05-12 | Antigravity | **路徑主權修正**：注入 sys.path 校準，恢復 REAL (DB-Linked) 日誌模式。 | SUPERSEDED |
 | v4.43 | 2026-05-12 | Antigravity | **座標校準**：修正 user_info 端點，終結 404 斷鏈。 | SUPERSEDED |
-| v4.0 | 2026-05-08 | Antigravity | **標準化升級**：對齊 FinMind v4 標準 (Bearer Token 認證)。 | SUPERSEDED |
-| v3.0 | 2026-04-30 | Antigravity | **性能優化**：導入自動重試機制與連線池治理。 | ARCHIVED |
-| v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本，建立基本 API 通訊邏輯。 | ARCHIVED |
+| v4.0 | 2026-05-08 | Antigravity | **標準化升級**：對齊 FinMind v4 標準 (Bearer Token 認證)。 | ARCHIVED |
 ================================================================================
 """
 import os, sys, requests, time
@@ -45,7 +42,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from contextlib import contextmanager
 
-# ── 系統級架構引導 (v4.46 旗艦歷史版) ──
+# ── 系統級架構引導 (v4.45 旗艦校準版) ──
 _THIS_FILE = Path(__file__).resolve()
 _CORE_DIR = _THIS_FILE.parent
 _SCRIPTS_DIR = _CORE_DIR.parent
@@ -97,11 +94,11 @@ class FinMindClient:
                 user_info = self.get_user_info()
                 
                 print("\n" + "🚀" * 40)
-                print("🌟 Quantum Finance: API 供應鏈旗艦終極診斷 (v4.46)")
+                print("🌟 Quantum Finance: API 供應鏈旗艦終極診斷 (v4.45)")
                 print("🚀" * 40)
                 
                 print("\n" + "─" * 80)
-                print("📊 API 供應鏈終極診斷摘要報告 (Final Report v4.46)")
+                print("📊 API 供應鏈終極診斷摘要報告 (Final Report v4.45)")
                 print("─" * 80)
                 
                 data_success = res.status_code == 200 and res.json().get("msg") == "success"

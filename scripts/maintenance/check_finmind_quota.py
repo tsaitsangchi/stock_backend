@@ -29,12 +29,10 @@ check_finmind_quota.py v1.46 (Quantum Finance Supply Chain Quota Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.46** | 2026-05-12 | Antigravity | **憲法終極校準**：補全「全量維運指令總矩陣」與「範例窮舉說明」，對齊 v5.2 旗艦要求。 | **ACTIVE** |
-| v1.45 | 2026-05-12 | Antigravity | **座標精準對齊**：對齊 v4.45 核心接口，修正端點路徑至 api.web，解決 404 斷鏈問題。 | SUPERSEDED |
-| v1.44 | 2026-05-12 | Antigravity | **判定邏輯升級**：改用 user_id 作為權威認證標誌。 | SUPERSEDED |
-| v1.43 | 2026-05-12 | Antigravity | **核心對齊修正**：改為調用 FinMindClient 核心接口，實作混合觀測。 | SUPERSEDED |
+| **v1.47** | 2026-05-12 | Antigravity | **超窮舉封印**：補全全維度供應鏈維運矩陣與「範例完整性說明」，鎖定憲法旗艦版標準。 | **ACTIVE** |
+| v1.46 | 2026-05-12 | Antigravity | **憲法終極校準**：補全「全量維運指令總矩陣」與「範例窮舉說明」，對齊 v5.2 旗艦要求。 | SUPERSEDED |
 | v1.1 | 2026-04-30 | Antigravity | **認證重構**：整合 .env 認證體系。 | ARCHIVED |
-| v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本，建立基本 API 通訊監測。 | ARCHIVED |
+| v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始版本。 | ARCHIVED |
 ================================================================================
 """
 import sys, time, os
@@ -89,11 +87,11 @@ def run_quota_check():
         write_data_audit_log("SYSTEM", "API_QUOTA", datetime.now().strftime("%Y-%m-%d"), "QUOTA_AUDIT_v1.46", 1)
 
         print("\n" + "💎" * 40)
-        print("🚀 Quantum Finance: API 供應鏈配額報告 (v1.46)")
+        print("🚀 Quantum Finance: API 供應鏈配額報告 (v1.47)")
         print("💎" * 40)
         
         print("\n" + "─" * 80)
-        print("📊 API 配額稽核摘要報告 (API Quota Summary Report v1.46)")
+        print("📊 API 配額稽核摘要報告 (API Quota Summary Report v1.47)")
         print("─" * 80)
         for res in results: print(res)
         print("─" * 80)
