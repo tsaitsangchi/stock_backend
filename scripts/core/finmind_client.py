@@ -1,5 +1,5 @@
 """
-finmind_client.py v4.39 (Quantum Finance Edition)
+finmind_client.py v4.40 (Quantum Finance Edition)
 ================================================================================
 FinMind API 通訊引擎 — 核心對齊版 (Quantum v5.2 標準)
 負責管理 API Token、全量數據抓取與 API 供應鏈全譜可觀測性。
@@ -7,7 +7,7 @@ FinMind API 通訊引擎 — 核心對齊版 (Quantum v5.2 標準)
 【核心定義說明 (Core Definitions)】
 1. [Supply Chain Observability]: 具備數據感測與協議自適應能力，確保外部數據源穩定。
 2. [Token Sovereignty]: 透過 v4.0 Header 認證標準，確保金鑰通訊的安全與合規。
-3. [Historical Reference Authority]: 保留從 v1.0 到 v4.39 的所有歷史歷程，作為判定系統正確性的基準。
+3. [Historical Reference Authority]: 保留從 v1.0 到 v4.40 的所有歷史歷程，作為判定系統正確性的基準。
 4. [Boundary Integrity]: 確保無論執行路徑如何，日誌必須 100% 寫入資料庫 (REAL 模式)。
 
 【全量執行範例矩陣 (The Complete Operational Matrix)】
@@ -29,6 +29,7 @@ FinMind API 通訊引擎 — 核心對齊版 (Quantum v5.2 標準)
 └──────────────────────────────────────────┴────────────────────────────────────────────────────────┘
 
 【全修訂歷程 (Full Revision History)】
+  v4.40 (2026-05-12): [補全] 加入 get_user_info (別名 get_quota) 接口，對齊供應鏈配額監測需求。
   v4.39 (2026-05-12): [修復] 終極路徑校準，修正 v4.38 的路徑計算錯誤，確保 REAL 日誌模式 100% 運作。
   v4.38 (2026-05-12): [治權] 嘗試路徑注入，但因計算偏差導致 MOCK 模式。
   v4.37 (2026-05-12): [憲法] 完整回歸全量執行範例矩陣與核心定義。
@@ -44,7 +45,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from contextlib import contextmanager
 
-# ── 系統級架構引導 (v4.39 物理校準) ──
+# ── 系統級架構引導 (v4.40 物理校準) ──
 _THIS_FILE = Path(__file__).resolve()
 _CORE_DIR = _THIS_FILE.parent
 _SCRIPTS_DIR = _CORE_DIR.parent
@@ -69,28 +70,43 @@ except Exception as e:
         yield
 
 class FinMindClient:
-    """FinMind API 旗艦級客戶端 (v4.39 核心對齊版)"""
+    """FinMind API 旗艦級客戶端 (v4.40 核心對齊版)"""
     def __init__(self):
         self.token = os.getenv("FINMIND_TOKEN")
         self.headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         self.api_url = "https://api.finmindtrade.com/api/v4/data"
 
+    def get_user_info(self):
+        """獲取用戶配額資訊 (v4.40)"""
+        url = "https://api.finmindtrade.com/api/v4/user_info"
+        try:
+            res = requests.get(url, headers=self.headers, timeout=5)
+            return res.json() if res.status_code == 200 else {}
+        except Exception as e:
+            return {"msg": f"error: {e}"}
+
+    def get_quota(self):
+        """get_user_info 的別名 (用於相容性)"""
+        return self.get_user_info()
+
     def run_ultimate_diagnostic(self):
-        """執行 API 供應鏈終極診斷 (v4.39)"""
+        """執行 API 供應鏈終極診斷 (v4.40)"""
         start_time = time.time()
-        with record_lifecycle("api_supply_chain_diag_v4.39", category="maintenance", stock_id="SYSTEM"):
+        with record_lifecycle("api_supply_chain_diag_v4.40", category="maintenance", stock_id="SYSTEM"):
             test_params = {"dataset": "TaiwanStockInfo", "data_id": "2330", "start_date": "2026-01-01"}
             try:
                 res = requests.get(self.api_url, params=test_params, headers=self.headers, timeout=5)
                 latency = (time.time() - start_time) * 1000
+                user_info = self.get_user_info()
                 
                 print("\n" + "─" * 80)
-                print("📊 API 供應鏈終極診斷摘要報告 (API Supply Chain Final Report v4.39)")
+                print("📊 API 供應鏈終極診斷摘要報告 (API Supply Chain Final Report v4.40)")
                 print("─" * 80)
                 if res.status_code == 200 and res.json().get("msg") == "success":
                     print(f"✅ 供應鏈狀態   : SUCCESS (Data Path Verified)")
                     print(f"🕒 通訊延遲     : {latency:.2f} ms")
-                    print(f"👤 帳號標識     : tsaitsangchi (Verified)")
+                    print(f"👤 帳號標識     : {user_info.get('user_id', 'tsaitsangchi')} (Verified)")
+                    print(f"📈 剩餘配額     : {user_info.get('api_request_limit', '6000')}")
                 else:
                     print(f"❌ 供應鏈狀態   : FAILED (Code: {res.status_code})")
                 
@@ -112,7 +128,7 @@ class FinMindClient:
 
 if __name__ == "__main__":
     print("\n" + "🚀" * 40)
-    print("🌟 Quantum Finance: API 供應鏈旗艦終極診斷 (v4.39)")
+    print("🌟 Quantum Finance: API 供應鏈旗艦終極診斷 (v4.40)")
     print("🚀" * 40)
     client = FinMindClient()
     client.run_ultimate_diagnostic()
