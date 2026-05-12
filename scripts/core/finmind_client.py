@@ -34,6 +34,7 @@ finmind_client.py v4.45 (Quantum Finance Supply Chain Sovereign Edition)
 | v4.44 | 2026-05-12 | Antigravity | **路徑主權修正**：注入 sys.path 校準，恢復 REAL (DB-Linked) 日誌模式。 | SUPERSEDED |
 | v4.43 | 2026-05-12 | Antigravity | **座標校準**：修正 user_info 端點，終結 404 斷鏈。 | SUPERSEDED |
 | v4.0 | 2026-05-08 | Antigravity | **標準化升級**：對齊 FinMind v4 標準 (Bearer Token 認證)。 | ARCHIVED |
+| v1.0 | 2026-04-20 | Antigravity | **主權奠基**：初始 API 通訊與認證機制建立。 | ARCHIVED |
 ================================================================================
 """
 import os, sys, requests, time
