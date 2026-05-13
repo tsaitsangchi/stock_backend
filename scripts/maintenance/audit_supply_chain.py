@@ -2,12 +2,17 @@
 audit_supply_chain.py v1.11 (Compliance Edition)
 ================================================================================
 **最後更新日期**: 2026-05-13
-**主權狀態**: PERFECT (憲法 v5.4.3 對齊)
+**主權狀態**: PERFECT (憲法 v5.4.7 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Absolute Case Alignment]: 監控並如實記錄 API 之大小寫 (Case-Sensitive)。
-2. [Compliance Assertion]: 執行後必須明確顯示與《系統架構_v5.4.3》之對齊狀態。
+2. [Compliance Assertion]: 執行後必須明確顯示與《系統架構_v5.4.7》之對齊狀態。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
+| :----------------------- | :-------------------------------------------------------------------- | :--- |
+| **1. [審計：全譜供應鏈掃描]** | `$ python scripts/maintenance/audit_supply_chain.py`                  | audit_tool v1.11 |
 ================================================================================
 """
 import pandas as pd
@@ -39,7 +44,7 @@ class ComplianceAuditor:
         self.fred_key = os.getenv("FRED_API_KEY")
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
         self.audit_results = []
-        self.constitution_ver = "v5.4.3"
+        self.constitution_ver = "v5.4.7"
 
         self.FINMIND_CONFIG = {
             "Technical": ["TaiwanStockPrice", "TaiwanStockPriceAdj", "TaiwanStockPER"],

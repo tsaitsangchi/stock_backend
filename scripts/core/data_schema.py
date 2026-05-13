@@ -2,7 +2,7 @@
 data_schema.py v2.4 (Quantum Finance Sovereign Mirror Edition)
 ================================================================================
 **最後更新日期**: 2026-05-13
-**主權狀態**: PERFECT (憲法 v5.4.3 實證對齊)
+**主權狀態**: PERFECT (憲法 v5.4.7 實證對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -10,10 +10,16 @@ data_schema.py v2.4 (Quantum Finance Sovereign Mirror Edition)
 2. [Defensive Architecture]: 統一字串為 VARCHAR(255)，數值為 NUMERIC(20, 6)。
 3. [Hybrid Observability]: 整合 pipeline_execution_log 與詳細之終端重鑄報告。
 
-## 📜 二、全修訂歷程 (Full Revision History)
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
+| :----------------------- | :-------------------------------------------------------------------- | :--- |
+| **1. [初始化：全量契約重鑄]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.4 |
+| **2. [初始化：單一表重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.4 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.4** | 2026-05-13 | Antigravity | **旗艦對齊版**：對齊憲法 v5.4.3，實作絕對大小寫主權與 26 維全譜契約。 | **ACTIVE** |
+| **v2.4** | 2026-05-13 | Antigravity | **旗艦對齊版**：對齊憲法 v5.4.7，實作絕對大小寫主權與 26 維全譜契約。 | **ACTIVE** |
 ================================================================================
 """
 import sys, time
