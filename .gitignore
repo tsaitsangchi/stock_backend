@@ -35,7 +35,8 @@ data/
 predictions/
 evaluations/
 logs/
-reports/
+reports/*
+!reports/系統架構_*.md
 archive/
 .pytest_cache/
 .gitignore提升性能。
