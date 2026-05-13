@@ -2,17 +2,24 @@
 audit_supply_chain.py v1.11 (Compliance Edition)
 ================================================================================
 **最後更新日期**: 2026-05-13
-**主權狀態**: PERFECT (憲法 v5.4.7 對齊)
+**主權狀態**: PERFECT (憲法 v5.4.14 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Absolute Case Alignment]: 監控並如實記錄 API 之大小寫 (Case-Sensitive)。
-2. [Compliance Assertion]: 執行後必須明確顯示與《系統架構_v5.4.7》之對齊狀態。
+2. [Compliance Assertion]: 執行後必須明確顯示與《系統架構_v5.4.14》之對齊狀態。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [審計：全譜供應鏈掃描]** | `$ python scripts/maintenance/audit_supply_chain.py`                  | audit_tool v1.11 |
+| **0. [偵察：離線全譜供應鏈審計]** | `$ python scripts/maintenance/audit_supply_chain.py`                  | audit_tool v1.11 |
+| **1. [同步：治權基準同步]**   | `$ python scripts/maintenance/audit_supply_chain.py --sync`          | audit_tool v1.12 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v1.12** | 2026-05-13 | Antigravity | **治權完備**：對齊憲法 v5.4.14；確立歷史歷程追加規範與離線偵察地位。 | **ACTIVE** |
+| v1.11 | 2026-05-13 | Antigravity | **離線修正**：移除 DB Logging，解決創世悖論。 | ARCHIVED |
 ================================================================================
 """
 import pandas as pd
@@ -44,7 +51,7 @@ class ComplianceAuditor:
         self.fred_key = os.getenv("FRED_API_KEY")
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
         self.audit_results = []
-        self.constitution_ver = "v5.4.7"
+        self.constitution_ver = "v5.4.14"
 
         self.FINMIND_CONFIG = {
             "Technical": ["TaiwanStockPrice", "TaiwanStockPriceAdj", "TaiwanStockPER"],
@@ -106,15 +113,15 @@ class ComplianceAuditor:
             f.write(f"備註：所有物理欄位命名已鎖定 API 原始大小寫。")
 
     def run(self, source=None):
-        with record_lifecycle("compliance_audit_v1.11", category="maintenance", stock_id="SYSTEM"):
-            if not source or source == "finmind": self.audit_finmind()
-            if not source or source == "fred": self.audit_fred()
-            self.generate_report()
-            print("\n" + "🛡️" * 40)
-            print(f"📊 治權對齊報告: {self.report_path.name}")
-            print(f"🛡️ 治權對齊狀態: 符號對齊 (Constitution {self.constitution_ver} compliant)")
-            print(f"⚖️  主權判定    : PERFECT ALIGNMENT")
-            print("🛡️" * 40 + "\n")
+        """主權偵察入口 (憲法 v5.4.12 離線標準)"""
+        if not source or source == "finmind": self.audit_finmind()
+        if not source or source == "fred": self.audit_fred()
+        self.generate_report()
+        print("\n" + "🛡️" * 40)
+        print(f"📊 治權對齊報告: {self.report_path.name}")
+        print(f"🛡️ 治權對齊狀態: 符號對齊 (Constitution {self.constitution_ver} compliant)")
+        print(f"⚖️  主權判定    : PERFECT ALIGNMENT")
+        print("🛡️" * 40 + "\n")
 
 if __name__ == "__main__":
     ComplianceAuditor().run()

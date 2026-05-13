@@ -2,7 +2,7 @@
 sovereign_sync_engine.py v1.0 (Quantum Finance Sovereign Sync Engine)
 ================================================================================
 **最後更新日期**: 2026-05-13
-**主權狀態**: PERFECT (憲法 v5.4.7 對齊)
+**主權狀態**: PERFECT (憲法 v5.4.13 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -22,7 +22,8 @@ sovereign_sync_engine.py v1.0 (Quantum Finance Sovereign Sync Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.0** | 2026-05-13 | Antigravity | **革命性重構**：取代 template_fetcher，實現 1:1 大小寫主權同步。 | **ACTIVE** |
+| **v1.1** | 2026-05-13 | Antigravity | **治權對齊**：對齊憲法 v5.4.13；整合治權基準報告邏輯。 | **ACTIVE** |
+| v1.0 | 2026-05-13 | Antigravity | **革命性重構**：取代 template_fetcher，實現 1:1 大小寫主權同步。 | ARCHIVED |
 ================================================================================
 """
 import sys, os, time
@@ -51,6 +52,7 @@ class SovereignSyncEngine:
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
         self.stats = {"success": 0, "failed": 0, "rows": 0, "details": []}
+        self.constitution_ver = "v5.4.13"
 
     def _upsert_to_db(self, table_name, df):
         """核心主權寫入邏輯：1:1 大小寫對齊 + Idempotency"""
@@ -196,6 +198,9 @@ class SovereignSyncEngine:
         print("\n" + "🛡️" * 40)
         print("🚀 Quantum Finance: 主權同步引擎執行摘要")
         print("🛡️" * 40)
+        print(f"治權基準 : 系統架構_{self.constitution_ver}.md")
+        print(f"核心技術 : Absolute Case Sovereignty (1:1 鏡像)")
+        print("─" * 80)
         for d in self.stats["details"]: print(d)
         print("─" * 80)
         print(f"📈 成功同步項目 : {self.stats['success']}")
