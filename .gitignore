@@ -27,3 +27,15 @@ venv/
 outputs/
 lightning_logs/
 *.log
+
+# Added: ML artifacts and big folders
+mlruns/
+models/
+data/
+predictions/
+evaluations/
+logs/
+reports/
+archive/
+.pytest_cache/
+.gitignore提升性能。
