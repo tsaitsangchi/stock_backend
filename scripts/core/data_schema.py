@@ -2,7 +2,7 @@
 data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: API CONTRACT FIRST (憲法 v5.4.19 對齊)
+**主權狀態**: API CONTRACT FIRST (憲法 v5.4.21 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -201,7 +201,7 @@ class SovereignSchemaManager:
     def __init__(self):
         self.stats = {"success": 0, "failed": 0, "details": []}
         self.contract_stats = {"pass": 0, "warn": 0, "failed": 0, "details": []}
-        self.constitution_ver = "v5.4.19"
+        self.constitution_ver = "v5.4.21"
 
     def _record_contract(self, status, item, detail):
         self.contract_stats[status] += 1
@@ -304,7 +304,7 @@ class SovereignSchemaManager:
         return self.contract_stats["failed"] == 0
 
     def init_tables(self, target_table=None, force=False, skip_api_contract=False):
-        """執行憲法 v5.4.19 API-first 標準之物理初始化"""
+        """執行憲法 v5.4.21 API-first 標準之物理初始化"""
         start_time = time.time()
         if not skip_api_contract and not self.probe_api_contracts(target_table=target_table):
             self.stats["failed"] += 1
@@ -366,7 +366,7 @@ class SovereignSchemaManager:
         print("\n" + "🛡️" * 40)
         print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.11)")
         print("🛡️" * 40)
-        print(f"治權基準 : 系統架構大憲章_v5.4.19.md")
+        print(f"治權基準 : 系統架構大憲章_v5.4.21.md")
         print(f"核心技術 : API Contract First + Absolute Case Sovereignty")
         print("─" * 80)
         for d in self.contract_stats["details"]:

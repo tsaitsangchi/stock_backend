@@ -2,7 +2,7 @@
 core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authority)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: PLANNED -> IMPLEMENTED (憲法 v5.4.19 核心股治理分層對齊)
+**主權狀態**: PLANNED -> IMPLEMENTED (憲法 v5.4.21 核心股治理分層對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -299,7 +299,7 @@ DROP_ORDER = [
 
 class CoreUniverseSchemaManager:
     def __init__(self):
-        self.constitution_ver = "v5.4.19"
+        self.constitution_ver = "v5.4.21"
         self.tool_ver = "v0.2"
         self.stats = {"success": 0, "failed": 0, "warning": 0, "details": []}
         self.preflight = {"pass": 0, "failed": 0, "warning": 0, "details": []}

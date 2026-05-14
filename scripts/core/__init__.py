@@ -63,15 +63,84 @@ except ImportError as e:
         sys.path.insert(0, str(_SCRIPTS_DIR))
     from core.path_setup import *
 
-# 嘗試導入觀測組件
+# 嘗試導入觀測與 DB 基礎設施組件
 try:
-    from core.db_utils import record_lifecycle, write_data_audit_log
+    from core.db_utils import (
+        DDL_FETCH_LOG,
+        FailureLogger,
+        append_failure_json,
+        bulk_upsert,
+        check_db_health,
+        commit_per_day,
+        commit_per_stock,
+        commit_per_stock_per_day,
+        db_connection_check,
+        db_session,
+        db_transaction,
+        dedup_rows,
+        ensure_ddl,
+        ensure_infrastructure,
+        get_all_safe_starts,
+        get_connection_params,
+        get_core_stocks_from_db,
+        get_db_conn,
+        get_db_connection,
+        get_db_stock_ids,
+        get_failure_log_path,
+        get_latest_date,
+        get_market_safe_start,
+        log_fetch_result,
+        map_rows_safe,
+        record_lifecycle,
+        resolve_start_cached,
+        safe_commit_rows,
+        safe_date,
+        safe_float,
+        safe_int,
+        write_data_audit_log,
+        write_evaluation_log,
+        write_pipeline_log,
+    )
     LOG_MODE = "REAL (DB-Linked)"
 except ImportError:
     from contextlib import contextmanager
     @contextmanager
     def record_lifecycle(task_name, **kwargs): yield
     def write_data_audit_log(*args, **kwargs): pass
+    def _missing_db_utils(*args, **kwargs):
+        raise ImportError("core.db_utils is not importable")
+    DDL_FETCH_LOG = ""
+    FailureLogger = None
+    append_failure_json = _missing_db_utils
+    bulk_upsert = _missing_db_utils
+    check_db_health = _missing_db_utils
+    commit_per_day = _missing_db_utils
+    commit_per_stock = _missing_db_utils
+    commit_per_stock_per_day = _missing_db_utils
+    db_connection_check = _missing_db_utils
+    db_session = _missing_db_utils
+    db_transaction = _missing_db_utils
+    dedup_rows = _missing_db_utils
+    ensure_ddl = _missing_db_utils
+    ensure_infrastructure = _missing_db_utils
+    get_all_safe_starts = _missing_db_utils
+    get_connection_params = _missing_db_utils
+    get_core_stocks_from_db = _missing_db_utils
+    get_db_conn = _missing_db_utils
+    get_db_connection = _missing_db_utils
+    get_db_stock_ids = _missing_db_utils
+    get_failure_log_path = _missing_db_utils
+    get_latest_date = _missing_db_utils
+    get_market_safe_start = _missing_db_utils
+    log_fetch_result = _missing_db_utils
+    map_rows_safe = _missing_db_utils
+    resolve_start_cached = _missing_db_utils
+    safe_commit_rows = _missing_db_utils
+    safe_date = _missing_db_utils
+    safe_float = _missing_db_utils
+    safe_int = _missing_db_utils
+    write_evaluation_log = _missing_db_utils
+    write_pipeline_log = _missing_db_utils
     LOG_MODE = "MOCK"
 
 def run_sovereign_hub_audit():
@@ -79,13 +148,13 @@ def run_sovereign_hub_audit():
     start_time = time.time()
     with record_lifecycle("sovereign_hub_audit_v1.13", category="governance", stock_id="SYSTEM"):
         write_data_audit_log("HUB_AUDIT", "SYSTEM", datetime.now().strftime("%Y-%m-%d"), "AUDIT_v1.13", 1)
-        
+
         latency = (time.time() - start_time) * 1000
-        
+
         print("\n" + "🛡️" * 40)
         print("🚀 Quantum Finance: 系統治權中樞 (v1.13)")
         print("🛡️" * 40)
-        
+
         print("\n" + "─" * 80)
         print("📊 中樞主權稽核摘要報告 (Hub Sovereignty Report v1.13)")
         print("─" * 80)
@@ -94,7 +163,7 @@ def run_sovereign_hub_audit():
         print(f"📝 混合日誌模式  : {LOG_MODE}")
         print(f"⚖️  系統主權狀態  : PERFECT (憲法 v5.2 旗艦版對齊)")
         print("─" * 80)
-        
+
         print("\n💡 治權維運建議 (Reference Information):")
         print("1. [治權提示]: 本模組為系統唯一接口導出中樞，嚴禁繞過 core/__init__.py 調用。")
         print("2. [範例提示]: 請參閱 Header 矩陣以執行「五大核心場景」之物理對齊。")

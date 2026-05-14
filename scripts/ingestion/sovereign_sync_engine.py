@@ -2,7 +2,7 @@
 sovereign_sync_engine.py v1.9 (Quantum Finance Market Universe Seed Engine)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: MARKET UNIVERSE SEED VERIFIED (憲法 v5.4.19 對齊)
+**主權狀態**: MARKET UNIVERSE SEED VERIFIED (憲法 v5.4.21 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -98,7 +98,7 @@ class SovereignSyncEngine:
     def __init__(self):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
-        self.constitution_ver = "v5.4.19"
+        self.constitution_ver = "v5.4.21"
         self.schema_ver = "v2.11"
         self.tool_ver = "v1.9"
         self.stats = {"success": 0, "warning": 0, "failed": 0, "rows": 0, "details": []}
@@ -151,6 +151,11 @@ class SovereignSyncEngine:
             raise ValueError(f"{table_name} 清洗後資料為空")
         return aligned
 
+    def _db_value(self, value):
+        if pd.isna(value):
+            return None
+        return value
+
     def _upsert_to_db(self, table_name, df):
         if df.empty:
             raise ValueError(f"{table_name} 無可寫入資料")
@@ -180,7 +185,10 @@ class SovereignSyncEngine:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            data = [tuple(row) for row in df.itertuples(index=False, name=None)]
+            data = [
+                tuple(self._db_value(value) for value in row)
+                for row in df.itertuples(index=False, name=None)
+            ]
             cur.executemany(sql, data)
             conn.commit()
             rows = len(df)
@@ -210,7 +218,7 @@ class SovereignSyncEngine:
                 raise RuntimeError(payload.get("msg"))
             data = payload.get("data", [])
             if not data:
-                self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}): API 回傳 0 筆")
+                self._detail("warning", f"{dataset_name} ({stock_id or 'MARKET'}): API 回傳 0 筆")
                 return
 
             df = self._align_to_schema(dataset_name, pd.DataFrame(data))

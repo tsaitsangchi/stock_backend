@@ -2,7 +2,7 @@
 path_setup.py v4.43 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: PERFECT (憲法 v5.4.19 啟動治理對齊)
+**主權狀態**: PERFECT (憲法 v5.4.21 啟動治理對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -22,7 +22,7 @@ path_setup.py v4.43 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v4.43** | 2026-05-14 | Codex | **憲法 v5.4.19 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | **ACTIVE** |
+| **v4.43** | 2026-05-14 | Codex | **憲法 v5.4.21 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | **ACTIVE** |
 | v4.42 | 2026-05-13 | Antigravity | **憲法 v5.4 對齊**：校正治理維度為 25 維；修正標頭為對齊 v5.4；新增 .env 錨點對齊校驗邏輯。 | SUPERSEDED |
 | v4.41 | 2026-05-12 | Antigravity | 主權完備化：補全全場景路徑維運矩陣。 | SUPERSEDED |
 | v1.0 | 2026-04-20 | Antigravity | 主權奠基：初始路徑管理版本。 | ARCHIVED |
@@ -143,7 +143,7 @@ def _evaluate_anchor():
 
 
 def ensure_all_dirs():
-    """執行物理路徑對齊與自癒 (v4.43 / v5.4.19 啟動治理版)"""
+    """執行物理路徑對齊與自癒 (v4.43 / v5.4.21 啟動治理版)"""
     start_time = time.time()
     record_lifecycle, write_data_audit_log, log_mode = _load_logging_hooks()
     warnings = []
@@ -192,7 +192,7 @@ def ensure_all_dirs():
         print("─" * 80)
         print(f"✅ 物理基準 (ROOT) : {PROJECT_ROOT_CALC}")
         print(f"⚓ 錨點對齊 (.env) : {anchor_display}")
-        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v5.4.19)")
+        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v5.4.21)")
         print(f"🕒 處理時長        : {(time.time() - start_time)*1000:.2f} ms")
         print(f"📝 混合日誌模式    : {log_mode}")
         if warnings:

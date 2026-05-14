@@ -2,7 +2,7 @@
 core_universe_builder.py v0.1 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-14
-主權狀態: IMPLEMENTED (憲法 v5.4.19 核心股選拔引擎初始版)
+主權狀態: IMPLEMENTED (憲法 v5.4.21 核心股選拔引擎初始版)
 最高原則: Core Universe Selection Authority
 
 v0.1 邊界:
@@ -35,7 +35,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.19"
+CONSTITUTION_VER = "v5.4.21"
 TOOL_VER = "v0.1"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.1"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
