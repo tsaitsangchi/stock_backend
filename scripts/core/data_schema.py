@@ -1,30 +1,35 @@
 """
-data_schema.py v2.4 (Quantum Finance Sovereign Mirror Edition)
+data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
-**最後更新日期**: 2026-05-13
-**主權狀態**: PERFECT (憲法 v5.4.14 實證對齊)
+**最後更新日期**: 2026-05-14
+**主權狀態**: API CONTRACT FIRST (憲法 v5.4.19 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Absolute Case Sovereignty]: 強制執行雙引號封裝 DDL，確保物理層與 API 原始大小寫 1:1 鏡像。
-2. [Defensive Architecture]: 統一字串為 VARCHAR(255)，數值為 NUMERIC(20, 6)。
-3. [Hybrid Observability]: 整合 pipeline_execution_log 與詳細之終端重鑄報告。
+1. [API Contract First]: `--init` 進入 DDL 前必須先詢問 FinMind / FRED API，確認外部欄位契約。
+2. [Absolute Case Sovereignty]: 強制執行雙引號封裝 DDL，確保物理層與 API 原始大小寫 1:1 鏡像。
+3. [Defensive Architecture]: 統一字串為 VARCHAR(255)，數值為 NUMERIC(20, 6)。
+4. [Hybrid Observability]: 整合 pipeline_execution_log 與詳細之終端重鑄報告。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.4 |
-| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.4 |
+| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.11 |
+| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.11 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
-| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
-| :--- | :--- | :--- | :--- | :--- |
-| **v2.5** | 2026-05-13 | Antigravity | **治權完備**：對齊憲法 v5.4.14；確立創世序列與檔案累積規範。 | **ACTIVE** |
+| **v2.11** | 2026-05-14 | Codex | **API 欄位鏡像修正**：補齊 FinMind API 實際回傳欄位大小寫；移除 `TaiwanStockPrice.spread_per` schema-only 欄位，使 API contract probe 全量通過。 | **ACTIVE** |
+| v2.10 | 2026-05-14 | Codex | **API Contract First**：`--init` / `--force` 前先探測 FinMind 與 FRED API 契約；契約失敗時停止 DDL，離線復原需明示 `--skip-api-contract`。 | SUPERSEDED |
+| v2.9 | 2026-05-13 | Antigravity | **創世圓滿**：對齊憲法 v5.4.18；對齊「大憲章」命名體系。 | SUPERSEDED |
+| v2.8 | 2026-05-13 | Antigravity | **崩潰修復**：對齊憲法 v5.4.17；補齊 pipeline_execution_log 欄位。 | ARCHIVED |
+| v2.7 | 2026-05-13 | Antigravity | **全量實證對齊**：對齊憲法 v5.4.16；確立全譜系大同步地位。 | ARCHIVED |
+| v2.6 | 2026-05-13 | Antigravity | **全量大同步**：對齊憲法 v5.4.15；達成檔案治理全量收斂。 | ARCHIVED |
+| v2.5 | 2026-05-13 | Antigravity | **治權完備**：對齊憲法 v5.4.14；確立創世序列與檔案累積規範。 | ARCHIVED |
 | v2.4 | 2026-05-13 | Antigravity | **旗艦對齊版**：對齊憲法 v5.4.12，實作絕對大小寫主權。 | ARCHIVED |
 | v2.3 | 2026-05-13 | Antigravity | **主權重鑄版**：解決創世悖論，對齊基礎設施表定義。 | ARCHIVED |
 ================================================================================
 """
-import sys, time
+import os, sys, time, requests
 from pathlib import Path
 from datetime import datetime
 import argparse
@@ -37,6 +42,7 @@ if str(_SCRIPTS_DIR) not in sys.path: sys.path.insert(0, str(_SCRIPTS_DIR))
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
+    from core.finmind_client import FinMindClient
 except ImportError:
     print("❌ 核心組件導入失敗，請確認 db_utils.py")
     sys.exit(1)
@@ -49,7 +55,7 @@ DATASET_REGISTRY = {
             "id": "SERIAL PRIMARY KEY", "task_name": "VARCHAR(255)", 
             "category": "VARCHAR(255)", "stock_id": "VARCHAR(255)",
             "start_time": "TIMESTAMP", "end_time": "TIMESTAMP", 
-            "status": "VARCHAR(255)", "error_msg": "TEXT"
+            "status": "VARCHAR(255)", "duration_ms": "BIGINT", "error_msg": "TEXT"
         },
         "unique_constraints": [] # 使用 Primary Key
     },
@@ -69,7 +75,7 @@ DATASET_REGISTRY = {
             "date": "DATE", "stock_id": "VARCHAR(255)", 
             "Trading_Volume": "NUMERIC(20, 6)", "Trading_money": "NUMERIC(20, 6)",
             "open": "NUMERIC(20, 6)", "max": "NUMERIC(20, 6)", "min": "NUMERIC(20, 6)", "close": "NUMERIC(20, 6)",
-            "spread": "NUMERIC(20, 6)", "spread_per": "NUMERIC(20, 6)", "Trading_turnover": "NUMERIC(20, 6)"
+            "spread": "NUMERIC(20, 6)", "Trading_turnover": "NUMERIC(20, 6)"
         },
         "unique_constraints": ["date", "stock_id"]
     },
@@ -116,7 +122,9 @@ DATASET_REGISTRY = {
             "date": "DATE", "stock_id": "VARCHAR(255)", "stock_name": "VARCHAR(255)",
             "InternationalCode": "VARCHAR(255)", "ForeignInvestmentRemainingShares": "NUMERIC(20, 6)",
             "ForeignInvestmentShares": "NUMERIC(20, 6)", "ForeignInvestmentRemainRatio": "NUMERIC(20, 6)",
-            "ForeignInvestmentSharesRatio": "NUMERIC(20, 6)", "NumberOfSharesIssued": "NUMERIC(20, 6)"
+            "ForeignInvestmentSharesRatio": "NUMERIC(20, 6)", "NumberOfSharesIssued": "NUMERIC(20, 6)",
+            "ForeignInvestmentUpperLimitRatio": "NUMERIC(20, 6)", "ChineseInvestmentUpperLimitRatio": "NUMERIC(20, 6)",
+            "RecentlyDeclareDate": "DATE", "note": "VARCHAR(255)"
         },
         "unique_constraints": ["date", "stock_id"]
     },
@@ -133,7 +141,7 @@ DATASET_REGISTRY = {
         "columns": {
             "date": "DATE", "stock_id": "VARCHAR(255)", 
             "country": "VARCHAR(255)", "revenue": "NUMERIC(20, 6)", 
-            "revenue_month": "NUMERIC(20, 6)", "revenue_year": "NUMERIC(20, 6)"
+            "revenue_month": "NUMERIC(20, 6)", "revenue_year": "NUMERIC(20, 6)", "create_time": "TIMESTAMP"
         },
         "unique_constraints": ["date", "stock_id"]
     },
@@ -142,7 +150,14 @@ DATASET_REGISTRY = {
             "date": "DATE", "stock_id": "VARCHAR(255)", "year": "VARCHAR(255)",
             "StockEarningsDistribution": "NUMERIC(20, 6)", "StockStatutorySurplus": "NUMERIC(20, 6)",
             "CashEarningsDistribution": "NUMERIC(20, 6)", "CashStatutorySurplus": "NUMERIC(20, 6)",
-            "AnnouncementDate": "DATE"
+            "AnnouncementDate": "DATE", "AnnouncementTime": "VARCHAR(255)",
+            "CashDividendPaymentDate": "DATE", "CashExDividendTradingDate": "DATE",
+            "CashIncreaseSubscriptionRate": "NUMERIC(20, 6)", "CashIncreaseSubscriptionpRrice": "NUMERIC(20, 6)",
+            "ParticipateDistributionOfTotalShares": "NUMERIC(20, 6)", "RatioOfEmployeeStockDividend": "NUMERIC(20, 6)",
+            "RatioOfEmployeeStockDividendOfTotal": "NUMERIC(20, 6)", "RemunerationOfDirectorsAndSupervisors": "NUMERIC(20, 6)",
+            "StockExDividendTradingDate": "DATE", "TotalEmployeeCashDividend": "NUMERIC(20, 6)",
+            "TotalEmployeeStockDividend": "NUMERIC(20, 6)", "TotalEmployeeStockDividendAmount": "NUMERIC(20, 6)",
+            "TotalNumberOfCashCapitalIncrease": "NUMERIC(20, 6)"
         },
         "unique_constraints": ["date", "stock_id", "year"]
     },
@@ -165,86 +180,225 @@ DATASET_REGISTRY = {
         "unique_constraints": ["stock_id"]
     }
 }
+FINMIND_API_TABLES = {
+    "TaiwanStockPrice": {"dataset": "TaiwanStockPrice", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockPriceAdj": {"dataset": "TaiwanStockPriceAdj", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockPER": {"dataset": "TaiwanStockPER", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockInstitutionalInvestorsBuySell": {"dataset": "TaiwanStockInstitutionalInvestorsBuySell", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockMarginPurchaseShortSale": {"dataset": "TaiwanStockMarginPurchaseShortSale", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockShareholding": {"dataset": "TaiwanStockShareholding", "data_id": "2330", "start_date": "2024-05-01"},
+    "TaiwanStockFinancialStatements": {"dataset": "TaiwanStockFinancialStatements", "data_id": "2330", "start_date": "2024-01-01"},
+    "TaiwanStockMonthRevenue": {"dataset": "TaiwanStockMonthRevenue", "data_id": "2330", "start_date": "2024-01-01"},
+    "TaiwanStockDividend": {"dataset": "TaiwanStockDividend", "data_id": "2330", "start_date": "2020-01-01"},
+    "TaiwanStockInfo": {"dataset": "TaiwanStockInfo", "data_id": "", "start_date": "2024-01-01"},
+}
+
+FRED_CONTRACT_SERIES = "DFF"
+LOCAL_DERIVED_COLUMNS = {"FredData": {"series_id"}}
+INFRA_TABLES = {"pipeline_execution_log", "data_audit_log"}
 
 class SovereignSchemaManager:
     def __init__(self):
         self.stats = {"success": 0, "failed": 0, "details": []}
+        self.contract_stats = {"pass": 0, "warn": 0, "failed": 0, "details": []}
+        self.constitution_ver = "v5.4.19"
 
-    def init_tables(self, target_table=None, force=False):
-        """執行憲法 v5.4.14 標準之物理初始化"""
+    def _record_contract(self, status, item, detail):
+        self.contract_stats[status] += 1
+        icon = {"pass": "✅", "warn": "⚠️", "failed": "❌"}[status]
+        self.contract_stats["details"].append(f"{icon} [API-{status.upper()}] {item} - {detail}")
+
+    def _api_tables_for_target(self, target_table):
+        if target_table:
+            if target_table in INFRA_TABLES:
+                return []
+            return [target_table]
+        return list(FINMIND_API_TABLES.keys()) + ["FredData"]
+
+    def _compare_columns(self, table_name, api_columns):
+        schema_columns = set(DATASET_REGISTRY[table_name]["columns"].keys())
+        api_columns = set(api_columns)
+        derived = LOCAL_DERIVED_COLUMNS.get(table_name, set())
+        missing_from_api = sorted(schema_columns - api_columns - derived)
+        missing_from_schema = sorted(api_columns - schema_columns)
+        return missing_from_api, missing_from_schema
+
+    def _probe_finmind_contract(self, table_name):
+        probe = FINMIND_API_TABLES[table_name]
+        client = FinMindClient()
+        params = {
+            "dataset": probe["dataset"],
+            "start_date": probe["start_date"],
+        }
+        if probe.get("data_id") is not None:
+            params["data_id"] = probe.get("data_id", "")
+        if client.token:
+            params["token"] = client.token
+
+        res = requests.get(client.api_url, params=params, headers=client.headers, timeout=30)
+        res.raise_for_status()
+        payload = res.json()
+        if payload.get("msg") not in (None, "success"):
+            raise RuntimeError(payload.get("msg"))
+        data = payload.get("data", [])
+        if not data:
+            self._record_contract("warn", table_name, "API reachable but returned empty sample; DDL will use local registry")
+            return
+
+        missing_from_api, missing_from_schema = self._compare_columns(table_name, data[0].keys())
+        if missing_from_api or missing_from_schema:
+            problems = []
+            if missing_from_api:
+                problems.append(f"schema-only={missing_from_api}")
+            if missing_from_schema:
+                problems.append(f"api-only={missing_from_schema}")
+            self._record_contract("failed", table_name, "; ".join(problems))
+        else:
+            self._record_contract("pass", table_name, f"{len(data[0].keys())} columns matched")
+
+    def _probe_fred_contract(self):
+        api_key = os.getenv("FRED_API_KEY")
+        if not api_key:
+            self._record_contract("failed", "FredData", "FRED_API_KEY missing")
+            return
+        url = "https://api.stlouisfed.org/fred/series/observations"
+        params = {"series_id": FRED_CONTRACT_SERIES, "api_key": api_key, "file_type": "json", "limit": 1}
+        res = requests.get(url, params=params, timeout=30)
+        res.raise_for_status()
+        payload = res.json()
+        data = payload.get("observations", [])
+        if not data:
+            self._record_contract("failed", "FredData", "FRED returned empty observations")
+            return
+        missing_from_api, missing_from_schema = self._compare_columns("FredData", data[0].keys())
+        if missing_from_api or missing_from_schema:
+            problems = []
+            if missing_from_api:
+                problems.append(f"schema-only={missing_from_api}")
+            if missing_from_schema:
+                problems.append(f"api-only={missing_from_schema}")
+            self._record_contract("failed", "FredData", "; ".join(problems))
+        else:
+            self._record_contract("pass", "FredData", f"{len(data[0].keys())}+1 derived columns matched")
+
+    def probe_api_contracts(self, target_table=None):
+        """DDL 前置 API 契約探測。失敗時不得重鑄 schema。"""
+        targets = self._api_tables_for_target(target_table)
+        if not targets:
+            self._record_contract("pass", target_table or "infrastructure", "no external API contract required")
+            return True
+
+        print(f"🔎 正在執行 API-first 契約探測 ({self.constitution_ver})...")
+        for table_name in targets:
+            if table_name not in DATASET_REGISTRY:
+                self._record_contract("failed", table_name, "table is not registered in DATASET_REGISTRY")
+                continue
+            try:
+                if table_name == "FredData":
+                    self._probe_fred_contract()
+                else:
+                    self._probe_finmind_contract(table_name)
+            except Exception as e:
+                self._record_contract("failed", table_name, f"{type(e).__name__}: {e}")
+
+        return self.contract_stats["failed"] == 0
+
+    def init_tables(self, target_table=None, force=False, skip_api_contract=False):
+        """執行憲法 v5.4.19 API-first 標準之物理初始化"""
         start_time = time.time()
+        if not skip_api_contract and not self.probe_api_contracts(target_table=target_table):
+            self.stats["failed"] += 1
+            self.stats["details"].append("❌ [FAILED] API 契約探測失敗；已停止 DDL 重鑄")
+            self.report_results(start_time, ddl_executed=False)
+            return False
+        if skip_api_contract:
+            self._record_contract("warn", "API-first", "--skip-api-contract used; DDL executed from local registry")
+
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        # 創世階段手動紀錄啟動 (若 log 表未建立則跳過)
+
         print("🛠️  正在啟動主權初始化程序...")
-        
+
         tables = [target_table] if target_table else DATASET_REGISTRY.keys()
-        
+
         for table_name in tables:
-            if table_name not in DATASET_REGISTRY: continue
+            if table_name not in DATASET_REGISTRY:
+                self.stats["failed"] += 1
+                self.stats["details"].append(f"❌ [FAILED] 表名: \"{table_name}\" - 未登錄於 DATASET_REGISTRY")
+                continue
             config = DATASET_REGISTRY[table_name]
-            
+
             try:
-                # 遵循 [Absolute Case Sovereignty]：強制雙引號
-                if force: cur.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE')
-                
+                if force:
+                    cur.execute(f'DROP TABLE IF EXISTS "{table_name}" CASCADE')
+
                 cols_def = ", ".join([f'"{k}" {v}' for k, v in config["columns"].items()])
                 cur.execute(f'CREATE TABLE IF NOT EXISTS "{table_name}" ({cols_def})')
-                
-                # 自動掛載唯一性約束 (僅當有定義時)
+
                 if config.get("unique_constraints"):
                     constraint_name = f"uq_{table_name.lower()}"
                     cur.execute(f'ALTER TABLE "{table_name}" DROP CONSTRAINT IF EXISTS {constraint_name}')
                     cols_str = ", ".join([f'"{c}"' for c in config["unique_constraints"]])
                     cur.execute(f'ALTER TABLE "{table_name}" ADD CONSTRAINT {constraint_name} UNIQUE ({cols_str})')
-                
-                # 自動建立索引 (僅當包含 date 欄位且非日誌表時)
+
                 if "date" in config["columns"] and "log" not in table_name:
                     cur.execute(f'CREATE INDEX IF NOT EXISTS "idx_{table_name.lower()}_date" ON "{table_name}" ("date")')
-                
+
                 conn.commit()
                 self.stats["success"] += 1
                 self.stats["details"].append(f"✅ [SUCCESS] 表名: \"{table_name}\" - 絕對大小寫封印完成")
-                
-                # 只有在非基礎設施表時才寫入審計紀錄，避免遞迴錯誤
+
                 if "log" not in table_name:
                     write_data_audit_log(table_name, "SYSTEM", datetime.now().strftime("%Y-%m-%d"), "SCHEMA_INIT", 1)
-                
+
             except Exception as e:
                 conn.rollback()
                 self.stats["failed"] += 1
                 self.stats["details"].append(f"❌ [FAILED] 表名: \"{table_name}\" - 錯誤: {str(e)}")
-        
-        cur.close(); conn.close()
-        self.report_results(start_time)
 
-    def report_results(self, start_time):
+        cur.close()
+        conn.close()
+        self.report_results(start_time, ddl_executed=True)
+        return self.stats["failed"] == 0
+
+    def report_results(self, start_time, ddl_executed=True):
         """顯示詳細結果訊息 (憲法 5.6 條款)"""
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.4)")
+        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.11)")
         print("🛡️" * 40)
-        print(f"治權基準 : 系統架構_v5.4.14.md")
-        print(f"核心技術 : Absolute Case Sovereignty (雙引號封裝)")
+        print(f"治權基準 : 系統架構大憲章_v5.4.19.md")
+        print(f"核心技術 : API Contract First + Absolute Case Sovereignty")
         print("─" * 80)
-        for d in self.stats["details"]: print(d)
+        for d in self.contract_stats["details"]:
+            print(d)
         print("─" * 80)
+        for d in self.stats["details"]:
+            print(d)
+        print("─" * 80)
+        print(f"🔎 API PASS/WARN/FAIL : {self.contract_stats['pass']}/{self.contract_stats['warn']}/{self.contract_stats['failed']}")
         print(f"📈 總計項目 : {len(DATASET_REGISTRY)}")
         print(f"✅ 成功重鑄 : {self.stats['success']}")
         print(f"❌ 失敗項目 : {self.stats['failed']}")
+        print(f"🧱 DDL 執行 : {'YES' if ddl_executed else 'NO'}")
         print(f"🕒 總計耗時 : {(time.time() - start_time)*1000:.2f} ms")
-        print(f"⚖️  主權判定 : {'PERFECT ALIGNMENT' if self.stats['failed'] == 0 else 'WARNING'}")
+        verdict = "PERFECT ALIGNMENT" if self.stats["failed"] == 0 and self.contract_stats["failed"] == 0 else "FAILED"
+        if verdict == "PERFECT ALIGNMENT" and self.contract_stats["warn"] > 0:
+            verdict = "WARNING"
+        print(f"⚖️  主權判定 : {verdict}")
         print("🛡️" * 40 + "\n")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--init", action="store_true", help="啟動主權初始化")
     parser.add_argument("--force", action="store_true", help="強制重置現有表")
     parser.add_argument("--table", type=str, help="指定單一表名")
+    parser.add_argument("--skip-api-contract", action="store_true", help="離線/災難復原：略過 API-first 契約探測")
     args = parser.parse_args()
     
     manager = SovereignSchemaManager()
     if args.init:
-        manager.init_tables(target_table=args.table, force=args.force)
+        ok = manager.init_tables(target_table=args.table, force=args.force, skip_api_contract=args.skip_api_contract)
+        sys.exit(0 if ok else 1)
     else:
         parser.print_help()

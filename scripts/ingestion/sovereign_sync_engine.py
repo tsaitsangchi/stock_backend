@@ -1,252 +1,325 @@
 """
-sovereign_sync_engine.py v1.7 (Quantum Finance Sovereign Sync Engine)
+sovereign_sync_engine.py v1.8 (Quantum Finance Market Universe Seed Engine)
 ================================================================================
-**最後更新日期**: 2026-05-13
-**主權狀態**: GENESIS COMPLETED (憲法 v5.4.18 對齊)
+**最後更新日期**: 2026-05-14
+**主權狀態**: MARKET UNIVERSE SEED VERIFIED (憲法 v5.4.19 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Sovereign Alignment]: 數據寫入必須嚴格遵循 data_schema.py 定義之大小寫與型態。
-2. [Idempotency]: 使用 ON CONFLICT 邏輯，確保數據重刷之安全性。
-3. [Hybrid Observability]: 同步行為必須觸發全量日誌，並顯示執行摘要；
-   任何分支（成功 / 無新資料 / 失敗）皆必須計數並輸出明細，禁止靜默丟失。
-4. [Universal Ingestion]: 統一管理 FinMind 與 FRED 等多元供應鏈數據流入。
+1. [Market Universe Seed]: 第 4 步取得 `TaiwanStockInfo` 市場個股清單，並同步 FRED 核心宏觀資料。
+2. [Schema Sovereignty]: 所有寫入欄位必須 100% 對齊 `data_schema.py v2.11` 的 `DATASET_REGISTRY`。
+3. [Hybrid Observability]: 使用 `record_lifecycle(... ) as lc`，將 warning / failed 回寫 pipeline lifecycle。
+4. [Zero Silent Drop]: API 空回應、HTTP 4xx/5xx、dropna 全空、DB upsert 失敗皆必須記入 stats 與 terminal report。
+5. [Idempotency]: 使用 ON CONFLICT upsert，確保 seed / sync 可重跑。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
-| 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
-| :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [同步：種子資產名冊灌溉]** | `$ python scripts/ingestion/sovereign_sync_engine.py --seed`        | sync_engine v1.7 |
-| **2. [同步：單一標的全數據]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all` | sync_engine v1.7 |
-| **3. [同步：宏觀指標同步]**   | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`  | sync_engine v1.7 |
-| **4. [同步：指定數據集同步]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`| sync_engine v1.7 |
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 (Exhaustive Examples) | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [市場個股資料取得與種子灌溉]** | `$ python scripts/ingestion/sovereign_sync_engine.py --seed` | sync_engine v1.8 |
+| **2. [單一標的指定數據集同步]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice` | sync_engine v1.8 |
+| **3. [FRED 宏觀指標全譜同步]** | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred` | sync_engine v1.8 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
-| **v1.7** | 2026-05-13 | Auto-patch | **Bug #1 修補**：sync_fred() 補完 empty-data 失敗分支與 dropna 後空集合分支；新增 `res.raise_for_status()` 與 `timeout=30`；阻斷 UNRATE / VIXCLS 等靜默丟資料；符合憲法第二條 Hybrid Observability。 | **ACTIVE** |
-| v1.6 | 2026-05-13 | Antigravity | **創世圓滿**：對齊憲法 v5.4.18；對齊「大憲章」命名體系。 | ARCHIVED |
-| v1.5 | 2026-05-13 | Antigravity | **崩潰修復**：對齊憲法 v5.4.17；實作 FRED 數據清洗。 | ARCHIVED |
-| v1.4 | 2026-05-13 | Antigravity | **全量實證對齊**：對齊憲法 v5.4.16；確立全譜系大同步地位。 | ARCHIVED |
-| v1.3 | 2026-05-13 | Antigravity | **全量大同步**：對齊憲法 v5.4.15；達成檔案治理全量收斂。 | ARCHIVED |
-| v1.2 | 2026-05-13 | Antigravity | **治權完備**：對齊憲法 v5.4.14；確立歷史歷程追加規範與灌溉標準。 | ARCHIVED |
-| v1.1 | 2026-05-13 | Antigravity | **治權對齊**：對齊憲法 v5.4.13；整合治權基準報告邏輯。 | ARCHIVED |
-| v1.0 | 2026-05-13 | Antigravity | **革命性重構**：取代 template_fetcher，實現 1:1 大小寫主權同步。 | ARCHIVED |
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v1.8** | 2026-05-14 | Codex | **市場個股資料取得與種子灌溉治理**：對齊憲章 v5.4.19 與 data_schema v2.11；接上 lifecycle context；修正全域 args.seed；欄位鏡像與 upsert 前清洗；動態 PERFECT/WARNING/FAILED 判定。 | **ACTIVE** |
+| v1.7 | 2026-05-13 | Auto-patch | Bug #1 修補：sync_fred() 補完 empty-data 失敗分支與 dropna 後空集合分支。 | SUPERSEDED |
+| v1.6 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
 ================================================================================
 """
-import sys, os, time
-import pandas as pd
-import requests
+import argparse
+import os
+import sys
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
-import argparse
 
-# ── 系統級架構引導 ──
+import pandas as pd
+import requests
+
 _THIS_FILE = Path(__file__).resolve()
 _INGESTION_DIR = _THIS_FILE.parent
 _SCRIPTS_DIR = _INGESTION_DIR.parent
-if str(_SCRIPTS_DIR) not in sys.path: sys.path.insert(0, str(_SCRIPTS_DIR))
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log, get_core_stocks_from_db
-    from core.data_schema import DATASET_REGISTRY
+    from core.data_schema import DATASET_REGISTRY, FINMIND_API_TABLES
     from core.finmind_client import FinMindClient
-except ImportError:
-    print("❌ 核心組件導入失敗，請確認 core/ 目錄")
+except ImportError as exc:
+    print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
 
+
 class SovereignSyncEngine:
+    FRED_LIST = ["DFF", "UNRATE", "T10Y2Y", "VIXCLS"]
+    DEFAULT_FINMIND_DATASETS = [
+        "TaiwanStockPrice",
+        "TaiwanStockInstitutionalInvestorsBuySell",
+        "TaiwanStockMarginPurchaseShortSale",
+        "TaiwanStockPER",
+    ]
+
     def __init__(self):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
-        self.stats = {"success": 0, "failed": 0, "rows": 0, "details": []}
-        self.constitution_ver = "大憲章_v5.4.18"
+        self.constitution_ver = "v5.4.19"
+        self.schema_ver = "v2.11"
+        self.tool_ver = "v1.8"
+        self.stats = {"success": 0, "warning": 0, "failed": 0, "rows": 0, "details": []}
 
-    def _upsert_to_db(self, table_name, df):
-        """核心主權寫入邏輯：1:1 大小寫對齊 + Idempotency"""
-        if df.empty: return 0
+    def _detail(self, status, message):
+        self.stats[status] += 1
+        icon = {"success": "✅", "warning": "⚠️", "failed": "❌"}[status]
+        self.stats["details"].append(f"{icon} {message}")
 
+    def _convert_type(self, series, sql_type):
+        if sql_type.startswith("DATE"):
+            return pd.to_datetime(series, errors="coerce").dt.date
+        if sql_type.startswith("TIMESTAMP"):
+            return pd.to_datetime(series, errors="coerce")
+        if sql_type.startswith("NUMERIC") or sql_type.startswith("INTEGER") or sql_type.startswith("BIGINT"):
+            return pd.to_numeric(series, errors="coerce")
+        return series.where(series.notna(), None)
+
+    def _align_to_schema(self, table_name, df):
         config = DATASET_REGISTRY.get(table_name)
         if not config:
-            raise ValueError(f"❌ 憲法未定義表名: {table_name}")
+            raise ValueError(f"憲章未定義表名: {table_name}")
+
+        expected_cols = list(config["columns"].keys())
+        actual_cols = list(df.columns)
+        missing = [col for col in expected_cols if col not in actual_cols]
+        extra = [col for col in actual_cols if col not in expected_cols]
+        if missing or extra:
+            problems = []
+            if missing:
+                problems.append(f"missing={missing}")
+            if extra:
+                problems.append(f"extra={extra}")
+            raise ValueError(f"{table_name} API/schema 欄位不一致: {'; '.join(problems)}")
+
+        aligned = df[expected_cols].copy()
+        for col, sql_type in config["columns"].items():
+            aligned[col] = self._convert_type(aligned[col], sql_type)
+
+        unique_cols = config.get("unique_constraints", [])
+        if unique_cols:
+            before = len(aligned)
+            aligned = aligned.dropna(subset=unique_cols)
+            dropped = before - len(aligned)
+            if dropped:
+                self._detail("warning", f"{table_name}: 已丟棄 {dropped} 筆 unique key 欄位為空的資料")
+
+        aligned = aligned.where(pd.notnull(aligned), None)
+        if aligned.empty:
+            raise ValueError(f"{table_name} 清洗後資料為空")
+        return aligned
+
+    def _upsert_to_db(self, table_name, df):
+        if df.empty:
+            raise ValueError(f"{table_name} 無可寫入資料")
+
+        config = DATASET_REGISTRY[table_name]
+        unique_cols = config.get("unique_constraints", [])
+        if not unique_cols:
+            raise ValueError(f"{table_name} 未定義 unique_constraints，禁止 upsert")
+
+        cols = list(df.columns)
+        quoted_cols = [f'"{col}"' for col in cols]
+        placeholders = ", ".join(["%s"] * len(cols))
+        conflict_cols = ", ".join([f'"{col}"' for col in unique_cols])
+        update_cols = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in cols if col not in unique_cols])
+        if not update_cols:
+            update_clause = "DO NOTHING"
+        else:
+            update_clause = f"DO UPDATE SET {update_cols}"
+
+        sql = f'''
+            INSERT INTO "{table_name}" ({", ".join(quoted_cols)})
+            VALUES ({placeholders})
+            ON CONFLICT ({conflict_cols})
+            {update_clause}
+        '''
 
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # 遵循 [Absolute Case Sovereignty]：欄位名稱加雙引號
-        cols = [f'"{c}"' for c in df.columns]
-        placeholders = ", ".join(["%s"] * len(df.columns))
-
-        # 建立 ON CONFLICT 語句
-        unique_cols = [f'"{c}"' for c in config["unique_constraints"]]
-        update_cols = [f'{c} = EXCLUDED.{c}' for c in cols if c not in unique_cols]
-
-        sql = f"""
-            INSERT INTO "{table_name}" ({", ".join(cols)})
-            VALUES ({placeholders})
-            ON CONFLICT ({", ".join(unique_cols)})
-            DO UPDATE SET {", ".join(update_cols)}
-        """
-
         try:
-            # 批量寫入以提升性能
-            data = [tuple(x) for x in df.values]
+            data = [tuple(row) for row in df.itertuples(index=False, name=None)]
             cur.executemany(sql, data)
             conn.commit()
             rows = len(df)
-            write_data_audit_log(table_name, "SYNC", df.iloc[0].get("date", "N/A"), "UPSERT", rows)
+            audit_date = df.iloc[0].get("date", datetime.now().date()) if hasattr(df.iloc[0], "get") else datetime.now().date()
+            write_data_audit_log(table_name, "SYNC", audit_date, "UPSERT", rows)
             return rows
-        except Exception as e:
+        except Exception:
             conn.rollback()
-            raise e
+            raise
         finally:
-            cur.close(); conn.close()
+            cur.close()
+            conn.close()
 
     def sync_finmind(self, stock_id, dataset_name, start_date):
-        """同步 FinMind 數據集"""
         try:
             print(f"📡 正在獲取 FinMind: {stock_id} / {dataset_name}...")
-            params = {
-                "dataset": dataset_name,
-                "data_id": stock_id,
-                "start_date": start_date,
-                "token": self.fm_client.token
-            }
-            res = requests.get(self.fm_client.api_url, params=params)
-            data = res.json().get("data", [])
+            params = {"dataset": dataset_name, "start_date": start_date}
+            if stock_id is not None:
+                params["data_id"] = stock_id
+            if self.fm_client.token:
+                params["token"] = self.fm_client.token
 
-            if data:
-                df = pd.DataFrame(data)
-                # 強制轉換日期格式以對齊 DATE 型態
-                # 實施 [Data Sanctity] 數據聖潔原則：處理無效日期
-                if "date" in df.columns:
-                    df = df[df["date"].notna() & (df["date"] != "None")]
-                    df["date"] = pd.to_datetime(df["date"]).dt.date
+            res = requests.get(self.fm_client.api_url, params=params, headers=self.fm_client.headers, timeout=30)
+            res.raise_for_status()
+            payload = res.json()
+            if payload.get("msg") not in (None, "success"):
+                raise RuntimeError(payload.get("msg"))
+            data = payload.get("data", [])
+            if not data:
+                self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}): API 回傳 0 筆")
+                return
 
-                rows = self._upsert_to_db(dataset_name, df)
-                self.stats["rows"] += rows
-                self.stats["success"] += 1
-                self.stats["details"].append(f"✅ {dataset_name} ({stock_id}): {rows} 筆對齊成功")
-            else:
-                self.stats["details"].append(f"⚠️ {dataset_name} ({stock_id}): 無新數據")
-        except Exception as e:
-            self.stats["failed"] += 1
-            self.stats["details"].append(f"❌ {dataset_name} ({stock_id}) 失敗: {str(e)}")
+            df = self._align_to_schema(dataset_name, pd.DataFrame(data))
+            rows = self._upsert_to_db(dataset_name, df)
+            self.stats["rows"] += rows
+            self._detail("success", f"{dataset_name} ({stock_id or 'MARKET'}): {rows} 筆 UPSERT 成功")
+        except Exception as exc:
+            self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}) 失敗: {type(exc).__name__}: {exc}")
 
     def sync_fred(self, series_id):
-        """同步 FRED 宏觀數據 (v1.7 修補：補完 empty-data 失敗分支，杜絕靜默丟失)"""
         try:
             print(f"📡 正在獲取 FRED: {series_id}...")
+            if not self.fred_key:
+                raise RuntimeError("FRED_API_KEY missing")
             url = "https://api.stlouisfed.org/fred/series/observations"
             params = {
                 "series_id": series_id,
                 "api_key": self.fred_key,
                 "file_type": "json",
-                "limit": 1000,           # 獲取最近 1000 點
-                "sort_order": "desc"
+                "limit": 1000,
+                "sort_order": "desc",
             }
             res = requests.get(url, params=params, timeout=30)
-            res.raise_for_status()       # [v1.7] 4xx/5xx 強制 raise 進 except
+            res.raise_for_status()
             payload = res.json()
             data = payload.get("observations", [])
-
-            # [v1.7 Bug#1 修補] API 回 0 個 observation - 走 failed 分支
-            # 違反 Hybrid Observability 之靜默吐零情境，由本分支封堵。
             if not data:
-                err = payload.get("error_message") or "API 回傳 0 個 observation"
-                self.stats["failed"] += 1
-                self.stats["details"].append(f"❌ FRED/{series_id} 失敗: {err}")
-                return
+                raise RuntimeError(payload.get("error_message") or "API 回傳 0 個 observation")
 
             df = pd.DataFrame(data)
             df["series_id"] = series_id
-            # 只保留對齊 FredData 表結構的欄位
-            target_cols = ["date", "series_id", "value", "realtime_start", "realtime_end"]
-            df = df[target_cols]
-            # 實施 [Data Sanctity] 數據聖潔原則：處理 FRED 缺失值符號 '.'
-            df["value"] = pd.to_numeric(df["value"], errors="coerce")
+            df = self._align_to_schema("FredData", df)
             df = df.dropna(subset=["value"])
-
-            # [v1.7 Bug#1 修補] 數據聖潔清洗後 df 全空 - 走 failed 分支
             if df.empty:
-                self.stats["failed"] += 1
-                self.stats["details"].append(f"❌ FRED/{series_id} 失敗: 全部 observation 在數據聖潔清洗後為空")
-                return
-
-            df["date"] = pd.to_datetime(df["date"]).dt.date
+                raise ValueError("全部 observation 在數據聖潔清洗後為空")
 
             rows = self._upsert_to_db("FredData", df)
             self.stats["rows"] += rows
-            self.stats["success"] += 1
-            self.stats["details"].append(f"✅ FRED/{series_id}: {rows} 筆主權同步完成")
-        except Exception as e:
-            self.stats["failed"] += 1
-            self.stats["details"].append(f"❌ FRED/{series_id} 失敗: {str(e)}")
+            self._detail("success", f"FRED/{series_id}: {rows} 筆 UPSERT 成功")
+        except Exception as exc:
+            self._detail("failed", f"FRED/{series_id} 失敗: {type(exc).__name__}: {exc}")
 
-    def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30):
-        """主權同步引擎入口"""
+    def _resolve_stocks(self, stock_id, universe):
+        if stock_id:
+            return [stock_id]
+        if universe == "core":
+            try:
+                stocks = get_core_stocks_from_db()
+            except Exception as exc:
+                self._detail("failed", f"core universe 讀取失敗: {type(exc).__name__}: {exc}")
+                return []
+            if not stocks:
+                self._detail("warning", "core universe 無標的")
+            return stocks
+        return []
+
+    def _target_datasets(self, dataset, all_datasets):
+        if dataset:
+            return [dataset]
+        if all_datasets:
+            return [name for name in FINMIND_API_TABLES if name != "TaiwanStockInfo"]
+        return self.DEFAULT_FINMIND_DATASETS
+
+    def _apply_lifecycle_verdict(self, lifecycle):
+        if lifecycle is None:
+            return
+        if self.stats["failed"] > 0 and hasattr(lifecycle, "mark_failed"):
+            lifecycle.mark_failed("; ".join(self.stats["details"][:5]))
+        elif self.stats["warning"] > 0 and hasattr(lifecycle, "mark_warning"):
+            lifecycle.mark_warning("; ".join(self.stats["details"][:5]))
+
+    def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30, seed=False, all_datasets=False):
         start_time = time.time()
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        task_name = f"sync_{source or 'all'}_{stock_id or universe or ('seed' if seed else 'macro')}"
 
-        task_name = f"sync_{source or 'all'}_{stock_id or universe or 'macro'}"
-
-        with record_lifecycle(task_name, category="ingestion", stock_id=stock_id or "SYSTEM"):
-            # 1. 處理標的
-            stocks = []
-            if stock_id: stocks = [stock_id]
-            elif universe == "core": stocks = get_core_stocks_from_db()
-
-            # 2. 處理 FinMind 同步
-            if source == "finmind" or not source:
-                # [種子模式]：如果指定 TaiwanStockInfo，則執行全市場清單同步
-                if dataset == "TaiwanStockInfo" or args.seed:
+        with record_lifecycle(task_name, category="ingestion", stock_id=stock_id or "SYSTEM") as lifecycle:
+            if source in (None, "finmind"):
+                if seed or dataset == "TaiwanStockInfo":
                     self.sync_finmind("", "TaiwanStockInfo", start_date)
 
-                # [數據模式]：同步特定標的之數據集
-                target_datasets = [dataset] if dataset else [
-                    "TaiwanStockPrice", "TaiwanStockInstitutionalInvestorsBuySell",
-                    "TaiwanStockMarginPurchaseShortSale", "TaiwanStockPER"
-                ]
-                # 排除種子表，避免在個股迴圈中重複執行
-                target_datasets = [d for d in target_datasets if d != "TaiwanStockInfo"]
-
+                stocks = self._resolve_stocks(stock_id, universe)
                 for sid in stocks:
-                    for ds in target_datasets:
+                    for ds in self._target_datasets(dataset, all_datasets):
+                        if ds == "TaiwanStockInfo":
+                            continue
                         self.sync_finmind(sid, ds, start_date)
 
-            # 3. 處理 FRED 同步
-            if (source == "fred" or not source) and not stock_id:
-                # 引用憲法 v5.4.5 第九章之核心指標
-                fred_list = ["DFF", "UNRATE", "T10Y2Y", "VIXCLS"]
-                for fsid in fred_list:
-                    self.sync_fred(fsid)
+            if source in (None, "fred") and not stock_id:
+                for series_id in self.FRED_LIST:
+                    self.sync_fred(series_id)
 
+            self._apply_lifecycle_verdict(lifecycle)
             self.report_results(start_time)
 
+        return self.stats["failed"] == 0
+
     def report_results(self, start_time):
-        """同步結果詳細報告 (旗艦輸出)"""
+        if self.stats["failed"] > 0:
+            verdict = "FAILED"
+        elif self.stats["warning"] > 0:
+            verdict = "WARNING"
+        else:
+            verdict = "PERFECT"
+
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 主權同步引擎執行摘要")
+        print(f"🚀 Quantum Finance: 主權同步引擎執行摘要 ({self.tool_ver})")
         print("🛡️" * 40)
-        print(f"治權基準 : 系統架構{self.constitution_ver}.md")
-        print(f"核心技術 : Absolute Case Sovereignty (1:1 鏡像)")
+        print(f"治權基準 : 系統架構大憲章_{self.constitution_ver}.md")
+        print(f"schema 基準 : data_schema {self.schema_ver}")
+        print("核心技術 : API Contract Mirror + Absolute Case Sovereignty + Lifecycle Context")
         print("─" * 80)
-        for d in self.stats["details"]: print(d)
+        for detail in self.stats["details"]:
+            print(detail)
         print("─" * 80)
         print(f"📈 成功同步項目 : {self.stats['success']}")
+        print(f"⚠️  警告同步項目 : {self.stats['warning']}")
         print(f"❌ 失敗同步項目 : {self.stats['failed']}")
         print(f"📝 總計寫入筆數 : {self.stats['rows']}")
         print(f"🕒 總計耗時     : {(time.time() - start_time):.2f} s")
-        print(f"⚖️  主權判定     : {'PERFECT' if self.stats['failed'] == 0 else 'WARNING'}")
+        print(f"⚖️  主權判定     : {verdict}")
         print("🛡️" * 40 + "\n")
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Quantum Finance 主權同步引擎 (v1.7)")
+    parser = argparse.ArgumentParser(description="Quantum Finance 主權同步引擎 (v1.8)")
     parser.add_argument("--id", type=str, help="指定標的 ID (如 2330)")
     parser.add_argument("--universe", type=str, choices=["core"], help="指定標的範圍")
     parser.add_argument("--source", type=str, choices=["finmind", "fred"], help="指定數據源")
     parser.add_argument("--dataset", type=str, help="指定數據集")
-    parser.add_argument("--seed", action="store_true", help="種子灌溉模式 (獲取全市場清單)")
+    parser.add_argument("--seed", action="store_true", help="市場個股資料取得與種子灌溉模式")
     parser.add_argument("--all", action="store_true", help="全數據灌溉模式")
     parser.add_argument("--days", type=int, default=30, help="同步天數 (預設 30 天)")
-
     args = parser.parse_args()
+
     engine = SovereignSyncEngine()
-    engine.run(stock_id=args.id, universe=args.universe, source=args.source, dataset=args.dataset, days=args.days)
+    ok = engine.run(
+        stock_id=args.id,
+        universe=args.universe,
+        source=args.source,
+        dataset=args.dataset,
+        days=args.days,
+        seed=args.seed,
+        all_datasets=args.all,
+    )
+    sys.exit(0 if ok else 1)
