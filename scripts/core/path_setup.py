@@ -1,8 +1,8 @@
 """
-path_setup.py v4.43 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
+path_setup.py v4.44 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: PERFECT (憲法 v5.4.21 啟動治理對齊)
+**最後更新日期**: 2026-05-15
+**主權狀態**: PERFECT (憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -11,18 +11,20 @@ path_setup.py v4.43 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 3. [Historical Reference Authority]: 保留從 v1.0 至今的所有歷史，作為判定系統物理架構正確性的基準。
 4. [Boundary Integrity]: 確保 25 維全譜路徑接口與實體目錄 100% 同步，封印任何執行鏈中斷之可能性。
 5. [Bootstrap Anchor Alignment]: `.env` 僅作為 Bootstrap Anchor 錨定 `PROJECT_ROOT`；`path_setup.py` 保持 Path SSOT，負責從根目錄推導 25 維路徑。
+6. [Hub Compatibility]: 本檔之 `PROJECT_ROOT_CALC`、25 維 `get_*_dir()` 與 `get_evaluation_dir()` 相容別名、`ALL_PATHS`、`ensure_all_dirs()` 為 `core/__init__.py v1.14` hub 鏡像匯出之 import 邊界；任何改名或移除都會直接破壞 hub 治權。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - 100% Coverage)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [路徑治理：全維度稽核]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.43 |
-| **2. [個股同步：環境路徑初始化]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.43 |
-| **3. [啟動錨點：`.env` 與 `PROJECT_ROOT` 對齊驗證]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.43 |
+| **1. [路徑治理：全維度稽核]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.44 |
+| **2. [個股同步：環境路徑初始化]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.44 |
+| **3. [啟動錨點：`.env` 與 `PROJECT_ROOT` 對齊驗證]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.44 |
 
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v4.43** | 2026-05-14 | Codex | **憲法 v5.4.21 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | **ACTIVE** |
+| **v4.44** | 2026-05-15 | Codex | **憲法 v5.4.22 同日補充標籤對齊**（標籤升版，無功能變更）：標頭由「憲法 v5.4.21 啟動治理對齊」升至「憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容」；新增 [Hub Compatibility] 核心定義第 6 條，明定本檔對 `core/__init__.py v1.14` hub 之 import 邊界承諾（`PROJECT_ROOT_CALC` / 25 維 `get_*_dir()` / `get_evaluation_dir()` / `ALL_PATHS` / `ensure_all_dirs()`）。**API、ALL_PATHS、自癒邏輯、`_evaluate_anchor()`、BOOTSTRAP-DEFERRED 行為皆無變更**；與 v4.43 二進位等價，僅版本字串與標頭文字升至 v5.4.22 對齊。 | **ACTIVE** |
+| v4.43 | 2026-05-14 | Codex | **憲法 v5.4.21 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | SUPERSEDED |
 | v4.42 | 2026-05-13 | Antigravity | **憲法 v5.4 對齊**：校正治理維度為 25 維；修正標頭為對齊 v5.4；新增 .env 錨點對齊校驗邏輯。 | SUPERSEDED |
 | v4.41 | 2026-05-12 | Antigravity | 主權完備化：補全全場景路徑維運矩陣。 | SUPERSEDED |
 | v1.0 | 2026-04-20 | Antigravity | 主權奠基：初始路徑管理版本。 | ARCHIVED |
@@ -43,7 +45,7 @@ PROJECT_ROOT_CALC = _SCRIPTS_DIR.parent
 load_dotenv(PROJECT_ROOT_CALC / ".env")
 PROJECT_ROOT_ENV = os.getenv("PROJECT_ROOT")
 
-# 25 維路徑接口註冊中心 (v4.43 完備版)
+# 25 維路徑接口註冊中心 (v4.44 完備版 - 與 v4.43 二進位等價)
 def get_root_dir(): return PROJECT_ROOT_CALC
 def get_core_dir(): return PROJECT_ROOT_CALC / "scripts" / "core"
 def get_utils_dir(): return PROJECT_ROOT_CALC / "scripts" / "utils"
@@ -143,7 +145,7 @@ def _evaluate_anchor():
 
 
 def ensure_all_dirs():
-    """執行物理路徑對齊與自癒 (v4.43 / v5.4.21 啟動治理版)"""
+    """執行物理路徑對齊與自癒 (v4.44 / v5.4.22 啟動治理版 - 與 v4.43 二進位等價)"""
     start_time = time.time()
     record_lifecycle, write_data_audit_log, log_mode = _load_logging_hooks()
     warnings = []
@@ -155,7 +157,7 @@ def ensure_all_dirs():
     if log_mode.startswith("MOCK"):
         warnings.append(f"Hybrid logging downgraded: {log_mode}")
 
-    with record_lifecycle("path_setup_v4.43", category="maintenance", stock_id="SYSTEM") as lifecycle:
+    with record_lifecycle("path_setup_v4.44", category="maintenance", stock_id="SYSTEM") as lifecycle:
         if anchor_message:
             _mark_lifecycle(lifecycle, anchor_level, anchor_message)
 
