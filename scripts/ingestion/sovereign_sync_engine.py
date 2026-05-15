@@ -23,8 +23,8 @@ sovereign_sync_engine.py v1.9 (Quantum Finance Market Universe Seed Engine)
 | **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.9 |
 | **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.9 |
 | **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.9 |
-| **4. [所有核心股同步]**                        | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core`                                        | sovereign_sync_engine v1.9 |
-| **5. [所有核心股 + 所有 Table 強制更新]**       | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                       | sovereign_sync_engine v1.9 |
+| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.9 |
+| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.9 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 場景                          | 指令                                                                                            | 用途 |
@@ -35,10 +35,10 @@ sovereign_sync_engine.py v1.9 (Quantum Finance Market Universe Seed Engine)
 
 ### C. 旗標語意 (Flag Semantics, v1.9 整理)
 - `--id <stock_id>`：指定單一標的 ID（如 2330）。
-- `--universe core`：依 `stocks.is_core=TRUE` 或核心股治理層之 membership 抓取核心股清單。
+- `--universe research|convex|core`：依 `research_universe` / `convex_universe` / `core_universe` + `convex_universe` 分段抓取名單。
 - `--dataset <name>`：只同步單一 dataset；不傳則用 `DEFAULT_FINMIND_DATASETS`（4 核心表）。
 - **`--all`**：取代「DEFAULT 4 表」為 `FINMIND_API_TABLES`（除 `TaiwanStockInfo` 外的全部 stock-data tables）。
-- `--days <N>`：增量同步天數（預設 30）。**選股 phase 建議 730**。
+- `--days <N>`：增量同步天數（預設 30）。**研究宇宙 / 選股 phase 建議 730**。
 - `--seed`：執行 `TaiwanStockInfo` 種子灌溉（與其他旗標可組合）。
 - `--source [finmind|fred]`：限定數據源。
 
@@ -51,7 +51,7 @@ sovereign_sync_engine.py v1.9 (Quantum Finance Market Universe Seed Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.9** | 2026-05-14 | Auto-patch | **5.5.3 對齊版**：(1) 矩陣表補滿憲章 5.5.3 五大標準場景與 v5.4.19 Section 二之 sync 場景；(2) `--all` 旗標語意正式登錄文件（v1.8 已實作但未銘刻）；(3) 新增「Phase-Appropriate Lookback」條款，明定 CoreScore v0.2 選股 phase 建議 `--days 730`；(4) 加入 runtime hint，使用 `--universe core` 而未調整 `--days` 時提示選股最佳實務；(5) 明文不提供 `--force`，避免在 v0.2 builder 完工前誘發 API quota 浪費。本版不更動任何 sync logic，僅文件對齊 + UX 強化。 | **ACTIVE** |
+| **v1.9** | 2026-05-14 | Auto-patch | **5.5.3 對齊版**：(1) 矩陣表補滿憲章 5.5.3 五大標準場景與 v5.4.19 Section 二之 sync 場景；(2) `--all` 旗標語意正式登錄文件（v1.8 已實作但未銘刻）；(3) 新增「Phase-Appropriate Lookback」條款，明定 CoreScore v0.2 選股 phase 建議 `--days 730`；(4) 加入 runtime hint，使用 `--universe research|convex|core` 而未調整 `--days` 時提示選股最佳實務；(5) 明文不提供 `--force`，避免在 v0.2 builder 完工前誘發 API quota 浪費。本版不更動任何 sync logic，僅文件對齊 + UX 強化。 | **ACTIVE** |
 | v1.8 | 2026-05-14 | Codex | **市場個股資料取得與種子灌溉治理**：對齊憲章 v5.4.19 與 data_schema v2.11；接上 lifecycle context；修正全域 args.seed；欄位鏡像與 upsert 前清洗；動態 PERFECT/WARNING/FAILED 判定。 | SUPERSEDED |
 | v1.7 | 2026-05-13 | Auto-patch | Bug #1 修補：sync_fred() 補完 empty-data 失敗分支與 dropna 後空集合分支。 | ARCHIVED |
 | v1.6 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
@@ -84,6 +84,11 @@ except ImportError as exc:
 
 # v1.9 phase-aware constants
 SELECTION_PHASE_DAYS = 730   # CoreScore v0.2 建議窗 (~2 年)
+UNIVERSE_TIERS = {
+    "research": ("research_universe",),
+    "convex": ("convex_universe",),
+    "core": ("core_universe", "convex_universe"),
+}
 
 
 class SovereignSyncEngine:
@@ -264,14 +269,14 @@ class SovereignSyncEngine:
     def _resolve_stocks(self, stock_id, universe):
         if stock_id:
             return [stock_id]
-        if universe == "core":
+        if universe in UNIVERSE_TIERS:
             try:
-                stocks = get_core_stocks_from_db()
+                stocks = get_core_stocks_from_db(tiers=UNIVERSE_TIERS[universe])
             except Exception as exc:
-                self._detail("failed", f"core universe 讀取失敗: {type(exc).__name__}: {exc}")
+                self._detail("failed", f"{universe} universe 讀取失敗: {type(exc).__name__}: {exc}")
                 return []
             if not stocks:
-                self._detail("warning", "core universe 無標的")
+                self._detail("warning", f"{universe} universe 無標的")
             return stocks
         return []
 
@@ -295,11 +300,11 @@ class SovereignSyncEngine:
         # 不對 seed / 單檔 / FRED-only 等情境發提示
         if seed or stock_id or dataset:
             return
-        if universe == "core" and days < SELECTION_PHASE_DAYS:
-            print("💡 [Phase Hint] 對 `--universe core` 使用 `--days 30`（預設）只取增量。")
-            print(f"   若你正在執行 CoreScore v0.2 選股 phase，建議改用 `--days {SELECTION_PHASE_DAYS}` "
+        if universe in UNIVERSE_TIERS and days < SELECTION_PHASE_DAYS:
+            print(f"💡 [Phase Hint] 對 `--universe {universe}` 使用 `--days 30`（預設）只取增量。")
+            print(f"   若你正在執行 research/core staged irrigation，建議改用 `--days {SELECTION_PHASE_DAYS}` "
                   f"（~2 年），對應憲章 6.4 之 price_coverage_252d + revenue_coverage_24m + financial_coverage_8q。")
-            print(f"   範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days {SELECTION_PHASE_DAYS}")
+            print(f"   範例：python scripts/ingestion/sovereign_sync_engine.py --universe {universe} --all --days {SELECTION_PHASE_DAYS}")
             print("─" * 80)
 
     def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30, seed=False, all_datasets=False):
@@ -327,11 +332,11 @@ class SovereignSyncEngine:
                     self.sync_fred(series_id)
 
             self._apply_lifecycle_verdict(lifecycle)
-            self.report_results(start_time, days)
+            self.report_results(start_time, days, universe)
 
         return self.stats["failed"] == 0
 
-    def report_results(self, start_time, days):
+    def report_results(self, start_time, days, universe):
         if self.stats["failed"] > 0:
             verdict = "FAILED"
         elif self.stats["warning"] > 0:
@@ -352,6 +357,8 @@ class SovereignSyncEngine:
         print("🛡️" * 40)
         print(f"治權基準 : 系統架構大憲章_{self.constitution_ver}.md")
         print(f"schema 基準 : data_schema {self.schema_ver}")
+        if universe:
+            print(f"執行 universe : {universe}")
         print(f"執行 phase : {phase_label}")
         print("核心技術 : API Contract Mirror + Absolute Case Sovereignty + Lifecycle Context")
         print("─" * 80)
@@ -370,10 +377,12 @@ class SovereignSyncEngine:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Quantum Finance 主權同步引擎 (v1.9 — 5.5.3 對齊版)",
-        epilog="選股 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730",
+        epilog="選股 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730；"
+               "核心 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730",
     )
     parser.add_argument("--id", type=str, help="指定標的 ID (如 2330)")
-    parser.add_argument("--universe", type=str, choices=["core"], help="指定標的範圍 (core = 治理層 membership)")
+    parser.add_argument("--universe", type=str, choices=["research", "convex", "core"],
+                        help="指定標的範圍（research = 研究宇宙、convex = 凸性宇宙、core = 已提交核心宇宙）")
     parser.add_argument("--source", type=str, choices=["finmind", "fred"], help="指定數據源")
     parser.add_argument("--dataset", type=str, help="指定單一 dataset 名稱")
     parser.add_argument("--seed", action="store_true",
