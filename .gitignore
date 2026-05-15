@@ -23,6 +23,7 @@ scratch/
 *.pyc
 __pycache__/
 venv/
+.venv/
 .env
 outputs/
 lightning_logs/
