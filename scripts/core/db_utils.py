@@ -736,6 +736,7 @@ def get_core_stocks_from_db(as_of_date=None, tiers=None, conn=None):
                       ON s."snapshot_id" = m."snapshot_id"
                     WHERE s."status" = 'committed'
                       AND m."core_tier" = ANY(%s)
+                      AND COALESCE(m."industry_category", '') NOT IN ('Index', '大盤')
                       AND s."as_of_date" = (
                           SELECT MAX("as_of_date")
                           FROM "core_universe_snapshot"
@@ -762,6 +763,7 @@ def get_core_stocks_from_db(as_of_date=None, tiers=None, conn=None):
                       ON s."snapshot_id" = m."snapshot_id"
                     WHERE s."status" = 'committed'
                       AND m."core_tier" = ANY(%s)
+                      AND COALESCE(m."industry_category", '') NOT IN ('Index', '大盤')
                       AND s."as_of_date" = %s
                     ORDER BY m."stock_id"
                     """,

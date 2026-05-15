@@ -59,6 +59,7 @@ sovereign_sync_engine.py v1.9 (Quantum Finance Market Universe Seed Engine)
 """
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -103,7 +104,7 @@ class SovereignSyncEngine:
     def __init__(self):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
-        self.constitution_ver = "v5.4.21"
+        self.constitution_ver = "v5.4.22"
         self.schema_ver = "v2.11"
         self.tool_ver = "v1.9"
         self.stats = {"success": 0, "warning": 0, "failed": 0, "rows": 0, "details": []}
@@ -112,6 +113,10 @@ class SovereignSyncEngine:
         self.stats[status] += 1
         icon = {"success": "✅", "warning": "⚠️", "failed": "❌"}[status]
         self.stats["details"].append(f"{icon} {message}")
+
+    def _safe_error(self, exc):
+        message = f"{type(exc).__name__}: {exc}"
+        return re.sub(r"([?&]token=)[^&\s]+", r"\1<redacted>", message)
 
     def _convert_type(self, series, sql_type):
         if sql_type.startswith("DATE"):
@@ -231,7 +236,7 @@ class SovereignSyncEngine:
             self.stats["rows"] += rows
             self._detail("success", f"{dataset_name} ({stock_id or 'MARKET'}): {rows} 筆 UPSERT 成功")
         except Exception as exc:
-            self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}) 失敗: {type(exc).__name__}: {exc}")
+            self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}) 失敗: {self._safe_error(exc)}")
 
     def sync_fred(self, series_id):
         try:
@@ -264,7 +269,7 @@ class SovereignSyncEngine:
             self.stats["rows"] += rows
             self._detail("success", f"FRED/{series_id}: {rows} 筆 UPSERT 成功")
         except Exception as exc:
-            self._detail("failed", f"FRED/{series_id} 失敗: {type(exc).__name__}: {exc}")
+            self._detail("failed", f"FRED/{series_id} 失敗: {self._safe_error(exc)}")
 
     def _resolve_stocks(self, stock_id, universe):
         if stock_id:
