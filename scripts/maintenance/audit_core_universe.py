@@ -2,7 +2,7 @@
 audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
 ================================================================================
 最後更新日期: 2026-05-14
-主權狀態: IMPLEMENTED (憲法 v5.4.21 核心股結果驗收稽核)
+主權狀態: IMPLEMENTED (憲法 v5.4.22 核心股結果驗收稽核)
 最高原則: Core Universe Post-Build Verification
 
 v0.1 邊界:
@@ -34,7 +34,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.21"
+CONSTITUTION_VER = "v5.4.22"
 TOOL_VER = "v0.1"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.1"
 REQUIRED_TABLES = [
@@ -488,13 +488,14 @@ class CoreUniverseAuditor:
             '''
             SELECT COUNT(*)
             FROM pipeline_execution_log
-            WHERE task_name = 'core_universe_builder_v0.1' AND status = 'success'
+            WHERE task_name IN ('core_universe_builder_v0.2_preflight', 'core_universe_builder_v0.1')
+              AND status = 'success'
             ''',
         )
         if lifecycle_count > 0:
-            self.pass_("pipeline_lifecycle", f"core_universe_builder_v0.1 success lifecycle rows={lifecycle_count}")
+            self.pass_("pipeline_lifecycle", f"core_universe_builder success lifecycle rows={lifecycle_count}")
         else:
-            self.fail("pipeline_lifecycle", "core_universe_builder_v0.1 success lifecycle row missing")
+            self.fail("pipeline_lifecycle", "core_universe_builder success lifecycle row missing")
 
     def write_self_audit_log(self):
         try:

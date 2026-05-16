@@ -2,7 +2,7 @@
 audit_supply_chain.py v1.18 (Post-Schema Compliance Audit Edition)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: POST-SCHEMA AUDIT (憲法 v5.4.21 對齊)
+**主權狀態**: POST-SCHEMA AUDIT (憲法 v5.4.22 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -22,7 +22,7 @@ audit_supply_chain.py v1.18 (Post-Schema Compliance Audit Edition)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.18** | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.21 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | **ACTIVE** |
+| **v1.18** | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | **ACTIVE** |
 | v1.17 | 2026-05-13 | Auto-patch | DB-state aware 稽核；新增 FRED 完整性、lifecycle log 交叉比對、動態 verdict。 | SUPERSEDED |
 | v1.16 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
 ================================================================================
@@ -55,7 +55,7 @@ class ComplianceAuditor:
     INFRA_TABLES = {"pipeline_execution_log", "data_audit_log"}
 
     def __init__(self):
-        self.constitution_ver = "v5.4.21"
+        self.constitution_ver = "v5.4.22"
         self.tool_ver = "v1.18"
         self.schema_ver = "v2.11"
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"

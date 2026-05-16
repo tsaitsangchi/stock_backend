@@ -159,6 +159,7 @@ class CoreUniverseBuilder:
         self.include_emerging = include_emerging
         self.snapshot_id = self._build_snapshot_id()
         self.source_data_cutoff = None
+        self.candidate_source_mode = "unresolved"
         self.stats = {
             "preflight_pass": 0,
             "preflight_warning": 0,
@@ -286,7 +287,14 @@ class CoreUniverseBuilder:
                   )
             """
         else:
-            candidate_sql = 'SELECT DISTINCT "stock_id" FROM "TaiwanStockInfo"'
+            if self.candidate_source_mode == "as_of_filtered":
+                candidate_sql = f'''
+                    SELECT DISTINCT "stock_id"
+                    FROM "TaiwanStockInfo"
+                    WHERE "date" <= DATE '{self.as_of_date.isoformat()}'
+                '''
+            else:
+                candidate_sql = 'SELECT DISTINCT "stock_id" FROM "TaiwanStockInfo"'
         cur.execute(
             f'''
             WITH candidates AS (
@@ -408,16 +416,38 @@ class CoreUniverseBuilder:
 
             if self.stats["preflight_failed"] == 0:
                 self._run_v02_input_contract_preflight(cur)
-                cur.execute('SELECT COUNT(*), MAX("date") FROM "TaiwanStockInfo"')
+                cur.execute('SELECT COUNT(DISTINCT "stock_id"), MAX("date") FROM "TaiwanStockInfo"')
                 total, max_date = cur.fetchone()
-                self.source_data_cutoff = max_date or self.as_of_date
-                if total > 0:
-                    self._preflight("pass", f"TaiwanStockInfo has {total} rows; source_data_cutoff={self.source_data_cutoff}")
-                    if max_date and max_date > self.as_of_date:
-                        self._contract(
-                            "warning",
-                            f"TaiwanStockInfo max(date)={max_date} is later than as_of_date={self.as_of_date}; v0.2 should filter candidates by source_data_cutoff",
-                        )
+                cur.execute(
+                    '''
+                    SELECT COUNT(DISTINCT "stock_id"), MAX("date")
+                    FROM "TaiwanStockInfo"
+                    WHERE "date" <= %s
+                    ''',
+                    (self.as_of_date,),
+                )
+                as_of_total, as_of_max_date = cur.fetchone()
+
+                minimum_bootstrap_size = self.core_limit + self.convex_limit
+                if as_of_total >= minimum_bootstrap_size:
+                    self.candidate_source_mode = "as_of_filtered"
+                    self.source_data_cutoff = as_of_max_date or self.as_of_date
+                    self._preflight(
+                        "pass",
+                        f"TaiwanStockInfo as-of candidates={as_of_total}; source_data_cutoff={self.source_data_cutoff}; mode=as_of_filtered",
+                    )
+                elif total > 0:
+                    self.candidate_source_mode = "latest_registry_fallback"
+                    self.source_data_cutoff = max_date or self.as_of_date
+                    self._preflight(
+                        "pass",
+                        f"TaiwanStockInfo has {total} distinct stocks; source_data_cutoff={self.source_data_cutoff}; mode=latest_registry_fallback",
+                    )
+                    self._contract(
+                        "warning",
+                        f"TaiwanStockInfo as-of candidates={as_of_total} below minimum bootstrap size={minimum_bootstrap_size}; "
+                        "v0.1 metadata bootstrap uses latest registry fallback, v0.2 formal scoring must use as-of filtering",
+                    )
                 else:
                     self._preflight("failed", "TaiwanStockInfo is empty; run sovereign_sync_engine.py --seed first")
         finally:
@@ -494,6 +524,7 @@ class CoreUniverseBuilder:
             "tool_version": TOOL_VER,
             "v02_input_contract": "preflight_and_coverage_summary_only",
             "source_table": "TaiwanStockInfo",
+            "candidate_source_mode": self.candidate_source_mode,
             "raw_column_inheritance": ["stock_id", "stock_name", "type", "industry_category"],
             "missing_fields": missing_fields,
             "theme_matches": theme_matches,
@@ -527,13 +558,26 @@ class CoreUniverseBuilder:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            cur.execute(
-                '''
-                SELECT "stock_id", "stock_name", "type", "industry_category", "date"
-                FROM "TaiwanStockInfo"
-                ORDER BY "stock_id"
-                '''
-            )
+            if self.candidate_source_mode == "as_of_filtered":
+                cur.execute(
+                    '''
+                    SELECT DISTINCT ON ("stock_id")
+                        "stock_id", "stock_name", "type", "industry_category", "date"
+                    FROM "TaiwanStockInfo"
+                    WHERE "date" <= %s
+                    ORDER BY "stock_id", "date" DESC
+                    ''',
+                    (self.as_of_date,),
+                )
+            else:
+                cur.execute(
+                    '''
+                    SELECT DISTINCT ON ("stock_id")
+                        "stock_id", "stock_name", "type", "industry_category", "date"
+                    FROM "TaiwanStockInfo"
+                    ORDER BY "stock_id", "date" DESC
+                    '''
+                )
             rows = cur.fetchall()
         finally:
             cur.close()
@@ -767,6 +811,7 @@ class CoreUniverseBuilder:
             "convex_count": self.stats["convex_count"],
             "quarantine_count": self.stats["quarantine_count"],
             "source_data_cutoff": str(self.source_data_cutoff),
+            "candidate_source_mode": self.candidate_source_mode,
             "commit_mode": self.commit,
             "boundary": "metadata bootstrap scoring only; v0.2 input contract preflight and coverage summary enabled; no feature/model/prediction values",
             "v02_contract": {
@@ -826,7 +871,7 @@ class CoreUniverseBuilder:
         lifecycle_cm = None
         lifecycle = None
         if self.commit:
-            lifecycle_cm = record_lifecycle("core_universe_builder_v0.1", category="governance", stock_id="SYSTEM")
+            lifecycle_cm = record_lifecycle("core_universe_builder_v0.2_preflight", category="governance", stock_id="SYSTEM")
             lifecycle = lifecycle_cm.__enter__()
 
         try:
@@ -901,6 +946,7 @@ class CoreUniverseBuilder:
                     )
         print(f"📅 as_of_date       : {self.as_of_date}")
         print(f"📅 source_cutoff    : {self.source_data_cutoff}")
+        print(f"📚 candidate_source : {self.candidate_source_mode}")
         print(f"📈 total_candidates : {self.stats['total_candidates']}")
         print(f"🧪 research_universe: {self.stats['research_count']}")
         print(f"🎯 core_universe    : {self.stats['core_count']}")

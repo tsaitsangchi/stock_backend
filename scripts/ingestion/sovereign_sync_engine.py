@@ -92,7 +92,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-# v1.9 phase-aware constants
+# v1.10 phase-aware constants inherited from v1.9
 SELECTION_PHASE_DAYS = 730
 UNIVERSE_TIERS = {
     "research": ("research_universe",),
@@ -281,7 +281,7 @@ class SovereignSyncEngine:
             res.raise_for_status()
             return None, recovered_402  # unreachable but for linter
 
-    # ---------- schema / DB helpers (沿用 v1.9，未變動) ----------
+    # ---------- schema / DB helpers (v1.10; schema contract inherited from v1.9) ----------
 
     def _convert_type(self, series, sql_type):
         if sql_type.startswith("DATE"):

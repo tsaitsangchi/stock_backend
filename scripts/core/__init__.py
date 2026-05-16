@@ -9,7 +9,7 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 1. [Hub Sovereignty]: 本模組為 `scripts/core` package 之唯一接口中樞，所有
    外部調用必須經由此 25 維全譜路徑接口與 db_utils 公共 API 集中導出。
 2. [Boundary Integrity]: 路徑接口維度鎖定為 **25 維**，嚴禁回到 v5.2/v5.3
-   時代之 27 維誤宣告（對齊 `path_setup.py v4.43` 之 `ALL_PATHS`）。
+   時代之 27 維誤宣告（對齊 `path_setup.py v4.44` 之 `ALL_PATHS`）。
 3. [Canonical Execution Order]: 維運矩陣必須鏡像憲章 v5.4.22 第二章九步序列：
    `.env` → `path_setup` → `data_schema --init --force` → `core_universe_schema --init`
    → `db_utils` → `audit_supply_chain --include-logs` → `sovereign_sync_engine --seed`
@@ -28,20 +28,20 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 | Step | 維運需求場景 (Scenario) | 權威指令 (Authoritative Command) | 對齊模組 |
 | :--- | :--- | :--- | :--- |
 | **0**   | [啟動錨點：`.env` 設定確認]                | `PROJECT_ROOT=/home/hugo/project/stock_backend`                                                          | `.env Bootstrap Anchor` |
-| **1**   | [環境前置：路徑與目錄自癒]                 | `$ python scripts/core/path_setup.py`                                                                    | `path_setup v4.43` |
+| **1**   | [環境前置：路徑與目錄自癒]                 | `$ python scripts/core/path_setup.py`                                                                    | `path_setup v4.44` |
 | **2**   | [標準序列：Raw API Schema 主權重鑄]        | `$ python scripts/core/data_schema.py --init --force`                                                    | `data_schema v2.11` |
 | **2A**  | [離線復原：略過 API 契約探測]              | `$ python scripts/core/data_schema.py --init --force --skip-api-contract`                                | `data_schema v2.11` |
 | **2B**  | [標準序列：核心股治理 Schema 初始化]       | `$ python scripts/core/core_universe_schema.py --init`                                                   | `core_universe_schema v0.2` |
 | **2C**  | [前置依賴檢查：DB / lifecycle / §6.7 SQL]  | `$ python scripts/core/db_utils.py`                                                                      | `db_utils v2.45` |
 | **3**   | [標準序列：Schema 後供應鏈驗收]            | `$ python scripts/maintenance/audit_supply_chain.py --include-logs`                                      | `audit_supply_chain v1.18` |
 | **3A**  | [離線供應鏈驗收：僅 DB 實況]               | `$ python scripts/maintenance/audit_supply_chain.py --db-only --include-logs`                            | `audit_supply_chain v1.18` |
-| **4**   | [標準序列：市場個股資料種子灌溉]           | `$ python scripts/ingestion/sovereign_sync_engine.py --seed`                                             | `sovereign_sync_engine v1.9` |
-| **4B**  | [標準序列：核心股 Universe metadata bootstrap] | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-MM-DD>` / `--commit`    | `core_universe_builder v0.1` |
+| **4**   | [標準序列：市場個股資料種子灌溉]           | `$ python scripts/ingestion/sovereign_sync_engine.py --seed`                                             | `sovereign_sync_engine v1.10` |
+| **4B**  | [標準序列：核心股 Universe metadata bootstrap + v0.2 input preflight] | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-MM-DD>` / `--commit`    | `core_universe_builder v0.2-preflight` |
 | **4C**  | [標準序列：核心股結果驗收稽核]             | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <YYYY-MM-DD>`                          | `audit_core_universe v0.1` |
-| **5**   | [同步操作：單一標的指定資料集]             | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`               | `sovereign_sync_engine v1.9` |
-| **6**   | [同步操作：單一標的核心數據集全同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                          | `sovereign_sync_engine v1.9` |
-| **7**   | [同步操作：核心股 Universe 全量同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core` （§6.7 SQL 契約）                  | `sovereign_sync_engine v1.9` |
-| **8**   | [同步操作：FRED 宏觀指標全譜同步]          | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                                      | `sovereign_sync_engine v1.9` |
+| **5**   | [同步操作：單一標的指定資料集]             | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`               | `sovereign_sync_engine v1.10` |
+| **6**   | [同步操作：單一標的核心數據集全同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                          | `sovereign_sync_engine v1.10` |
+| **7**   | [同步操作：核心股 Universe 全量同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core` （§6.7 SQL 契約）                  | `sovereign_sync_engine v1.10` |
+| **8**   | [同步操作：FRED 宏觀指標全譜同步]          | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                                      | `sovereign_sync_engine v1.10` |
 | **HUB** | [中樞主權完整性稽核]                       | `$ python scripts/core/__init__.py`                                                                      | `core/__init__ v1.14` |
 
 💡 **範例完整性說明**：矩陣完整對齊憲章 v5.4.22 第二章九步序列；Step 7 必須透過
@@ -58,9 +58,9 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
 | **v1.14** | 2026-05-15 | Codex | **憲法 v5.4.22 演進定稿對齊**：(1) 路徑接口維度由 27 維修正為 **25 維**，
-            對齊 `path_setup v4.43` 之 `ALL_PATHS`；(2) 全量維運矩陣重寫為憲章 v5.4.22 九步
+            對齊 `path_setup v4.44` 之 `ALL_PATHS`；(2) 全量維運矩陣重寫為憲章 v5.4.22 九步
             正典序列，新增 Step 2B/2C/3/4B/4C/5/6/7/8；(3) `template_fetcher.py` 全部替換為
-            `sovereign_sync_engine.py v1.9`；(4) 中樞稽核改為「import / path / db / §6.7」
+            `sovereign_sync_engine.py v1.10`；(4) 中樞稽核改為「import / path / db / §6.7」
             四層動態判定，**移除硬編碼 PERFECT**；(5) 修補既有 latent bug：舊版 import
             `PROJECT_ROOT` 但 `path_setup.py` 僅匯出 `PROJECT_ROOT_CALC`，改為正確匯入並
             重新導出別名；(6) 補上 `get_evaluation_dir()` 相容別名匯入（不計入 25 維）；

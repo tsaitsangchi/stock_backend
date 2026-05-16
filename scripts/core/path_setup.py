@@ -23,7 +23,7 @@ path_setup.py v4.44 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v4.44** | 2026-05-15 | Codex | **憲法 v5.4.22 同日補充標籤對齊**（標籤升版，無功能變更）：標頭由「憲法 v5.4.21 啟動治理對齊」升至「憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容」；新增 [Hub Compatibility] 核心定義第 6 條，明定本檔對 `core/__init__.py v1.14` hub 之 import 邊界承諾（`PROJECT_ROOT_CALC` / 25 維 `get_*_dir()` / `get_evaluation_dir()` / `ALL_PATHS` / `ensure_all_dirs()`）。**API、ALL_PATHS、自癒邏輯、`_evaluate_anchor()`、BOOTSTRAP-DEFERRED 行為皆無變更**；與 v4.43 二進位等價，僅版本字串與標頭文字升至 v5.4.22 對齊。 | **ACTIVE** |
+| **v4.44** | 2026-05-15 | Codex | **憲法 v5.4.22 同日補充標籤對齊 + 2026-05-16 bootstrap 診斷補正**：標頭由「憲法 v5.4.21 啟動治理對齊」升至「憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容」；新增 [Hub Compatibility] 核心定義第 6 條，明定本檔對 `core/__init__.py v1.14` hub 之 import 邊界承諾（`PROJECT_ROOT_CALC` / 25 維 `get_*_dir()` / `get_evaluation_dir()` / `ALL_PATHS` / `ensure_all_dirs()`）。2026-05-16 補正 DB logging hook 不可用時的 `BOOTSTRAP-DEFERRED (DB hook unavailable: ...)` 診斷文字；**API、ALL_PATHS、自癒邏輯與 `_evaluate_anchor()` 皆無變更**。 | **ACTIVE** |
 | v4.43 | 2026-05-14 | Codex | **憲法 v5.4.21 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | SUPERSEDED |
 | v4.42 | 2026-05-13 | Antigravity | **憲法 v5.4 對齊**：校正治理維度為 25 維；修正標頭為對齊 v5.4；新增 .env 錨點對齊校驗邏輯。 | SUPERSEDED |
 | v4.41 | 2026-05-12 | Antigravity | 主權完備化：補全全場景路徑維運矩陣。 | SUPERSEDED |
@@ -45,7 +45,7 @@ PROJECT_ROOT_CALC = _SCRIPTS_DIR.parent
 load_dotenv(PROJECT_ROOT_CALC / ".env")
 PROJECT_ROOT_ENV = os.getenv("PROJECT_ROOT")
 
-# 25 維路徑接口註冊中心 (v4.44 完備版 - 與 v4.43 二進位等價)
+# 25 維路徑接口註冊中心 (v4.44 完備版)
 def get_root_dir(): return PROJECT_ROOT_CALC
 def get_core_dir(): return PROJECT_ROOT_CALC / "scripts" / "core"
 def get_utils_dir(): return PROJECT_ROOT_CALC / "scripts" / "utils"
@@ -119,7 +119,8 @@ def _load_logging_hooks():
             return record_lifecycle, write_data_audit_log, "REAL (DB-Linked)"
         return mock_lifecycle, mock_audit_log, "BOOTSTRAP-DEFERRED (DB schema pending)"
     except Exception as e:
-        return mock_lifecycle, mock_audit_log, f"BOOTSTRAP-DEFERRED ({type(e).__name__})"
+        reason = str(e).strip() or type(e).__name__
+        return mock_lifecycle, mock_audit_log, f"BOOTSTRAP-DEFERRED (DB hook unavailable: {reason})"
 
 
 def _mark_lifecycle(lifecycle, level, message):
@@ -145,7 +146,7 @@ def _evaluate_anchor():
 
 
 def ensure_all_dirs():
-    """執行物理路徑對齊與自癒 (v4.44 / v5.4.22 啟動治理版 - 與 v4.43 二進位等價)"""
+    """執行物理路徑對齊與自癒 (v4.44 / v5.4.22 啟動治理版)"""
     start_time = time.time()
     record_lifecycle, write_data_audit_log, log_mode = _load_logging_hooks()
     warnings = []
@@ -166,7 +167,7 @@ def ensure_all_dirs():
                 "PATH_SOVEREIGNTY",
                 "SYSTEM",
                 datetime.now().strftime("%Y-%m-%d"),
-                "SELF_HEAL_v4.43",
+                "SELF_HEAL_v4.44",
                 len(ALL_PATHS),
             )
         except Exception as e:
@@ -184,17 +185,17 @@ def ensure_all_dirs():
         else:
             sovereignty_status = "PERFECT (已對齊/自癒)"
 
-        # ── 執行後路徑稽核摘要 (Flagship Report v4.43) ──
+        # ── 執行後路徑稽核摘要 (Flagship Report v4.44) ──
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 路徑主權治理中心 (v4.43)")
+        print("🚀 Quantum Finance: 路徑主權治理中心 (v4.44)")
         print("🛡️" * 40)
 
         print("\n" + "─" * 80)
-        print("📊 物理路徑稽核摘要報告 (Path Sovereignty Report v4.43)")
+        print("📊 物理路徑稽核摘要報告 (Path Sovereignty Report v4.44)")
         print("─" * 80)
         print(f"✅ 物理基準 (ROOT) : {PROJECT_ROOT_CALC}")
         print(f"⚓ 錨點對齊 (.env) : {anchor_display}")
-        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v5.4.21)")
+        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v5.4.22)")
         print(f"🕒 處理時長        : {(time.time() - start_time)*1000:.2f} ms")
         print(f"📝 混合日誌模式    : {log_mode}")
         if warnings:

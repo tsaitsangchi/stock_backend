@@ -1,8 +1,8 @@
 """
 core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authority)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: PLANNED -> IMPLEMENTED (憲法 v5.4.21 核心股治理分層對齊)
+**最後更新日期**: 2026-05-16
+**主權狀態**: IMPLEMENTED (憲法 v5.4.22 核心股治理分層對齊 + bootstrap preflight clarity)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -24,7 +24,7 @@ core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authorit
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-14 | Codex | **欄位繼承對齊版**：依憲章 Derived Schema 欄位繼承原則，將 `market` 修正為 raw API 欄位 `type`；新增 `RAW_COLUMN_INHERITANCE` 與 preflight 型別相容檢查，確保 derived table 引用 raw 欄位時名稱大小寫與 SQL 型別繼承 `DATASET_REGISTRY`。 | **ACTIVE** |
+| **v0.2** | 2026-05-14 | Codex | **欄位繼承對齊版 + 2026-05-16 bootstrap preflight clarity**：依憲章 Derived Schema 欄位繼承原則，將 `market` 修正為 raw API 欄位 `type`；新增 `RAW_COLUMN_INHERITANCE` 與 preflight 型別相容檢查，確保 derived table 引用 raw 欄位時名稱大小寫與 SQL 型別繼承 `DATASET_REGISTRY`。若 raw / infra prerequisite tables 尚未建立，preflight 必須回報明確 WARNING 並跳過繼承驗證，不得輸出誤導性的 PASS。 | **ACTIVE** |
 | v0.1 | 2026-05-14 | Codex | **核心股治理資料層初始版**：依憲章 v5.4.19 建立 Derived Governance Schema；新增 policy、snapshot、membership、scores、theme taxonomy、stock-theme map、revision log；只保存治理銜接欄位，不保存實際 feature/label/prediction values。 | SUPERSEDED |
 ================================================================================
 """
@@ -299,7 +299,7 @@ DROP_ORDER = [
 
 class CoreUniverseSchemaManager:
     def __init__(self):
-        self.constitution_ver = "v5.4.21"
+        self.constitution_ver = "v5.4.22"
         self.tool_ver = "v0.2"
         self.stats = {"success": 0, "failed": 0, "warning": 0, "details": []}
         self.preflight = {"pass": 0, "failed": 0, "warning": 0, "details": []}
@@ -386,14 +386,22 @@ class CoreUniverseSchemaManager:
         conn = get_db_connection()
         cur = conn.cursor()
         try:
+            prerequisites_ok = True
             for table_name in PREREQUISITE_TABLES:
                 if self._table_exists(cur, table_name):
                     self._preflight_detail("pass", f"{table_name} exists")
                 else:
+                    prerequisites_ok = False
                     self._preflight_detail("failed", f"{table_name} missing; run data_schema.py --init first")
         finally:
             cur.close()
             conn.close()
+        if not prerequisites_ok:
+            self._preflight_detail(
+                "warning",
+                "RAW_COLUMN_INHERITANCE validation skipped because prerequisite raw/infra tables are missing",
+            )
+            return False
         self.validate_column_inheritance()
         return self.preflight["failed"] == 0
 

@@ -1,8 +1,8 @@
 """
 db_utils.py v2.45 (Quantum Finance Infrastructure Sovereign Edition)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: GOVERNANCE SYNC (§6.7 SQL + Public API Restoration)
+**最後更新日期**: 2026-05-16
+**主權狀態**: GOVERNANCE SYNC (§6.7 SQL + Public API Restoration + Connection Diagnostics)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -19,22 +19,22 @@ db_utils.py v2.45 (Quantum Finance Infrastructure Sovereign Edition)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
 | **1. [基礎設施：連線診斷]** | `$ python scripts/core/db_utils.py`                                   | db_utils v2.45 |
-| **2. [個股同步：單一標的全數據]** | `$ python scripts/ingestion/template_fetcher.py --id 2330 --all_datasets` | template_fetcher |
+| **2. [個股同步：單一標的全數據]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all` | sovereign_sync_engine v1.10 |
 | **3. [單一 Table 同步：初始化]** | `$ python scripts/core/data_schema.py --init --table TaiwanStockPrice`| data_schema |
-| **4. [單一個股所有 Table 同步]** | `$ python scripts/ingestion/template_fetcher.py --id 2330 --all_datasets` | template_fetcher |
-| **5. [所有核心股同步]**   | `$ python scripts/ingestion/template_fetcher.py --universe core --all_datasets` | template_fetcher |
-| **6. [所有核心股 + 所有表：強制更新]** | `$ python scripts/ingestion/template_fetcher.py --universe core --all_datasets --force` | template_fetcher |
+| **4. [單一個股所有 Table 同步]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all` | sovereign_sync_engine v1.10 |
+| **5. [所有核心股同步]**   | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all` | sovereign_sync_engine v1.10 |
+| **6. [研究宇宙分階段灌溉]** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all` | sovereign_sync_engine v1.10 |
 | **7. [緊急維運：重置連線池]** | `$ python scripts/core/db_utils.py --reset-pool`                      | db_utils v2.45 |
 | **8. [數據稽核：生命週期完整性]** | `$ python scripts/maintenance/check_system_health.py`                  | maintenance |
 
 💡 **範例完整性說明**: 透過以上 8 種場景組合，維運人員可實現從單一物理連線探測到全宇宙數據毀滅性重刷的所有執行可能性。
 
-> 註 (v2.45)：本版完成 §6.7 核心股查詢 SQL 契約，並恢復 fetchers / pipeline / monitor / evaluation 既有 public API。
+> 註 (v2.45)：本版完成 §6.7 核心股查詢 SQL 契約，恢復 fetchers / pipeline / monitor / evaluation 既有 public API，並於 2026-05-16 補強 DB env 檢查、連線 timeout 與錯誤訊息。
 
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.45** | 2026-05-14 | Codex (No-touch Zone 授權) | **§6.7 SQL + Public API Restoration**：(1) `get_core_stocks_from_db()` 改查 `core_universe_membership` JOIN `core_universe_snapshot WHERE status='committed'`，封閉 Pending Bug #4；(2) 補回 `get_db_conn`、`ensure_ddl`、`bulk_upsert`、`safe_commit_rows`、`FailureLogger`、`DDL_FETCH_LOG`、`log_fetch_result`、`db_transaction`、`db_session`、`write_pipeline_log`、`write_evaluation_log`、`get_db_stock_ids` 等跨模組 public API；(3) `psycopg2` / `dotenv` 改為延遲失敗，允許常數與 API 匯入測試先行。 | **ACTIVE** |
+| **v2.45** | 2026-05-14 | Codex (No-touch Zone 授權) | **§6.7 SQL + Public API Restoration + 2026-05-16 Connection Diagnostics + 2026-05-16 exit code 補正**：(1) `get_core_stocks_from_db()` 改查 `core_universe_membership` JOIN `core_universe_snapshot WHERE status='committed'`，封閉 Pending Bug #4；(2) 補回 `get_db_conn`、`ensure_ddl`、`bulk_upsert`、`safe_commit_rows`、`FailureLogger`、`DDL_FETCH_LOG`、`log_fetch_result`、`db_transaction`、`db_session`、`write_pipeline_log`、`write_evaluation_log`、`get_db_stock_ids` 等跨模組 public API；(3) `psycopg2` / `dotenv` 改為延遲失敗，允許常數與 API 匯入測試先行；(4) `get_db_connection()` 補強必要 DB env 檢查、`connect_timeout=10` 與 host/user/dbname 錯誤脈絡，避免 sandbox 或秘密缺失被誤判為 schema drift；(5) **2026-05-16 exit code 補正**：`run_diagnostics()` 補上 `return diag_status`；`__main__` 改依回傳值呼叫 `sys.exit(0 if status in ("PERFECT", "WARNING") else 1)`，對齊憲章 §3.2 Step 2C 接受標準（FAILED 必須 exit 1 阻斷進入 Step 3）。 | **ACTIVE** |
 | v2.44 | 2026-05-14 | Antigravity (Auto-patch, No-touch Zone 授權) | **Bug #2 + Bug #3 雙修補**：(1) `record_lifecycle` 改為 yield 一個可由 caller 標記失敗/警告的 `_LifecycleContext`，封堵「Python 無例外即記 success」之 status 謊報；(2) INSERT 由 5 欄擴張為 8 欄，補寫 start_time / end_time / error_msg，封堵 NULL 漏洞；(3) DB 連線改為僅在 finally 開啟，不再霸佔整個 task 期間；(4) logger 失敗時不再 propagate 例外給 caller。100% backward compatible —— 舊 `with record_lifecycle(...):` 呼叫端零修改。 | SUPERSEDED |
 | v2.43 | 2026-05-12 | Antigravity | **防禦性修復**：補全缺失的 `argparse` 導入，恢復指令列工具之治權效力。 | SUPERSEDED |
 | v2.42 | 2026-05-12 | Antigravity | **主權完備化**：對齊五大核心場景語意，擴張全可能性維運矩陣，落實混合觀測。 | SUPERSEDED |
@@ -243,11 +243,29 @@ def write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affe
 def get_db_connection():
     """建立資料庫連線 (v2.45)"""
     _require_psycopg2()
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
-        dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
+    required_env = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+    missing_env = [name for name in required_env if not os.getenv(name)]
+    if missing_env:
+        raise RuntimeError(
+            "Missing DB environment variables: "
+            + ", ".join(missing_env)
+            + "; load the project .env or run through the constitution-authorized entrypoints."
+        )
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT")
+    dbname = os.getenv("DB_NAME")
+    user = os.getenv("DB_USER")
+    try:
+        return psycopg2.connect(
+            host=host, port=port,
+            dbname=dbname, user=user,
+            password=os.getenv("DB_PASSWORD"), connect_timeout=10
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"DB connection failed for host={host} port={port} dbname={dbname} user={user}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def get_db_conn():
@@ -1012,7 +1030,7 @@ def run_diagnostics():
         print(f"🕒 連線延遲     : {latency:.2f} ms")
         print(f"📈 核心資產數   : {len(stocks)} 支 (§6.7 core_universe_membership)")
         print(f"📝 混合日誌狀態 : ACTIVE (pipeline_execution_log [8 欄完整] & data_audit_log)")
-        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v5.4.21 / db_utils v2.45)")
+        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v5.4.22 / db_utils v2.45)")
         for note in diag_notes:
             print(f"   - {note}")
         print("─" * 80)
@@ -1022,6 +1040,8 @@ def run_diagnostics():
         print("2. [範例提示]: 請參閱 Header 矩陣執行「所有核心股」的全量數據同步。")
         print("3. [歷史提示]: 所有連線變動必須記錄在全修訂歷程中以供溯源。")
         print("─" * 80 + "\n")
+
+    return diag_status
 
 
 if __name__ == "__main__":
@@ -1034,4 +1054,6 @@ if __name__ == "__main__":
         time.sleep(1)
         print("✅ 連線池已重置。")
     else:
-        run_diagnostics()
+        # §3.2 Step 2C 接受標準：PERFECT/WARNING exit 0；FAILED exit 1（不得進入 Step 3）
+        status = run_diagnostics()
+        sys.exit(0 if status in ("PERFECT", "WARNING") else 1)

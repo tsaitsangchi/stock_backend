@@ -2,7 +2,7 @@
 data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: API CONTRACT FIRST (憲法 v5.4.21 對齊)
+**主權狀態**: API CONTRACT FIRST (憲法 v5.4.22 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -47,7 +47,7 @@ except ImportError:
     print("❌ 核心組件導入失敗，請確認 db_utils.py")
     sys.exit(1)
 
-# 🏛️ 26 維全譜數據契約註冊表 (1:1 API 鏡像，嚴格遵循大小寫)
+# 🏛️ 13 張全譜數據契約註冊表 (2 infra + 10 FinMind raw + 1 FRED；1:1 API 鏡像，嚴格遵循大小寫)
 DATASET_REGISTRY = {
     # --- Infrastructure (治權基礎設施 - 優先建立) ---
     "pipeline_execution_log": {
@@ -162,7 +162,7 @@ DATASET_REGISTRY = {
         "unique_constraints": ["date", "stock_id", "year"]
     },
 
-    # --- Macro (12 維 FRED 宏觀主權) ---
+    # --- Macro (FRED 宏觀主權；單表多 series_id，預設核心序列 DFF/UNRATE/T10Y2Y/VIXCLS) ---
     "FredData": {
         "columns": {
             "date": "DATE", "series_id": "VARCHAR(255)", 
@@ -201,7 +201,7 @@ class SovereignSchemaManager:
     def __init__(self):
         self.stats = {"success": 0, "failed": 0, "details": []}
         self.contract_stats = {"pass": 0, "warn": 0, "failed": 0, "details": []}
-        self.constitution_ver = "v5.4.21"
+        self.constitution_ver = "v5.4.22"
 
     def _record_contract(self, status, item, detail):
         self.contract_stats[status] += 1
@@ -304,7 +304,7 @@ class SovereignSchemaManager:
         return self.contract_stats["failed"] == 0
 
     def init_tables(self, target_table=None, force=False, skip_api_contract=False):
-        """執行憲法 v5.4.21 API-first 標準之物理初始化"""
+        """執行憲法 v5.4.22 API-first 標準之物理初始化"""
         start_time = time.time()
         if not skip_api_contract and not self.probe_api_contracts(target_table=target_table):
             self.stats["failed"] += 1
@@ -366,7 +366,7 @@ class SovereignSchemaManager:
         print("\n" + "🛡️" * 40)
         print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.11)")
         print("🛡️" * 40)
-        print(f"治權基準 : 系統架構大憲章_v5.4.21.md")
+        print(f"治權基準 : 系統架構大憲章_{self.constitution_ver}.md")
         print(f"核心技術 : API Contract First + Absolute Case Sovereignty")
         print("─" * 80)
         for d in self.contract_stats["details"]:
