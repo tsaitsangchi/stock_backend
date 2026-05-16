@@ -1,23 +1,29 @@
 """
-core_universe_builder.py v0.2-preflight (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.2 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
-最後更新日期: 2026-05-15
-主權狀態: IMPLEMENTED (憲法 v5.4.22 CoreScore v0.2 input contract readiness)
+最後更新日期: 2026-05-16
+主權狀態: IMPLEMENTED (憲法 v5.4.22 CoreScore v0.2 六層正式評分)
 最高原則: Core Universe Selection Authority
 
-v0.2-preflight 邊界:
+v0.2 六層 CoreScore 評分公式:
+  CoreScore = 0.25*DQ + 0.25*LM + 0.20*FG + 0.15*TR + 0.10*IF + 0.05*VC - RP
+  DataQuality(25%) + LiquidityMass(25%) + FundamentalGravity(20%)
+  + ThemeResonance(15%) + InstitutionalFlow(10%) + VolatilityControl(5%) - RiskPenalty
+
+v0.2 邊界:
 1. 只讀取 raw API tables 與核心股治理 tables，不開立 raw schema。
-2. 從 TaiwanStockInfo 建立 metadata/bootstrap universe snapshot。
-3. 新增 CoreScore v0.2 八類輸入資料契約 preflight 與覆蓋率摘要。
+2. 從 TaiwanStockInfo + 六張個股資料表批量讀取 scoring 資料。
+3. CoreScore v0.2 八類輸入資料契約 preflight 與覆蓋率摘要。
 4. 寫入 policy、snapshot、membership、scores、revision log。
 5. 只保存治理銜接欄位，不保存 feature values、labels、model outputs、prediction signals。
 6. 不硬編股票名單；所有候選皆由 DB 讀取。
 ================================================================================
 """
 import argparse
+import math
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -38,8 +44,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v5.4.22"
-TOOL_VER = "v0.2-preflight"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.1"
+TOOL_VER = "v0.2"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
@@ -147,6 +153,13 @@ class Candidate:
     selection_reason: str
     exclusion_reason: str | None
     score_detail: dict
+    liquidity_score: float = field(default=0.0)
+    fundamental_score: float = field(default=0.0)
+    institutional_flow_score: float = field(default=0.0)
+    volatility_control_score: float = field(default=0.0)
+    price_coverage_252d: float = field(default=0.0)
+    revenue_coverage_24m: float = field(default=0.0)
+    financial_coverage_8q: float = field(default=0.0)
 
 
 class CoreUniverseBuilder:
@@ -455,40 +468,223 @@ class CoreUniverseBuilder:
             conn.close()
         return self.stats["preflight_failed"] == 0 and self.stats["v02_contract_failed"] == 0
 
-    def _data_quality_score(self, row):
-        score = 100.0
-        missing = []
-        if not row[0]:
-            score -= 40
-            missing.append("stock_id")
-        if not row[1]:
-            score -= 20
-            missing.append("stock_name")
-        if not row[2]:
-            score -= 20
-            missing.append("type")
-        if not row[3]:
-            score -= 20
-            missing.append("industry_category")
-        return max(score, 0.0), missing
+    # ── v0.2 批量資料載入 ──────────────────────────────────────────────────────
 
-    def _theme_score(self, industry_category):
+    def _load_market_data(self):
+        """Batch-load scoring data from six individual stock tables for v0.2 six-layer CoreScore."""
+        lookback_252 = self.as_of_date - timedelta(days=365)
+        lookback_730 = self.as_of_date - timedelta(days=730)
+        conn = get_db_connection()
+        cur = conn.cursor()
+        price_data, revenue_data, financial_data, institutional_data = {}, {}, {}, {}
+        try:
+            # TaiwanStockPriceAdj: trading value, volume, continuity, volatility
+            cur.execute("""
+                SELECT stock_id,
+                    COUNT(*) as day_count,
+                    AVG("Trading_Volume"::numeric) as avg_volume,
+                    AVG("Trading_money"::numeric) as avg_daily_value,
+                    STDDEV("close"::numeric) / NULLIF(AVG("close"::numeric), 0) as cv_close
+                FROM "TaiwanStockPriceAdj"
+                WHERE date >= %s AND date <= %s
+                GROUP BY stock_id
+            """, (lookback_252, self.as_of_date))
+            for sid, day_count, avg_vol, avg_val, cv in cur.fetchall():
+                price_data[sid] = {
+                    "day_count": day_count or 0,
+                    "avg_volume": float(avg_vol or 0),
+                    "avg_daily_value": float(avg_val or 0),
+                    "cv_close": float(cv or 0.3),
+                    "price_coverage_252d": min(1.0, (day_count or 0) / 252),
+                }
+
+            # TaiwanStockMonthRevenue: coverage + YoY growth
+            mid_point = self.as_of_date - timedelta(days=365)
+            cur.execute("""
+                SELECT stock_id,
+                    COUNT(*) as month_count,
+                    SUM(CASE WHEN date >= %s THEN revenue::numeric ELSE 0 END) as recent_12m,
+                    SUM(CASE WHEN date < %s AND date >= %s THEN revenue::numeric ELSE 0 END) as prior_12m
+                FROM "TaiwanStockMonthRevenue"
+                WHERE date >= %s AND date <= %s
+                GROUP BY stock_id
+            """, (mid_point, mid_point, lookback_730, lookback_730, self.as_of_date))
+            for sid, month_count, recent_12m, prior_12m in cur.fetchall():
+                recent = float(recent_12m or 0)
+                prior = float(prior_12m or 0)
+                yoy_growth = (recent - prior) / prior if prior > 0 else 0.0
+                revenue_data[sid] = {
+                    "month_count": month_count or 0,
+                    "revenue_coverage_24m": min(1.0, (month_count or 0) / 24),
+                    "yoy_growth": yoy_growth,
+                    "recent_revenue": recent,
+                }
+
+            # TaiwanStockFinancialStatements: coverage + profitability
+            cur.execute("""
+                SELECT stock_id,
+                    COUNT(DISTINCT date) as quarter_count,
+                    SUM(CASE WHEN type='EPS' THEN value::numeric ELSE 0 END) as eps_sum,
+                    SUM(CASE WHEN origin_name LIKE '%%稅後%%' OR origin_name LIKE '%%淨利%%'
+                             THEN value::numeric ELSE 0 END) as net_income_sum
+                FROM "TaiwanStockFinancialStatements"
+                WHERE date >= %s AND date <= %s
+                GROUP BY stock_id
+            """, (lookback_730, self.as_of_date))
+            for sid, quarter_count, eps_sum, net_income_sum in cur.fetchall():
+                financial_data[sid] = {
+                    "quarter_count": quarter_count or 0,
+                    "financial_coverage_8q": min(1.0, (quarter_count or 0) / 8),
+                    "eps_sum": float(eps_sum or 0),
+                    "net_income_positive": float(net_income_sum or 0) > 0,
+                }
+
+            # TaiwanStockInstitutionalInvestorsBuySell: net buy/sell by institution type
+            # Names: Foreign_Investor, Investment_Trust, Dealer_self, Dealer_Hedging, Foreign_Dealer_Self
+            cur.execute("""
+                SELECT stock_id,
+                    SUM(CASE WHEN name IN ('Foreign_Investor','Foreign_Dealer_Self')
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as foreign_net,
+                    SUM(CASE WHEN name='Investment_Trust'
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as trust_net,
+                    SUM(CASE WHEN name IN ('Dealer_self','Dealer_Hedging')
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as prop_net
+                FROM "TaiwanStockInstitutionalInvestorsBuySell"
+                WHERE date >= %s AND date <= %s
+                GROUP BY stock_id
+            """, (lookback_252, self.as_of_date))
+            for sid, foreign_net, trust_net, prop_net in cur.fetchall():
+                institutional_data[sid] = {
+                    "foreign_net": float(foreign_net or 0),
+                    "trust_net": float(trust_net or 0),
+                    "prop_net": float(prop_net or 0),
+                    "total_net": float(foreign_net or 0) + float(trust_net or 0) + float(prop_net or 0),
+                }
+        finally:
+            cur.close()
+            conn.close()
+        self._detail(
+            f"📊 [MARKET-DATA] price={len(price_data)} revenue={len(revenue_data)} "
+            f"financial={len(financial_data)} institutional={len(institutional_data)}"
+        )
+        return price_data, revenue_data, financial_data, institutional_data
+
+    # ── v0.2 六層評分方法 ──────────────────────────────────────────────────────
+
+    def _data_quality_score_v2(self, stock_id, price_data, revenue_data, financial_data):
+        """DataQuality (25%): 資料完整度 = price_cov*40 + revenue_cov*30 + financial_cov*30"""
+        price_cov = price_data.get(stock_id, {}).get("price_coverage_252d", 0.0)
+        revenue_cov = revenue_data.get(stock_id, {}).get("revenue_coverage_24m", 0.0)
+        financial_cov = financial_data.get(stock_id, {}).get("financial_coverage_8q", 0.0)
+        score = price_cov * 40.0 + revenue_cov * 30.0 + financial_cov * 30.0
+        return round(min(100.0, max(0.0, score)), 2)
+
+    def _liquidity_mass_score(self, stock_id, price_data):
+        """LiquidityMass (25%): log-scale avg daily trading value + continuity"""
+        p = price_data.get(stock_id, {})
+        if not p or p.get("day_count", 0) < 10:
+            return 0.0
+        avg_val = p.get("avg_daily_value", 0)
+        continuity = p.get("price_coverage_252d", 0)
+        if avg_val <= 0:
+            value_score = 0.0
+        else:
+            # log10(1M TWD)=6→0pts, log10(10B TWD)=10→100pts, linear in between
+            log_val = math.log10(max(avg_val, 1))
+            value_score = min(100.0, max(0.0, (log_val - 6.0) * 25.0))
+        total = value_score * 0.85 + continuity * 15.0
+        return round(min(100.0, max(0.0, total)), 2)
+
+    def _fundamental_gravity_score(self, stock_id, revenue_data, financial_data):
+        """FundamentalGravity (20%): revenue growth YoY + profitability"""
+        r = revenue_data.get(stock_id, {})
+        f = financial_data.get(stock_id, {})
+        if not r and not f:
+            return 50.0
+        score = 50.0
+        yoy = r.get("yoy_growth", 0.0)
+        if yoy > 0.30:
+            score += 25.0
+        elif yoy > 0.10:
+            score += 15.0
+        elif yoy > 0.0:
+            score += 8.0
+        elif yoy < -0.20:
+            score -= 20.0
+        elif yoy < -0.05:
+            score -= 10.0
+        if f.get("net_income_positive", False):
+            score += 15.0
+        elif f.get("eps_sum", 0) > 0:
+            score += 10.0
+        else:
+            score -= 15.0
+        coverage = (r.get("revenue_coverage_24m", 0.0) + f.get("financial_coverage_8q", 0.0)) / 2.0
+        score += coverage * 10.0
+        return round(min(100.0, max(0.0, score)), 2)
+
+    def _theme_resonance_score(self, industry_category):
+        """ThemeResonance (15%): MBNRIC 第六波主題共振 (AI/半導體/生技/綠能)"""
         if not industry_category:
-            return 0.0, []
-        matched = []
-        best = 0
+            return 30.0
         for keyword, score in THEME_KEYWORDS.items():
             if keyword in industry_category:
-                matched.append(keyword)
-                best = max(best, score)
-        return float(best), matched
+                return float(score)
+        return 30.0
+
+    def _institutional_flow_score(self, stock_id, institutional_data):
+        """InstitutionalFlow (10%): 外資 + 投信淨買超趨勢 (單位: 股)"""
+        inst = institutional_data.get(stock_id, {})
+        if not inst:
+            return 50.0
+        score = 50.0
+        foreign_net = inst.get("foreign_net", 0)
+        trust_net = inst.get("trust_net", 0)
+        # Foreign net thresholds (shares; large caps may exceed 100M easily)
+        if foreign_net > 100_000_000:
+            score += 25.0
+        elif foreign_net > 10_000_000:
+            score += 15.0
+        elif foreign_net > 0:
+            score += 5.0
+        elif foreign_net < -100_000_000:
+            score -= 20.0
+        elif foreign_net < -10_000_000:
+            score -= 10.0
+        # Trust net (investment trust, smaller scale)
+        if trust_net > 50_000_000:
+            score += 15.0
+        elif trust_net > 0:
+            score += 5.0
+        elif trust_net < -50_000_000:
+            score -= 10.0
+        return round(min(100.0, max(0.0, score)), 2)
+
+    def _volatility_control_score(self, stock_id, price_data):
+        """VolatilityControl (5%): 收盤價變異係數 CV，越低越好"""
+        p = price_data.get(stock_id, {})
+        if not p or p.get("day_count", 0) < 20:
+            return 50.0
+        cv = p.get("cv_close", 0.3)
+        if cv <= 0.05:
+            return 95.0
+        elif cv <= 0.10:
+            return 85.0
+        elif cv <= 0.15:
+            return 75.0
+        elif cv <= 0.20:
+            return 65.0
+        elif cv <= 0.30:
+            return 50.0
+        elif cv <= 0.40:
+            return 35.0
+        return 20.0
 
     def _risk_profile(self, type_value, industry_category, missing_fields):
         risk = 0.0
         reasons = []
         type_norm = (type_value or "").lower()
         industry = industry_category or ""
-
         if missing_fields:
             risk += 40.0
             reasons.append(f"missing_fields={','.join(missing_fields)}")
@@ -497,7 +693,7 @@ class CoreUniverseBuilder:
             reasons.append("non_equity_or_fund_like_industry")
         if type_norm == "emerging" and not self.include_emerging:
             risk += 30.0
-            reasons.append("emerging_market_excluded_by_v0.1_policy")
+            reasons.append("emerging_market_excluded_by_policy")
         elif type_norm and type_norm not in EQUITY_TYPES and not self.include_emerging:
             risk += 30.0
             reasons.append(f"unsupported_type={type_value}")
@@ -506,53 +702,99 @@ class CoreUniverseBuilder:
             reasons.append("missing_type")
         return min(risk, 100.0), reasons
 
-    def _score_candidate(self, row):
+    def _score_candidate(self, row, price_data, revenue_data, financial_data, institutional_data):
+        """v0.2 六層 CoreScore: DQ + LM + FG + TR + IF + VC - RP"""
         stock_id, stock_name, type_value, industry_category, source_date = row
-        data_quality_score, missing_fields = self._data_quality_score(row)
-        theme_score, theme_matches = self._theme_score(industry_category)
+
+        # Metadata missing fields (used for risk profile only)
+        missing_fields = []
+        if not stock_name:
+            missing_fields.append("stock_name")
+        if not type_value:
+            missing_fields.append("type")
+        if not industry_category:
+            missing_fields.append("industry_category")
+
         risk_penalty, risk_reasons = self._risk_profile(type_value, industry_category, missing_fields)
-        core_score = max(0.0, min(100.0, data_quality_score * 0.70 + theme_score * 0.30 - risk_penalty))
+
+        # Six-layer scoring
+        dq = self._data_quality_score_v2(stock_id, price_data, revenue_data, financial_data)
+        lm = self._liquidity_mass_score(stock_id, price_data)
+        fg = self._fundamental_gravity_score(stock_id, revenue_data, financial_data)
+        tr = self._theme_resonance_score(industry_category)
+        inst_f = self._institutional_flow_score(stock_id, institutional_data)
+        vc = self._volatility_control_score(stock_id, price_data)
+
+        # Extra penalty: high volatility + low liquidity, or major data gap
+        extra_penalty = 0.0
+        cv = price_data.get(stock_id, {}).get("cv_close", 0)
+        if cv > 0.4 and lm < 30:
+            extra_penalty += 15.0
+        if dq < 20:
+            extra_penalty += 10.0
+        total_penalty = min(risk_penalty + extra_penalty, 99.0)
+
+        core_score = max(0.0, min(100.0,
+            0.25 * dq + 0.25 * lm + 0.20 * fg + 0.15 * tr + 0.10 * inst_f + 0.05 * vc - total_penalty
+        ))
+
+        # Coverage metrics for membership table
+        price_cov = price_data.get(stock_id, {}).get("price_coverage_252d", 0.0)
+        revenue_cov = revenue_data.get(stock_id, {}).get("revenue_coverage_24m", 0.0)
+        financial_cov = financial_data.get(stock_id, {}).get("financial_coverage_8q", 0.0)
 
         exclusion_reason = "; ".join(risk_reasons) if risk_penalty >= 50.0 else None
-        selection_reason = "metadata bootstrap candidate; downstream feature/model/prediction eligibility pending"
+        selection_reason = (
+            f"CoreScore v0.2: {core_score:.1f} "
+            f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} TR={tr:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
+        )
         if exclusion_reason:
-            selection_reason = "metadata bootstrap quarantine; not eligible for core selection in v0.1"
+            selection_reason = f"quarantine: {exclusion_reason}"
 
         score_detail = {
-            "score_scope": "metadata_bootstrap_only",
+            "score_scope": "v0.2_six_layer",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
-            "v02_input_contract": "preflight_and_coverage_summary_only",
-            "source_table": "TaiwanStockInfo",
-            "candidate_source_mode": self.candidate_source_mode,
-            "raw_column_inheritance": ["stock_id", "stock_name", "type", "industry_category"],
-            "missing_fields": missing_fields,
-            "theme_matches": theme_matches,
+            "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
+            "data_quality_score": dq,
+            "liquidity_mass_score": lm,
+            "fundamental_gravity_score": fg,
+            "theme_resonance_score": tr,
+            "institutional_flow_score": inst_f,
+            "volatility_control_score": vc,
+            "risk_penalty": total_penalty,
+            "core_score": round(core_score, 4),
+            "price_coverage_252d": price_cov,
+            "revenue_coverage_24m": revenue_cov,
+            "financial_coverage_8q": financial_cov,
             "risk_reasons": risk_reasons,
-            "unevaluated_components": [
-                "liquidity_score",
-                "fundamental_score",
-                "institutional_flow_score",
-                "volatility_control_score",
-            ],
+            "candidate_source_mode": self.candidate_source_mode,
             "downstream_boundary": "no feature values, labels, model outputs, prediction signals",
         }
 
-        return Candidate(
+        c = Candidate(
             stock_id=stock_id,
             stock_name=stock_name,
             type=type_value,
             industry_category=industry_category,
             source_date=source_date,
-            core_score=round(core_score, 6),
-            data_quality_score=round(data_quality_score, 6),
-            theme_score=round(theme_score, 6),
-            risk_penalty=round(risk_penalty, 6),
+            core_score=round(core_score, 4),
+            data_quality_score=round(dq, 4),
+            theme_score=round(tr, 4),
+            risk_penalty=round(total_penalty, 4),
             core_tier="pending",
             selection_reason=selection_reason,
             exclusion_reason=exclusion_reason,
             score_detail=score_detail,
         )
+        c.liquidity_score = round(lm, 4)
+        c.fundamental_score = round(fg, 4)
+        c.institutional_flow_score = round(inst_f, 4)
+        c.volatility_control_score = round(vc, 4)
+        c.price_coverage_252d = round(price_cov, 4)
+        c.revenue_coverage_24m = round(revenue_cov, 4)
+        c.financial_coverage_8q = round(financial_cov, 4)
+        return c
 
     def load_candidates(self):
         conn = get_db_connection()
@@ -583,7 +825,7 @@ class CoreUniverseBuilder:
             cur.close()
             conn.close()
 
-        candidates = [self._score_candidate(row) for row in rows]
+        candidates = [self._score_candidate(row, *self._market_data) for row in rows]
         self._assign_tiers(candidates)
         return candidates
 
@@ -616,16 +858,16 @@ class CoreUniverseBuilder:
     def _policy_payload(self):
         return {
             "policy_version": self.policy_version,
-            "policy_name": "Core Universe Metadata Bootstrap Policy v0.1",
-            "description": "DB-driven metadata bootstrap selection from TaiwanStockInfo with CoreScore v0.2 input contract preflight; no model or prediction values.",
+            "policy_name": "Core Universe Policy v0.2 Six-Layer CoreScore",
+            "description": "CoreScore v0.2 six-layer scoring: DQ+LM+FG+TR+IF+VC-RP. DB-driven from TaiwanStockInfo + six individual stock tables. No model or prediction values.",
             "weight_config": {
-                "data_quality_score": 0.70,
-                "theme_score": 0.30,
+                "data_quality_score": 0.25,
+                "liquidity_mass_score": 0.25,
+                "fundamental_gravity_score": 0.20,
+                "theme_resonance_score": 0.15,
+                "institutional_flow_score": 0.10,
+                "volatility_control_score": 0.05,
                 "risk_penalty": -1.00,
-                "liquidity_score": "pending",
-                "fundamental_score": "pending",
-                "institutional_flow_score": "pending",
-                "volatility_control_score": "pending",
             },
             "eligibility_config": {
                 "source_table": "TaiwanStockInfo",
@@ -669,7 +911,7 @@ class CoreUniverseBuilder:
                 Json(payload["eligibility_config"]),
                 Json(payload["risk_config"]),
                 self.as_of_date,
-                "Generated by core_universe_builder.py v0.2-preflight; scoring remains metadata bootstrap",
+                "Generated by core_universe_builder.py v0.2; six-layer CoreScore with actual market data",
             ),
         )
 
@@ -708,7 +950,7 @@ class CoreUniverseBuilder:
                 self.stats["core_count"],
                 self.stats["convex_count"],
                 self.stats["quarantine_count"],
-                "core_universe_builder v0.2-preflight metadata bootstrap; v0.2 input coverage summarized; no feature/model/prediction values",
+                "core_universe_builder v0.2; six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP); no feature/model/prediction values",
             ),
         )
 
@@ -733,9 +975,9 @@ class CoreUniverseBuilder:
                     False,
                     False,
                     0,
-                    0.0,
-                    0.0,
-                    0.0,
+                    c.price_coverage_252d,
+                    c.revenue_coverage_24m,
+                    c.financial_coverage_8q,
                     DEFAULT_LABEL_HORIZON,
                     self.policy_version,
                     DEFAULT_FEATURE_SET_VERSION,
@@ -757,11 +999,11 @@ class CoreUniverseBuilder:
                     self.policy_version,
                     c.core_score,
                     c.data_quality_score,
-                    None,
-                    None,
+                    c.liquidity_score,
+                    c.fundamental_score,
                     c.theme_score,
-                    None,
-                    None,
+                    c.institutional_flow_score,
+                    c.volatility_control_score,
                     c.risk_penalty,
                     Json(c.score_detail),
                 )
@@ -813,7 +1055,7 @@ class CoreUniverseBuilder:
             "source_data_cutoff": str(self.source_data_cutoff),
             "candidate_source_mode": self.candidate_source_mode,
             "commit_mode": self.commit,
-            "boundary": "metadata bootstrap scoring only; v0.2 input contract preflight and coverage summary enabled; no feature/model/prediction values",
+            "boundary": "v0.2 six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP) with actual market data; no feature/model/prediction values",
             "v02_contract": {
                 "pass": self.stats["v02_contract_pass"],
                 "warning": self.stats["v02_contract_warning"],
@@ -832,7 +1074,7 @@ class CoreUniverseBuilder:
                 self.policy_version,
                 self.snapshot_id,
                 Json(detail),
-                "core_universe_builder v0.2-preflight committed metadata bootstrap universe",
+                "core_universe_builder v0.2 committed six-layer CoreScore universe",
             ),
         )
 
@@ -871,7 +1113,7 @@ class CoreUniverseBuilder:
         lifecycle_cm = None
         lifecycle = None
         if self.commit:
-            lifecycle_cm = record_lifecycle("core_universe_builder_v0.2_preflight", category="governance", stock_id="SYSTEM")
+            lifecycle_cm = record_lifecycle("core_universe_builder_v0.2", category="governance", stock_id="SYSTEM")
             lifecycle = lifecycle_cm.__enter__()
 
         try:
@@ -880,6 +1122,9 @@ class CoreUniverseBuilder:
                 self._mark_lifecycle(lifecycle, "failed", "preflight failed")
                 self.report_results(start_time)
                 return False
+
+            self._detail("📥 [MARKET-DATA] 批量載入六層評分資料...")
+            self._market_data = self._load_market_data()
 
             candidates = self.load_candidates()
             if self.commit:
@@ -917,7 +1162,7 @@ class CoreUniverseBuilder:
         print("🛡️" * 40)
         print(f"治權基準 : 系統架構大憲章_{CONSTITUTION_VER}.md")
         print("治理權責 : Core Universe Selection Authority")
-        print("邊界封印 : metadata bootstrap scoring + v0.2 input contract preflight; no feature/label/model/prediction values")
+        print("評分架構 : CoreScore v0.2 = 0.25*DQ + 0.25*LM + 0.20*FG + 0.15*TR + 0.10*IF + 0.05*VC - RP")
         print(f"執行模式 : {mode}")
         print(f"Snapshot : {self.snapshot_id}")
         print("─" * 80)
@@ -961,14 +1206,14 @@ class CoreUniverseBuilder:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance 核心股選拔引擎 (v0.2-preflight)")
+    parser = argparse.ArgumentParser(description="Quantum Finance 核心股選拔引擎 (v0.2 六層 CoreScore)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="只計算與輸出摘要，不寫入治理表")
     mode.add_argument("--commit", action="store_true", help="寫入 policy/snapshot/membership/scores/revision log")
     parser.add_argument("--as-of-date", type=str, help="Universe snapshot 基準日期，預設為今天")
     parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本")
-    parser.add_argument("--core-limit", type=int, default=120, help="v0.1 metadata bootstrap core_universe 上限")
-    parser.add_argument("--convex-limit", type=int, default=30, help="v0.1 metadata bootstrap convex_universe 上限")
+    parser.add_argument("--core-limit", type=int, default=120, help="v0.2 core_universe 上限")
+    parser.add_argument("--convex-limit", type=int, default=30, help="v0.2 convex_universe 上限")
     parser.add_argument("--include-emerging", action="store_true", help="允許 emerging 類型進入非 quarantine 分層")
     return parser.parse_args()
 
