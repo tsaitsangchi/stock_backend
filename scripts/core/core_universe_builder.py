@@ -1,7 +1,7 @@
 """
 core_universe_builder.py v0.2 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
-最後更新日期: 2026-05-16
+最後更新日期: 2026-05-17
 主權狀態: IMPLEMENTED (憲法 v5.4.22 CoreScore v0.2 六層正式評分)
 最高原則: Core Universe Selection Authority
 
@@ -17,6 +17,7 @@ v0.2 邊界:
 4. 寫入 policy、snapshot、membership、scores、revision log。
 5. 只保存治理銜接欄位，不保存 feature values、labels、model outputs、prediction signals。
 6. 不硬編股票名單；所有候選皆由 DB 讀取。
+7. 正式 commit 受年度重選 guard 約束；非年度重選必須提供特別治理原因。
 ================================================================================
 """
 import argparse
@@ -163,13 +164,23 @@ class Candidate:
 
 
 class CoreUniverseBuilder:
-    def __init__(self, as_of_date, policy_version, commit=False, core_limit=120, convex_limit=30, include_emerging=False):
+    def __init__(
+        self,
+        as_of_date,
+        policy_version,
+        commit=False,
+        core_limit=120,
+        convex_limit=30,
+        include_emerging=False,
+        special_rebalance_reason=None,
+    ):
         self.as_of_date = as_of_date
         self.policy_version = policy_version
         self.commit = commit
         self.core_limit = core_limit
         self.convex_limit = convex_limit
         self.include_emerging = include_emerging
+        self.special_rebalance_reason = (special_rebalance_reason or "").strip()
         self.snapshot_id = self._build_snapshot_id()
         self.source_data_cutoff = None
         self.candidate_source_mode = "unresolved"
@@ -214,6 +225,26 @@ class CoreUniverseBuilder:
         item.update(payload)
         self.stats["coverage_summary"].append(item)
 
+    def _rebalance_mode(self):
+        return "special" if self.special_rebalance_reason else "annual"
+
+    def _review_cycle(self):
+        return "special" if self.special_rebalance_reason else "annual"
+
+    def _effective_from(self):
+        if self.special_rebalance_reason:
+            return self.as_of_date
+        return date(self.as_of_date.year + 1, 1, 1)
+
+    def _snapshot_note(self):
+        note = (
+            "core_universe_builder v0.2; six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP); "
+            f"rebalance_mode={self._rebalance_mode()}; no feature/model/prediction values"
+        )
+        if self.special_rebalance_reason:
+            note += f"; special_rebalance_reason={self.special_rebalance_reason}"
+        return note
+
     def _mark_lifecycle(self, lifecycle, level, message):
         if lifecycle is None:
             return
@@ -236,6 +267,60 @@ class CoreUniverseBuilder:
             (table_name,),
         )
         return {row[0] for row in cur.fetchall()}
+
+    def _latest_trading_date_for_year(self, cur, year):
+        for table_name in ("TaiwanStockPriceAdj", "TaiwanStockPrice"):
+            if not self._table_exists(cur, table_name):
+                continue
+            cur.execute(
+                f'''
+                SELECT MAX("date")
+                FROM "{table_name}"
+                WHERE "date" >= %s AND "date" <= %s
+                ''',
+                (date(year, 1, 1), date(year, 12, 31)),
+            )
+            latest = cur.fetchone()[0]
+            if latest:
+                return latest, table_name
+        return None, None
+
+    def _annual_rebalance_guard(self, cur):
+        if not self.commit:
+            self._preflight("pass", "annual rebalance guard: dry-run allowed anytime; commit remains guarded")
+            return
+        if self.special_rebalance_reason:
+            if len(self.special_rebalance_reason) < 12:
+                self._preflight("failed", "special_rebalance_reason too short; provide an auditable governance reason")
+                return
+            self._preflight("warning", f"special rebalance override accepted: {self.special_rebalance_reason}")
+            return
+
+        latest_trading_date, source_table = self._latest_trading_date_for_year(cur, self.as_of_date.year)
+        if not latest_trading_date:
+            self._preflight(
+                "failed",
+                f"annual rebalance guard: no trading calendar data found for {self.as_of_date.year}; cannot verify last trading day",
+            )
+            return
+        if self.as_of_date.month != 12 or self.as_of_date.day < 25:
+            self._preflight(
+                "failed",
+                "annual rebalance guard: regular core universe commit is allowed only after the year's final trading day; "
+                f"as_of_date={self.as_of_date}, latest_trading_date={latest_trading_date}",
+            )
+            return
+        if self.as_of_date != latest_trading_date:
+            self._preflight(
+                "failed",
+                "annual rebalance guard: as_of_date must equal the latest trading date in that calendar year; "
+                f"as_of_date={self.as_of_date}, latest_trading_date={latest_trading_date}",
+            )
+            return
+        self._preflight(
+            "pass",
+            f"annual rebalance guard: as_of_date={self.as_of_date} verified as final trading day via {source_table}",
+        )
 
     def _table_profile(self, cur, table_name):
         registry_columns = DATASET_REGISTRY.get(table_name, {}).get("columns", {})
@@ -426,6 +511,9 @@ class CoreUniverseBuilder:
                     self._preflight("pass", f"{table_name} exists")
                 else:
                     self._preflight("failed", f"{table_name} missing; run core_universe_schema.py --init first")
+
+            if self.stats["preflight_failed"] == 0:
+                self._annual_rebalance_guard(cur)
 
             if self.stats["preflight_failed"] == 0:
                 self._run_v02_input_contract_preflight(cur)
@@ -874,6 +962,9 @@ class CoreUniverseBuilder:
                 "include_emerging": self.include_emerging,
                 "core_limit": self.core_limit,
                 "convex_limit": self.convex_limit,
+                "review_cycle": "annual",
+                "annual_rebalance_rule": "regular commit allowed only when as_of_date is the final trading day of that calendar year",
+                "special_rebalance_requires_reason": True,
                 "downstream_eligibility": "all false until historical coverage is measured",
                 "v02_input_contract": "8-table preflight + coverage summary enabled",
             },
@@ -950,7 +1041,7 @@ class CoreUniverseBuilder:
                 self.stats["core_count"],
                 self.stats["convex_count"],
                 self.stats["quarantine_count"],
-                "core_universe_builder v0.2; six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP); no feature/model/prediction values",
+                self._snapshot_note(),
             ),
         )
 
@@ -966,8 +1057,8 @@ class CoreUniverseBuilder:
                     c.industry_category,
                     c.core_tier,
                     c.core_score,
-                    self.as_of_date,
-                    "monthly",
+                    self._effective_from(),
+                    self._review_cycle(),
                     c.selection_reason,
                     c.exclusion_reason,
                     False,
@@ -1055,6 +1146,11 @@ class CoreUniverseBuilder:
             "source_data_cutoff": str(self.source_data_cutoff),
             "candidate_source_mode": self.candidate_source_mode,
             "commit_mode": self.commit,
+            "rebalance_mode": self._rebalance_mode(),
+            "review_cycle": self._review_cycle(),
+            "annual_rebalance_guard": "enforced_on_commit",
+            "special_rebalance_reason": self.special_rebalance_reason or None,
+            "effective_from": str(self._effective_from()),
             "boundary": "v0.2 six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP) with actual market data; no feature/model/prediction values",
             "v02_contract": {
                 "pass": self.stats["v02_contract_pass"],
@@ -1074,7 +1170,7 @@ class CoreUniverseBuilder:
                 self.policy_version,
                 self.snapshot_id,
                 Json(detail),
-                "core_universe_builder v0.2 committed six-layer CoreScore universe",
+                f"core_universe_builder v0.2 committed {self._rebalance_mode()} six-layer CoreScore universe",
             ),
         )
 
@@ -1164,7 +1260,10 @@ class CoreUniverseBuilder:
         print("治理權責 : Core Universe Selection Authority")
         print("評分架構 : CoreScore v0.2 = 0.25*DQ + 0.25*LM + 0.20*FG + 0.15*TR + 0.10*IF + 0.05*VC - RP")
         print(f"執行模式 : {mode}")
+        print(f"重選模式 : {self._rebalance_mode()}")
         print(f"Snapshot : {self.snapshot_id}")
+        if self.special_rebalance_reason:
+            print(f"特別原因 : {self.special_rebalance_reason}")
         print("─" * 80)
         for line in self.stats["details"]:
             print(line)
@@ -1215,6 +1314,11 @@ def parse_args():
     parser.add_argument("--core-limit", type=int, default=120, help="v0.2 core_universe 上限")
     parser.add_argument("--convex-limit", type=int, default=30, help="v0.2 convex_universe 上限")
     parser.add_argument("--include-emerging", action="store_true", help="允許 emerging 類型進入非 quarantine 分層")
+    parser.add_argument(
+        "--special-rebalance-reason",
+        type=str,
+        help="非年度核心股重選的特別治理原因；只允許重大資料修復、政策升版或風險事件等可稽核例外",
+    )
     return parser.parse_args()
 
 
@@ -1228,6 +1332,7 @@ def main():
         core_limit=args.core_limit,
         convex_limit=args.convex_limit,
         include_emerging=args.include_emerging,
+        special_rebalance_reason=args.special_rebalance_reason,
     )
     ok = builder.build()
     sys.exit(0 if ok else 1)

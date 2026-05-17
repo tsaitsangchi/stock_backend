@@ -1,0 +1,360 @@
+"""
+prediction_engine.py v0.1 (Quantum Finance Prediction Authority)
+================================================================================
+最後更新日期: 2026-05-16
+主權狀態: IMPLEMENTED (憲法 v5.4.22 §8.4 Prediction Table v0.1 草案實作)
+最高原則: Prediction Authority
+
+v0.1 邊界:
+1. 只讀 committed model_registry artifact 與 committed feature_store_snapshot。
+2. 不重新訓練、不修改 Feature Store、不修改 Model Registry。
+3. 建立 prediction_run / prediction_values 草案表並寫入 core+convex 推論。
+================================================================================
+"""
+import argparse
+import json
+import math
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+_THIS_FILE = Path(__file__).resolve()
+_CORE_DIR = _THIS_FILE.parent
+_SCRIPTS_DIR = _CORE_DIR.parent
+_PROJECT_ROOT = _SCRIPTS_DIR.parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+try:
+    from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
+except ImportError as exc:
+    print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
+    sys.exit(1)
+
+
+CONSTITUTION_VER = "v5.4.22"
+TOOL_VER = "v0.1"
+DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.1"
+
+DDL_PREDICTION_RUN = """
+CREATE TABLE IF NOT EXISTS "prediction_run" (
+    "run_id" VARCHAR(255) PRIMARY KEY,
+    "model_id" VARCHAR(255) NOT NULL,
+    "feature_set_id" VARCHAR(255) NOT NULL,
+    "as_of_date" DATE NOT NULL,
+    "universe_snapshot_id" VARCHAR(255) NOT NULL,
+    "prediction_policy_version" VARCHAR(255) NOT NULL,
+    "rows_written" INTEGER NOT NULL,
+    "status" VARCHAR(64) NOT NULL DEFAULT 'draft',
+    "notes" TEXT,
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+DDL_PREDICTION_VALUES = """
+CREATE TABLE IF NOT EXISTS "prediction_values" (
+    "run_id" VARCHAR(255) NOT NULL,
+    "stock_id" VARCHAR(255) NOT NULL,
+    "as_of_date" DATE NOT NULL,
+    "prediction_value" NUMERIC(24, 8) NOT NULL,
+    "prediction_rank" INTEGER,
+    "signal_label" VARCHAR(64),
+    "confidence" NUMERIC(12, 8),
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("run_id", "stock_id", "as_of_date")
+);
+CREATE INDEX IF NOT EXISTS "idx_prediction_values_stock_date"
+    ON "prediction_values" ("stock_id", "as_of_date");
+"""
+
+
+class PredictionEngine:
+    def __init__(self, model_id, as_of_date, commit=False):
+        self.model_id = model_id
+        self.as_of_date = as_of_date
+        self.commit = commit
+        self.model = None
+        self.registry = None
+        self.rows = []
+        self.predictions = []
+        self.run_id = f"pred_{as_of_date.strftime('%Y%m%d')}_{model_id}"
+        self.stats = {"pass": 0, "warn": 0, "fail": 0, "details": []}
+
+    def _detail(self, bucket, msg):
+        self.stats[bucket] += 1
+        icon = {"pass": "✅", "warn": "⚠️", "fail": "❌"}[bucket]
+        line = f"{icon} [{bucket.upper()}] {msg}"
+        self.stats["details"].append(line)
+        print(line)
+
+    def ensure_tables(self, cur):
+        cur.execute(DDL_PREDICTION_RUN)
+        cur.execute(DDL_PREDICTION_VALUES)
+
+    def load_inputs(self):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            self.ensure_tables(cur)
+            conn.commit()
+            cur.execute(
+                """
+                SELECT model_id, model_family, feature_set_id, universe_snapshot_id,
+                       metrics, hyperparams, artifact_path, status
+                FROM "model_registry"
+                WHERE model_id = %s
+                """,
+                (self.model_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                self._detail("fail", f"model_id={self.model_id} missing")
+                return False
+            keys = ["model_id", "model_family", "feature_set_id", "universe_snapshot_id", "metrics", "hyperparams", "artifact_path", "status"]
+            self.registry = dict(zip(keys, row))
+            if self.registry["status"] != "committed":
+                self._detail("fail", f"model status={self.registry['status']}, expected committed")
+                return False
+            artifact_path = _PROJECT_ROOT / self.registry["artifact_path"] / "model.json"
+            if not artifact_path.exists():
+                self._detail("fail", f"model artifact missing: {artifact_path}")
+                return False
+            with artifact_path.open("r", encoding="utf-8") as fh:
+                self.model = json.load(fh)
+            self._detail("pass", f"committed model loaded: {self.model_id}")
+
+            cur.execute(
+                """
+                SELECT status, as_of_date, universe_snapshot_id
+                FROM "feature_store_snapshot"
+                WHERE feature_set_id = %s
+                """,
+                (self.registry["feature_set_id"],),
+            )
+            fs = cur.fetchone()
+            if not fs or fs[0] != "committed":
+                self._detail("fail", "feature_set is not committed")
+                return False
+            if fs[1] != self.as_of_date:
+                self._detail("fail", f"feature_set as_of_date={fs[1]} != requested {self.as_of_date}")
+                return False
+            if fs[2] != self.registry["universe_snapshot_id"]:
+                self._detail("fail", "universe snapshot mismatch between model and feature_set")
+                return False
+            self._detail("pass", f"feature_set locked: {self.registry['feature_set_id']}")
+
+            cur.execute(
+                """
+                SELECT fv.stock_id, fv.feature_name, COALESCE(fv.feature_value, 0)::float8,
+                       fv.is_null_imputed
+                FROM "feature_values" fv
+                JOIN "core_universe_membership" m
+                  ON m.stock_id = fv.stock_id
+                WHERE fv.feature_set_id = %s
+                  AND fv.as_of_date = %s
+                  AND m.snapshot_id = %s
+                  AND m.core_tier IN ('core_universe', 'convex_universe')
+                ORDER BY fv.stock_id, fv.feature_name
+                """,
+                (self.registry["feature_set_id"], self.as_of_date, self.registry["universe_snapshot_id"]),
+            )
+            by_stock = {}
+            imputed = 0
+            total = 0
+            for stock_id, feature_name, feature_value, is_imputed in cur.fetchall():
+                by_stock.setdefault(stock_id, {})[feature_name] = float(feature_value or 0.0)
+                total += 1
+                imputed += 1 if is_imputed else 0
+            features = self.model["features"]
+            self.rows = [{"stock_id": sid, "x": {f: by_stock[sid].get(f, 0.0) for f in features}} for sid in sorted(by_stock)]
+            if len(self.rows) != 150:
+                self._detail("fail", f"prediction universe rows={len(self.rows)}, expected 150")
+                return False
+            null_ratio = imputed / total if total else 0
+            if null_ratio > 0.05:
+                self._detail("warn", f"imputed feature ratio={null_ratio:.4f} > 5%")
+            else:
+                self._detail("pass", f"imputed feature ratio={null_ratio:.4f}")
+        finally:
+            cur.close()
+            conn.close()
+        return self.stats["fail"] == 0
+
+    def _rank(self, values):
+        ordered = sorted(enumerate(values), key=lambda item: (item[1], item[0]))
+        ranks = [0.0] * len(values)
+        i = 0
+        while i < len(ordered):
+            j = i + 1
+            while j < len(ordered) and ordered[j][1] == ordered[i][1]:
+                j += 1
+            avg_rank = (i + 1 + j) / 2.0
+            for idx, _ in ordered[i:j]:
+                ranks[idx] = avg_rank
+            i = j
+        return ranks
+
+    def _rank_scores(self, values):
+        if len(values) <= 1:
+            return [0.0 for _ in values]
+        ranks = self._rank(values)
+        mid = (len(values) + 1) / 2.0
+        half = (len(values) - 1) / 2.0
+        if half <= 0:
+            return [0.0 for _ in values]
+        return [(rank - mid) / half for rank in ranks]
+
+    def predict(self):
+        weights = self.model["weights"]
+        preprocessing = self.model.get("preprocessing", {})
+        feature_bounds = preprocessing.get("feature_bounds", {})
+        transformed = {}
+        for feature in weights:
+            values = []
+            bounds = feature_bounds.get(feature, {})
+            lo = bounds.get("low")
+            hi = bounds.get("high")
+            for row in self.rows:
+                value = row["x"].get(feature, 0.0)
+                value = value if math.isfinite(value) else 0.0
+                if lo is not None and hi is not None:
+                    value = min(max(value, float(lo)), float(hi))
+                values.append(value)
+            transformed[feature] = self._rank_scores(values)
+        raw = []
+        for idx, row in enumerate(self.rows):
+            value = sum(transformed[name][idx] * float(weight) for name, weight in weights.items())
+            raw.append((row["stock_id"], value))
+        ordered = sorted(raw, key=lambda item: item[1], reverse=True)
+        n = len(ordered)
+        self.predictions = []
+        for rank, (stock_id, value) in enumerate(ordered, start=1):
+            if rank <= 20:
+                label = "long"
+            elif rank > n - 20:
+                label = "watch"
+            else:
+                label = "hold"
+            confidence = rank / n if n else 0.0
+            confidence = abs(confidence - 0.5) * 2
+            if not math.isfinite(value):
+                self._detail("fail", f"non-finite prediction for {stock_id}")
+                continue
+            self.predictions.append((stock_id, value, rank, label, confidence))
+        self._detail("pass", f"predictions computed rows={len(self.predictions)}")
+
+    def commit_outputs(self):
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            self.ensure_tables(cur)
+            cur.execute('SELECT 1 FROM "prediction_run" WHERE run_id = %s', (self.run_id,))
+            if cur.fetchone():
+                suffix = datetime.now().strftime("%H%M%S")
+                self.run_id = f"{self.run_id}_{suffix}"
+                self._detail("warn", f"existing prediction run found; new run_id={self.run_id}")
+            cur.execute(
+                """
+                INSERT INTO "prediction_run" (
+                    run_id, model_id, feature_set_id, as_of_date, universe_snapshot_id,
+                    prediction_policy_version, rows_written, status, notes
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,'committed',%s)
+                """,
+                (
+                    self.run_id, self.model_id, self.registry["feature_set_id"], self.as_of_date,
+                    self.registry["universe_snapshot_id"], DEFAULT_PREDICTION_POLICY_VERSION,
+                    len(self.predictions), "v0.1 baseline inference; signal labels are not investment advice",
+                ),
+            )
+            cur.executemany(
+                """
+                INSERT INTO "prediction_values" (
+                    run_id, stock_id, as_of_date, prediction_value,
+                    prediction_rank, signal_label, confidence
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """,
+                [(self.run_id, sid, self.as_of_date, val, rank, label, conf) for sid, val, rank, label, conf in self.predictions],
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        try:
+            write_data_audit_log("prediction_values", self.run_id, self.as_of_date, "PREDICTION_RUN", len(self.predictions))
+        except Exception as exc:
+            self._detail("warn", f"data_audit_log failed: {type(exc).__name__}: {exc}")
+        self._detail("pass", f"prediction run committed: {self.run_id}")
+
+    def verdict(self):
+        if self.stats["fail"] > 0:
+            return "FAILED"
+        if self.stats["warn"] > 0:
+            return "WARNING"
+        return "PERFECT"
+
+    def run(self):
+        start = time.time()
+        lifecycle_cm = record_lifecycle("prediction_engine_v0.1", category="prediction", stock_id="SYSTEM") if self.commit else None
+        lifecycle = lifecycle_cm.__enter__() if lifecycle_cm else None
+        try:
+            if self.load_inputs():
+                self.predict()
+                if self.commit and self.stats["fail"] == 0:
+                    self.commit_outputs()
+            verdict = self.verdict()
+            if lifecycle and verdict == "FAILED":
+                lifecycle.mark_failed("prediction_engine failed")
+            elif lifecycle and verdict == "WARNING":
+                lifecycle.mark_warning("prediction_engine warning")
+            return self.report(start)
+        except Exception as exc:
+            self._detail("fail", f"{type(exc).__name__}: {exc}")
+            if lifecycle:
+                lifecycle.mark_failed(str(exc))
+            return self.report(start)
+        finally:
+            if lifecycle_cm:
+                lifecycle_cm.__exit__(None, None, None)
+
+    def report(self, start):
+        verdict = self.verdict()
+        print("\n" + "🛡️" * 40)
+        print(f"🚀 Quantum Finance: Prediction Engine 執行摘要 ({TOOL_VER})")
+        print("🛡️" * 40)
+        print(f"治權基準 : 系統架構大憲章_{CONSTITUTION_VER}.md §8.4")
+        print("治理權責 : Prediction Authority")
+        print(f"執行模式 : {'COMMIT' if self.commit else 'DRY-RUN'}")
+        print(f"Run ID   : {self.run_id}")
+        print(f"Model ID : {self.model_id}")
+        print("────────────────────────────────────────────────────────────────────────────────")
+        print(f"📈 predictions : {len(self.predictions)}")
+        print(f"✅ pass        : {self.stats['pass']}")
+        print(f"⚠️  warn        : {self.stats['warn']}")
+        print(f"❌ fail        : {self.stats['fail']}")
+        print(f"🕒 總計耗時    : {(time.time() - start)*1000:.2f} ms")
+        print(f"⚖️  主權判定    : {verdict}")
+        print("🛡️" * 40 + "\n")
+        return self.stats["fail"] == 0
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Quantum Finance Prediction Engine (v0.1)")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--commit", action="store_true")
+    parser.add_argument("--model-id", required=True)
+    parser.add_argument("--as-of-date", required=True)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    as_of_date = datetime.strptime(args.as_of_date, "%Y-%m-%d").date()
+    engine = PredictionEngine(args.model_id, as_of_date, commit=args.commit)
+    ok = engine.run()
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

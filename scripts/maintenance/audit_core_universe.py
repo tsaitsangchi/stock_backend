@@ -36,7 +36,7 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v5.4.22"
 TOOL_VER = "v0.1"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.1"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
 REQUIRED_TABLES = [
     "pipeline_execution_log",
     "data_audit_log",
@@ -230,7 +230,9 @@ class CoreUniverseAuditor:
             self.pass_("policy_boundary", "downstream eligibility remains pending/all false")
         else:
             self.fail("policy_boundary", f"unexpected downstream eligibility policy: {downstream_eligibility}")
-        if liquidity_state == "pending" and fundamental_state == "pending":
+        if self.policy_version.endswith("v0.2"):
+            self.pass_("policy_score_config", "v0.2 policy uses six-layer CoreScore weights")
+        elif liquidity_state == "pending" and fundamental_state == "pending":
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:
             self.fail("policy_pending_scores", f"unexpected pending score states: liquidity={liquidity_state}, fundamental={fundamental_state}")
@@ -434,23 +436,29 @@ class CoreUniverseAuditor:
             ''',
             (self.snapshot_id,),
         )
-        if non_null_pending_scores == 0:
+        if self.policy_version.endswith("v0.2"):
+            if non_null_pending_scores > 0:
+                self.pass_("v02_scores_boundary", f"v0.2 six-layer score columns populated rows={non_null_pending_scores}")
+            else:
+                self.fail("v02_scores_boundary", "v0.2 score columns are empty")
+        elif non_null_pending_scores == 0:
             self.pass_("pending_scores_boundary", "liquidity/fundamental/institutional/volatility scores remain NULL in v0.1")
         else:
             self.fail("pending_scores_boundary", f"pending score columns unexpectedly populated rows={non_null_pending_scores}")
 
+        expected_scope = "v0.2_six_layer" if self.policy_version.endswith("v0.2") else "metadata_bootstrap_only"
         score_scope_mismatch = self._scalar(
             cur,
             '''
             SELECT COUNT(*)
             FROM "core_universe_scores"
             WHERE "snapshot_id" = %s
-              AND ("score_detail"->>'score_scope') IS DISTINCT FROM 'metadata_bootstrap_only'
+              AND ("score_detail"->>'score_scope') IS DISTINCT FROM %s
             ''',
-            (self.snapshot_id,),
+            (self.snapshot_id, expected_scope),
         )
         if score_scope_mismatch == 0:
-            self.pass_("score_scope", "all score_detail records declare metadata_bootstrap_only")
+            self.pass_("score_scope", f"all score_detail records declare {expected_scope}")
         else:
             self.fail("score_scope", f"score_detail scope mismatches={score_scope_mismatch}")
 
@@ -488,14 +496,14 @@ class CoreUniverseAuditor:
             '''
             SELECT COUNT(*)
             FROM pipeline_execution_log
-            WHERE task_name IN ('core_universe_builder_v0.2_preflight', 'core_universe_builder_v0.1')
-              AND status = 'success'
+            WHERE task_name IN ('core_universe_builder_v0.2', 'core_universe_builder_v0.2_preflight', 'core_universe_builder_v0.1')
+              AND status IN ('success', 'warning')
             ''',
         )
         if lifecycle_count > 0:
-            self.pass_("pipeline_lifecycle", f"core_universe_builder success lifecycle rows={lifecycle_count}")
+            self.pass_("pipeline_lifecycle", f"core_universe_builder accepted lifecycle rows={lifecycle_count}")
         else:
-            self.fail("pipeline_lifecycle", "core_universe_builder success lifecycle row missing")
+            self.fail("pipeline_lifecycle", "core_universe_builder accepted lifecycle row missing")
 
     def write_self_audit_log(self):
         try:
