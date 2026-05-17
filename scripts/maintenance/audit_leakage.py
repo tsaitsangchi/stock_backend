@@ -2,7 +2,7 @@
 audit_leakage.py v0.1 (Quantum Finance Anti-Leakage Audit Authority)
 ================================================================================
 最後更新日期: 2026-05-16
-主權狀態: IMPLEMENTED (憲法 v5.4.22 §8.5 Data Leakage 防禦草案)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.5 Data Leakage 防禦草案)
 最高原則: Anti-Leakage Audit Authority
 ================================================================================
 """

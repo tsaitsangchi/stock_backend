@@ -2,7 +2,7 @@
 finmind_client.py v4.46 (Quantum Finance Supply Chain Sovereign Edition)
 ================================================================================
 **最後更新日期**: 2026-05-16
-**主權狀態**: ACTIVE (憲法 v5.4.22 對齊)
+**主權狀態**: ACTIVE (憲法 v6.0.0 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)

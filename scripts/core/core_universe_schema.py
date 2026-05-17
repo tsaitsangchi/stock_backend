@@ -2,7 +2,7 @@
 core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authority)
 ================================================================================
 **最後更新日期**: 2026-05-16
-**主權狀態**: IMPLEMENTED (憲法 v5.4.22 核心股治理分層對齊 + bootstrap preflight clarity)
+**主權狀態**: IMPLEMENTED (憲法 v6.0.0 核心股治理分層對齊 + bootstrap preflight clarity)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)

@@ -2,7 +2,7 @@
 path_setup.py v4.44 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ================================================================================
 **最後更新日期**: 2026-05-15
-**主權狀態**: PERFECT (憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容)
+**主權狀態**: PERFECT (憲法 v6.0.0 啟動治理對齊 + 同日 hub 補充相容)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -195,7 +195,7 @@ def ensure_all_dirs():
         print("─" * 80)
         print(f"✅ 物理基準 (ROOT) : {PROJECT_ROOT_CALC}")
         print(f"⚓ 錨點對齊 (.env) : {anchor_display}")
-        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v5.4.22)")
+        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v6.0.0)")
         print(f"🕒 處理時長        : {(time.time() - start_time)*1000:.2f} ms")
         print(f"📝 混合日誌模式    : {log_mode}")
         if warnings:

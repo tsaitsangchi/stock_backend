@@ -2,7 +2,7 @@
 audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
 ================================================================================
 最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v5.4.22 核心股結果驗收稽核 + special restore trace audit)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 核心股結果驗收稽核 + special restore trace audit)
 最高原則: Core Universe Post-Build Verification
 
 v0.1 邊界:

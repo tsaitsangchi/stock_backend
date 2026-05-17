@@ -2,7 +2,7 @@
 feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
 ================================================================================
 最後更新日期: 2026-05-16
-主權狀態: IMPLEMENTED (憲法 v5.4.22 §8.2 Feature Store v0.1 草案實作)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 Feature Store v0.1 草案實作)
 最高原則: Feature Store Build Authority
 
 v0.1 邊界（憲章 §8.2.3）:

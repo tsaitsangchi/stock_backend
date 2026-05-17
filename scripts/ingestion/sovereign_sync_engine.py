@@ -2,7 +2,7 @@
 sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
 ================================================================================
 **最後更新日期**: 2026-05-17
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化 (含 A3/A5 邊界補正) (憲法 v5.4.22 §7 對齊)
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化 (含 A3/A5 邊界補正) (憲法 v6.0.0 §7 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -19,16 +19,16 @@ sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
    - **L3 事後續跑**：DB-driven checkpoint，已同步之 (stock_id, dataset, ≥start_date) 不再呼叫 API
 8. **[402 vs 403 分流]** (v1.10, 憲法 §7.4)：402 預設視為「資料集付費門檻」單次重試；403/429 視為「速率超限」完整三階段退避。
 
-## 📊 二、全量維運指令總矩陣 (per 憲法 v5.4.22 Section 二 / 5.5.3 五大標準)
+## 📊 二、全量維運指令總矩陣 (per 憲法 v6.0.0 Section 二 / 5.5.3 五大標準)
 
 ### A. 5.5.3 五大標準場景 (Core 5 Scenarios)
 | 維運需求場景 (Scenario)                       | 權威指令 / 建議用法                                                                                          | 對齊模組 |
 | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :--- |
-| **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.10 |
-| **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.10 |
-| **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.10 |
-| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.10 |
-| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.10 |
+| **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.11a |
+| **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.11a |
+| **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.11a |
+| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.11a |
+| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.11a |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 場景                          | 指令                                                                                            | 用途 |

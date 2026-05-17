@@ -2,7 +2,7 @@
 core_universe_builder.py v0.2 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v5.4.22 CoreScore v0.2 六層正式評分)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 CoreScore v0.2 六層正式評分)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:

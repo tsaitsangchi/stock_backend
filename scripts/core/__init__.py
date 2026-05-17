@@ -2,7 +2,7 @@
 core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Aligned)
 ================================================================================
 **最後更新日期**: 2026-05-15
-**主權狀態**: ACTIVE (憲法 v5.4.22 演進定稿對齊 + 動態四層稽核)
+**主權狀態**: ACTIVE (憲法 v6.0.0 演進定稿對齊 + 動態四層稽核)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)

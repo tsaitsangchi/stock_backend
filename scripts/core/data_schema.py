@@ -2,7 +2,7 @@
 data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
 **最後更新日期**: 2026-05-14
-**主權狀態**: API CONTRACT FIRST (憲法 v5.4.22 對齊)
+**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)

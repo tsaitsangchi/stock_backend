@@ -2,7 +2,7 @@
 prediction_engine.py v0.1 (Quantum Finance Prediction Authority)
 ================================================================================
 最後更新日期: 2026-05-16
-主權狀態: IMPLEMENTED (憲法 v5.4.22 §8.4 Prediction Table v0.1 草案實作)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.4 Prediction Table v0.1 草案實作)
 最高原則: Prediction Authority
 
 v0.1 邊界:
