@@ -44,7 +44,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.22"
+CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.2"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
@@ -962,9 +962,12 @@ class CoreUniverseBuilder:
                 "include_emerging": self.include_emerging,
                 "core_limit": self.core_limit,
                 "convex_limit": self.convex_limit,
-                "review_cycle": "annual",
+                "default_review_cycle": "annual",
+                "current_rebalance_mode": self._rebalance_mode(),
+                "current_review_cycle": self._review_cycle(),
                 "annual_rebalance_rule": "regular commit allowed only when as_of_date is the final trading day of that calendar year",
                 "special_rebalance_requires_reason": True,
+                "special_rebalance_reason": self.special_rebalance_reason or None,
                 "downstream_eligibility": "all false until historical coverage is measured",
                 "v02_input_contract": "8-table preflight + coverage summary enabled",
             },

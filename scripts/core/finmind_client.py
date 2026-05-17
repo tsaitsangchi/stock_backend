@@ -128,7 +128,7 @@ class FinMindClient:
                     diag_verdict = "WARNING"
                 else:
                     diag_verdict = "FAILED"
-                print(f"⚖️  系統主權狀態 : {diag_verdict} (憲法 v5.4.22 / finmind_client v4.46)")
+                print(f"⚖️  系統主權狀態 : {diag_verdict} (憲法 v6.0.0 / finmind_client v4.46)")
                 print("─" * 80 + "\n")
                 
             except Exception as e:

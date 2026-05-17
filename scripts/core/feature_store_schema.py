@@ -159,7 +159,7 @@ DROP_ORDER = [
 
 class FeatureStoreSchemaManager:
     def __init__(self):
-        self.constitution_ver = "v5.4.22"
+        self.constitution_ver = "v6.0.0"
         self.tool_ver = "v0.1"
         self.stats = {"success": 0, "failed": 0, "warning": 0, "details": []}
         self.preflight = {"pass": 0, "failed": 0, "warning": 0, "details": []}

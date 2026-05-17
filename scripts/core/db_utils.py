@@ -1030,7 +1030,7 @@ def run_diagnostics():
         print(f"🕒 連線延遲     : {latency:.2f} ms")
         print(f"📈 核心資產數   : {len(stocks)} 支 (§6.7 core_universe_membership)")
         print(f"📝 混合日誌狀態 : ACTIVE (pipeline_execution_log [8 欄完整] & data_audit_log)")
-        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v5.4.22 / db_utils v2.45)")
+        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v6.0.0 / db_utils v2.45)")
         for note in diag_notes:
             print(f"   - {note}")
         print("─" * 80)

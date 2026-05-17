@@ -201,7 +201,7 @@ class SovereignSchemaManager:
     def __init__(self):
         self.stats = {"success": 0, "failed": 0, "details": []}
         self.contract_stats = {"pass": 0, "warn": 0, "failed": 0, "details": []}
-        self.constitution_ver = "v5.4.22"
+        self.constitution_ver = "v6.0.0"
 
     def _record_contract(self, status, item, detail):
         self.contract_stats[status] += 1

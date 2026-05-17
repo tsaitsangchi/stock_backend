@@ -80,7 +80,7 @@ from datetime import datetime
 # ──────────────────────────────────────────────────────────────────────────────
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
-CONSTITUTION_VER = "v5.4.22"
+CONSTITUTION_VER = "v6.0.0"
 HUB_VER = "v1.14"
 EXPECTED_PATH_DIM = 25  # 對齊憲章 §1 第 3 條 + §4 25 維清單
 

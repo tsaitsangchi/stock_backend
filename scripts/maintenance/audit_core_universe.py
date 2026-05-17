@@ -1,8 +1,8 @@
 """
 audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
 ================================================================================
-最後更新日期: 2026-05-14
-主權狀態: IMPLEMENTED (憲法 v5.4.22 核心股結果驗收稽核)
+最後更新日期: 2026-05-17
+主權狀態: IMPLEMENTED (憲法 v5.4.22 核心股結果驗收稽核 + special restore trace audit)
 最高原則: Core Universe Post-Build Verification
 
 v0.1 邊界:
@@ -10,6 +10,7 @@ v0.1 邊界:
 2. 驗收 policy、snapshot、membership、scores、revision log 的一致性。
 3. 驗收 raw 欄位鏡像與 v0.1 downstream boundary。
 4. 不保存 feature values、labels、model outputs、prediction signals。
+5. 驗收年度重選 / special restore 的 review_cycle、snapshot notes、revision log 留痕。
 ================================================================================
 """
 import argparse
@@ -34,7 +35,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.22"
+CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
 REQUIRED_TABLES = [
@@ -140,7 +141,7 @@ class CoreUniverseAuditor:
                 '''
                 SELECT "snapshot_id", "as_of_date", "source_data_cutoff", "policy_version",
                        "total_candidates", "research_count", "core_count", "convex_count",
-                       "quarantine_count", "status"
+                       "quarantine_count", "status", "notes"
                 FROM "core_universe_snapshot"
                 WHERE "snapshot_id" = %s
                 ''',
@@ -152,7 +153,7 @@ class CoreUniverseAuditor:
                 '''
                 SELECT "snapshot_id", "as_of_date", "source_data_cutoff", "policy_version",
                        "total_candidates", "research_count", "core_count", "convex_count",
-                       "quarantine_count", "status"
+                       "quarantine_count", "status", "notes"
                 FROM "core_universe_snapshot"
                 WHERE "as_of_date" = %s AND "policy_version" = %s
                 ORDER BY "created_at" DESC, "snapshot_id" DESC
@@ -166,7 +167,7 @@ class CoreUniverseAuditor:
                 '''
                 SELECT "snapshot_id", "as_of_date", "source_data_cutoff", "policy_version",
                        "total_candidates", "research_count", "core_count", "convex_count",
-                       "quarantine_count", "status"
+                       "quarantine_count", "status", "notes"
                 FROM "core_universe_snapshot"
                 WHERE "status" = 'committed'
                 ORDER BY "created_at" DESC, "snapshot_id" DESC
@@ -189,6 +190,7 @@ class CoreUniverseAuditor:
             "convex_count",
             "quarantine_count",
             "status",
+            "notes",
         ]
         self.snapshot = dict(zip(keys, row))
         self.snapshot_id = self.snapshot["snapshot_id"]
@@ -236,6 +238,71 @@ class CoreUniverseAuditor:
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:
             self.fail("policy_pending_scores", f"unexpected pending score states: liquidity={liquidity_state}, fundamental={fundamental_state}")
+
+    def check_rebalance_trace(self, cur):
+        notes = self.snapshot.get("notes") or ""
+        expected_cycle = "special" if "rebalance_mode=special" in notes else "annual"
+        if expected_cycle == "special":
+            if "special_rebalance_reason=" in notes:
+                self.pass_("special_snapshot_note", "special rebalance reason present in snapshot notes")
+            else:
+                self.fail("special_snapshot_note", "snapshot notes declare special rebalance without special_rebalance_reason")
+        else:
+            self.pass_("annual_snapshot_note", "snapshot notes do not declare special rebalance")
+
+        cycle_rows = self._rows(
+            cur,
+            '''
+            SELECT "review_cycle", COUNT(*)
+            FROM "core_universe_membership"
+            WHERE "snapshot_id" = %s
+            GROUP BY "review_cycle"
+            ''',
+            (self.snapshot_id,),
+        )
+        cycle_counts = {cycle: count for cycle, count in cycle_rows}
+        unexpected_cycles = sorted(cycle for cycle in cycle_counts if cycle != expected_cycle)
+        if unexpected_cycles:
+            self.fail("membership_review_cycle", f"unexpected review_cycle values={unexpected_cycles}, expected {expected_cycle}")
+        elif cycle_counts.get(expected_cycle, 0) == self.snapshot["total_candidates"]:
+            self.pass_("membership_review_cycle", f"all membership rows review_cycle={expected_cycle}")
+        else:
+            self.fail("membership_review_cycle", f"review_cycle counts={cycle_counts}, expected {self.snapshot['total_candidates']} {expected_cycle} rows")
+
+        row = self._row(
+            cur,
+            '''
+            SELECT "detail"->>'rebalance_mode',
+                   "detail"->>'review_cycle',
+                   COALESCE("detail"->>'special_rebalance_reason', '')
+            FROM "universe_revision_log"
+            WHERE "snapshot_id" = %s AND "action_type" = 'BUILD_SNAPSHOT'
+            ORDER BY "revision_time" DESC, "revision_id" DESC
+            LIMIT 1
+            ''',
+            (self.snapshot_id,),
+        )
+        if not row:
+            self.fail("rebalance_revision_trace", "BUILD_SNAPSHOT revision detail missing")
+            return
+
+        rebalance_mode, review_cycle, special_reason = row
+        if rebalance_mode == expected_cycle and review_cycle == expected_cycle:
+            self.pass_("rebalance_revision_trace", f"revision detail rebalance_mode/review_cycle={expected_cycle}")
+        else:
+            self.fail(
+                "rebalance_revision_trace",
+                f"revision detail rebalance_mode={rebalance_mode}, review_cycle={review_cycle}, expected {expected_cycle}",
+            )
+        if expected_cycle == "special":
+            if special_reason.strip():
+                self.pass_("special_revision_reason", "special_rebalance_reason present in revision detail")
+            else:
+                self.fail("special_revision_reason", "special snapshot missing special_rebalance_reason in revision detail")
+        elif special_reason.strip():
+            self.fail("annual_revision_reason", "annual snapshot unexpectedly has special_rebalance_reason")
+        else:
+            self.pass_("annual_revision_reason", "annual revision detail has no special_rebalance_reason")
 
     def check_counts_and_tiers(self, cur):
         expected_total = self.snapshot["total_candidates"]
@@ -523,6 +590,7 @@ class CoreUniverseAuditor:
             if not self.resolve_snapshot(cur):
                 return
             self.check_policy(cur)
+            self.check_rebalance_trace(cur)
             self.check_counts_and_tiers(cur)
             self.check_uniqueness_and_pairing(cur)
             self.check_raw_mirror(cur)

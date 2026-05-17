@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.11 (Quantum Finance Market Universe Seed Engine)
+sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
 ================================================================================
 **最後更新日期**: 2026-05-17
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化已實作 (憲法 v5.4.22 §7 對齊)
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化 (含 A3/A5 邊界補正) (憲法 v5.4.22 §7 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ sovereign_sync_engine.py v1.11 (Quantum Finance Market Universe Seed Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.11** | 2026-05-17 | Codex | **§7.6 A1〜A5 進階優化落地版**：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
+| **v1.11a** | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | **ACTIVE** |
+| v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
 | v1.10 | 2026-05-15 | Codex | §7 供應鏈速率主權落地版：(1) 新增 `FinMindThrottle` 滑動窗節流 5500/hr；(2) 新增 `fetch_with_retry()` 三階段退避 [30s, 300s, 1800s] 與 402 單次探測重試；(3) 新增 `is_already_synced()` DB-driven L3 斷點續傳；(4) 重寫 `sync_finmind()` 整合三層防禢，新增 `skipped` 與 `recovered` stats 類別；(5) `write_data_audit_log` op_type 擴充 `RETRY_402_RECOVERED` / `RESUME_SKIP`；(6) 連續三次失敗即 FAILED 並寫入 lifecycle；(7) CLI 不變、`--no-resume`、`--throttle` 為非破壞性新增。對齊憲法 v5.4.22 §7.1–7.8 全部條文。 | SUPERSEDED |
 | v1.9 | 2026-05-14 | Auto-patch | 5.5.3 對齊版：矩陣表補滿；--all 旗標語意正式登錄；Phase-Appropriate Lookback。 | SUPERSEDED |
 | v1.8 | 2026-05-14 | Codex | 市場個股資料取得與種子灌溉治理；lifecycle context 接入；動態 PERFECT/WARNING/FAILED。 | SUPERSEDED |
@@ -255,9 +256,9 @@ class SovereignSyncEngine:
                  quota_check_interval=A3_QUOTA_INTERVAL_MIN):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
-        self.constitution_ver = "v5.4.22"
+        self.constitution_ver = "v6.0.0"
         self.schema_ver = "v2.11"
-        self.tool_ver = "v1.11"
+        self.tool_ver = "v1.11a"
         # v1.11 §7.6 A3 動態配額查詢 callback
         quota_fn = self._query_remaining_quota if dynamic_quota else None
         self.throttle = FinMindThrottle(
@@ -290,6 +291,11 @@ class SovereignSyncEngine:
             info = self.fm_client.get_user_info()
         except Exception:
             return None
+        # §7.6 A3 邊界：查詢動作本身計入配額（憲法強制）
+        # 直接遞增 throttle window 與計數器，避免遞迴呼叫 acquire 造成死鎖
+        with self.throttle.lock:
+            self.throttle.window.append(time.time())
+            self.throttle.total_acquired += 1
         # FinMind get_user_info 回應結構：{"msg": "...", "user_count": N, "api_request_limit": M, ...}
         # 不同版本可能用不同欄位名；嘗試幾個常見鍵
         if not isinstance(info, dict):
@@ -621,10 +627,20 @@ class SovereignSyncEngine:
     def _apply_lifecycle_verdict(self, lifecycle):
         if lifecycle is None:
             return
+        # §7.6 A5：達 4800/hr 預警次數或 5500/hr 自動暫停次數任一 > 0 → lifecycle WARN
+        a5_msgs = []
+        if self.throttle.a5_warn_count > 0:
+            a5_msgs.append(f"§7.6 A5 預警觸發 {self.throttle.a5_warn_count} 次 (≥4800/hr)")
+        if self.throttle.a5_pause_count > 0:
+            a5_msgs.append(f"§7.6 A5 自動暫停 {self.throttle.a5_pause_count} 次 (≥5500/hr, 累計 {self.throttle.total_pause_sleep:.0f}s)")
+
         if self.stats["failed"] > 0 and hasattr(lifecycle, "mark_failed"):
             lifecycle.mark_failed("; ".join(self.stats["details"][:5]))
         elif self.stats["warning"] > 0 and hasattr(lifecycle, "mark_warning"):
-            lifecycle.mark_warning("; ".join(self.stats["details"][:5]))
+            lifecycle.mark_warning("; ".join(self.stats["details"][:5] + a5_msgs))
+        elif a5_msgs and hasattr(lifecycle, "mark_warning"):
+            # 即使主流程 success，A5 觸發也須升級為 WARNING 寫入 lifecycle
+            lifecycle.mark_warning("; ".join(a5_msgs))
 
     def _phase_appropriate_hint(self, stock_id, universe, days, dataset, seed, all_datasets):
         if seed or stock_id or dataset:

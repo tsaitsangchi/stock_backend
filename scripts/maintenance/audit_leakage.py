@@ -25,7 +25,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.22"
+CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 PROJECT_ROOT = _SCRIPTS_DIR.parent
 MODEL_TRADING_DATA_CUTOFF = "2025-05-15"

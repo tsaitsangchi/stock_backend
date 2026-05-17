@@ -38,7 +38,7 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v5.4.22"
+CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.1"
 DEFAULT_LABEL_HORIZON = 20

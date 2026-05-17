@@ -55,7 +55,7 @@ class ComplianceAuditor:
     INFRA_TABLES = {"pipeline_execution_log", "data_audit_log"}
 
     def __init__(self):
-        self.constitution_ver = "v5.4.22"
+        self.constitution_ver = "v6.0.0"
         self.tool_ver = "v1.18"
         self.schema_ver = "v2.11"
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
