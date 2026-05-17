@@ -333,6 +333,52 @@ class CoreUniverseAuditor:
                 f"§8.8.6 INFO：{rev_date} 日 reason='{short_reason}' 重複 {hit_count} 次；snapshot_ids={list(snapshot_ids)}；建議使用不同 <stage> 後綴避免 audit 噪訊",
             )
 
+    def check_zombie_in_committed_snapshot(self, cur):
+        """§6.8.8-C (III).2: committed snapshot 之 core+convex membership 不應含 class='A' 殭屍股。
+
+        若 registry 表不存在則 INFO 跳過（fail-open；下游 audit_doctrine_compliance P2 會 flag）；
+        若 membership 含 active class A 標的且其 effective_from <= snapshot.as_of_date，回報 WARN。
+        """
+        if self._scalar(cur, "SELECT to_regclass(%s)",
+                        ('public."universe_anomaly_registry"',)) is None:
+            self.warn(
+                "zombie_in_snapshot",
+                "§6.8.8-C: universe_anomaly_registry 表不存在；無法執行殭屍股檢驗（請執行 migrate_anomaly_registry.py）",
+            )
+            return
+
+        rows = self._rows(
+            cur,
+            '''
+            SELECT m."stock_id", m."core_tier", r."effective_from", r."reason"
+            FROM "core_universe_membership" m
+            JOIN "universe_anomaly_registry" r
+              ON m."stock_id" = r."stock_id"
+            WHERE m."snapshot_id" = %s
+              AND m."core_tier" IN ('core_universe', 'convex_universe')
+              AND m."active" = TRUE
+              AND r."anomaly_class" = 'A'
+              AND r."effective_to" IS NULL
+              AND r."effective_from" <= %s
+            ORDER BY m."stock_id"
+            ''',
+            (self.snapshot_id, self.as_of_date),
+        )
+        if not rows:
+            self.pass_(
+                "zombie_in_snapshot",
+                "§6.8.8-C: committed snapshot 之 core+convex membership 無 class A 殭屍股",
+            )
+            return
+        for stock_id, core_tier, eff_from, reason in rows:
+            short_reason = (reason[:60] + "...") if reason and len(reason) > 60 else (reason or "")
+            self.warn(
+                "zombie_in_snapshot",
+                f"§6.8.8-C WARN：committed snapshot 含 class A 殭屍股 {stock_id} ({core_tier})；"
+                f"registry effective_from={eff_from}；reason='{short_reason}'；"
+                f"建議走 §6.8.6 special_rebalance（reason='zombie_exclusion <YYYY-MM-DD> <stage>'）移出",
+            )
+
     def check_counts_and_tiers(self, cur):
         expected_total = self.snapshot["total_candidates"]
         membership_count = self._scalar(
@@ -621,6 +667,7 @@ class CoreUniverseAuditor:
             self.check_policy(cur)
             self.check_rebalance_trace(cur)
             self.check_same_day_reason_duplication(cur)
+            self.check_zombie_in_committed_snapshot(cur)
             self.check_counts_and_tiers(cur)
             self.check_uniqueness_and_pairing(cur)
             self.check_raw_mirror(cur)

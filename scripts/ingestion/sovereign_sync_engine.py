@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
+sovereign_sync_engine.py v1.12 (Quantum Finance Market Universe Seed Engine)
 ================================================================================
 **最後更新日期**: 2026-05-17
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化 (含 A3/A5 邊界補正) (憲法 v6.0.0 §7 對齊)
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY + §6.8.8-C ANOMALY REGISTRY SHORT-CIRCUIT (憲法 v6.0.0 §6.8.8-C / §7 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.11a** | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | **ACTIVE** |
+| **v1.12** | 2026-05-17 | Claude | **§6.8.8-C Anomaly Registry as Code 落地版**：(1) 啟動時 SELECT `universe_anomaly_registry` 全部 `effective_to IS NULL` 列為 in-memory `zombie_stocks` set 與 `structural_na_pairs` set；(2) `sync_finmind()` 入口新增 registry short-circuit，優先序 **registry > §7.5 resume > fetch**；(3) 命中 class A（整股殭屍）或 (class D, dataset, stock_id) 之組合：不打 API、不寫 lifecycle warning、僅遞增 `stats['registry_class_a_skipped']` / `registry_class_d_skipped` 與 INFO detail，同時 `write_data_audit_log` op_type=`REGISTRY_SHORT_CIRCUIT_CLASS_A/D`；(4) **Sovereign Verdict Purification (§6.8.8-C IV)**：registry short-circuit 不計入 `stats['warning']`，verdict 只對非 registry warning 觸發；本日基線 20 條結構性 warning 落地後應自動歸入 INFO、verdict 恢復 PERFECT；(5) registry 表不存在或 SELECT 失敗時 fail-open（返回空集合，不阻斷 sync；下游 `audit_doctrine_compliance` P2 會 flag 漂移）；(6) report 區塊新增 `§6.8.8-C registry` 與 `🔇 §6.8.8-C 短路` 兩行；CLI 不變、§7.2/7.5/7.6 主權契約完全相容。 | **ACTIVE** |
+| v1.11a | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | **ACTIVE** |
 | v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
 | v1.10 | 2026-05-15 | Codex | §7 供應鏈速率主權落地版：(1) 新增 `FinMindThrottle` 滑動窗節流 5500/hr；(2) 新增 `fetch_with_retry()` 三階段退避 [30s, 300s, 1800s] 與 402 單次探測重試；(3) 新增 `is_already_synced()` DB-driven L3 斷點續傳；(4) 重寫 `sync_finmind()` 整合三層防禢，新增 `skipped` 與 `recovered` stats 類別；(5) `write_data_audit_log` op_type 擴充 `RETRY_402_RECOVERED` / `RESUME_SKIP`；(6) 連續三次失敗即 FAILED 並寫入 lifecycle；(7) CLI 不變、`--no-resume`、`--throttle` 為非破壞性新增。對齊憲法 v5.4.22 §7.1–7.8 全部條文。 | SUPERSEDED |
 | v1.9 | 2026-05-14 | Auto-patch | 5.5.3 對齊版：矩陣表補滿；--all 旗標語意正式登錄；Phase-Appropriate Lookback。 | SUPERSEDED |
@@ -104,6 +105,9 @@ UNIVERSE_TIERS = {
     "convex": ("convex_universe",),
     "core": ("core_universe", "convex_universe"),
 }
+
+# v1.12 §6.8.8-C: Anomaly Registry as Code — load active entries at startup
+ANOMALY_REGISTRY_TABLE = "universe_anomaly_registry"
 
 # v1.10 §7 supply chain rate sovereignty constants
 DEFAULT_THROTTLE_PER_HOUR = 5500          # §7.2 主權預設 (8% 餘裕)
@@ -259,7 +263,7 @@ class SovereignSyncEngine:
         self.fred_key = os.getenv("FRED_API_KEY")
         self.constitution_ver = "v6.0.0"
         self.schema_ver = "v2.11"
-        self.tool_ver = "v1.11a"
+        self.tool_ver = "v1.12"
         # v1.11 §7.6 A3 動態配額查詢 callback
         quota_fn = self._query_remaining_quota if dynamic_quota else None
         self.throttle = FinMindThrottle(
@@ -280,8 +284,57 @@ class SovereignSyncEngine:
             "skipped": 0,         # v1.10: L3 斷點續傳跳過
             "recovered_402": 0,   # v1.10: 402 探測重試成功
             "rows": 0,
+            "registry_class_a_skipped": 0,  # v1.12 §6.8.8-C: zombie short-circuit
+            "registry_class_d_skipped": 0,  # v1.12 §6.8.8-C: structural NA short-circuit
             "details": [],
         }
+        # v1.12 §6.8.8-C: load Anomaly Registry into in-memory sets for short-circuit
+        self.zombie_stocks, self.structural_na_pairs = self._load_anomaly_registry()
+
+    # ---------- v1.12 §6.8.8-C Anomaly Registry as Code ----------
+
+    def _load_anomaly_registry(self):
+        """§6.8.8-C (III).1: 啟動時 SELECT registry，回傳 (zombies_set, na_pairs_set)。
+
+        - zombies_set: {stock_id, ...}            — class='A' 且 effective_to IS NULL
+        - na_pairs_set: {(stock_id, dataset), ...} — class='D' 且 effective_to IS NULL
+
+        registry 表不存在或讀取失敗時回傳空集合（fail-open，不阻斷 sync；下游 audit 會 flag 漂移）。
+        """
+        zombies = set()
+        na_pairs = set()
+        try:
+            conn = get_db_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT to_regclass(%s)", (f'public."{ANOMALY_REGISTRY_TABLE}"',))
+                if cur.fetchone()[0] is None:
+                    return zombies, na_pairs
+                cur.execute(
+                    f'SELECT anomaly_class, stock_id, dataset '
+                    f'FROM "{ANOMALY_REGISTRY_TABLE}" WHERE effective_to IS NULL'
+                )
+                for cls, sid, ds in cur.fetchall():
+                    if cls == "A":
+                        zombies.add(sid)
+                    elif cls == "D" and ds is not None:
+                        na_pairs.add((sid, ds))
+            finally:
+                conn.close()
+        except Exception as exc:
+            print(f"⚠️  §6.8.8-C registry load failed (fail-open): "
+                  f"{type(exc).__name__}: {exc}")
+        return zombies, na_pairs
+
+    def _registry_short_circuit_class(self, stock_id, dataset_name):
+        """§6.8.8-C (III).1: 命中 registry 則回傳 'A' 或 'D'；否則 None。"""
+        if not stock_id:
+            return None
+        if stock_id in self.zombie_stocks:
+            return "A"
+        if (stock_id, dataset_name) in self.structural_na_pairs:
+            return "D"
+        return None
 
     # ---------- v1.11 §7.6 A3 動態配額查詢 callback ----------
 
@@ -526,6 +579,26 @@ class SovereignSyncEngine:
     # ---------- v1.10 重寫的 sync_finmind ----------
 
     def sync_finmind(self, stock_id, dataset_name, start_date):
+        # v1.12 §6.8.8-C (III).1: registry short-circuit > §7.5 resume > fetch
+        short_circuit_class = self._registry_short_circuit_class(stock_id, dataset_name)
+        if short_circuit_class is not None:
+            with self.stats_lock:
+                if short_circuit_class == "A":
+                    self.stats["registry_class_a_skipped"] += 1
+                    icon_msg = (f"🔇 zombie skipped (§6.8.8-C class A): "
+                                f"{dataset_name} ({stock_id})")
+                else:
+                    self.stats["registry_class_d_skipped"] += 1
+                    icon_msg = (f"🔇 structural-NA skipped (§6.8.8-C class D): "
+                                f"{dataset_name} ({stock_id})")
+                self.stats["details"].append(icon_msg)
+            try:
+                write_data_audit_log(dataset_name, "SYNC", datetime.now().date(),
+                                     f"REGISTRY_SHORT_CIRCUIT_CLASS_{short_circuit_class}", 0)
+            except Exception:
+                pass
+            return
+
         # L3 §7.5 斷點續傳：先看 DB 是否已有資料
         if self.is_already_synced(stock_id, dataset_name, start_date):
             self._detail("skipped", f"{dataset_name} ({stock_id}): DB 已有 ≥ {start_date} 資料 (§7.5 resume)")
@@ -730,6 +803,10 @@ class SovereignSyncEngine:
         return self.stats["failed"] == 0
 
     def report_results(self, start_time, days, universe):
+        # v1.12 §6.8.8-C (IV) Sovereign Verdict Purification:
+        # registry short-circuits are INFO, not WARN; they do not count toward verdict.
+        # (Registry hits never enter stats["warning"] in v1.12+, so this is just a comment
+        #  documenting the invariant. WARNING is now triggered only by non-registry warnings.)
         if self.stats["failed"] > 0:
             verdict = "FAILED"
         elif self.stats["warning"] > 0:
@@ -758,6 +835,10 @@ class SovereignSyncEngine:
               f"A3 dynamic_quota={self.dynamic_quota} (adjustments={self.throttle.dynamic_quota_adjustments})")
         print(f"§7.6 A5 預警次數={self.throttle.a5_warn_count}, 自動暫停次數={self.throttle.a5_pause_count}, "
               f"暫停總時長={self.throttle.total_pause_sleep:.0f}s")
+        print(f"§6.8.8-C registry : zombies_loaded={len(self.zombie_stocks)}, "
+              f"na_pairs_loaded={len(self.structural_na_pairs)}, "
+              f"class_A_skipped={self.stats['registry_class_a_skipped']}, "
+              f"class_D_skipped={self.stats['registry_class_d_skipped']}")
         print("─" * 80)
         for detail in self.stats["details"]:
             print(detail)
@@ -767,6 +848,8 @@ class SovereignSyncEngine:
         print(f"❌ 失敗同步項目 : {self.stats['failed']}")
         print(f"⏭  跳過同步項目 : {self.stats['skipped']}")
         print(f"♻️  402-recovered : {self.stats['recovered_402']}")
+        print(f"🔇 §6.8.8-C 短路 : class_A={self.stats['registry_class_a_skipped']}, "
+              f"class_D={self.stats['registry_class_d_skipped']}")
         print(f"📝 總計寫入筆數 : {self.stats['rows']}")
         print(f"🕒 總計耗時     : {(time.time() - start_time):.2f} s")
         print(f"⚖️  主權判定     : {verdict}")

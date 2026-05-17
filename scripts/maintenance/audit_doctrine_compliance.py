@@ -228,6 +228,68 @@ class DoctrineAuditor:
             self.add("P2_pareto_barbell", "FAIL", "no_drift_guard",
                      "core_universe_builder 缺少 _annual_rebalance_guard")
 
+        # §6.8.8-C (III).3: universe_anomaly_registry ↔ charter §6.8.8-B (II) alignment
+        self.check_universe_anomaly_registry_alignment(cur)
+
+    def check_universe_anomaly_registry_alignment(self, cur):
+        """§6.8.8-C (III).3 P2 第 5 項：DB registry 與 charter §6.8.8-B (II) 清單對齊。
+
+        Charter baseline (single source of truth, 與 migrate_anomaly_registry.py 同步)：
+          - class A: {1701, 1729, 3559}
+          - class D: (6907, TaiwanStockDividend) ∪ ({6708,6907,7751,7770,7772,7810,7828,8102} × Margin)
+        registry effective_to IS NULL 之集合須與此 baseline 一致；任一不一致即 FAIL「charter ↔ code 漂移」。
+        """
+        # Charter §6.8.8-B (II) baseline — 必須與 migrate_anomaly_registry.py 之 BASELINE_* 一致
+        charter_zombies = {"1701", "1729", "3559"}
+        charter_na = {
+            ("6907", "TaiwanStockDividend"),
+        } | {
+            (sid, "TaiwanStockMarginPurchaseShortSale")
+            for sid in ("6708", "6907", "7751", "7770", "7772", "7810", "7828", "8102")
+        }
+
+        # Check table existence
+        cur.execute("SELECT to_regclass(%s)", ('public."universe_anomaly_registry"',))
+        if cur.fetchone()[0] is None:
+            self.add("P2_pareto_barbell", "FAIL", "anomaly_registry_alignment",
+                     "§6.8.8-C: universe_anomaly_registry 表不存在；charter ↔ code 漂移（請執行 migrate_anomaly_registry.py）")
+            return
+
+        cur.execute(
+            'SELECT anomaly_class, stock_id, dataset '
+            'FROM universe_anomaly_registry WHERE effective_to IS NULL'
+        )
+        db_zombies = set()
+        db_na = set()
+        for cls, sid, ds in cur.fetchall():
+            if cls == "A":
+                db_zombies.add(sid)
+            elif cls == "D" and ds is not None:
+                db_na.add((sid, ds))
+
+        z_missing = charter_zombies - db_zombies
+        z_extra = db_zombies - charter_zombies
+        n_missing = charter_na - db_na
+        n_extra = db_na - charter_na
+
+        if not (z_missing or z_extra or n_missing or n_extra):
+            self.add("P2_pareto_barbell", "PASS", "anomaly_registry_alignment",
+                     f"§6.8.8-C registry 與 charter §6.8.8-B (II) 對齊 "
+                     f"(class_A={len(db_zombies)}, class_D={len(db_na)})")
+            return
+
+        diff_msgs = []
+        if z_missing:
+            diff_msgs.append(f"class A 在 charter 但 DB 缺: {sorted(z_missing)}")
+        if z_extra:
+            diff_msgs.append(f"class A 在 DB 但 charter 無: {sorted(z_extra)}")
+        if n_missing:
+            diff_msgs.append(f"class D 在 charter 但 DB 缺: {sorted(n_missing)}")
+        if n_extra:
+            diff_msgs.append(f"class D 在 DB 但 charter 無: {sorted(n_extra)}")
+        self.add("P2_pareto_barbell", "FAIL", "anomaly_registry_alignment",
+                 f"§6.8.8-C charter ↔ code 漂移：{'; '.join(diff_msgs)}")
+
     def audit_p3_kondratiev_2026(self, cur):
         """§0.3 康波週期 + 6th wave MBNRIC 對映檢驗"""
         # 1. THEME_KEYWORDS 涵蓋第六波核心主題

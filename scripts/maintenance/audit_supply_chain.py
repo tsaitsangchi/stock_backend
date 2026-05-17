@@ -1,8 +1,8 @@
 """
-audit_supply_chain.py v1.18 (Post-Schema Compliance Audit Edition)
+audit_supply_chain.py v1.19 (Post-Schema Compliance Audit + §6.8.8-C Drift Detection)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊)
+**最後更新日期**: 2026-05-17
+**主權狀態**: POST-SCHEMA AUDIT + §6.8.8-C (VI) SYNC OUTPUT DRIFT DETECTION (憲法 v6.0.0 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -22,7 +22,8 @@ audit_supply_chain.py v1.18 (Post-Schema Compliance Audit Edition)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.18** | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | **ACTIVE** |
+| **v1.19** | 2026-05-17 | Claude | **§6.8.8-C (VI) sync output drift detection**：新增 `audit_sync_output_drift()` 比對最近兩次 `task_name='sync_all_core'` 之 status 與 error_msg；status 變動或 error_msg 內 stock_id set symmetric diff ≠ ∅ 即升 WARN，捕捉穩定基線之異常飄移（問題 #11 穩定性盲點之程式碼回應）。本檢驗在 `--db-only` / `--include-logs` / 預設皆執行；CLI 不變。 | **ACTIVE** |
+| v1.18 | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | SUPERSEDED |
 | v1.17 | 2026-05-13 | Auto-patch | DB-state aware 稽核；新增 FRED 完整性、lifecycle log 交叉比對、動態 verdict。 | SUPERSEDED |
 | v1.16 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
 ================================================================================
@@ -56,7 +57,7 @@ class ComplianceAuditor:
 
     def __init__(self):
         self.constitution_ver = "v6.0.0"
-        self.tool_ver = "v1.18"
+        self.tool_ver = "v1.19"
         self.schema_ver = "v2.11"
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
         self.audit_results = []
@@ -197,6 +198,74 @@ class ComplianceAuditor:
             cur.close()
             conn.close()
 
+    def audit_sync_output_drift(self):
+        """§6.8.8-C (VI): compare last two sync_all_core runs for output drift.
+
+        Drift signals:
+          - status changed between consecutive runs (e.g. PERFECT→WARNING or vice versa)
+          - error_msg differs (different stock_ids or counts mentioned)
+
+        Note: pipeline_execution_log stores only summarized error_msg (first 5 details).
+        A future enhancement could record structured per-run stats; for v1.19 this
+        symmetric-diff check is the minimum-viable drift detector.
+        """
+        print("🔄 正在驗收 §6.8.8-C (VI) sync output drift vs last run...")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            if not self._table_exists(cur, "pipeline_execution_log"):
+                self._record("Sync-Drift", "audit_skipped", "⚠️ WARNING",
+                             "pipeline_execution_log missing; skip drift check")
+                return
+            cur.execute(
+                """
+                SELECT id, task_name, status, error_msg, end_time
+                FROM pipeline_execution_log
+                WHERE task_name = 'sync_all_core'
+                ORDER BY end_time DESC NULLS LAST
+                LIMIT 2;
+                """
+            )
+            rows = cur.fetchall()
+            if len(rows) < 2:
+                self._record("Sync-Drift", "insufficient_history", "✅ DEFERRED",
+                             f"only {len(rows)} sync_all_core run(s) in history; need >= 2")
+                return
+            current = rows[0]
+            previous = rows[1]
+            cur_id, _, cur_status, cur_err, cur_end = current
+            prev_id, _, prev_status, prev_err, prev_end = previous
+
+            if (cur_status or "") != (prev_status or ""):
+                self._record("Sync-Drift", "status_change", "⚠️ ANOMALY",
+                             f"status changed {prev_status}@{prev_end} → {cur_status}@{cur_end} "
+                             f"(ids {prev_id}→{cur_id})")
+            else:
+                self._record("Sync-Drift", "status_stable", "✅ PASS",
+                             f"status stable across last 2 runs: {cur_status}")
+
+            # Extract stock_ids from error_msg via regex; treat absence of either as no-drift
+            import re
+            def _stock_ids(msg):
+                if not msg:
+                    return set()
+                # 4-digit stock_ids most common; also accept 5-char alphanum
+                return set(re.findall(r"\b\d{4}[A-Z]?\b", msg))
+            cur_ids = _stock_ids(cur_err)
+            prev_ids = _stock_ids(prev_err)
+            sym_diff = cur_ids.symmetric_difference(prev_ids)
+            if sym_diff:
+                added = sorted(cur_ids - prev_ids)
+                removed = sorted(prev_ids - cur_ids)
+                self._record("Sync-Drift", "stock_id_set_change", "⚠️ ANOMALY",
+                             f"error_msg stock_ids changed; added={added} removed={removed}")
+            else:
+                self._record("Sync-Drift", "stock_id_set_stable", "✅ PASS",
+                             f"error_msg stock_id set stable ({len(cur_ids)} ids)")
+        finally:
+            cur.close()
+            conn.close()
+
     def audit_logs(self, window_hours=24):
         print(f"📝 正在驗收 pipeline_execution_log / data_audit_log...")
         conn = get_db_connection()
@@ -227,12 +296,18 @@ class ComplianceAuditor:
                 self._record("Pipeline-Log", "recent_tasks", "✅ DEFERRED", f"no tasks in last {window_hours}h")
                 return
 
-            bad_status = [row for row in rows if row[1] and row[1].lower() not in {"success", "warning"}]
+            # §3.2A 治權邊界：audit 不得對「自身過去執行紀錄」做為證據（feedback loop 防護）。
+            # post_schema_audit_* 為本工具自身的 lifecycle task_name；排除自查。
+            audit_own_prefix = "post_schema_audit_"
+            non_self_rows = [r for r in rows if not (r[0] and r[0].startswith(audit_own_prefix))]
+            bad_status = [row for row in non_self_rows if row[1] and row[1].lower() not in {"success", "warning"}]
             if bad_status:
                 sample = "; ".join(f"{r[0]}={r[1]}" for r in bad_status[:3])
                 self._record("Pipeline-Log", "task_status", "❌ FAILED", sample)
             else:
-                self._record("Pipeline-Log", "task_status", "✅ PASS", f"{len(rows)} recent tasks have acceptable status")
+                self._record("Pipeline-Log", "task_status", "✅ PASS",
+                             f"{len(non_self_rows)} non-self recent tasks have acceptable status "
+                             f"(excluded {len(rows) - len(non_self_rows)} audit self-records)")
 
             missing_end = [row for row in rows if row[3] is None]
             if missing_end:
@@ -260,7 +335,7 @@ class ComplianceAuditor:
                 f.write(f"| {source} | {item} | {status} | {safe_detail} |\n")
 
     def run(self, source=None, db_only=False, api_only=False, include_logs=False):
-        task_name = "post_schema_audit_v1.18"
+        task_name = "post_schema_audit_v1.19"
         with record_lifecycle(task_name, category="maintenance", stock_id="SYSTEM") as lifecycle:
             if not db_only:
                 self.audit_api_contracts(source=source)
@@ -269,6 +344,8 @@ class ComplianceAuditor:
                 self.audit_fred_series_and_freshness()
                 if include_logs or db_only:
                     self.audit_logs()
+                # §6.8.8-C (VI): always run sync output drift detection in DB-aware modes
+                self.audit_sync_output_drift()
 
             verdict = self.compute_verdict()
             if verdict == "FAILED" and hasattr(lifecycle, "mark_failed"):

@@ -268,6 +268,30 @@ CORE_UNIVERSE_REGISTRY = {
             ("idx_universe_revision_log_action", ["action_type"]),
         ],
     },
+    # §6.8.8-C (II): Anomaly Registry as Code — machine-enforcement of §6.8.8-B
+    # Partial unique index `uq_anomaly_active` and composite CHECK constraint are
+    # applied post-create via scripts/maintenance/migrate_anomaly_registry.py
+    # (the schema framework does not natively support partial indexes / table-level CHECKs).
+    "universe_anomaly_registry": {
+        "columns": {
+            "registry_id": "SERIAL PRIMARY KEY",
+            "anomaly_class": "CHAR(1) NOT NULL CHECK (anomaly_class IN ('A','D'))",
+            "stock_id": "VARCHAR(255) NOT NULL",
+            "dataset": "VARCHAR(255)",
+            "effective_from": "DATE NOT NULL",
+            "effective_to": "DATE",
+            "reason": "TEXT NOT NULL",
+            "committed_by": "VARCHAR(255) NOT NULL",
+            "audit_trail_ref": "VARCHAR(255) NOT NULL",
+            "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "notes": "TEXT",
+        },
+        "unique_constraints": [],
+        "indexes": [
+            ("idx_anomaly_class", ["anomaly_class"]),
+            ("idx_anomaly_stock_id", ["stock_id"]),
+        ],
+    },
 }
 
 RAW_COLUMN_INHERITANCE = {
@@ -287,6 +311,7 @@ RAW_COLUMN_INHERITANCE = {
 
 PREREQUISITE_TABLES = ["pipeline_execution_log", "data_audit_log", "TaiwanStockInfo"]
 DROP_ORDER = [
+    "universe_anomaly_registry",
     "universe_revision_log",
     "stock_theme_map",
     "theme_taxonomy",
