@@ -304,6 +304,35 @@ class CoreUniverseAuditor:
         else:
             self.pass_("annual_revision_reason", "annual revision detail has no special_rebalance_reason")
 
+    def check_same_day_reason_duplication(self, cur):
+        """§8.8.6 第 2 條：同一日同一 special override reason 重複觸發須回報 INFO（v6.0.0 不強制 reject）。"""
+        rows = self._rows(
+            cur,
+            '''
+            SELECT
+                DATE(rl."revision_time") AS rev_date,
+                COALESCE(rl."detail"->>'special_rebalance_reason', '') AS reason,
+                COUNT(*) AS hit_count,
+                ARRAY_AGG(rl."snapshot_id" ORDER BY rl."revision_time") AS snapshot_ids
+            FROM "universe_revision_log" rl
+            WHERE rl."action_type" = 'BUILD_SNAPSHOT'
+              AND rl."detail"->>'rebalance_mode' = 'special'
+              AND COALESCE(rl."detail"->>'special_rebalance_reason', '') <> ''
+            GROUP BY rev_date, reason
+            HAVING COUNT(*) > 1
+            ORDER BY rev_date DESC, hit_count DESC
+            '''
+        )
+        if not rows:
+            self.pass_("same_day_reason_dedup", "§8.8.6 第 2 條：無同日重複 special override reason")
+            return
+        for rev_date, reason, hit_count, snapshot_ids in rows:
+            short_reason = (reason[:40] + "...") if len(reason) > 40 else reason
+            self.warn(
+                "same_day_reason_dedup",
+                f"§8.8.6 INFO：{rev_date} 日 reason='{short_reason}' 重複 {hit_count} 次；snapshot_ids={list(snapshot_ids)}；建議使用不同 <stage> 後綴避免 audit 噪訊",
+            )
+
     def check_counts_and_tiers(self, cur):
         expected_total = self.snapshot["total_candidates"]
         membership_count = self._scalar(
@@ -591,6 +620,7 @@ class CoreUniverseAuditor:
                 return
             self.check_policy(cur)
             self.check_rebalance_trace(cur)
+            self.check_same_day_reason_duplication(cur)
             self.check_counts_and_tiers(cur)
             self.check_uniqueness_and_pairing(cur)
             self.check_raw_mirror(cur)
