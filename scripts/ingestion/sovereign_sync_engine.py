@@ -117,6 +117,7 @@ A5_WARN_THRESHOLD = 4800                  # §7.6 A5: 80% 觸發 lifecycle warni
 A5_PAUSE_THRESHOLD = 5500                 # §7.6 A5: 達 5500/hr 自動暫停
 A5_PAUSE_DURATION = 300                   # §7.6 A5: 暫停 5 分鐘
 A3_QUOTA_INTERVAL_MIN = 100               # §7.6 A3: N 不得小於 100
+FRED_PAGE_LIMIT = 100000                  # FRED max page size; enough for current core daily/monthly series
 
 
 class FinMindThrottle:
@@ -574,19 +575,27 @@ class SovereignSyncEngine:
             if not self.fred_key:
                 raise RuntimeError("FRED_API_KEY missing")
             url = "https://api.stlouisfed.org/fred/series/observations"
-            params = {
-                "series_id": series_id,
-                "api_key": self.fred_key,
-                "file_type": "json",
-                "limit": 1000,
-                "sort_order": "desc",
-            }
-            res = requests.get(url, params=params, timeout=30)
-            res.raise_for_status()
-            payload = res.json()
-            data = payload.get("observations", [])
+            data = []
+            offset = 0
+            while True:
+                params = {
+                    "series_id": series_id,
+                    "api_key": self.fred_key,
+                    "file_type": "json",
+                    "limit": FRED_PAGE_LIMIT,
+                    "offset": offset,
+                    "sort_order": "asc",
+                }
+                res = requests.get(url, params=params, timeout=30)
+                res.raise_for_status()
+                payload = res.json()
+                page = payload.get("observations", [])
+                data.extend(page)
+                if len(page) < FRED_PAGE_LIMIT:
+                    break
+                offset += FRED_PAGE_LIMIT
             if not data:
-                raise RuntimeError(payload.get("error_message") or "API 回傳 0 個 observation")
+                raise RuntimeError("API 回傳 0 個 observation")
 
             df = pd.DataFrame(data)
             df["series_id"] = series_id
