@@ -62,6 +62,7 @@ CHARTER_MODULES = [
     "scripts/maintenance/audit_core_universe.py",
     "scripts/maintenance/audit_leakage.py",
     "scripts/maintenance/audit_downstream_readiness.py",
+    "scripts/maintenance/audit_doctrine_compliance.py",
 ]
 
 # 四大支柱對映關鍵字（用於 --scan-module 之語意對映檢驗）

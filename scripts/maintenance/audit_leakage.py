@@ -1,7 +1,7 @@
 """
 audit_leakage.py v0.1 (Quantum Finance Anti-Leakage Audit Authority)
 ================================================================================
-最後更新日期: 2026-05-16
+最後更新日期: 2026-05-17
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.5 Data Leakage 防禦草案)
 最高原則: Anti-Leakage Audit Authority
 ================================================================================
@@ -10,6 +10,7 @@ import argparse
 import re
 import sys
 import time
+from datetime import date, timedelta
 from pathlib import Path
 
 _THIS_FILE = Path(__file__).resolve()
@@ -28,7 +29,9 @@ except ImportError as exc:
 CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 PROJECT_ROOT = _SCRIPTS_DIR.parent
-MODEL_TRADING_DATA_CUTOFF = "2025-05-15"
+HISTORICAL_MODEL_CUTOFF = "2025-05-15"
+HISTORICAL_MODEL_CUTOFF_DATE = date.fromisoformat(HISTORICAL_MODEL_CUTOFF)
+FORMAL_LABEL_HORIZON = 20
 SCAN_FILES = [
     PROJECT_ROOT / "scripts" / "core" / "feature_store_builder.py",
     PROJECT_ROOT / "scripts" / "core" / "model_trainer.py",
@@ -100,22 +103,58 @@ class LeakageAuditor:
 
             cur.execute(
                 """
-                SELECT COUNT(*)
-                FROM "model_registry"
+                SELECT COALESCE(MAX(as_of_date), DATE '1900-01-01')
+                FROM "core_universe_snapshot"
                 WHERE status = 'committed'
-                  AND (
-                    label_horizon <> 20
-                    OR metrics->>'label_date_max' IS NULL
-                    OR (metrics->>'label_date_max')::date > %s
-                  )
-                """,
-                (MODEL_TRADING_DATA_CUTOFF,),
+                """
             )
-            cutoff_violations = cur.fetchone()[0]
-            if cutoff_violations == 0:
-                self.add("PASS", "model_data_cutoff", f"committed models use h20 labels through <= {MODEL_TRADING_DATA_CUTOFF}")
+            latest_core_as_of = cur.fetchone()[0]
+
+            cur.execute(
+                """
+                SELECT
+                    m.model_id,
+                    m.label_horizon,
+                    (m.metrics->>'label_date_max')::date AS label_date_max,
+                    f.as_of_date,
+                    f.feature_set_version
+                FROM "model_registry" m
+                JOIN "feature_store_snapshot" f ON f.feature_set_id = m.feature_set_id
+                WHERE m.status = 'committed'
+                ORDER BY m.model_id
+                """
+            )
+            model_rows = cur.fetchall()
+            cutoff_violations = []
+            production_rows = 0
+            historical_rows = 0
+            for model_id, horizon, label_date_max, feature_as_of, feature_set_version in model_rows:
+                if horizon != FORMAL_LABEL_HORIZON or label_date_max is None:
+                    cutoff_violations.append((model_id, "missing_or_bad_horizon", label_date_max))
+                    continue
+                required_label_date = feature_as_of + horizon * timedelta(days=1)
+                is_production_current = (
+                    feature_as_of == latest_core_as_of
+                    or "production_current" in (feature_set_version or "")
+                )
+                if is_production_current:
+                    production_rows += 1
+                    if label_date_max < required_label_date:
+                        cutoff_violations.append((model_id, "production_label_not_mature", label_date_max))
+                else:
+                    historical_rows += 1
+                    if label_date_max > HISTORICAL_MODEL_CUTOFF_DATE:
+                        cutoff_violations.append((model_id, "historical_cutoff", label_date_max))
+
+            if not cutoff_violations:
+                self.add(
+                    "PASS",
+                    "model_data_cutoff",
+                    f"historical models <= {HISTORICAL_MODEL_CUTOFF}; production-current uses required_label_date gate; "
+                    f"historical={historical_rows}, production_current={production_rows}",
+                )
             else:
-                self.add("FAIL", "model_data_cutoff", f"violations={cutoff_violations}, cutoff={MODEL_TRADING_DATA_CUTOFF}")
+                self.add("FAIL", "model_data_cutoff", f"violations={cutoff_violations}")
 
             cur.execute(
                 """

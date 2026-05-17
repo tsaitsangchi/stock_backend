@@ -5,7 +5,7 @@ Quantum Finance §8 Promotion Readiness Audit Authority
 
 Purpose:
 1. Summarize whether §8 has enough historical clean-validation evidence.
-2. Separately decide whether §8 is ready for v5.4.23 production-current promotion.
+2. Separately decide whether §8 is ready for v6.1.0 successor production-current promotion.
 3. Write a promotion readiness report under reports/.
 ================================================================================
 """
@@ -14,7 +14,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 _THIS_FILE = Path(__file__).resolve()
@@ -34,7 +34,8 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
-MODEL_TRADING_DATA_CUTOFF = "2025-05-15"
+HISTORICAL_MODEL_CUTOFF = "2025-05-15"
+HISTORICAL_MODEL_CUTOFF_DATE = date.fromisoformat(HISTORICAL_MODEL_CUTOFF)
 FORMAL_LABEL_HORIZON = 20
 MODEL_ID_PATTERN = re.compile(r"^mdl_[0-9]{8}_[a-z0-9]+_h[0-9]+_[0-9a-f]{8}_v[0-9]+_[0-9]+$")
 
@@ -125,18 +126,21 @@ class DownstreamReadinessAuditor:
     def check_committed_model(self, cur):
         cur.execute(
             """
-            SELECT model_id, feature_set_id, universe_snapshot_id, label_horizon,
-                   metrics->>'ic_mean', metrics->>'label_date_max', metrics->>'trainer',
-                   artifact_path,
+            SELECT mr.model_id, mr.feature_set_id, mr.universe_snapshot_id, mr.label_horizon,
+                   mr.metrics->>'ic_mean', (mr.metrics->>'label_date_max')::date, mr.metrics->>'trainer',
+                   mr.artifact_path,
                    EXISTS (
                        SELECT 1
                        FROM "prediction_run" pr
                        WHERE pr.model_id = mr.model_id
                          AND pr.status = 'committed'
-                   ) AS has_committed_prediction
+                   ) AS has_committed_prediction,
+                   f.as_of_date,
+                   f.feature_set_version
             FROM "model_registry" mr
+            JOIN "feature_store_snapshot" f ON f.feature_set_id = mr.feature_set_id
             WHERE mr.status = 'committed'
-            ORDER BY created_at DESC, model_id DESC
+            ORDER BY mr.created_at DESC, mr.model_id DESC
             """
         )
         rows = cur.fetchall()
@@ -152,11 +156,14 @@ class DownstreamReadinessAuditor:
             )
             return None
 
-        model_id, feature_set_id, universe_snapshot_id, horizon, ic_raw, label_max, trainer, artifact_path, _ = prediction_backed[0]
+        model_id, feature_set_id, universe_snapshot_id, horizon, ic_raw, label_max, trainer, artifact_path, _, feature_as_of, feature_version = prediction_backed[0]
         self.context["model_id"] = model_id
         self.context["feature_set_id"] = feature_set_id
         self.context["universe_snapshot_id"] = universe_snapshot_id
         self.context["artifact_path"] = artifact_path
+        self.context["model_label_date_max"] = label_max
+        self.context["model_feature_as_of"] = feature_as_of
+        self.context["model_feature_set_version"] = feature_version
         self.context["committed_model_count"] = len(rows)
         self.pass_(
             "committed_model_cardinality",
@@ -175,11 +182,43 @@ class DownstreamReadinessAuditor:
         else:
             self.fail("label_horizon", f"bad horizons={bad_horizons}, expected {FORMAL_LABEL_HORIZON}")
 
-        cutoff_violations = [(row[0], row[5]) for row in rows if not row[5] or row[5] > MODEL_TRADING_DATA_CUTOFF]
+        cur.execute(
+            """
+            SELECT COALESCE(MAX(as_of_date), DATE '1900-01-01')
+            FROM "core_universe_snapshot"
+            WHERE status = 'committed'
+            """
+        )
+        latest_core_as_of = cur.fetchone()[0]
+        cutoff_violations = []
+        historical_count = 0
+        production_count = 0
+        for row in rows:
+            model_id, _, _, horizon, _, label_max, _, _, _, feature_as_of, feature_version = row
+            if horizon != FORMAL_LABEL_HORIZON or not label_max:
+                cutoff_violations.append((model_id, "missing_or_bad_horizon", label_max))
+                continue
+            required_label_date = feature_as_of + timedelta(days=horizon)
+            is_production_current = (
+                feature_as_of == latest_core_as_of
+                or "production_current" in (feature_version or "")
+            )
+            if is_production_current:
+                production_count += 1
+                if label_max < required_label_date:
+                    cutoff_violations.append((model_id, "production_label_not_mature", label_max))
+            else:
+                historical_count += 1
+                if label_max > HISTORICAL_MODEL_CUTOFF_DATE:
+                    cutoff_violations.append((model_id, "historical_cutoff", label_max))
         if not cutoff_violations:
-            self.pass_("model_data_cutoff", f"all committed label_date_max <= {MODEL_TRADING_DATA_CUTOFF}: count={len(rows)}")
+            self.pass_(
+                "model_data_cutoff",
+                f"historical label_date_max <= {HISTORICAL_MODEL_CUTOFF}; production-current uses required_label_date gate: "
+                f"historical={historical_count}, production_current={production_count}",
+            )
         else:
-            self.fail("model_data_cutoff", f"cutoff violations={cutoff_violations}, cutoff={MODEL_TRADING_DATA_CUTOFF}")
+            self.fail("model_data_cutoff", f"cutoff violations={cutoff_violations}")
 
         quality_failures = []
         for row in rows:
@@ -330,18 +369,33 @@ class DownstreamReadinessAuditor:
         self.context["production_as_of_date"] = as_of_date
         self.context["production_required_label_date"] = required_label_date
         self.context["max_price_date"] = max_price_date
+        model_feature_as_of = self.context.get("model_feature_as_of")
+        model_label_date_max = self.context.get("model_label_date_max")
 
-        if max_price_date and max_price_date >= required_label_date:
-            self.context["production_current_ready"] = True
-            self.pass_(
-                "production_current_label_window",
-                f"max_price_date={max_price_date} >= required_label_date={required_label_date}",
-            )
-        else:
+        if not max_price_date or max_price_date < required_label_date:
             self.context["production_current_ready"] = False
             self.warn(
                 "production_current_label_window",
                 f"blocked: max_price_date={max_price_date}, required_label_date={required_label_date}",
+            )
+        elif model_feature_as_of != as_of_date:
+            self.context["production_current_ready"] = False
+            self.warn(
+                "production_current_delivery_model",
+                f"blocked: prediction-backed model feature_as_of={model_feature_as_of}, production_as_of_date={as_of_date}",
+            )
+        elif not model_label_date_max or model_label_date_max < required_label_date:
+            self.context["production_current_ready"] = False
+            self.warn(
+                "production_current_delivery_model",
+                f"blocked: model_label_date_max={model_label_date_max}, required_label_date={required_label_date}",
+            )
+        else:
+            self.context["production_current_ready"] = True
+            self.pass_(
+                "production_current_label_window",
+                f"max_price_date={max_price_date} >= required_label_date={required_label_date}; "
+                f"prediction-backed model feature_as_of={model_feature_as_of}, label_date_max={model_label_date_max}",
             )
 
     def audit_db(self):
@@ -384,7 +438,8 @@ class DownstreamReadinessAuditor:
             f"- feature_set_version: `{self.context.get('feature_set_version', 'N/A')}`",
             f"- prediction_run_id: `{self.context.get('prediction_run_id', 'N/A')}`",
             f"- as_of_date: `{self.context.get('as_of_date', 'N/A')}`",
-            f"- model trading data cutoff: `{MODEL_TRADING_DATA_CUTOFF}`",
+            f"- historical model cutoff: `{HISTORICAL_MODEL_CUTOFF}`",
+            "- production-current cutoff: `required_label_date` gate (not historical cutoff)",
             "",
             "## Production-Current Gate",
             "",
@@ -397,9 +452,9 @@ class DownstreamReadinessAuditor:
             "",
         ]
         if verdict == "READY_FOR_V5_4_23":
-            lines.append("§8 is ready for production-current promotion review.")
+            lines.append("§8 is successor-ready for production-current promotion review; verdict name is retained for compatibility.")
         elif verdict == "READY_FOR_DRAFT_EVIDENCE":
-            lines.append("§8 has clean historical h20 evidence, but v5.4.23 promotion is blocked until production-current label data is available.")
+            lines.append("§8 has clean historical h20 evidence, but successor promotion is blocked until production-current label data and delivery model are available.")
         else:
             lines.append("§8 is not ready; failed checks must be fixed before promotion review.")
         lines.extend(["", "## Checks", ""])
