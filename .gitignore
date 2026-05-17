@@ -38,8 +38,10 @@ evaluations/
 logs/
 reports/*
 !reports/系統架構_*.md
+!reports/系統架構大憲章_*.md
+!reports/core_sync_completeness_*.md
+!reports/universe_completeness_*.md
 archive/
 .pytest_cache/
 .gitignore提升性能。
-!reports/系統架構大憲章_*.md
 stock_backend/
