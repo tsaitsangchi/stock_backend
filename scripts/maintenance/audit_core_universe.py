@@ -5,12 +5,40 @@ audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
 主權狀態: IMPLEMENTED (憲法 v6.0.0 核心股結果驗收稽核 + special restore trace audit)
 最高原則: Core Universe Post-Build Verification
 
-v0.1 邊界:
-1. 只驗收 core_universe_builder.py 產物，不重算核心股名單。
-2. 驗收 policy、snapshot、membership、scores、revision log 的一致性。
-3. 驗收 raw 欄位鏡像與 v0.1 downstream boundary。
-4. 不保存 feature values、labels、model outputs、prediction signals。
-5. 驗收年度重選 / special restore 的 review_cycle、snapshot notes、revision log 留痕。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Core Universe Audit Authority]: 對齊憲章 §6.7 / §6.8 / §8.8.6，只驗收
+   `core_universe_builder.py` 產物，**不重算**核心股名單；本工具不是核心股
+   選擇器，是核心股結果之 post-build 驗收。
+2. [Consistency Coverage]: 驗收 policy、snapshot、membership、scores、
+   revision log 之一致性；驗收 raw 欄位鏡像（§1 第 5 條 Derived Schema
+   欄位繼承）與 v0.1 downstream boundary。
+3. [Annual Rebalance Guard Verification]: 驗收年度重選 / special restore
+   之 review_cycle、snapshot notes、revision log 留痕；§8.8.6 第 2 條
+   same-day reason duplication INFO 偵測（v6.0.0 補登 41 項檢查）。
+4. [Boundary Integrity]: 不保存 feature values、labels、model outputs、
+   prediction signals；§8 下游治理不在本工具範圍。
+5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態動態計算（§5.6.3），FAIL 即 exit 1。
+6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 4C：年度重選後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date 2026-05-14` | audit_core_universe v0.1 |
+| **2. [DB 全重建驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <YYYY-MM-DD>` | audit_core_universe v0.1 |
+| **3. [special restore 後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <restore-date>` | audit_core_universe v0.1 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **no-report** | `--no-report` | 略過 `reports/core_universe_audit_*.md` 產出 |
+| **strict** | `--strict` | special restore notes / reason 字串嚴格檢驗，缺漏即 FAIL |
+| **legacy-fallback** | `--allow-latest-registry-fallback` | bootstrap 期間允許 candidate fallback 為 latest registry |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.1** | 2026-05-14 | Codex | 首版：依憲章 §6.7 / §6.8 / §8.8.6 落地，驗收 policy/snapshot/membership/scores/revision log；2026-05-17 補入 `check_same_day_reason_duplication()`（§8.8.6 第 2 條）；2026-05-18 v6.0.0-patch 補入 §6.8 annual guard 衍生檢查，總檢驗項由 36 → 40 → 41。 | **ACTIVE** |
 ================================================================================
 """
 import argparse

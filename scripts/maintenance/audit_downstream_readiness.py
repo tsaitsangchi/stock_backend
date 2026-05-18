@@ -1,20 +1,47 @@
 """
-audit_downstream_readiness.py v0.2
+audit_downstream_readiness.py v0.2 (Quantum Finance §8 Promotion Readiness Audit Authority)
 ================================================================================
-Quantum Finance §8 Promotion Readiness Audit Authority
+最後更新日期: 2026-05-18
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.8.6 / §8.8.9 升版 readiness 稽核 + §9.1 horizon=30 預備)
+最高原則: Downstream Promotion Readiness Authority
 
-Purpose:
-1. Summarize whether §8 has enough historical clean-validation evidence.
-2. Separately decide whether §8 is ready for v6.1.0 successor production-current promotion.
-3. Write a promotion readiness report under reports/.
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Promotion Readiness Authority]: 對齊憲章 §8.8.6 / §8.8.9，作為 §8 升至強制契約之
+   readiness 稽核總工具；不取代 `audit_leakage.py`，而是彙總 DDL、clean historical
+   evidence、committed model/prediction cardinality、model_id hash 治權、h20/cutoff、
+   artifact、prediction coverage 與 production-current label window。
+2. [Cardinality Rule]: 依 §8.8.8，committed model cardinality 改為「exactly 1
+   prediction-backed」+ 容許多個 historical walk-forward；同時對所有 committed models
+   擴張 model_id_governance / horizon / cutoff / IC / artifact 檢查。
+3. [Production-Current Gate]: `FORMAL_LABEL_HORIZON = 20` 為 §8 production-current
+   v6.1.0 升版基準；`ALLOWED_LABEL_HORIZONS = {20, 30}` 對齊 §9.1 v6.2.0 預備；
+   universe-wide horizon/cutoff 檢查改用 ALLOWED set。
+4. [Verdict Contract]: 輸出三態 `READY_FOR_DRAFT_EVIDENCE` / `READY_FOR_V5_4_23`
+   （legacy-compatible name，語意等同「§8 successor-ready」）/ `FAILED`；
+   FAIL 即 exit 1（§3.2A 接受標準）。
+5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態動態計算（§5.6.3），不得硬編 PERFECT。
+6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
 
-修訂歷程:
-| 版本 | 日期       | 說明                                                                       |
-| :--- | :--------- | :------------------------------------------------------------------------- |
-| v0.2 | 2026-05-18 | 新增 ALLOWED_LABEL_HORIZONS = {20, 30}：對齊 §9.1 v6.2.0 horizon=30 預備；  |
-|      |            | universe-wide horizon/cutoff 檢查改用 ALLOWED set；feature_label_horizon 與 |
-|      |            | production-current gate 仍以 FORMAL_LABEL_HORIZON=20 為現行 v6.1.0 升版基準。 |
-| v0.1 | 2026-05-17 | 首版：§8 升版 readiness audit（DDL / cardinality / cutoff / coverage / gate）  |
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 11B：升版 readiness 稽核]** | `$ python scripts/maintenance/audit_downstream_readiness.py` | audit_downstream_readiness v0.2 |
+| **2. [僅 stdout：不產生報告檔]** | `$ python scripts/maintenance/audit_downstream_readiness.py --no-report` | audit_downstream_readiness v0.2 |
+| **3. [指定 as-of-date 重審]** | `$ python scripts/maintenance/audit_downstream_readiness.py --as-of-date 2026-05-15` | audit_downstream_readiness v0.2 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **no-report** | `--no-report` | 略過 `reports/downstream_promotion_readiness_*.md` 產出 |
+| **horizon-override** | `--label-horizon 30` | 對 §9.1 v6.2.0 預備之 h30 readiness 預演 |
+| **strict-cardinality** | `--strict-cardinality` | 強制 exactly 1 committed model（升 v6.1.0 前最終 gate） |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.2** | 2026-05-18 | Codex | §14.7-R 升版：新增 `ALLOWED_LABEL_HORIZONS = {20, 30}` 對齊 §9.1 v6.2.0 horizon=30 預備；universe-wide horizon/cutoff 檢查改用 ALLOWED set；`feature_label_horizon` 與 production-current gate 仍以 `FORMAL_LABEL_HORIZON=20` 為現行 v6.1.0 升版基準。 | **ACTIVE** |
+| v0.1 | 2026-05-17 | Codex | 首版：§8 升版 readiness audit（DDL / cardinality / cutoff / coverage / gate）；首次落地 `READY_FOR_DRAFT_EVIDENCE` / `READY_FOR_V5_4_23` / `FAILED` 三態 verdict。 | SUPERSEDED |
 ================================================================================
 """
 import argparse

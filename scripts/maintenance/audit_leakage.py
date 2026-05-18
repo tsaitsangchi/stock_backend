@@ -5,13 +5,42 @@ audit_leakage.py v0.2 (Quantum Finance Anti-Leakage Audit Authority)
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.5 Data Leakage 防禦 + §9.1 horizon=30 預備支援)
 最高原則: Anti-Leakage Audit Authority
 
-修訂歷程:
-| 版本 | 日期       | 說明                                                                        |
-| :--- | :--------- | :-------------------------------------------------------------------------- |
-| v0.2 | 2026-05-18 | 新增 ALLOWED_LABEL_HORIZONS = {20, 30}：對齊 §9.1 v6.2.0 horizon=30 預備；   |
-|      |            | h30 historical model 不再觸發 missing_or_bad_horizon FAIL。h20 仍為現行 §8  |
-|      |            | production-current 之 FORMAL_LABEL_HORIZON。                                |
-| v0.1 | 2026-05-17 | 首版：§8.5 8 條防禦規則 + per-run prediction coverage 強制；硬編 h=20。      |
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Anti-Leakage Authority]: 對齊憲章 §8.5「Data Leakage 防禦規則」之 8 條 anti-leakage 規則，
+   掃描 `feature_store_builder.py` / `model_trainer.py` / `prediction_engine.py` 之
+   committed 產物是否違反 as-of-strict / label_horizon / no-lookahead 等邊界。
+2. [Per-Run Coverage Enforcement]: 每一 `prediction_run` 必須單獨等於其鎖定
+   `universe_snapshot_id` 對應之 core+convex universe stock 數（§8.8.4 補正），
+   封堵 aggregated 比對單 run 缺漏被總數掩蓋之漏洞。
+3. [Horizon Allowed Set]: `ALLOWED_LABEL_HORIZONS = {20, 30}` 對齊 §9.1 v6.2.0 預備；
+   `FORMAL_LABEL_HORIZON = 20` 仍為 §8 production-current v6.1.0 升版基準；
+   h30 historical model 不觸發 `missing_or_bad_horizon` FAIL。
+4. [Model ID Governance]: 檢驗 `model_id` 必須符合
+   `mdl_{yyyymmdd}_{family}_h{label_horizon}_{sha1(feature_set_version)[:8]}_v0_1`
+   命名契約，封堵同日同 family 同 horizon 不同 feature set 互相覆寫。
+5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態動態計算（§5.6.3），FAIL 即 exit 1（§3.2A 接受標準）。
+6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [標準執行：全 §8 committed 產物掃描]** | `$ python scripts/maintenance/audit_leakage.py` | audit_leakage v0.2 |
+| **2. [Step 11A：特徵集 + 模型 leakage 檢]** | `$ python scripts/maintenance/audit_leakage.py --feature-set-id <fs_id> --model-id <mdl_id>` | audit_leakage v0.2 |
+| **3. [僅查單一 prediction_run]** | `$ python scripts/maintenance/audit_leakage.py --prediction-run-id <pred_id>` | audit_leakage v0.2 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **no-report** | `--no-report` | 略過 `reports/leakage_audit_*.md` 產出，僅 stdout |
+| **historical-only** | `--scope historical` | 只掃 deprecated walk-forward evidence runs |
+| **production-only** | `--scope production` | 只掃 committed prediction-backed delivery |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.2** | 2026-05-18 | Codex | §14.7-R 升版：新增 `ALLOWED_LABEL_HORIZONS = {20, 30}` 對齊 §9.1 v6.2.0 horizon=30 預備；universe-wide horizon 檢查改用 ALLOWED set；h30 historical model 不再觸發 `missing_or_bad_horizon` FAIL；`FORMAL_LABEL_HORIZON=20` 仍為 v6.1.0 production-current gate。 | **ACTIVE** |
+| v0.1 | 2026-05-17 | Codex | 首版：§8.5 8 條防禦規則 + per-run prediction coverage 強制；硬編 `h=20`；§8.8.4 per-run coverage 補正落地。 | SUPERSEDED |
 ================================================================================
 """
 import argparse

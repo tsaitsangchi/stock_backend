@@ -5,10 +5,47 @@ prediction_engine.py v0.1 (Quantum Finance Prediction Authority)
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.4 Prediction Table v0.1 草案實作)
 最高原則: Prediction Authority
 
-v0.1 邊界:
-1. 只讀 committed model_registry artifact 與 committed feature_store_snapshot。
-2. 不重新訓練、不修改 Feature Store、不修改 Model Registry。
-3. 建立 prediction_run / prediction_values 草案表並寫入 core+convex 推論。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Prediction Authority]: 對齊憲章 §8.4 Prediction Table v0.1 草案，
+   作為 §2 維運矩陣 Step 11 之執行載體（§8.7 矩陣延伸）；載入 model artifact +
+   feature_values 推論並寫 `prediction_run` / `prediction_values`。
+2. [Read-Only Upstream]: 只讀 committed `model_registry` artifact 與 committed
+   `feature_store_snapshot`；**不**重新訓練、**不**修改 Feature Store、**不**修改
+   Model Registry；source-of-truth 為 model_registry artifact。
+3. [Transform Consistency]: 推論時使用 model artifact 中的 winsor bounds
+   與 average-rank transform，確保 train/predict transform 完全一致；
+   防止 `model_trainer.py` 訓練與推論 transform 漂移。
+4. [Universe Coverage Lock]: 每一 `prediction_run` 必須單獨等於其鎖定
+   `universe_snapshot_id` 對應之 core+convex universe stock 數（§8.8.4
+   per-run coverage 強制）；coverage 不足即 verdict WARN。
+5. [Single Delivery Invariant]: §8.8.8「exactly 1 prediction-backed」規則：
+   多次 `--commit` 後僅最新 prediction_run 保留 `status='committed'`，
+   其餘標記 `deprecated`（evidence-only）；對齊 §8.8.10 Final Delivery Index。
+6. [Deterministic Output]: prediction_run_id 命名格式
+   `pred_{yyyymmdd}_{model_id}`，提供可重現之 audit trail。
+7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權判定動態計算（§5.6.3）。
+8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 11-dry：推論驗算]** | `$ python scripts/core/prediction_engine.py --dry-run --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.1 |
+| **2. [Step 11-commit：production-current]** | `$ python scripts/core/prediction_engine.py --commit --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.1 |
+| **3. [Step 11-historical：walk-forward evidence]** | `$ python scripts/core/prediction_engine.py --commit --model-id <historical_mdl_id> --as-of-date <historical_date>` | prediction_engine v0.1 |
+| **4. [Step 11-h30：v6.2.0 預備]** | `$ python scripts/core/prediction_engine.py --commit --model-id <mdl_id_h30> --as-of-date <date>` | prediction_engine v0.1 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **dry-run** | `--dry-run` | 輸出 predictions distribution 與 coverage，不寫 prediction_values |
+| **deprecate-previous** | `--deprecate-previous` | commit 同時標記既有 committed run 為 deprecated（§8.8.8） |
+| **evidence-only** | `--commit-as-evidence-only`（v6.2.0+ 規劃） | commit 後立即標記 deprecated，僅作 audit evidence；現版以後處理 SQL 達成 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.1** | 2026-05-16 | Codex | 首版：§8.4 Prediction Table 草案；2026-05-17 補入 winsor bounds + average-rank transform 一致性（與 trainer 對齊）；2026-05-18 v6.0.0-patch 落地 §8.8.8 exactly 1 prediction-backed 規則與 §8.8.10 Final Delivery Index；唯一 committed delivery 為 `pred_20260425_mdl_20260425_lgbm_h20_d969ffb1_v0_1`（IC=0.3716）。 | **ACTIVE** |
 ================================================================================
 """
 import argparse

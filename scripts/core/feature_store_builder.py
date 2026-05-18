@@ -5,15 +5,54 @@ feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 Feature Store v0.1 草案實作)
 最高原則: Feature Store Build Authority
 
-v0.1 邊界（憲章 §8.2.3）:
-1. 只讀取 raw API tables（TaiwanStockPriceAdj / MonthRevenue / FinancialStatements
-   / InstitutionalInvestorsBuySell / MarginPurchaseShortSale / FredData / TaiwanStockInfo）
-   與 core_universe_* 治理表；不呼叫 FinMind API。
-2. 對齊憲章 §8.5：所有特徵以 `WHERE date <= as_of_date` 嚴格 as-of-strict 過濾派生。
-3. 寫入順序：feature_definition → feature_values → feature_store_snapshot (status='committed')。
-4. 範圍：core_universe + convex_universe 150 支股票（§6.7 SQL 契約）。
-5. 不保存 labels、不保存 model output、不保存預測訊號。
-6. 主權判定動態計算（§5.6.3）。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Feature Store Build Authority]: 對齊憲章 §8.2 Feature Store v0.1 草案，
+   作為 §2 維運矩陣 Step 9 之執行載體（§8.7 矩陣延伸）；從 raw + universe
+   派生 features 並 commit 到 `feature_store_snapshot` / `feature_definition` /
+   `feature_values` 三張治理表。
+2. [Read-Only Raw Schema]: 只讀取 raw API tables（`TaiwanStockPriceAdj` /
+   `TaiwanStockMonthRevenue` / `TaiwanStockFinancialStatements` /
+   `TaiwanStockInstitutionalInvestorsBuySell` /
+   `TaiwanStockMarginPurchaseShortSale` / `FredData` / `TaiwanStockInfo`）
+   與 `core_universe_*` 治理表；不呼叫 FinMind/FRED API（已由 §2 Step 4
+   完成資料灌溉）。
+3. [As-Of Strict Anti-Leakage]: 對齊憲章 §8.5「Data Leakage 防禦規則」，
+   所有特徵以 `WHERE date <= as_of_date` 嚴格 as-of-strict 過濾派生；
+   label_date 由 `as_of_date + label_horizon` 推導，與 feature 嚴格分離。
+4. [Governance Write Order]: 寫入順序為 `feature_definition` →
+   `feature_values` → `feature_store_snapshot (status='committed')`；
+   feature_set_id 命名格式 `fs_{yyyymmdd}_{feature_set_version}`，
+   確保可重現與 audit trail。
+5. [Universe Lock]: 範圍鎖定 `core_universe ∪ convex_universe` 150 支
+   （§6.7 SQL 契約之 `get_core_stocks_from_db(tiers=['core','convex'])`）；
+   universe_snapshot_id 必須為最新 committed snapshot。
+6. [Downstream Boundary]: 不保存 labels、不保存 model output、不保存
+   預測訊號；§8 三層職責邊界（Feature Store / Model Registry / Prediction Table）
+   嚴格分離。
+7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權判定動態計算（§5.6.3 零硬編 PERFECT）。
+8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 9-dry：特徵建構驗算]** | `$ python scripts/core/feature_store_builder.py --dry-run --as-of-date 2026-05-15` | feature_store_builder v0.1 |
+| **2. [Step 9-commit：production-current commit]** | `$ python scripts/core/feature_store_builder.py --commit --as-of-date 2026-05-15 --feature-set-version feature_set_v0.1_h20_production_current --label-horizon 20` | feature_store_builder v0.1 |
+| **3. [Step 9-historical：walk-forward evidence]** | `$ python scripts/core/feature_store_builder.py --commit --as-of-date <historical-date> --feature-set-version feature_set_v0.1_h20_historical_<date>_strict_source --label-horizon 20` | feature_store_builder v0.1 |
+| **4. [Step 9-h30：v6.2.0 預備]** | `$ python scripts/core/feature_store_builder.py --commit --as-of-date <date> --feature-set-version feature_set_v0.1_h30_historical_<date> --label-horizon 30` | feature_store_builder v0.1 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **dry-run** | `--dry-run` | preflight + coverage 報告，不寫 DB |
+| **horizon-30** | `--label-horizon 30` | §9.1 v6.2.0 預備之 h30 forward-return |
+| **feature-version** | `--feature-set-version <name>` | 自訂 feature set name 標籤 |
+| **strict-source** | feature-set-version 含 `strict_source` | 對齊 §14.7-L strict source alignment |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.1** | 2026-05-16 | Codex | 首版：§8.2 Feature Store 草案落地；27 features × 6 groups（price/liquidity/fundamental/institutional/macro/theme）；as-of-strict 過濾與 zero_fill/drop 雙 imputation 策略；2026-05-17 walk-forward h20 panel 8 點全 PERFECT；2026-05-18 v6.0.0-patch 落地 strict-source build（`fs_20260515_..._strict_source_20260518`）與 §14.7-L 對齊。 | **ACTIVE** |
 ================================================================================
 """
 import argparse

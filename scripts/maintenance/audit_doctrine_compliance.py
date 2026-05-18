@@ -5,29 +5,47 @@ audit_doctrine_compliance.py v0.2 (Quantum Finance §0 Supreme Doctrine Complian
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.7 升版規則自動化執行 + §8/§9 DRAFT graceful skip)
 最高原則: Doctrine Compliance Authority — §0 從文件 → 機器強制
 
-依憲章 §0.7 升版規則：
-  「v6.x.0 與 v7.0.0 之任何升版提案，皆必須附 §0 四大支柱之治理檢驗報告；
-   若無法明示新條款對映至本章某一支柱（或同時對映至多支柱），該升版即不得進入正式 review。」
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Supreme Doctrine Authority]: 對齊憲章 §0.7 升版規則「v6.x.0 與 v7.0.0 之任何升版
+   提案，皆必須附 §0 四大支柱之治理檢驗報告；若無法明示新條款對映至本章某一支柱
+   （或同時對映至多支柱），該升版即不得進入正式 review」。
+2. [Four-Pillar Mapping]: 對 P1 物理量化（CoreScore + feature_definition）/
+   P2 八二槓鈴（core+convex + quarantine + research + §6.8 annual guard）/
+   P3 康波 2026（THEME_KEYWORDS MBNRIC + macro features + FredData）/
+   P4 可觀察性（pipeline/audit log + record_lifecycle + §5.6.3 + §6.7 SQL SSOT）
+   逐項 PASS/WARN/FAIL 檢驗，自動產生 `reports/doctrine_compliance_<timestamp>.md`。
+3. [Read-Only Authority]: 只讀憲章 §0 四大支柱定義 + DB committed snapshots +
+   程式碼 metadata；不寫入任何 governance table；對映檢驗為 PASS/WARN/FAIL；
+   FAIL 即升版必須阻擋。
+4. [Draft Schema Tolerance]: §8/§9 DRAFT 期間，對 feature_definition /
+   feature_store_snapshot / model_registry / prediction_* / allocation_* 等
+   尚未建立之 DDL 表，採 graceful skip 並寫 WARN；不得因表缺失而 crash
+   （v0.2 `_table_exists()` helper 落地）。
+5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態動態計算（§5.6.3）。
+6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
 
-本工具實作上述規則之自動化執行，使 §0 從紙上原則升級為機器可強制之治權 gate。
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 11C：§0 基礎治權檢驗]** | `$ python scripts/maintenance/audit_doctrine_compliance.py` | audit_doctrine_compliance v0.2 |
+| **2. [Step 11D：升版 gate]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --for-promotion v6.1.0` | audit_doctrine_compliance v0.2 |
+| **3. [Step 11E：新模組四支柱對映]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --scan-module scripts/path/to/new_module.py` | audit_doctrine_compliance v0.2 |
+| **4. [僅 stdout：不產生報告檔]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --no-report` | audit_doctrine_compliance v0.2 |
 
-修訂歷程 (Revision History):
-| 版本  | 日期       | 說明                                                                                |
-| :---- | :--------- | :---------------------------------------------------------------------------------- |
-| v0.2  | 2026-05-18 | 對齊 v6.0.0-patch §0.7 補強：對 §8/§9 DRAFT 期間尚未建立之 DDL 表（feature_definition / |
-|       |            | feature_store_snapshot / model_registry 等）採 graceful skip + WARN，不再 crash。新增 |
-|       |            | `_table_exists()` helper；P1/P3/P4 promotion gate 三處 §8 表查詢前置存在檢查。       |
-| v0.1  | 2026-05-17 | 首版：四大支柱對映檢驗、--scan-module、--for-promotion；對 §8 表硬性查詢無保護        |
-|       |            |             (2026-05-18 v6.0.0-patch 揭露此 bug；v0.2 修補)。                          |
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **no-report** | `--no-report` | 略過 `reports/doctrine_compliance_*.md` 產出 |
+| **promotion-v6.1.0** | `--for-promotion v6.1.0` | 升版至 §8 強制契約之 gate；含 §8.8.9-D 條件檢驗 |
+| **promotion-v7.0.0** | `--for-promotion v7.0.0` | 主版升版 gate；含破壞性 schema 變動阻擋規則 |
+| **scan-module** | `--scan-module <path>` | 新模組四支柱語意對映；無對映即 FAIL（§0.7 條文） |
 
-v0.2 邊界:
-1. 只讀憲章 §0 四大支柱定義 + DB committed snapshots + 程式碼 metadata；不寫入任何 governance table。
-2. 對映檢驗為 PASS/WARN/FAIL；FAIL 即升版必須阻擋。
-3. 可選 `--scan-module <path>` 對單一新模組做 §0 對映檢驗。
-4. 可選 `--for-promotion <ver>` 啟用升版額外檢查（例如 v6.1.0 須含 §8 升強制契約之證據）。
-5. 自動產生 `reports/doctrine_compliance_<timestamp>.md` 治理檢驗報告（除非 `--no-report`）。
-6. §8/§9 DRAFT 期間：對 feature_definition / feature_store_snapshot / model_registry / prediction_* /
-   allocation_* 等尚未建立之 DDL 表，採 graceful skip 並寫 WARN；不得因表缺失而 crash。
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.2** | 2026-05-18 | Codex | §14.7-J Finding #1 修補：對 §8/§9 DRAFT 期間尚未建立之 DDL 表採 graceful skip + WARN，不再 crash；新增 `_table_exists()` helper；P1/P3/P4 promotion gate 三處 §8 表查詢前置存在檢查。 | **ACTIVE** |
+| v0.1 | 2026-05-17 | Codex | 首版：四大支柱對映檢驗、`--scan-module`、`--for-promotion`；§0 從文件升級為機器可強制之治權 gate；對 §8 表硬性查詢無保護（2026-05-18 v6.0.0-patch 揭露 bug；v0.2 修補）。 | SUPERSEDED |
 ================================================================================
 """
 import argparse

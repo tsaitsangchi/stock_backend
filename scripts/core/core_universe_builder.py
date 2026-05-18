@@ -10,14 +10,52 @@ v0.2 六層 CoreScore 評分公式:
   DataQuality(25%) + LiquidityMass(25%) + FundamentalGravity(20%)
   + ThemeResonance(15%) + InstitutionalFlow(10%) + VolatilityControl(5%) - RiskPenalty
 
-v0.2 邊界:
-1. 只讀取 raw API tables 與核心股治理 tables，不開立 raw schema。
-2. 從 TaiwanStockInfo + 六張個股資料表批量讀取 scoring 資料。
-3. CoreScore v0.2 八類輸入資料契約 preflight 與覆蓋率摘要。
-4. 寫入 policy、snapshot、membership、scores、revision log。
-5. 只保存治理銜接欄位，不保存 feature values、labels、model outputs、prediction signals。
-6. 不硬編股票名單；所有候選皆由 DB 讀取。
-7. 正式 commit 受年度重選 guard 約束；非年度重選必須提供特別治理原因。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Core Universe Selection Authority]: 對齊憲章 §6.1〜§6.6，作為 CoreScore
+   v0.2 六層正式評分之唯一授權載體；DB-driven、可評分、可重算、可回測、
+   可版本控管。
+2. [Read-Only Raw Schema]: 只讀取 raw API tables 與核心股治理 tables，
+   不開立 raw schema；從 `TaiwanStockInfo` + 六張個股資料表
+   （`TaiwanStockPriceAdj` / `TaiwanStockMonthRevenue` / `TaiwanStockFinancialStatements` /
+   `TaiwanStockInstitutionalInvestorsBuySell` / `TaiwanStockPER` /
+   `TaiwanStockMarginPurchaseShortSale`）批量讀取 scoring 資料；
+   FRED 四序列提供宏觀 regime overlay。
+3. [Eight-Input Preflight]: CoreScore v0.2 八類輸入資料契約 preflight
+   與覆蓋率摘要（price_coverage_252d / revenue_coverage_24m /
+   financial_coverage_8q 等）；任一覆蓋率未達門檻即 WARNING。
+4. [Governance Write Order]: 寫入順序為 policy → snapshot →
+   membership → scores → revision log；snapshot 標記 `status='committed'`
+   始進入 §6.7 SQL SSOT 查詢。
+5. [Downstream Boundary]: 只保存治理銜接欄位，**不**保存 feature values、
+   labels、model outputs、prediction signals；§8 下游不在本工具範圍。
+6. [Annual Rebalance Guard]: 正式 `--commit` 受 `_annual_rebalance_guard()`
+   約束，必須為該年最後一個交易日；非年度重選必須提供 `--special-rebalance-reason`
+   （≥12 字元）並列舉 §6.8.3 合法 override 情境。
+7. [No Hardcoding]: 不硬編股票名單，所有候選皆由 DB 讀取；主權狀態
+   依實況動態計算（§5.6.3 零硬編 PERFECT）。
+8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 4B-dry：年度重選前驗算]** | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.2 |
+| **2. [Step 4B-commit：年度正式重選]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.2 |
+| **3. [Special override：DB rebuild bootstrap]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "DB rebuild bootstrap YYYY-MM-DD <stage>"` | core_universe_builder v0.2 |
+| **4. [Special override：政策升版]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "Policy upgrade vX.X to vY.Y"` | core_universe_builder v0.2 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **dry-run** | `--dry-run` | 不寫 DB；輸出六層分數 + coverage 報告，用於日常診斷 |
+| **special override** | `--special-rebalance-reason "<≥12 字理由>"` | 跳過 annual guard；§6.8.3 五類合法情境（DB rebuild / 政策升版 / 資料源變更 / schema 重構 / 合規事件） |
+| **policy override** | `--policy-version <name>` | 指定 policy 版本（預設 `core_universe_policy_v0.2`） |
+| **candidate fallback** | bootstrap 期間自動進入 `latest_registry_fallback`；不需旗標 | as-of 候選 < 150 bootstrap minimum 時自動 fallback |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.2** | 2026-05-16 | Codex | CoreScore 六層正式評分入憲（§6.1〜§6.6）：六權重 0.25/0.25/0.20/0.15/0.10/0.05 + RiskPenalty；八類輸入資料契約 preflight；2026-05-17 補入 `--special-rebalance-reason` 與 `_annual_rebalance_guard()`（§6.8 年度重選契約）；2026-05-18 v6.0.0-patch 確認 latest_registry_fallback 低品質入選之透明性裁決。 | **ACTIVE** |
+| v0.1 | 2026-05-14 | Codex | 首版：metadata bootstrap、五分層（core/convex/research/quarantine）；preflight 與覆蓋率摘要；policy/snapshot/membership/scores/revision log 五張治理表寫入。 | SUPERSEDED |
 ================================================================================
 """
 import argparse

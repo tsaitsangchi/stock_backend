@@ -5,21 +5,45 @@ audit_source_availability.py v0.1 (Core 150 Strict Source Availability Audit)
 **主權狀態**: ACTIVE (憲法 v6.0.0 §14.7-L 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE
 
-目的：
-  驗證 core+convex 150 個股資料是否符合新版大憲章之嚴格定義：
-  每一個 FinMind `stock_id + dataset` 必須從 API 最早可得日期完整對齊 DB。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Strict Source Authority]: 驗證 core+convex 150 個股資料是否符合憲章 §14.7-L 之嚴格定義
+   — 每一個 FinMind `stock_id + dataset` 必須從 API 最早可得日期完整對齊 DB；
+   `start_date=1990-01-01` 為來源端可得下界。
+2. [Dual-Source Verification]: 對每個 `stock_id + dataset` 比對 API 與 DB 的
+   `row_count / min(date) / max(date)`；API source-empty 時 DB 必須為 0 rows
+   才視為 `SOURCE_EMPTY_OK`；任何差異即為 mismatch。
+3. [FRED Valid Numeric Coverage]: `--include-fred` 啟用時，另對 DFF / UNRATE /
+   T10Y2Y / VIXCLS 四序列以「可轉為數值的有效 observation」（排除 `.` 缺值列）
+   為驗收口徑，row_count / min / max 必須與 DB 完全一致。
+4. [Strict Mode Exit Contract]: `--strict` 模式下任何 mismatch 即 exit 1 並
+   產出 `reports/source_availability_audit_*.md` 與 targeted backfill commands；
+   對齊憲章 §3.2 接受標準（FAIL → exit 1）。
+5. [Hybrid Observability]: 維運行為觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態依實況動態計算（PERFECT / WARNING / FAILED），嚴禁硬編
+   （對齊憲章 §5.6.3）。
+6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
 
-驗收口徑：
-  - FinMind API 以 `start_date=1990-01-01` 作為來源端可得下界。
-  - 對每個 `stock_id + dataset` 比對 API 與 DB 的 row_count / min(date) / max(date)。
-  - API source-empty 時，DB 必須為 0 rows 才算 `SOURCE_EMPTY_OK`。
-  - 任何 row_count/min/max 差異均為 mismatch，嚴格模式 exit 1。
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.1 |
+| **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.1 |
+| **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.1 |
+| **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.1 |
+| **5. [僅 FinMind（略 FRED）]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict` | audit_source_availability v0.1 |
 
-常用指令：
-  python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict
-  python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict
-  python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json
-  python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **non-strict** | 移除 `--strict` | 報告 mismatch 但 exit 0；用於診斷掃描 |
+| **snapshot-only** | `--snapshot-out <path>` 不加 `--strict` | 僅產生來源端 snapshot，不做 DB 比對 |
+| **fred-only** | `--include-fred --datasets fred` | 略過 FinMind，僅對 FRED 四序列驗證 |
+| **id-list** | `--id 2330 --id 2454 ...` | 多個指定 stock_id 並列驗證 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.1** | 2026-05-18 | Codex | 首版：依憲章 §14.7-L 入憲，比對 core+convex 150 × 9 表之 FinMind `api_rows/api_min/api_max` 與 DB `db_rows/db_min/db_max`；支援 `--snapshot-in/--snapshot-out`、`--strict` exit 1、source-empty 合法分流與 targeted backfill commands；`--include-fred` 另比對 FRED 四序列 valid numeric observations。 | **ACTIVE** |
 ================================================================================
 """
 import argparse

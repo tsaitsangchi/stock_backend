@@ -5,12 +5,51 @@ model_trainer.py v0.1 (Quantum Finance Model Training Authority)
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.3 Model Registry v0.1 草案實作)
 最高原則: Model Training Authority
 
-v0.1 邊界:
-1. 只讀 feature_store_* 與 core_universe_* 治理表；不直接讀 raw API tables。
-2. 建立 model_registry / model_training_run 草案表。
-3. v0.1 baseline 使用 committed feature_set 與 label_horizon forward return label；
-   feature as-of date 與 label date 明確分離，不產生交易建議。
-4. 輸出可重現 JSON artifact：model.json / metrics.json / feature_importance.json。
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+1. [Model Training Authority]: 對齊憲章 §8.3 Model Registry v0.1 草案，
+   作為 §2 維運矩陣 Step 10 之執行載體（§8.7 矩陣延伸）；讀 feature_values +
+   labels 訓練模型並登錄 `model_registry` / `model_training_run`。
+2. [Read-Only Feature Store]: 只讀 `feature_store_*` 與 `core_universe_*`
+   治理表；**不**直接讀 raw API tables；source-of-truth 為 committed
+   `feature_store_snapshot`。
+3. [Robust Rank-IC Baseline]: v0.1 trainer 為 `robust_rank_ic_baseline_v0.1`：
+   每個 feature 先做 5%/95% winsorization，再以 cross-sectional average-rank
+   轉為 [-1,1] score，單因子 rank IC 作為 signed weight 並以 L1 norm 正規化；
+   metrics 補登 label 分布與 top rank-IC features；artifact 補登 preprocessing bounds。
+4. [Model ID Governance]: `model_id` 命名格式
+   `mdl_{yyyymmdd}_{family}_h{label_horizon}_{sha1(feature_set_version)[:8]}_v0_1`，
+   避免同日同 family 同 horizon 不同 feature set 互相覆寫；對齊 §8.8.4 / §8.8.8
+   per-run cardinality 規則。
+5. [Label/Feature Separation]: 使用 committed `feature_set` 與 `label_horizon`
+   forward return label；feature as-of_date 與 label_date 明確分離（label_date
+   ≥ as_of_date + label_horizon），不產生交易建議。
+6. [Reproducible Artifacts]: 輸出可重現 JSON artifact：`model.json` /
+   `metrics.json` / `feature_importance.json`；artifact 路徑由
+   `feature_store_snapshot.feature_set_version` SHA1 短雜湊唯一定位。
+7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權判定動態計算（§5.6.3）。
+8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
+| 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
+| :--- | :--- | :--- |
+| **1. [Step 10-dry：訓練驗算]** | `$ python scripts/core/model_trainer.py --dry-run --feature-set-id <fs_id> --model-family lgbm --label-horizon 20` | model_trainer v0.1 |
+| **2. [Step 10-commit：production-current]** | `$ python scripts/core/model_trainer.py --commit --feature-set-id <fs_id> --model-family lgbm --label-horizon 20` | model_trainer v0.1 |
+| **3. [Step 10-historical：walk-forward]** | `$ python scripts/core/model_trainer.py --commit --feature-set-id <historical_fs_id> --model-family lgbm --label-horizon 20` | model_trainer v0.1 |
+| **4. [Step 10-h30：v6.2.0 預備]** | `$ python scripts/core/model_trainer.py --commit --feature-set-id <fs_id_h30> --model-family lgbm --label-horizon 30` | model_trainer v0.1 |
+
+### B. 補充運行模式 (Auxiliary Modes)
+| 模式 | 指令旗標 | 用途 |
+| :--- | :--- | :--- |
+| **dry-run** | `--dry-run` | 輸出 metrics 與 feature_importance，不寫 model_registry |
+| **horizon-30** | `--label-horizon 30` | §9.1 v6.2.0 預備之 h30 forward-return |
+| **family-override** | `--model-family <family>` | 預設 lgbm；v0.1 baseline 僅實作 lgbm |
+| **forced-retrain** | `--force-retrain` | 強制重訓練即使同 model_id 已存在 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| **v0.1** | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | **ACTIVE** |
 ================================================================================
 """
 import argparse
