@@ -66,6 +66,8 @@ reports/*
 !reports/doctrine_compliance_*.md
 !reports/core_sync_*_execution_log_*.md
 !reports/core150_api_source_start_dates_*.md
+!reports/h30_first_evidence_*.md
+!reports/h30_walk_forward_*.md
 !reports/source_availability_audit_*.md
 # 每次重建/sync 產生之最終 audit 報告（憲章引用即追蹤；建議只保留 *_HHMM 之 final 版）
 !reports/compliance_audit_*.md
