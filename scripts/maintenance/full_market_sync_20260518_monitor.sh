@@ -10,6 +10,11 @@ while true; do
     pgrep -af "scripts/ingestion/sovereign_sync_engine.py" || echo "NOT RUNNING"
     echo "log:"
     ls -lh logs/full_market_sync_20260518.log 2>/dev/null || true
+    echo "counters:"
+    if [[ -f logs/full_market_sync_20260518.log ]]; then
+      printf "warnings_errors_failures="
+      grep -Ec "UserWarning|Traceback|ERROR|FAILED|Payment Required|Forbidden" logs/full_market_sync_20260518.log || true
+    fi
     echo "tail:"
     tail -n 20 logs/full_market_sync_20260518.log 2>/dev/null || true
     echo
