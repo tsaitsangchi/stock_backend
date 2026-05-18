@@ -1,5 +1,5 @@
 """
-audit_downstream_readiness.py v0.1
+audit_downstream_readiness.py v0.2
 ================================================================================
 Quantum Finance §8 Promotion Readiness Audit Authority
 
@@ -7,6 +7,14 @@ Purpose:
 1. Summarize whether §8 has enough historical clean-validation evidence.
 2. Separately decide whether §8 is ready for v6.1.0 successor production-current promotion.
 3. Write a promotion readiness report under reports/.
+
+修訂歷程:
+| 版本 | 日期       | 說明                                                                       |
+| :--- | :--------- | :------------------------------------------------------------------------- |
+| v0.2 | 2026-05-18 | 新增 ALLOWED_LABEL_HORIZONS = {20, 30}：對齊 §9.1 v6.2.0 horizon=30 預備；  |
+|      |            | universe-wide horizon/cutoff 檢查改用 ALLOWED set；feature_label_horizon 與 |
+|      |            | production-current gate 仍以 FORMAL_LABEL_HORIZON=20 為現行 v6.1.0 升版基準。 |
+| v0.1 | 2026-05-17 | 首版：§8 升版 readiness audit（DDL / cardinality / cutoff / coverage / gate）  |
 ================================================================================
 """
 import argparse
@@ -35,6 +43,10 @@ except ImportError as exc:
 CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 FORMAL_LABEL_HORIZON = 20
+# v0.2 (2026-05-18): 對齊 §9.1 v6.2.0 horizon=30 預備支援
+# - production-current delivery & v6.1.0 升版仍以 FORMAL_LABEL_HORIZON=20 為 gate
+# - h30 等 evidence model 不再阻擋 universe-wide horizon/cutoff 檢查
+ALLOWED_LABEL_HORIZONS = {20, 30}
 MODEL_ID_PATTERN = re.compile(r"^mdl_[0-9]{8}_[a-z0-9]+_h[0-9]+_[0-9a-f]{8}_v[0-9]+_[0-9]+$")
 
 REQUIRED_TABLES = [
@@ -174,11 +186,12 @@ class DownstreamReadinessAuditor:
         else:
             self.fail("model_id_governance", f"model_ids without hash rule: {bad_model_ids}")
 
-        bad_horizons = [(row[0], row[3]) for row in rows if row[3] != FORMAL_LABEL_HORIZON]
+        bad_horizons = [(row[0], row[3]) for row in rows if row[3] not in ALLOWED_LABEL_HORIZONS]
         if not bad_horizons:
-            self.pass_("label_horizon", f"all committed models horizon={FORMAL_LABEL_HORIZON}: count={len(rows)}")
+            allowed_str = "/".join(str(h) for h in sorted(ALLOWED_LABEL_HORIZONS))
+            self.pass_("label_horizon", f"all committed models horizon ∈ {{{allowed_str}}}: count={len(rows)}")
         else:
-            self.fail("label_horizon", f"bad horizons={bad_horizons}, expected {FORMAL_LABEL_HORIZON}")
+            self.fail("label_horizon", f"bad horizons={bad_horizons}, expected ∈ {sorted(ALLOWED_LABEL_HORIZONS)}")
 
         cur.execute(
             """
@@ -195,7 +208,7 @@ class DownstreamReadinessAuditor:
         production_count = 0
         for row in rows:
             model_id, _, _, horizon, _, label_max, _, _, _, feature_as_of, feature_version = row
-            if horizon != FORMAL_LABEL_HORIZON or not label_max:
+            if horizon not in ALLOWED_LABEL_HORIZONS or not label_max:
                 cutoff_violations.append((model_id, "missing_or_bad_horizon", label_max))
                 continue
             required_label_date = feature_as_of + timedelta(days=horizon)

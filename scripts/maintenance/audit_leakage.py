@@ -1,9 +1,17 @@
 """
-audit_leakage.py v0.1 (Quantum Finance Anti-Leakage Audit Authority)
+audit_leakage.py v0.2 (Quantum Finance Anti-Leakage Audit Authority)
 ================================================================================
-最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.5 Data Leakage 防禦草案)
+最後更新日期: 2026-05-18
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.5 Data Leakage 防禦 + §9.1 horizon=30 預備支援)
 最高原則: Anti-Leakage Audit Authority
+
+修訂歷程:
+| 版本 | 日期       | 說明                                                                        |
+| :--- | :--------- | :-------------------------------------------------------------------------- |
+| v0.2 | 2026-05-18 | 新增 ALLOWED_LABEL_HORIZONS = {20, 30}：對齊 §9.1 v6.2.0 horizon=30 預備；   |
+|      |            | h30 historical model 不再觸發 missing_or_bad_horizon FAIL。h20 仍為現行 §8  |
+|      |            | production-current 之 FORMAL_LABEL_HORIZON。                                |
+| v0.1 | 2026-05-17 | 首版：§8.5 8 條防禦規則 + per-run prediction coverage 強制；硬編 h=20。      |
 ================================================================================
 """
 import argparse
@@ -27,9 +35,11 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 PROJECT_ROOT = _SCRIPTS_DIR.parent
 FORMAL_LABEL_HORIZON = 20
+# v0.2 (2026-05-18): 擴張支援 §9.1 v6.2.0 horizon=30；任一 horizon 皆視為合法
+ALLOWED_LABEL_HORIZONS = {20, 30}
 SCAN_FILES = [
     PROJECT_ROOT / "scripts" / "core" / "feature_store_builder.py",
     PROJECT_ROOT / "scripts" / "core" / "model_trainer.py",
@@ -129,7 +139,7 @@ class LeakageAuditor:
             production_rows = 0
             historical_rows = 0
             for model_id, horizon, label_date_max, feature_as_of, feature_set_version in model_rows:
-                if horizon != FORMAL_LABEL_HORIZON or label_date_max is None:
+                if horizon not in ALLOWED_LABEL_HORIZONS or label_date_max is None:
                     cutoff_violations.append((model_id, "missing_or_bad_horizon", label_date_max))
                     continue
                 required_label_date = feature_as_of + horizon * timedelta(days=1)
