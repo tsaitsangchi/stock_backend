@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.13 (Quantum Finance Market Universe Seed Engine)
+sovereign_sync_engine.py v1.14 (Quantum Finance Market Universe Seed Engine)
 ================================================================================
 **最後更新日期**: 2026-05-18
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION (憲法 v6.0.0 §7 / §14.7-L / §6.8.7 第 (4) 條對齊)
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE (憲法 v6.0.0 §7 / §14.7-L / §6.8.7 第 (4) 條對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -23,17 +23,23 @@ sovereign_sync_engine.py v1.13 (Quantum Finance Market Universe Seed Engine)
    且情境屬 §6.8.7 第 (4) 條五類合法清單（DB rebuild bootstrap / Sovereign rebuild / pre-annual audit /
    重大資料源治權變更 / 重大合規事件）；缺 reason 或 reason < 12 字即 preflight FAILED exit 1；
    reason 字串寫入 lifecycle context 與報表，留 audit trail。
+10. **[Full-History Per-Stock Earliest-Date Semantic]** (v1.14, 憲法 §6.8.7 第 (4) 條)：「全天數」之嚴格定義
+    為「每 (stock_id, dataset) 對自 FinMind/FRED API 來源端最早可得日期 → DB 最後一個交易日」；**不**等同
+    `--days N` 固定天數窗、**不**強制統一 start_date。`--universe full` 觸發時 main() preflight **自動啟用**
+    `--strict-source-history`（強制 `start_date=1990-01-01` + 停用 §7.5 L3 resume，FinMind API 自動回傳真實最早
+    可得日期）；FRED 同步維持既有 `asc + offset` 全歷史分頁。`--days` 在 full mode 下退為 safety floor，
+    實際同步起點由 strict-source-history 決定；使用者毋須另下 `--strict-source-history` 旗標。
 
 ## 📊 二、全量維運指令總矩陣 (per 憲法 v6.0.0 Section 二 / 5.5.3 五大標準)
 
 ### A. 5.5.3 五大標準場景 (Core 5 Scenarios)
 | 維運需求場景 (Scenario)                       | 權威指令 / 建議用法                                                                                          | 對齊模組 |
 | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :--- |
-| **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.13 |
-| **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.13 |
-| **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.13 |
-| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.13 |
-| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.13 |
+| **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.14 |
+| **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.14 |
+| **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.14 |
+| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.14 |
+| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.14 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 場景                          | 指令                                                                                            | 用途 |
@@ -41,7 +47,7 @@ sovereign_sync_engine.py v1.13 (Quantum Finance Market Universe Seed Engine)
 | A. 種子灌溉 (TaiwanStockInfo)  | `$ python scripts/ingestion/sovereign_sync_engine.py --seed`                                    | 第 4 步全市場資產名冊重灌 |
 | B. 宏觀指標 (FRED 全譜)        | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                             | DFF/UNRATE/T10Y2Y/VIXCLS |
 | C. 選股 phase 全宇宙補刷       | `$ python scripts/ingestion/sovereign_sync_engine.py --all --days 730`                          | 為 CoreScore v0.2 準備 2 年歷史 |
-| D. **全市場全天數 (限定治理例外)** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe full --all --days 1100 --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字理由>"` | §6.8.7 第 (4) 條：DB rebuild / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件；強制 reason ≥ 12 字；耗時 ~6-10h、~15-25M rows |
+| D. **全市場全天數 (限定治理例外)** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字理由>"` | §6.8.7 第 (4) 條：「全天數」= 每 (stock_id, dataset) 自 FinMind/FRED API 最早可得日期 → 最新交易日；`--universe full` 自動啟用 strict-source-history，毋須另下 `--days`；強制 reason ≥ 12 字 |
 | E. Strict source history       | `$ python scripts/ingestion/sovereign_sync_engine.py --id <id> --dataset <ds> --strict-source-history --no-resume --days 14000` | §14.7-L core 150 mismatch 精準補刷 |
 
 ### C. 旗標語意 (Flag Semantics)
@@ -56,6 +62,7 @@ sovereign_sync_engine.py v1.13 (Quantum Finance Market Universe Seed Engine)
 - **v1.11 新增 (非破壞性, §7.6 A1〜A5)**：`--dataset-batched` 改 dataset 優先迴圈 (A1)；`--workers N` 共享 throttle 平行 worker (A2)；`--dynamic-quota --quota-interval N` 動態配額查詢 (A3，N≥100)；A4 per-dataset 配額自動寫入 `data_audit_log`；A5 達 4800/hr 主動 WARN、達 5500/hr 自動暫停 300s。
 - **v1.12 新增 (§14.7-L)**：`--strict-source-history` 將 FinMind stock-level sync 起點固定為 1990-01-01 並自動停用 L3 resume，用於滿足「FinMind API 最早可得日期完全對齊 DB」之精準補刷；禁止用於全市場無界重抓。
 - **v1.13 新增 (§6.8.7 第 (4) 條)**：`--special-full-market-reason "<≥12 字理由>"` — 解鎖 `--universe full` 之治理 gate；reason 寫入 lifecycle 與報表；缺 reason 或 reason < 12 字即 exit 1。
+- **v1.14 行為更新 (§6.8.7 第 (4) 條「全天數」定義明文化)**：「全天數」嚴格定義為「每 (stock_id, dataset) 對自 API 來源端最早可得日期 → DB 最後一個交易日」；`--universe full` 自動啟用 `--strict-source-history`（強制 start_date=1990-01-01 + L3 resume off），使用者毋須另下旗標；`--days` 在 full mode 下退為 safety floor。FRED 序列維持既有全歷史 `asc + offset` 分頁。
 
 ### D. 不提供之旗標 (Intentionally Omitted)
 - `--force` (全歷史 from 2000-01-01)：仍維持不提供，避免在 v0.2 builder 完工前耗盡 FinMind quota。
@@ -63,7 +70,8 @@ sovereign_sync_engine.py v1.13 (Quantum Finance Market Universe Seed Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.13** | 2026-05-18 | Codex | **§6.8.7 第 (4) 條全市場全天數限定治理例外**：依憲章 v6.0.0-patch §6.8.7 第 (4) 條修訂，原「全市場 2,798 支全抓禁止」改為限定治理例外。新增 `UNIVERSE_TIERS["full"] = (core, convex, research, quarantine)`；新增 `--special-full-market-reason <reason>` argparse + preflight 驗證（缺 reason 或 reason < 12 字即 exit 1）；reason 寫入 `record_lifecycle` context 與終端報表「special override」列；__main__ 加治權檢查 — `--universe full` 時必須附 reason，反之 reason 不得用於非 full universe；§7.6 A1+A2 平行與 A3 動態配額之必要性提示（不強制 enforce，避免破壞既有 dry-run）。本版不改 schema、upsert、節流、退避、FRED pagination 或 strict-source-history 語意。 | **ACTIVE** |
+| **v1.14** | 2026-05-18 | Codex | **§6.8.7 第 (4) 條「全天數」定義明文化 + auto strict-source-history on full universe**：依憲章 v6.0.0-patch 對「全天數」之嚴格定義（每 (stock_id, dataset) 對自 API 來源端最早可得日期 → DB 最後交易日）落地實作：main() preflight 在 `--universe full` 觸發時 **自動啟用** `--strict-source-history`（強制 `start_date=1990-01-01` + 停用 §7.5 L3 resume），使用者毋須另下旗標；`--days` 在 full mode 下退為 safety floor，實際同步起點由 strict-source-history 決定。終端報表加 INFO 列說明此自動行為。FRED 同步維持既有 `asc + offset` 全歷史分頁，不變。本版不改 UNIVERSE_TIERS、節流、退避、reason 驗證或既有旗標語意。 | **ACTIVE** |
+| v1.13 | 2026-05-18 | Codex | **§6.8.7 第 (4) 條全市場全天數限定治理例外**：依憲章 v6.0.0-patch §6.8.7 第 (4) 條修訂，原「全市場 2,798 支全抓禁止」改為限定治理例外。新增 `UNIVERSE_TIERS["full"] = (core, convex, research, quarantine)`；新增 `--special-full-market-reason <reason>` argparse + preflight 驗證（缺 reason 或 reason < 12 字即 exit 1）；reason 寫入 `record_lifecycle` context 與終端報表「special override」列；__main__ 加治權檢查 — `--universe full` 時必須附 reason，反之 reason 不得用於非 full universe；§7.6 A1+A2 平行與 A3 動態配額之必要性提示（不強制 enforce，避免破壞既有 dry-run）。本版不改 schema、upsert、節流、退避、FRED pagination 或 strict-source-history 語意。 | SUPERSEDED |
 | v1.12 | 2026-05-18 | Codex | **§14.7-L strict all-source-history mode**：新增 `--strict-source-history`，使 FinMind 個股同步以 `1990-01-01` 作為授權來源端探測下界，並強制停用 §7.5 L3 resume，避免 partial DB 因「存在任一 >= start_date row」被誤跳過。此模式只改變 start_date/resume 語意，不改 schema、upsert、節流、退避或 FRED pagination；應搭配 `audit_source_availability.py --strict` 產生之 mismatch 清單做 core 150 小範圍精準補刷，不得作為全市場全歷史重抓入口。 | SUPERSEDED |
 | **v1.11a** | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | **ACTIVE** |
 | v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
@@ -814,11 +822,12 @@ class SovereignSyncEngine:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Quantum Finance 主權同步引擎 (v1.13 — §7 速率主權 + §14.7-L strict source history + §6.8.7 第 (4) 條全市場限定例外)",
+        description="Quantum Finance 主權同步引擎 (v1.14 — §7 速率主權 + §14.7-L strict source history + §6.8.7 第 (4) 條全市場限定例外 + 全天數 per-stock 最早日期語意)",
         epilog="選股 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730；"
                "核心 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730；"
-               "全市場限定例外：python scripts/ingestion/sovereign_sync_engine.py --universe full --all --days 1100 "
-               "--dataset-batched --workers 4 --dynamic-quota --special-full-market-reason \"DB rebuild bootstrap YYYY-MM-DD full-market irrigation\"",
+               "全市場全天數限定例外：python scripts/ingestion/sovereign_sync_engine.py --universe full --all "
+               "--dataset-batched --workers 4 --dynamic-quota --special-full-market-reason \"DB rebuild bootstrap YYYY-MM-DD full-market irrigation\""
+               "（『全天數』= 每 (stock_id, dataset) 自 API 最早可得日期 → 最新交易日；--universe full 自動啟用 strict-source-history，毋須另下 --days）",
     )
     parser.add_argument("--id", type=str, help="指定標的 ID (如 2330)")
     parser.add_argument("--universe", type=str, choices=["research", "convex", "core", "full"],
@@ -864,6 +873,14 @@ if __name__ == "__main__":
         if len(reason) < FULL_MARKET_REASON_MIN_CHARS:
             print(f"❌ [§6.8.7 第 (4) 條] --special-full-market-reason 長度 {len(reason)} < {FULL_MARKET_REASON_MIN_CHARS} 字元下限")
             sys.exit(1)
+        # v1.14 §6.8.7 第 (4) 條「全天數」定義落地：--universe full 自動啟用 strict-source-history
+        # 「全天數」= 每 (stock_id, dataset) 自 API 最早可得日期 → 最新交易日；不可由 --days 決定
+        if not args.strict_source_history:
+            args.strict_source_history = True
+            print(f"ℹ️ [§6.8.7 第 (4) 條] --universe full 觸發「全天數」語意：")
+            print(f"   自動啟用 --strict-source-history（start_date={STRICT_SOURCE_HISTORY_START_DATE}, "
+                  f"§7.5 L3 resume 停用），每支個股自 FinMind/FRED API 最早可得日期同步至最新交易日。")
+            print(f"   --days={args.days} 退為 safety floor，不限制實際同步起點。")
     elif args.special_full_market_reason:
         print(f"❌ [§6.8.7 第 (4) 條] --special-full-market-reason 僅在 --universe full 時生效；"
               f"目前 --universe={args.universe or 'None'}，拒絕執行")
