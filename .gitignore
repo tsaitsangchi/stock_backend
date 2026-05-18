@@ -37,9 +37,36 @@ predictions/
 evaluations/
 logs/
 reports/*
+# 永久追蹤的設計/憲章/思想文件
 !reports/系統架構_*.md
+!reports/系統架構大憲章_*.md
+!reports/系統核心思想.md
+!reports/系統重構報告.md
+!reports/系統檢核報告_*.md
+!reports/Quantum_Finance_*.md
+!reports/path_setup_architecture_report.md
+!reports/project_structure.md
+!reports/recursive_bootstrap_planning.md
+!reports/優化特徵資料.md
+!reports/資料抓取優化.md
+!reports/金融資料擴充.md
+!reports/逐支逐日*.md
+!reports/逐項修改報告.md
+# 重大實證報告（憲章 §14 / §8.8.x 引用之 audit trail）
+!reports/rebuild_execution_log_*.md
+!reports/full_rebuild_*.md
+!reports/walk_forward_h20_*.md
+!reports/corescore_v02_execution_log_*.md
+!reports/core_universe_v02_execution_*.md
+!reports/model_trainer_*.md
+!reports/feature_store_*_dryrun_*.md
+!reports/downstream_*.md
+!reports/daily_sync_and_production_current_*.md
+!reports/doctrine_compliance_*.md
+!reports/core_sync_*_execution_log_*.md
+# 每次重建/sync 產生之最終 audit 報告（憲章引用即追蹤；建議只保留 *_HHMM 之 final 版）
+!reports/compliance_audit_*.md
+!reports/core_universe_audit_*.md
 archive/
 .pytest_cache/
-.gitignore提升性能。
-!reports/系統架構大憲章_*.md
 stock_backend/
