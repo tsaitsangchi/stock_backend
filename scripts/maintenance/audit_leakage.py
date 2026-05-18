@@ -255,7 +255,7 @@ class LeakageAuditor:
 
     def run(self):
         start = time.time()
-        lifecycle_cm = record_lifecycle("audit_leakage_v0.1", category="audit", stock_id="SYSTEM")
+        lifecycle_cm = record_lifecycle("audit_leakage_v0.2", category="audit", stock_id="SYSTEM")
         lifecycle = lifecycle_cm.__enter__()
         try:
             print("🔎 正在執行 §8.5 Data Leakage 防禦稽核...")
@@ -285,7 +285,7 @@ class LeakageAuditor:
 
 
 def main():
-    argparse.ArgumentParser(description="Quantum Finance Data Leakage Audit (v0.1)").parse_args()
+    argparse.ArgumentParser(description="Quantum Finance Data Leakage Audit (v0.2)").parse_args()
     ok = LeakageAuditor().run()
     sys.exit(0 if ok else 1)
 

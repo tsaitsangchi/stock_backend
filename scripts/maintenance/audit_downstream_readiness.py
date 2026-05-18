@@ -41,7 +41,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 FORMAL_LABEL_HORIZON = 20
 # v0.2 (2026-05-18): 對齊 §9.1 v6.2.0 horizon=30 預備支援
 # - production-current delivery & v6.1.0 升版仍以 FORMAL_LABEL_HORIZON=20 為 gate
@@ -493,7 +493,7 @@ class DownstreamReadinessAuditor:
 
     def run(self):
         start = time.time()
-        lifecycle_cm = record_lifecycle("audit_downstream_readiness_v0.1", category="audit", stock_id="SYSTEM")
+        lifecycle_cm = record_lifecycle("audit_downstream_readiness_v0.2", category="audit", stock_id="SYSTEM")
         lifecycle = lifecycle_cm.__enter__()
         try:
             print("🔎 正在執行 §8 Promotion Readiness 稽核...")
@@ -521,7 +521,7 @@ class DownstreamReadinessAuditor:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance §8 Downstream Promotion Readiness Audit (v0.1)")
+    parser = argparse.ArgumentParser(description="Quantum Finance §8 Downstream Promotion Readiness Audit (v0.2)")
     parser.add_argument("--no-report", action="store_true", help="Do not write reports/downstream_promotion_readiness_*.md")
     return parser.parse_args()
 
