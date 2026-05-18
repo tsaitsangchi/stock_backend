@@ -73,6 +73,8 @@ reports/*
 !reports/production_current_runbook_*.md
 !reports/feature_signal_diagnostics_*.md
 !reports/model_quality_research_*.md
+!reports/full_market_sync_*.md
+!reports/walk_forward_h*_*.md
 # 每次重建/sync 產生之最終 audit 報告（憲章引用即追蹤；建議只保留 *_HHMM 之 final 版）
 !reports/compliance_audit_*.md
 !reports/core_universe_audit_*.md
