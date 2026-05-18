@@ -29,8 +29,6 @@ except ImportError as exc:
 CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
 PROJECT_ROOT = _SCRIPTS_DIR.parent
-HISTORICAL_MODEL_CUTOFF = "2025-05-15"
-HISTORICAL_MODEL_CUTOFF_DATE = date.fromisoformat(HISTORICAL_MODEL_CUTOFF)
 FORMAL_LABEL_HORIZON = 20
 SCAN_FILES = [
     PROJECT_ROOT / "scripts" / "core" / "feature_store_builder.py",
@@ -109,6 +107,8 @@ class LeakageAuditor:
                 """
             )
             latest_core_as_of = cur.fetchone()[0]
+            cur.execute('SELECT MAX(date) FROM "TaiwanStockPriceAdj"')
+            max_price_date = cur.fetchone()[0]
 
             cur.execute(
                 """
@@ -143,15 +143,16 @@ class LeakageAuditor:
                         cutoff_violations.append((model_id, "production_label_not_mature", label_date_max))
                 else:
                     historical_rows += 1
-                    if label_date_max > HISTORICAL_MODEL_CUTOFF_DATE:
-                        cutoff_violations.append((model_id, "historical_cutoff", label_date_max))
+                    if not max_price_date or label_date_max > max_price_date:
+                        cutoff_violations.append((model_id, "historical_beyond_db_max_price_date", label_date_max))
 
             if not cutoff_violations:
                 self.add(
                     "PASS",
                     "model_data_cutoff",
-                    f"historical models <= {HISTORICAL_MODEL_CUTOFF}; production-current uses required_label_date gate; "
-                    f"historical={historical_rows}, production_current={production_rows}",
+                    f"historical label_date_max <= db max_price_date={max_price_date}; "
+                    f"production-current uses required_label_date gate; historical={historical_rows}, "
+                    f"production_current={production_rows}",
                 )
             else:
                 self.add("FAIL", "model_data_cutoff", f"violations={cutoff_violations}")

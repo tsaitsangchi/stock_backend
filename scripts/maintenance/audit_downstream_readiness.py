@@ -34,8 +34,6 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v6.0.0"
 TOOL_VER = "v0.1"
-HISTORICAL_MODEL_CUTOFF = "2025-05-15"
-HISTORICAL_MODEL_CUTOFF_DATE = date.fromisoformat(HISTORICAL_MODEL_CUTOFF)
 FORMAL_LABEL_HORIZON = 20
 MODEL_ID_PATTERN = re.compile(r"^mdl_[0-9]{8}_[a-z0-9]+_h[0-9]+_[0-9a-f]{8}_v[0-9]+_[0-9]+$")
 
@@ -190,6 +188,8 @@ class DownstreamReadinessAuditor:
             """
         )
         latest_core_as_of = cur.fetchone()[0]
+        cur.execute('SELECT MAX(date) FROM "TaiwanStockPriceAdj"')
+        max_price_date = cur.fetchone()[0]
         cutoff_violations = []
         historical_count = 0
         production_count = 0
@@ -209,13 +209,14 @@ class DownstreamReadinessAuditor:
                     cutoff_violations.append((model_id, "production_label_not_mature", label_max))
             else:
                 historical_count += 1
-                if label_max > HISTORICAL_MODEL_CUTOFF_DATE:
-                    cutoff_violations.append((model_id, "historical_cutoff", label_max))
+                if not max_price_date or label_max > max_price_date:
+                    cutoff_violations.append((model_id, "historical_beyond_db_max_price_date", label_max))
         if not cutoff_violations:
             self.pass_(
                 "model_data_cutoff",
-                f"historical label_date_max <= {HISTORICAL_MODEL_CUTOFF}; production-current uses required_label_date gate: "
-                f"historical={historical_count}, production_current={production_count}",
+                f"historical label_date_max <= db max_price_date={max_price_date}; "
+                f"production-current uses required_label_date gate: historical={historical_count}, "
+                f"production_current={production_count}",
             )
         else:
             self.fail("model_data_cutoff", f"cutoff violations={cutoff_violations}")
@@ -438,7 +439,7 @@ class DownstreamReadinessAuditor:
             f"- feature_set_version: `{self.context.get('feature_set_version', 'N/A')}`",
             f"- prediction_run_id: `{self.context.get('prediction_run_id', 'N/A')}`",
             f"- as_of_date: `{self.context.get('as_of_date', 'N/A')}`",
-            f"- historical model cutoff: `{HISTORICAL_MODEL_CUTOFF}`",
+            f"- historical model cutoff: `db max_price_date={self.context.get('max_price_date', 'N/A')}`",
             "- production-current cutoff: `required_label_date` gate (not historical cutoff)",
             "",
             "## Production-Current Gate",

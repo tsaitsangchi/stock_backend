@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
+sovereign_sync_engine.py v1.12 (Quantum Finance Market Universe Seed Engine)
 ================================================================================
-**最後更新日期**: 2026-05-17
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + §7.6 A1〜A5 進階優化 (含 A3/A5 邊界補正) (憲法 v6.0.0 §7 對齊)
+**最後更新日期**: 2026-05-18
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY MODE (憲法 v6.0.0 §7 / §14.7-L 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -47,6 +47,7 @@ sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
 - `--source [finmind|fred]`：限定數據源。
 - **v1.10 新增 (非破壞性)**：`--no-resume` 停用 L3 斷點續傳（除錯用）；`--throttle N` 自訂節流上限（預設 5500/hr，禁止 ≥ 6000）。
 - **v1.11 新增 (非破壞性, §7.6 A1〜A5)**：`--dataset-batched` 改 dataset 優先迴圈 (A1)；`--workers N` 共享 throttle 平行 worker (A2)；`--dynamic-quota --quota-interval N` 動態配額查詢 (A3，N≥100)；A4 per-dataset 配額自動寫入 `data_audit_log`；A5 達 4800/hr 主動 WARN、達 5500/hr 自動暫停 300s。
+- **v1.12 新增 (§14.7-L)**：`--strict-source-history` 將 FinMind stock-level sync 起點固定為 1990-01-01 並自動停用 L3 resume，用於滿足「FinMind API 最早可得日期完全對齊 DB」之精準補刷；禁止用於全市場無界重抓。
 
 ### D. 不提供之旗標 (Intentionally Omitted)
 - `--force` (全歷史 from 2000-01-01)：仍維持不提供，避免在 v0.2 builder 完工前耗盡 FinMind quota。
@@ -54,6 +55,7 @@ sovereign_sync_engine.py v1.11a (Quantum Finance Market Universe Seed Engine)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
+| **v1.12** | 2026-05-18 | Codex | **§14.7-L strict all-source-history mode**：新增 `--strict-source-history`，使 FinMind 個股同步以 `1990-01-01` 作為授權來源端探測下界，並強制停用 §7.5 L3 resume，避免 partial DB 因「存在任一 >= start_date row」被誤跳過。此模式只改變 start_date/resume 語意，不改 schema、upsert、節流、退避或 FRED pagination；應搭配 `audit_source_availability.py --strict` 產生之 mismatch 清單做 core 150 小範圍精準補刷，不得作為全市場全歷史重抓入口。 | **ACTIVE** |
 | **v1.11a** | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | **ACTIVE** |
 | v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
 | v1.10 | 2026-05-15 | Codex | §7 供應鏈速率主權落地版：(1) 新增 `FinMindThrottle` 滑動窗節流 5500/hr；(2) 新增 `fetch_with_retry()` 三階段退避 [30s, 300s, 1800s] 與 402 單次探測重試；(3) 新增 `is_already_synced()` DB-driven L3 斷點續傳；(4) 重寫 `sync_finmind()` 整合三層防禢，新增 `skipped` 與 `recovered` stats 類別；(5) `write_data_audit_log` op_type 擴充 `RETRY_402_RECOVERED` / `RESUME_SKIP`；(6) 連續三次失敗即 FAILED 並寫入 lifecycle；(7) CLI 不變、`--no-resume`、`--throttle` 為非破壞性新增。對齊憲法 v5.4.22 §7.1–7.8 全部條文。 | SUPERSEDED |
@@ -118,6 +120,7 @@ A5_PAUSE_THRESHOLD = 5500                 # §7.6 A5: 達 5500/hr 自動暫停
 A5_PAUSE_DURATION = 300                   # §7.6 A5: 暫停 5 分鐘
 A3_QUOTA_INTERVAL_MIN = 100               # §7.6 A3: N 不得小於 100
 FRED_PAGE_LIMIT = 100000                  # FRED max page size; enough for current core daily/monthly series
+STRICT_SOURCE_HISTORY_START_DATE = "1990-01-01"  # §14.7-L FinMind source availability lower bound
 
 
 class FinMindThrottle:
@@ -259,7 +262,7 @@ class SovereignSyncEngine:
         self.fred_key = os.getenv("FRED_API_KEY")
         self.constitution_ver = "v6.0.0"
         self.schema_ver = "v2.11"
-        self.tool_ver = "v1.11a"
+        self.tool_ver = "v1.12"
         # v1.11 §7.6 A3 動態配額查詢 callback
         quota_fn = self._query_remaining_quota if dynamic_quota else None
         self.throttle = FinMindThrottle(
@@ -698,9 +701,14 @@ class SovereignSyncEngine:
             except Exception as exc:
                 self._detail("warning", f"§7.6 A4 quota flush failed for {dataset}: {type(exc).__name__}: {exc}")
 
-    def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30, seed=False, all_datasets=False):
+    def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30, seed=False, all_datasets=False,
+            strict_source_history=False):
         start_time = time.time()
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        if strict_source_history:
+            start_date = STRICT_SOURCE_HISTORY_START_DATE
+            self.resume_enabled = False
+        else:
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         task_name = f"sync_{source or 'all'}_{stock_id or universe or ('seed' if seed else 'macro')}"
 
         self._phase_appropriate_hint(stock_id, universe, days, dataset, seed, all_datasets)
@@ -725,11 +733,11 @@ class SovereignSyncEngine:
             # v1.11 §7.6 A4: lifecycle 結束前 flush per-dataset quota snapshot
             self._flush_quota_audit()
             self._apply_lifecycle_verdict(lifecycle)
-            self.report_results(start_time, days, universe)
+            self.report_results(start_time, days, universe, strict_source_history=strict_source_history)
 
         return self.stats["failed"] == 0
 
-    def report_results(self, start_time, days, universe):
+    def report_results(self, start_time, days, universe, strict_source_history=False):
         if self.stats["failed"] > 0:
             verdict = "FAILED"
         elif self.stats["warning"] > 0:
@@ -737,7 +745,9 @@ class SovereignSyncEngine:
         else:
             verdict = "PERFECT"
 
-        if days >= SELECTION_PHASE_DAYS:
+        if strict_source_history:
+            phase_label = f"strict source history (from {STRICT_SOURCE_HISTORY_START_DATE})"
+        elif days >= SELECTION_PHASE_DAYS:
             phase_label = f"選股 phase ({days} 天)"
         elif days <= 60:
             phase_label = f"增量 phase ({days} 天)"
@@ -775,7 +785,7 @@ class SovereignSyncEngine:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Quantum Finance 主權同步引擎 (v1.11 — §7 供應鏈速率主權 + §7.6 A1〜A5 進階優化)",
+        description="Quantum Finance 主權同步引擎 (v1.12 — §7 速率主權 + §14.7-L strict source history)",
         epilog="選股 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730；"
                "核心 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730",
     )
@@ -804,6 +814,8 @@ if __name__ == "__main__":
                         help="(v1.11 §7.6 A3) 每 N 次請求查 FinMind 帳號 API 動態調整節流上限")
     parser.add_argument("--quota-interval", type=int, default=A3_QUOTA_INTERVAL_MIN,
                         help=f"(v1.11 §7.6 A3) 動態配額查詢間隔；憲法下限 {A3_QUOTA_INTERVAL_MIN}")
+    parser.add_argument("--strict-source-history", action="store_true",
+                        help="(v1.12 §14.7-L) FinMind 個股表自 1990-01-01 補刷並自動停用 resume；用於 core 150 精準全歷史對齊")
     args = parser.parse_args()
 
     engine = SovereignSyncEngine(
@@ -822,5 +834,6 @@ if __name__ == "__main__":
         days=args.days,
         seed=args.seed,
         all_datasets=args.all,
+        strict_source_history=args.strict_source_history,
     )
     sys.exit(0 if ok else 1)
