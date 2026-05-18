@@ -1,8 +1,8 @@
 """
-audit_doctrine_compliance.py v0.1 (Quantum Finance §0 Supreme Doctrine Compliance Auditor)
+audit_doctrine_compliance.py v0.2 (Quantum Finance §0 Supreme Doctrine Compliance Auditor)
 ================================================================================
-最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.7 升版規則自動化執行)
+最後更新日期: 2026-05-18
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.7 升版規則自動化執行 + §8/§9 DRAFT graceful skip)
 最高原則: Doctrine Compliance Authority — §0 從文件 → 機器強制
 
 依憲章 §0.7 升版規則：
@@ -11,12 +11,23 @@ audit_doctrine_compliance.py v0.1 (Quantum Finance §0 Supreme Doctrine Complian
 
 本工具實作上述規則之自動化執行，使 §0 從紙上原則升級為機器可強制之治權 gate。
 
-v0.1 邊界:
+修訂歷程 (Revision History):
+| 版本  | 日期       | 說明                                                                                |
+| :---- | :--------- | :---------------------------------------------------------------------------------- |
+| v0.2  | 2026-05-18 | 對齊 v6.0.0-patch §0.7 補強：對 §8/§9 DRAFT 期間尚未建立之 DDL 表（feature_definition / |
+|       |            | feature_store_snapshot / model_registry 等）採 graceful skip + WARN，不再 crash。新增 |
+|       |            | `_table_exists()` helper；P1/P3/P4 promotion gate 三處 §8 表查詢前置存在檢查。       |
+| v0.1  | 2026-05-17 | 首版：四大支柱對映檢驗、--scan-module、--for-promotion；對 §8 表硬性查詢無保護        |
+|       |            |             (2026-05-18 v6.0.0-patch 揭露此 bug；v0.2 修補)。                          |
+
+v0.2 邊界:
 1. 只讀憲章 §0 四大支柱定義 + DB committed snapshots + 程式碼 metadata；不寫入任何 governance table。
 2. 對映檢驗為 PASS/WARN/FAIL；FAIL 即升版必須阻擋。
 3. 可選 `--scan-module <path>` 對單一新模組做 §0 對映檢驗。
 4. 可選 `--for-promotion <ver>` 啟用升版額外檢查（例如 v6.1.0 須含 §8 升強制契約之證據）。
 5. 自動產生 `reports/doctrine_compliance_<timestamp>.md` 治理檢驗報告（除非 `--no-report`）。
+6. §8/§9 DRAFT 期間：對 feature_definition / feature_store_snapshot / model_registry / prediction_* /
+   allocation_* 等尚未建立之 DDL 表，採 graceful skip 並寫 WARN；不得因表缺失而 crash。
 ================================================================================
 """
 import argparse
@@ -40,7 +51,13 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
+
+
+def _table_exists(cur, table_name: str) -> bool:
+    """§8/§9 DRAFT 表存在檢查 (v0.2 新增)。對齊 §0.7 補強：DRAFT DDL 表缺失須 graceful skip。"""
+    cur.execute("SELECT to_regclass(%s) IS NOT NULL", (f'public."{table_name}"',))
+    return cur.fetchone()[0]
 PROJECT_ROOT = _SCRIPTS_DIR.parent
 CHARTER_PATH = PROJECT_ROOT / "reports" / "系統架構大憲章_v6.0.0.md"
 
@@ -161,22 +178,26 @@ class DoctrineAuditor:
                      "六層 CoreScore (DQ/LM/FG/TR/IF/VC) 完整存在於 active policy")
 
         # 2. feature_definition 含 liquidity / institutional / volatility 三群（重力井觀測載體）
-        cur.execute("""
-            SELECT feature_group, COUNT(*) FROM feature_definition
-            WHERE feature_set_id IN (
-                SELECT feature_set_id FROM feature_store_snapshot WHERE status='committed'
-            )
-            GROUP BY feature_group
-        """)
-        groups = {g: c for g, c in cur.fetchall()}
-        required_groups = ["price", "liquidity", "institutional"]
-        missing_g = [g for g in required_groups if g not in groups or groups[g] == 0]
-        if missing_g:
+        if not (_table_exists(cur, 'feature_definition') and _table_exists(cur, 'feature_store_snapshot')):
             self.add("P1_first_principles", "WARN", "physics_features",
-                     f"feature_definition 缺少物理量化群 (price/liquidity/institutional): {missing_g}")
+                     "feature_definition / feature_store_snapshot 表不存在 (§8 DRAFT)；跳過 physics_features 檢驗")
         else:
-            self.add("P1_first_principles", "PASS", "physics_features",
-                     f"feature_definition 含完整物理量化群: {groups}")
+            cur.execute("""
+                SELECT feature_group, COUNT(*) FROM feature_definition
+                WHERE feature_set_id IN (
+                    SELECT feature_set_id FROM feature_store_snapshot WHERE status='committed'
+                )
+                GROUP BY feature_group
+            """)
+            groups = {g: c for g, c in cur.fetchall()}
+            required_groups = ["price", "liquidity", "institutional"]
+            missing_g = [g for g in required_groups if g not in groups or groups[g] == 0]
+            if missing_g:
+                self.add("P1_first_principles", "WARN", "physics_features",
+                         f"feature_definition 缺少物理量化群 (price/liquidity/institutional): {missing_g}")
+            else:
+                self.add("P1_first_principles", "PASS", "physics_features",
+                         f"feature_definition 含完整物理量化群: {groups}")
 
     def audit_p2_pareto_barbell(self, cur):
         """§0.2 八二法則 + 不對稱槓鈴對映檢驗"""
@@ -247,22 +268,26 @@ class DoctrineAuditor:
                      "THEME_KEYWORDS 涵蓋第六波 MBNRIC 核心主題（半導體/生技/醫療/綠能）")
 
         # 2. feature_definition 含 macro 群（DFF/VIX/T10Y2Y/UNRATE）
-        cur.execute("""
-            SELECT feature_name FROM feature_definition
-            WHERE feature_group = 'macro'
-              AND feature_set_id IN (
-                  SELECT feature_set_id FROM feature_store_snapshot WHERE status='committed'
-              )
-        """)
-        macro_features = {row[0] for row in cur.fetchall()}
-        required_macro = ["macro_dff_level", "macro_vix_level", "macro_t10y2y_level", "macro_unrate_yoy"]
-        missing_macro = [m for m in required_macro if m not in macro_features]
-        if missing_macro:
+        if not (_table_exists(cur, 'feature_definition') and _table_exists(cur, 'feature_store_snapshot')):
             self.add("P3_kondratiev_2026", "WARN", "macro_features",
-                     f"feature_definition macro 群缺少: {missing_macro}")
+                     "feature_definition / feature_store_snapshot 表不存在 (§8 DRAFT)；跳過 macro_features 檢驗")
         else:
-            self.add("P3_kondratiev_2026", "PASS", "macro_features",
-                     f"feature_definition macro 群完整 ({sorted(macro_features)})")
+            cur.execute("""
+                SELECT feature_name FROM feature_definition
+                WHERE feature_group = 'macro'
+                  AND feature_set_id IN (
+                      SELECT feature_set_id FROM feature_store_snapshot WHERE status='committed'
+                  )
+            """)
+            macro_features = {row[0] for row in cur.fetchall()}
+            required_macro = ["macro_dff_level", "macro_vix_level", "macro_t10y2y_level", "macro_unrate_yoy"]
+            missing_macro = [m for m in required_macro if m not in macro_features]
+            if missing_macro:
+                self.add("P3_kondratiev_2026", "WARN", "macro_features",
+                         f"feature_definition macro 群缺少: {missing_macro}")
+            else:
+                self.add("P3_kondratiev_2026", "PASS", "macro_features",
+                         f"feature_definition macro 群完整 ({sorted(macro_features)})")
 
         # 3. FredData 含四核心序列
         cur.execute("SELECT DISTINCT series_id FROM \"FredData\"")
@@ -382,6 +407,10 @@ class DoctrineAuditor:
         print(f"\n🚀 [FOR-PROMOTION] target={target}")
         if target.startswith("v6.1") or target.startswith("v7"):
             # 升 §8 強制契約：必須通過 audit_downstream_readiness=READY_FOR_V5_4_23 (or successor)
+            if not _table_exists(cur, 'model_registry'):
+                self.add("P4_observability_digital_twin", "FAIL", "promotion_gate",
+                         "model_registry 表不存在 (§8 DRAFT)；v6.1.0+ 升版必須先建立 §8 schema")
+                return
             cur.execute("""
                 SELECT COUNT(*) FROM model_registry m
                 WHERE m.status='committed'
@@ -458,7 +487,7 @@ class DoctrineAuditor:
 
     def run(self):
         start = time.time()
-        lifecycle_cm = record_lifecycle("audit_doctrine_compliance_v0.1",
+        lifecycle_cm = record_lifecycle(f"audit_doctrine_compliance_{TOOL_VER}",
                                        category="audit", stock_id="SYSTEM")
         lifecycle = lifecycle_cm.__enter__()
         try:
