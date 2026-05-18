@@ -13,8 +13,8 @@
 | DB infrastructure | PERFECT | `db_utils.py`: DB success, lifecycle/audit logs active, core assets=150 |
 | FinMind/FRED strict source | PERFECT | `source_availability_audit_20260518_1328.md`: FinMind checked=1350, source_empty_ok=13, mismatch=0; FRED checked=4, mismatch=0 |
 | Production-current Feature Store | READY | `feature_store_completeness_20260518_1208.md`: `fs_20260515_feature_set_v0_1_h20_core150_strict_source_20260518`, 150 stocks, 27 features, 3980 rows, 47 imputed |
-| h20 historical pipeline | READY_FOR_DRAFT_EVIDENCE | `walk_forward_h20_20260518_20260425.md` and `walk_forward_h20_panel_20260518.md` |
-| h30 historical pipeline | READY_FOR_DRAFT_EVIDENCE | `h30_first_evidence_20260518.md` and `h30_walk_forward_panel_20260518.md` |
+| h20 historical pipeline | READY_FOR_DRAFT_EVIDENCE | `walk_forward_h20_20260518_20260425.md`, `walk_forward_h20_panel_20260518.md`, and `walk_forward_h20_h30_panel24_20260518.md` |
+| h30 historical pipeline | READY_FOR_DRAFT_EVIDENCE | `h30_first_evidence_20260518.md`, `h30_walk_forward_panel_20260518.md`, and `walk_forward_h20_h30_panel24_20260518.md` |
 | Leakage audit | PERFECT | `audit_leakage.py v0.2`: 18/0/0 |
 | Downstream readiness | READY_FOR_DRAFT_EVIDENCE | `downstream_promotion_readiness_20260518_140842.md`: 29/1/0 |
 
@@ -22,8 +22,8 @@
 
 | Panel | Count | IC summary | Delivery status |
 |---|---:|---|---|
-| h20 walk-forward | 12 | IC mean=0.3242, median=0.3268, stdev=0.0851, IC >= 0: 12/12 | latest 2026-04-25 prediction remains committed |
-| h30 walk-forward | 12 | IC mean=0.3132, median=0.3053, stdev=0.0622, IC >= 0: 12/12 | all h30 predictions deprecated as evidence-only |
+| h20 walk-forward | 24 | IC mean=0.3530, median=0.3718, stdev=0.0848, IC >= 0: 24/24 | latest 2026-04-25 prediction remains committed |
+| h30 walk-forward | 24 | IC mean=0.3482, median=0.3276, stdev=0.0923, IC >= 0: 24/24 | all h30 predictions deprecated as evidence-only |
 
 Current sole prediction-backed delivery:
 
