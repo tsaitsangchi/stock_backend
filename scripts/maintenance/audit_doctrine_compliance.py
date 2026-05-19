@@ -1,8 +1,9 @@
 """
-audit_doctrine_compliance.py v0.2 (Quantum Finance §0 Supreme Doctrine Compliance Auditor)
+audit_doctrine_compliance.py v0.3 (Quantum Finance §0 Supreme Doctrine Compliance Auditor)
 ================================================================================
-最後更新日期: 2026-05-18
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.7 升版規則自動化執行 + §8/§9 DRAFT graceful skip)
+最後更新日期: 2026-05-19
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.1-A 禁令 #2/#3 自動化檢驗
+                    + §0.1-B audit 載體 + §0.1.3 V 變數對應透明化)
 最高原則: Doctrine Compliance Authority — §0 從文件 → 機器強制
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -24,14 +25,21 @@ audit_doctrine_compliance.py v0.2 (Quantum Finance §0 Supreme Doctrine Complian
 5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
    主權狀態動態計算（§5.6.3）。
 6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+7. [T3 Leakage Forbiddance] (v0.3): §0.1-A 禁令 #2/#3 永久強制——IFF Θ / SOC /
+   重力井邊緣觸發為 T3 操作隱喻，禁止實作於 §6 / §8 / §9 模組。任何發現即 FAIL
+   （不可降為 WARN）；對應 `audit_t3_leakage()` 與 `T3_FORBIDDEN_PATTERNS`。
+8. [Proxy Transparency] (v0.3): §0.1-B audit 載體 + §0.1.3 V 變數補強——
+   feature_definition 中之 proxy 變數須在 description 明文標註對應的 §0.1 元素
+   （M / V / ΔlnP / F_external）。缺標註為 WARN（文檔衛生）；對應
+   `audit_proxy_transparency()` 與 `PROXY_FIRST_PRINCIPLES_MAPPING`。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [Step 11C：§0 基礎治權檢驗]** | `$ python scripts/maintenance/audit_doctrine_compliance.py` | audit_doctrine_compliance v0.2 |
-| **2. [Step 11D：升版 gate]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --for-promotion v6.1.0` | audit_doctrine_compliance v0.2 |
-| **3. [Step 11E：新模組四支柱對映]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --scan-module scripts/path/to/new_module.py` | audit_doctrine_compliance v0.2 |
-| **4. [僅 stdout：不產生報告檔]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --no-report` | audit_doctrine_compliance v0.2 |
+| **1. [Step 11C：§0 基礎治權檢驗]** | `$ python scripts/maintenance/audit_doctrine_compliance.py` | audit_doctrine_compliance v0.3 |
+| **2. [Step 11D：升版 gate]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --for-promotion v6.1.0` | audit_doctrine_compliance v0.3 |
+| **3. [Step 11E：新模組四支柱對映]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --scan-module scripts/path/to/new_module.py` | audit_doctrine_compliance v0.3 |
+| **4. [僅 stdout：不產生報告檔]** | `$ python scripts/maintenance/audit_doctrine_compliance.py --no-report` | audit_doctrine_compliance v0.3 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -44,7 +52,8 @@ audit_doctrine_compliance.py v0.2 (Quantum Finance §0 Supreme Doctrine Complian
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-18 | Codex | §14.7-J Finding #1 修補：對 §8/§9 DRAFT 期間尚未建立之 DDL 表採 graceful skip + WARN，不再 crash；新增 `_table_exists()` helper；P1/P3/P4 promotion gate 三處 §8 表查詢前置存在檢查。 | **ACTIVE** |
+| **v0.3** | 2026-05-19 | Codex | §0.1-B audit 載體入庫：新增 `audit_t3_leakage()`（§0.1-A 禁令 #2/#3 自動化）與 `audit_proxy_transparency()`（§0.1.3 V 變數對應標註）；新增常數 `T3_FORBIDDEN_PATTERNS` / `T3_SCAN_TARGETS` / `PROXY_FIRST_PRINCIPLES_MAPPING`；新增 helper `_strip_comments_and_docstrings`。§0.1-A 6 條禁令自動化覆蓋從 0% 提升至 50%。 | **ACTIVE** |
+| v0.2 | 2026-05-18 | Codex | §14.7-J Finding #1 修補：對 §8/§9 DRAFT 期間尚未建立之 DDL 表採 graceful skip + WARN，不再 crash；新增 `_table_exists()` helper；P1/P3/P4 promotion gate 三處 §8 表查詢前置存在檢查。 | SUPERSEDED |
 | v0.1 | 2026-05-17 | Codex | 首版：四大支柱對映檢驗、`--scan-module`、`--for-promotion`；§0 從文件升級為機器可強制之治權 gate；對 §8 表硬性查詢無保護（2026-05-18 v6.0.0-patch 揭露 bug；v0.2 修補）。 | SUPERSEDED |
 ================================================================================
 """
@@ -69,7 +78,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
+TOOL_VER = "v0.3"
 
 
 def _table_exists(cur, table_name: str) -> bool:
@@ -131,6 +140,60 @@ PILLAR_NAMES = {
     "P2_pareto_barbell": "§0.2 八二法則與不對稱槓鈴",
     "P3_kondratiev_2026": "§0.3 康波週期與 2026 雙重共振",
     "P4_observability_digital_twin": "§0.4 可觀察性與數位孿生完整性",
+}
+
+# ── v0.3 §0.1-B audit 載體常數 ────────────────────────────────────────────────
+
+# §0.1-A 禁令 #2/#3：T3 元素永久不實作清單
+# 模式為 regex；掃描前會先 strip 註解與 docstring 以避免誤判文件引用
+T3_FORBIDDEN_PATTERNS = {
+    # IFF Θ 控制參數（§0.1.1 line 1205）
+    "IFF_theta": r"\bIFF[_\s]?theta\b|\bΘ\s*=\s*\|?∇",
+    "information_force_field": r"\binformation_force_field\b|\bIFF_field\b",
+    "nabla_information": r"\|∇I\||\bnabla_I\b|\bgrad_information\b",
+    "nabla_sentiment": r"\|∇S\||\bnabla_S\b|\bgrad_sentiment\b",
+    # SOC 自組織臨界（§0.1.1 line 1206）
+    "soc_critical": r"\bSOC_critical\b|\bself_organized_criticality\b|\bsandpile_model\b",
+    "soc_trigger": r"\bsoc_trigger\b|\bcritical_avalanche\b",
+    # 重力井邊緣觸發（§0.1.1 line 1207）
+    "gravity_well_trigger": r"\bgravity_well_trigger\b|\bgravity_well_edge\b",
+    "gravity_well_depth": r"\bgravity_well_depth\b|\bwell_depth_calc\b",
+    "extreme_arbitrage_signal": r"\bextreme_arbitrage\b",
+}
+
+# T3 禁區掃描目標模組（§6 / §8 / §9 落地層）
+# 不存在的模組（如預留 portfolio_sizer.py）以 PASS 記錄合法缺席
+T3_SCAN_TARGETS = [
+    "scripts/core/feature_store_builder.py",
+    "scripts/core/model_trainer.py",
+    "scripts/core/prediction_engine.py",
+    "scripts/core/portfolio_sizer.py",  # 預留（v6.1.0 後啟用）
+    "scripts/pipeline/portfolio_optimizer.py",
+    "scripts/pipeline/portfolio_strategy.py",
+    "scripts/pipeline/portfolio_backtest.py",
+]
+
+# §0.1.3 V 變數 + §0.1 M / ΔlnP / F proxy 對映規格
+# Key: feature_name 前綴；Value: (對應憲章章節, §0.1 物理元素標籤)
+# 在 description 中應找到至少其一才算明文標註
+PROXY_FIRST_PRINCIPLES_MAPPING = {
+    # ΔlnP 價格位移
+    "log_return_": ("§0.1", "Delta_lnP"),
+    "ma_ratio_": ("§0.1", "Delta_lnP"),
+    "volatility_": ("§0.1", "Delta_lnP"),
+    "max_drawdown_": ("§0.1", "Delta_lnP"),
+    # M 流動性質量
+    "avg_daily_value_": ("§0.1", "M"),
+    "turnover_": ("§0.1", "M"),
+    "zero_volume_ratio_": ("§0.1", "M"),
+    # V 內在價值密度（§0.1.3 補強）
+    "revenue_yoy_": ("§0.1.3", "V"),
+    "eps_sum_": ("§0.1.3", "V"),
+    "net_income_": ("§0.1.3", "V"),
+    # F 外部資訊力（institutional proxy）
+    "foreign_net_": ("§0.1", "F_external"),
+    "trust_net_": ("§0.1", "F_external"),
+    "margin_ratio_": ("§0.1", "F_external"),
 }
 
 
@@ -395,6 +458,130 @@ class DoctrineAuditor:
             self.add("P4_observability_digital_twin", "FAIL", "sql_ssot",
                      "db_utils 缺少 get_core_stocks_from_db；§6.7 SSOT 漂移")
 
+    # ── v0.3 §0.1-B audit 載體新增方法 ──────────────────────────────────────
+
+    @staticmethod
+    def _strip_comments_and_docstrings(text: str) -> str:
+        """移除 Python 註解與 docstring；避免 T3 regex 誤判 charter 引用文字。
+
+        移除順序：
+          1. triple-quoted strings (\"\"\" ... \"\"\" 與 ''' ... ''')
+          2. 單行註解 (# ...)
+        """
+        text = re.sub(r'""".*?"""', '', text, flags=re.DOTALL)
+        text = re.sub(r"'''.*?'''", '', text, flags=re.DOTALL)
+        text = re.sub(r'#[^\n]*', '', text)
+        return text
+
+    def audit_t3_leakage(self):
+        """§0.1-A 禁令 #2/#3 自動化檢驗 (v0.3 新增)。
+
+        掃 §6 / §8 / §9 目標模組是否誤實作 T3 元素：
+          - IFF Θ 控制參數
+          - SOC 自組織臨界
+          - 重力井邊緣觸發
+
+        違憲後果：T3 元素任何實作 → FAIL（不可降為 WARN，永久禁令）。
+        """
+        print(f"\n🚫 [T3_LEAKAGE_CHECK] 掃描 §0.1-A 禁令 #2/#3 (IFF Θ / SOC / 重力井觸發)")
+        leakage_found = False
+
+        for rel in T3_SCAN_TARGETS:
+            p = PROJECT_ROOT / rel
+            if not p.exists():
+                # portfolio_sizer.py 等預留檔案：合法缺席
+                self.add("P1_first_principles", "PASS", "t3_leakage_skip",
+                         f"{rel} 不存在（合法缺席 / 未實作）；跳過 T3 掃描")
+                continue
+
+            text = p.read_text(encoding="utf-8")
+            # 移除註解與 docstring 後再掃（避免誤判文件引用）
+            stripped = self._strip_comments_and_docstrings(text)
+
+            violations = []
+            for concept, pattern in T3_FORBIDDEN_PATTERNS.items():
+                if re.search(pattern, stripped, re.IGNORECASE | re.MULTILINE):
+                    violations.append(concept)
+
+            if violations:
+                leakage_found = True
+                self.add("P1_first_principles", "FAIL", "t3_leakage",
+                         f"{rel} 違反 §0.1-A 禁令；發現 T3 元素實作: {violations}")
+            else:
+                self.add("P1_first_principles", "PASS", "t3_leakage",
+                         f"{rel} 無 T3 元素洩漏（§0.1-A 禁令 #2/#3 守住）")
+
+        if not leakage_found:
+            self.add("P1_first_principles", "PASS", "t3_leakage_summary",
+                     f"§0.1-A 禁令 #2/#3 全部守住；掃描 {len(T3_SCAN_TARGETS)} 個模組無 T3 元素實作")
+
+    def audit_proxy_transparency(self, cur):
+        """§0.1-B audit 載體 + §0.1.3 V 變數對應透明化檢驗 (v0.3 新增)。
+
+        驗證 feature_definition 中之 proxy 變數是否在 description 明文標註
+        §0.1 元素對應（M / V / ΔlnP / F_external）。
+
+        違憲後果：缺對應標註 → WARN（文檔衛生問題，不影響工程正確性）。
+        """
+        print(f"\n📝 [PROXY_TRANSPARENCY_CHECK] §0.1 元素對應標註檢驗")
+
+        if not (_table_exists(cur, 'feature_definition') and
+                _table_exists(cur, 'feature_store_snapshot')):
+            self.add("P1_first_principles", "WARN", "proxy_transparency",
+                     "feature_definition 表不存在（§8 DRAFT）；跳過 proxy transparency 檢驗")
+            return
+
+        # 取最新 committed feature set 的所有 feature definitions
+        cur.execute("""
+            SELECT feature_name, feature_group, description
+            FROM feature_definition
+            WHERE feature_set_id IN (
+                SELECT feature_set_id FROM feature_store_snapshot
+                WHERE status='committed'
+                ORDER BY as_of_date DESC LIMIT 1
+            )
+            ORDER BY feature_group, feature_name
+        """)
+        rows = cur.fetchall()
+
+        if not rows:
+            self.add("P1_first_principles", "FAIL", "proxy_transparency",
+                     "無 committed feature_definition；§0.1 proxy 透明度無從驗證")
+            return
+
+        untagged_features = []
+        correctly_tagged = 0
+
+        for feature_name, group, description in rows:
+            # 找出該 feature 應對應的 §0.1 元素
+            expected = None
+            for prefix, (section, element) in PROXY_FIRST_PRINCIPLES_MAPPING.items():
+                if feature_name.startswith(prefix):
+                    expected = (section, element)
+                    break
+
+            if not expected:
+                # macro / theme 等非 §0.1 特徵：不檢驗（屬 §0.3）
+                continue
+
+            section, element = expected
+            text_to_check = (description or "").lower()
+
+            # 必須在 description 中明文標註章節或物理元素
+            if section.lower() not in text_to_check and element.lower() not in text_to_check:
+                untagged_features.append((feature_name, expected))
+            else:
+                correctly_tagged += 1
+
+        if untagged_features:
+            sample = [f"{name} (應標 {sec}/{elt})"
+                      for name, (sec, elt) in untagged_features[:5]]
+            self.add("P1_first_principles", "WARN", "proxy_transparency",
+                     f"{len(untagged_features)} 個 §0.1 proxy 未明文標註對應 (前 5 例: {sample})")
+        else:
+            self.add("P1_first_principles", "PASS", "proxy_transparency",
+                     f"全部 {correctly_tagged} 個 §0.1 proxy features 已明文標註對應元素")
+
     # ── --scan-module 對映檢驗 ────────────────────────────────────────────────
 
     def scan_new_module(self):
@@ -518,6 +705,9 @@ class DoctrineAuditor:
             cur = conn.cursor()
             try:
                 self.audit_p1_first_principles(cur)
+                # v0.3：§0.1-B audit 載體——T3 禁令 + proxy 透明化
+                self.audit_t3_leakage()
+                self.audit_proxy_transparency(cur)
                 self.audit_p2_pareto_barbell(cur)
                 self.audit_p3_kondratiev_2026(cur)
                 self.audit_p4_observability_digital_twin(cur)
@@ -579,7 +769,7 @@ class DoctrineAuditor:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Quantum Finance §0 Supreme Doctrine Compliance Auditor (v0.1)")
+        description="Quantum Finance §0 Supreme Doctrine Compliance Auditor (v0.3)")
     parser.add_argument("--scan-module", type=str, default=None,
                         help="對單一新模組做 §0 四大支柱語意對映檢驗（路徑）")
     parser.add_argument("--for-promotion", type=str, default=None,
