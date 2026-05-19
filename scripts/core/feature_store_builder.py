@@ -1,8 +1,8 @@
 """
-feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
+feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
 ================================================================================
-最後更新日期: 2026-05-18
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 Feature Store v0.1 草案實作)
+最後更新日期: 2026-05-19
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 + §0.0-D.6 升版條件 #1 interaction features)
 最高原則: Feature Store Build Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -58,7 +58,8 @@ feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-16 | Codex | 首版：§8.2 Feature Store 草案落地；27 features × 6 groups（price/liquidity/fundamental/institutional/macro/theme）；as-of-strict 過濾與 zero_fill/drop 雙 imputation 策略；2026-05-17 walk-forward h20 panel 8 點全 PERFECT；2026-05-18 v6.0.0-patch 落地 strict-source build（`fs_20260515_..._strict_source_20260518`）與 §14.7-L 對齊。 | **ACTIVE** |
+| **v0.2** | 2026-05-19 | Codex | §0.0-D.6 升版條件 #1 落地：新增 interaction 群 4 features（feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q / feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d）；feature_set_version v0.1 → v0.2；總特徵數 27 → 31；新增 `_compute_interaction_features()` 方法；不引入新 raw 資料源、不違反 §0.1-A 禁令、保留 cross-sectional variance > 0；既有 v0.1 committed feature sets 不受影響（only future runs build v0.2）。後續需重訓 model 才能實際使用新特徵。 | **ACTIVE** |
+| v0.1 | 2026-05-16 | Codex | 首版：§8.2 Feature Store 草案落地；27 features × 6 groups（price/liquidity/fundamental/institutional/macro/theme）；as-of-strict 過濾與 zero_fill/drop 雙 imputation 策略；2026-05-17 walk-forward h20 panel 8 點全 PERFECT；2026-05-18 v6.0.0-patch 落地 strict-source build（`fs_20260515_..._strict_source_20260518`）與 §14.7-L 對齊。 | SUPERSEDED |
 ================================================================================
 """
 import argparse
@@ -84,11 +85,14 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
-DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.1"
+TOOL_VER = "v0.2"
+DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.2"
 DEFAULT_LABEL_HORIZON = 20
 
-# § 8.2.2 v0.1 特徵字典（27 features）
+# § 8.2.2 v0.2 特徵字典（27 base + 4 interaction = 31 features）
+# v0.2 新增 interaction 群：對齊 §0.0-D.6 升版條件 #1（macro × sector_exposure 交互特徵）
+# 動機：原 macro / theme 為 broadcast 常數，cross-sectional rank model 中 IC=0；
+# 交互特徵將 macro/theme broadcast 與 stock-specific 特徵相乘，恢復 cross-sectional variance。
 FEATURE_DEFINITIONS = [
     # ── price 群（8）
     {"name": "log_return_20d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "20d", "vtype": "numeric", "null": "drop", "desc": "20-day log return of adjusted close"},
@@ -123,6 +127,13 @@ FEATURE_DEFINITIONS = [
     {"name": "macro_vix_level", "group": "macro", "source": "FredData", "window": "as_of", "vtype": "numeric", "null": "drop", "desc": "latest VIXCLS as of date"},
     {"name": "macro_t10y2y_level", "group": "macro", "source": "FredData", "window": "as_of", "vtype": "numeric", "null": "drop", "desc": "latest T10Y2Y as of date"},
     {"name": "macro_unrate_yoy", "group": "macro", "source": "FredData", "window": "13m", "vtype": "numeric", "null": "drop", "desc": "latest UNRATE - UNRATE 12 months prior"},
+    # ── interaction 群（v0.2 新增，4）：對齊 §0.0-D.6 升版條件 #1
+    # 動機：將 macro / theme broadcast 與 stock-specific 特徵相乘，
+    #       恢復 cross-sectional variance，使 §0.3 戰術層脫離 IC=0 結構性失效。
+    {"name": "feature_macro_vix_x_vol_60d", "group": "interaction", "source": "FredData × TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "macro_vix_level × volatility_60d；§0.3 × §0.1 ΔlnP 路徑風險；高 VIX 環境下高波股放大訊號"},
+    {"name": "feature_macro_dff_x_eps_sum_4q", "group": "interaction", "source": "FredData × TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "zero_fill", "desc": "macro_dff_level × eps_sum_4q；§0.3 × §0.1.3 V 質量因子；高利率環境下盈利質量分化"},
+    {"name": "feature_theme_x_log_return_60d", "group": "interaction", "source": "TaiwanStockInfo × TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "theme_strength × log_return_60d；§0.3 MBNRIC × §0.1 ΔlnP；主題對齊動量"},
+    {"name": "feature_theme_x_foreign_net_60d", "group": "interaction", "source": "TaiwanStockInfo × TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "theme_is_semiconductor × foreign_net_60d；§0.3 半導體主題 × §0.1 F 外部力；半導體專屬資金流"},
 ]
 
 THEME_KEYWORDS = {
@@ -517,6 +528,37 @@ class FeatureStoreBuilder:
             "theme_is_semiconductor": 1.0 if industry and "半導體" in industry else 0.0,
         }
 
+    def _compute_interaction_features(self, base_features):
+        """v0.2 §0.0-D.6 升版條件 #1：macro/theme × stock-specific 交互特徵。
+
+        目的：將 broadcast 常數轉為含 cross-sectional variance 的訊號。
+        所有交互特徵僅為既有 base feature 之乘積；不引入新 raw 資料源；
+        不違反 §0.1-A 禁令 #2/#3（無 T3 元素）。
+
+        對 None 輸入採安全 fallback (0.0)，配合 zero_fill null policy。
+        """
+        def _safe(v):
+            try:
+                return float(v) if v is not None else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
+        vix = _safe(base_features.get("macro_vix_level"))
+        dff = _safe(base_features.get("macro_dff_level"))
+        vol_60d = _safe(base_features.get("volatility_60d"))
+        eps_4q = _safe(base_features.get("eps_sum_4q"))
+        theme_strength = _safe(base_features.get("theme_strength"))
+        theme_is_semi = _safe(base_features.get("theme_is_semiconductor"))
+        log_ret_60d = _safe(base_features.get("log_return_60d"))
+        foreign_60d = _safe(base_features.get("foreign_net_60d"))
+
+        return {
+            "feature_macro_vix_x_vol_60d": vix * vol_60d,
+            "feature_macro_dff_x_eps_sum_4q": dff * eps_4q,
+            "feature_theme_x_log_return_60d": theme_strength * log_ret_60d,
+            "feature_theme_x_foreign_net_60d": theme_is_semi * foreign_60d,
+        }
+
     # ── BUILD ────────────────────────────────────────────────────────────────
 
     def build_feature_rows(self):
@@ -557,6 +599,8 @@ class FeatureStoreBuilder:
             stock_features["margin_ratio_60d"] = margin.get(sid)
             stock_features.update(self._theme_features(theme.get(sid, "")))
             stock_features.update(macro)
+            # v0.2 §0.0-D.6 交互特徵（必須在所有 base feature 後計算）
+            stock_features.update(self._compute_interaction_features(stock_features))
 
             for fname, value in stock_features.items():
                 imputed = False

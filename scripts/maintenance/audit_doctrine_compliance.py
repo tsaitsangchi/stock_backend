@@ -194,6 +194,12 @@ PROXY_FIRST_PRINCIPLES_MAPPING = {
     "foreign_net_": ("§0.1", "F_external"),
     "trust_net_": ("§0.1", "F_external"),
     "margin_ratio_": ("§0.1", "F_external"),
+    # v0.2 interaction 群（§0.0-D.6 升版條件 #1）；本質為 §0.3 × §0.1 乘積
+    # PROXY check 允許 description 含 §0.1 或對應元素標籤即通過
+    "feature_macro_vix_x_": ("§0.1", "Delta_lnP"),
+    "feature_macro_dff_x_": ("§0.1.3", "V"),
+    "feature_theme_x_log_return_": ("§0.1", "Delta_lnP"),
+    "feature_theme_x_foreign_net_": ("§0.1", "F_external"),
 }
 
 
