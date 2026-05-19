@@ -12,6 +12,9 @@
 !*.sh
 !*.md
 
+# Claude Code 本地工作目錄（worktrees / plans / sessions），不入 repo
+.claude/
+
 # 排除備份與大型資料庫
 root_legacy_backup/
 scripts/archive/
