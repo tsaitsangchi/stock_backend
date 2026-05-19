@@ -71,6 +71,7 @@ reports/*
 !reports/swrd_*.md
 !reports/kondratiev_validation_*.md
 !reports/kwave_transition_review_*.md
+!reports/first_principles_validation_*.md
 !reports/source_availability_audit_*.md
 !reports/final_closure_*.md
 !reports/production_current_runbook_*.md
