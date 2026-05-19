@@ -1,8 +1,8 @@
 """
-prediction_engine.py v0.1 (Quantum Finance Prediction Authority)
+prediction_engine.py v0.2 (Quantum Finance Prediction Authority)
 ================================================================================
-最後更新日期: 2026-05-16
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.4 Prediction Table v0.1 草案實作)
+最後更新日期: 2026-05-19
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.4 + §8.8.8 exactly-one prediction-backed 自動化)
 最高原則: Prediction Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -26,26 +26,32 @@ prediction_engine.py v0.1 (Quantum Finance Prediction Authority)
 7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
    主權判定動態計算（§5.6.3）。
 8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+9. [Single-Delivery Automation] (v0.2): §8.8.8 exactly-one prediction-backed 自
+   動化——`--deprecate-previous` 在 commit 後將同 `prediction_policy_version`
+   下其他 `committed` run 改為 `deprecated`，並於 notes 寫入
+   `superseded_by={new_run_id}`；`--commit-as-evidence-only` 將新 run 直接寫
+   為 `deprecated`，供 walk-forward / h30 historical evidence。兩 flag 互斥。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [Step 11-dry：推論驗算]** | `$ python scripts/core/prediction_engine.py --dry-run --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.1 |
-| **2. [Step 11-commit：production-current]** | `$ python scripts/core/prediction_engine.py --commit --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.1 |
-| **3. [Step 11-historical：walk-forward evidence]** | `$ python scripts/core/prediction_engine.py --commit --model-id <historical_mdl_id> --as-of-date <historical_date>` | prediction_engine v0.1 |
-| **4. [Step 11-h30：v6.2.0 預備]** | `$ python scripts/core/prediction_engine.py --commit --model-id <mdl_id_h30> --as-of-date <date>` | prediction_engine v0.1 |
+| **1. [Step 11-dry：推論驗算]** | `$ python scripts/core/prediction_engine.py --dry-run --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.2 |
+| **2. [Step 11-commit：production-current]** | `$ python scripts/core/prediction_engine.py --commit --deprecate-previous --model-id <mdl_id> --as-of-date 2026-05-15` | prediction_engine v0.2 |
+| **3. [Step 11-historical：walk-forward evidence]** | `$ python scripts/core/prediction_engine.py --commit --commit-as-evidence-only --model-id <historical_mdl_id> --as-of-date <historical_date>` | prediction_engine v0.2 |
+| **4. [Step 11-h30：v6.2.0 預備]** | `$ python scripts/core/prediction_engine.py --commit --commit-as-evidence-only --model-id <mdl_id_h30> --as-of-date <date>` | prediction_engine v0.2 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
 | :--- | :--- | :--- |
 | **dry-run** | `--dry-run` | 輸出 predictions distribution 與 coverage，不寫 prediction_values |
-| **deprecate-previous** | `--deprecate-previous` | commit 同時標記既有 committed run 為 deprecated（§8.8.8） |
-| **evidence-only** | `--commit-as-evidence-only`（v6.2.0+ 規劃） | commit 後立即標記 deprecated，僅作 audit evidence；現版以後處理 SQL 達成 |
+| **deprecate-previous** | `--deprecate-previous`（v0.2 落地）| commit 同時標記同 policy 下既有 committed run 為 deprecated 並寫 `superseded_by` 標記；與 --commit-as-evidence-only 互斥 |
+| **evidence-only** | `--commit-as-evidence-only`（v0.2 落地）| 寫 prediction_values 供 audit；prediction_run.status 直接設為 deprecated；不影響當前 production-current delivery |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-16 | Codex | 首版：§8.4 Prediction Table 草案；2026-05-17 補入 winsor bounds + average-rank transform 一致性（與 trainer 對齊）；2026-05-18 v6.0.0-patch 落地 §8.8.8 exactly 1 prediction-backed 規則與 §8.8.10 Final Delivery Index；唯一 committed delivery 為 `pred_20260425_mdl_20260425_lgbm_h20_d969ffb1_v0_1`（IC=0.3716）。 | **ACTIVE** |
+| **v0.2** | 2026-05-19 | Codex | §8.8.8 single-delivery 自動化：新增 `--deprecate-previous` 與 `--commit-as-evidence-only` 兩 CLI flag；commit_outputs() 支援新 status 路徑與 supersedes 標記；兩 flag 互斥且皆需 --commit。配合 prediction_engine_formal_prediction_research_20260519.md §9.1 / §9.2 建議落地。 | **ACTIVE** |
+| v0.1 | 2026-05-16 | Codex | 首版：§8.4 Prediction Table 草案；2026-05-17 補入 winsor bounds + average-rank transform 一致性（與 trainer 對齊）；2026-05-18 v6.0.0-patch 落地 §8.8.8 exactly 1 prediction-backed 規則與 §8.8.10 Final Delivery Index；唯一 committed delivery 為 `pred_20260425_mdl_20260425_lgbm_h20_d969ffb1_v0_1`（IC=0.3716）。 | SUPERSEDED |
 ================================================================================
 """
 import argparse
@@ -71,7 +77,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.1"
 
 DDL_PREDICTION_RUN = """
@@ -107,10 +113,14 @@ CREATE INDEX IF NOT EXISTS "idx_prediction_values_stock_date"
 
 
 class PredictionEngine:
-    def __init__(self, model_id, as_of_date, commit=False):
+    def __init__(self, model_id, as_of_date, commit=False,
+                 deprecate_previous=False, commit_as_evidence_only=False):
         self.model_id = model_id
         self.as_of_date = as_of_date
         self.commit = commit
+        # v0.2 §8.8.8 single-delivery 自動化 flags（互斥）
+        self.deprecate_previous = deprecate_previous
+        self.commit_as_evidence_only = commit_as_evidence_only
         self.model = None
         self.registry = None
         self.rows = []
@@ -291,17 +301,32 @@ class PredictionEngine:
                 suffix = datetime.now().strftime("%H%M%S")
                 self.run_id = f"{self.run_id}_{suffix}"
                 self._detail("warn", f"existing prediction run found; new run_id={self.run_id}")
+
+            # v0.2 §8.8.8 single-delivery 自動化：決定本 run 之 status 與 notes
+            if self.commit_as_evidence_only:
+                new_status = "deprecated"
+                notes = (
+                    "v0.2 evidence-only: prediction_values written for audit/walk-forward "
+                    "evidence; status set to 'deprecated' on insert; not a production-current "
+                    "delivery; signal labels are not investment advice"
+                )
+            else:
+                new_status = "committed"
+                notes = (
+                    "v0.2 baseline inference; signal labels are not investment advice"
+                )
+
             cur.execute(
                 """
                 INSERT INTO "prediction_run" (
                     run_id, model_id, feature_set_id, as_of_date, universe_snapshot_id,
                     prediction_policy_version, rows_written, status, notes
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,'committed',%s)
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     self.run_id, self.model_id, self.registry["feature_set_id"], self.as_of_date,
                     self.registry["universe_snapshot_id"], DEFAULT_PREDICTION_POLICY_VERSION,
-                    len(self.predictions), "v0.1 baseline inference; signal labels are not investment advice",
+                    len(self.predictions), new_status, notes,
                 ),
             )
             cur.executemany(
@@ -313,15 +338,62 @@ class PredictionEngine:
                 """,
                 [(self.run_id, sid, self.as_of_date, val, rank, label, conf) for sid, val, rank, label, conf in self.predictions],
             )
+
+            # v0.2 --deprecate-previous：將同 policy 下其他 committed run 改為 deprecated
+            # 注意：committing as evidence-only 時不執行此邏輯（本 run 即為 deprecated）
+            if self.deprecate_previous and not self.commit_as_evidence_only:
+                cur.execute(
+                    """
+                    SELECT run_id FROM "prediction_run"
+                    WHERE prediction_policy_version = %s
+                      AND status = 'committed'
+                      AND run_id <> %s
+                    """,
+                    (DEFAULT_PREDICTION_POLICY_VERSION, self.run_id),
+                )
+                superseded = [row[0] for row in cur.fetchall()]
+                if superseded:
+                    supersede_note = (
+                        f" | superseded_by={self.run_id} "
+                        f"at {datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}"
+                    )
+                    cur.execute(
+                        """
+                        UPDATE "prediction_run"
+                        SET status = 'deprecated',
+                            notes = COALESCE(notes, '') || %s
+                        WHERE prediction_policy_version = %s
+                          AND status = 'committed'
+                          AND run_id <> %s
+                        """,
+                        (supersede_note, DEFAULT_PREDICTION_POLICY_VERSION, self.run_id),
+                    )
+                    self._detail(
+                        "pass",
+                        f"§8.8.8 single-delivery: deprecated {len(superseded)} previous "
+                        f"committed run(s) under policy {DEFAULT_PREDICTION_POLICY_VERSION}",
+                    )
+                else:
+                    self._detail(
+                        "pass",
+                        f"§8.8.8 single-delivery: no previous committed run to deprecate "
+                        f"(policy={DEFAULT_PREDICTION_POLICY_VERSION})",
+                    )
+
             conn.commit()
         finally:
             cur.close()
             conn.close()
         try:
-            write_data_audit_log("prediction_values", self.run_id, self.as_of_date, "PREDICTION_RUN", len(self.predictions))
+            write_data_audit_log(
+                "prediction_values", self.run_id, self.as_of_date,
+                "PREDICTION_RUN_EVIDENCE" if self.commit_as_evidence_only else "PREDICTION_RUN",
+                len(self.predictions),
+            )
         except Exception as exc:
             self._detail("warn", f"data_audit_log failed: {type(exc).__name__}: {exc}")
-        self._detail("pass", f"prediction run committed: {self.run_id}")
+        run_mode = "evidence-only (deprecated)" if self.commit_as_evidence_only else "committed"
+        self._detail("pass", f"prediction run inserted as {run_mode}: {self.run_id}")
 
     def verdict(self):
         if self.stats["fail"] > 0:
@@ -376,19 +448,36 @@ class PredictionEngine:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance Prediction Engine (v0.1)")
+    parser = argparse.ArgumentParser(description="Quantum Finance Prediction Engine (v0.2)")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--commit", action="store_true")
     parser.add_argument("--model-id", required=True)
     parser.add_argument("--as-of-date", required=True)
-    return parser.parse_args()
+    # v0.2 §8.8.8 single-delivery 自動化（兩 flag 互斥；皆需配 --commit）
+    delivery = parser.add_mutually_exclusive_group()
+    delivery.add_argument(
+        "--deprecate-previous", action="store_true",
+        help="commit 同時將同 policy 下其他 committed run 改為 deprecated 並寫 superseded_by 標記",
+    )
+    delivery.add_argument(
+        "--commit-as-evidence-only", action="store_true",
+        help="寫 prediction_values 供 audit；prediction_run.status 直接設為 deprecated；不影響當前 production-current delivery",
+    )
+    args = parser.parse_args()
+    if args.dry_run and (args.deprecate_previous or args.commit_as_evidence_only):
+        parser.error("--deprecate-previous / --commit-as-evidence-only 需與 --commit 一起使用")
+    return args
 
 
 def main():
     args = parse_args()
     as_of_date = datetime.strptime(args.as_of_date, "%Y-%m-%d").date()
-    engine = PredictionEngine(args.model_id, as_of_date, commit=args.commit)
+    engine = PredictionEngine(
+        args.model_id, as_of_date, commit=args.commit,
+        deprecate_previous=args.deprecate_previous,
+        commit_as_evidence_only=args.commit_as_evidence_only,
+    )
     ok = engine.run()
     sys.exit(0 if ok else 1)
 
