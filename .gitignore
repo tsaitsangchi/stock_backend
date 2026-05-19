@@ -59,8 +59,11 @@ reports/*
 !reports/corescore_v02_execution_log_*.md
 !reports/core_universe_v02_execution_*.md
 !reports/model_trainer_*.md
+!reports/prediction_engine_*.md
+!reports/portfolio_sizer_*.md
 !reports/feature_store_*_dryrun_*.md
 !reports/feature_store_completeness_*.md
+!reports/feature_store_builder_*.md
 !reports/downstream_*.md
 !reports/daily_sync_and_production_current_*.md
 !reports/doctrine_compliance_*.md
