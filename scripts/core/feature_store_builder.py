@@ -1,7 +1,7 @@
 """
 feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
 ================================================================================
-最後更新日期: 2026-05-16
+最後更新日期: 2026-05-18
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 Feature Store v0.1 草案實作)
 最高原則: Feature Store Build Authority
 
@@ -48,6 +48,12 @@ feature_store_builder.py v0.1 (Quantum Finance Feature Store Build Authority)
 | **horizon-30** | `--label-horizon 30` | §9.1 v6.2.0 預備之 h30 forward-return |
 | **feature-version** | `--feature-set-version <name>` | 自訂 feature set name 標籤 |
 | **strict-source** | feature-set-version 含 `strict_source` | 對齊 §14.7-L strict source alignment |
+
+> 💡 **資料庫歷史灌溉最佳實踐 (Training Data Ingestion Window)**
+> 為了讓本特徵建構引擎在特定 `as_of_date` 運算時達到最佳特徵完整度，
+> DB refill 建議至少涵蓋 **730 ~ 1100 天（約 2 ~ 3 年）**：
+> 20/60/252 天視窗支撐價格波動與籌碼多尺度因子；15 ~ 24 個月視窗支撐
+> 財務 YoY 與長線基本面特徵。充足歷史灌溉可降低 null 缺失與下游訓練噪音。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
