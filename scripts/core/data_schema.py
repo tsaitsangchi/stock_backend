@@ -1,8 +1,8 @@
 """
-data_schema.py v2.14 (Quantum Finance API-First Schema Sovereignty Edition)
+data_schema.py v2.15 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
 **最後更新日期**: 2026-05-20
-**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Sovereignty Declaration] 核心定義第 6 條補入；8 項檢查面 100% 合規)
+**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Sovereignty Declaration] 核心定義第 6 條補入；8 項檢查面 100% 合規；v2.15 hotfix：TaiwanStockMonthRevenue.create_time TIMESTAMP → DATE 對齊 API 物理本質)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -16,13 +16,14 @@ data_schema.py v2.14 (Quantum Finance API-First Schema Sovereignty Edition)
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.14 |
-| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.14 |
+| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.15 |
+| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.15 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.14** | 2026-05-20 | Codex | **[Sovereignty Declaration] 核心定義第 6 條補入（8 項檢查面 100% 合規補強；對應憲章 §14.7-AH 補登）**：依 v2.13 後 8 項檢查面審計（per_program_audit §7.5 模板）揭露之 4 項標頭治權自我宣告缺口（第 1/5/6/7 項：治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示），補入核心定義第 6 條 [Sovereignty Declaration] 一次性涵蓋。**補正內容**：(I) 核心定義新增第 6 條 [Sovereignty Declaration]：§3.1 序列模組 / Raw API Schema Authority（憲章 L2440 / L2709）；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不得承擔核心股 derived governance schema（憲章 L2440 / L2710 邊界）；(II) 主權狀態行升至「API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Sovereignty Declaration] 核心定義第 6 條補入；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.13 → v2.14；(IV) 維運矩陣 / report header v2.13 → v2.14；(V) 修訂歷程補入標準 markdown 表格 header。**API、DDL、CLI 介面、13 張 DATASET_REGISTRY、`probe_api_contracts()` 邏輯、verdict 動態計算（L393-396）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `core/__init__.py v1.15` 標頭治權對齊風格一致）。同步入憲：憲章 §二 L2408 / §3.1 L2440 / §3.2 L2483 模組登錄版本升至 v2.14；§14.7-AH 新增逐元件審計修訂紀錄。 | **ACTIVE** |
+| **v2.15** | 2026-05-20 | Codex | **DDL hotfix：TaiwanStockMonthRevenue.create_time TIMESTAMP → DATE（對齊 API 物理本質；對應憲章 §14.7-AK 補登）**：依 `audit_api_schema_compliance v0.1` 首次實測揭露之 Layer B FAIL（commit `608c5e8` / §14.7-AJ Step 3 實證）：DDL 宣告 `create_time TIMESTAMP`，但 FinMind API 實際回傳 10 字元 DATE 字串（如 `'2026-04-21'`），不符 19 字元 `YYYY-MM-DD HH:MM:SS` 格式。實質上 `TaiwanStockMonthRevenue` 為月度資料，`create_time` 物理本質即為「資料發佈日」，DATE 比 TIMESTAMP 更精確。**裁決**：依使用者「audit 工具須嚴格、不得包容違規」之治權原則，採甲案修 DDL 對齊 API 物理本質，保留 audit 嚴格性。**補正內容**：(I) `DATASET_REGISTRY["TaiwanStockMonthRevenue"]["columns"]["create_time"]`: `"TIMESTAMP"` → `"DATE"`；(II) TOOL_VER v2.14 → v2.15；(III) 標頭主權狀態加「v2.15 hotfix：TaiwanStockMonthRevenue.create_time TIMESTAMP → DATE 對齊 API 物理本質」；(IV) 維運矩陣 / report header v2.14 → v2.15。**邏輯動量**：API contract probe 邏輯不變（仍比對 column name set，DATE 之 API 回傳值原本即合法）；對既有 DB 影響——既存 rows（被 PostgreSQL 自動補 `00:00:00` 之 TIMESTAMP）需透過 `--init --force` 重建（DROP + CREATE）或 `ALTER TABLE ALTER COLUMN create_time TYPE DATE USING create_time::DATE` 截為 DATE（資訊無損失，原本時分秒即虛值）。13 張 DATASET_REGISTRY 數量不變；__init/--force/--table/--skip-api-contract CLI 介面不變；§5.6.3 verdict 動態計算邏輯不變；§1.4 + §5.6 + §0.4 + §0.0-G + §0.0-I 全部不違反。同步入憲：憲章 §二 L2408 / §3.1 L2440 / §3.2 L2483 模組登錄版本升至 v2.15；§14.7-AK 新增 hotfix 紀錄。 | **ACTIVE** |
+| v2.14 | 2026-05-20 | Codex | **[Sovereignty Declaration] 核心定義第 6 條補入（8 項檢查面 100% 合規補強；對應憲章 §14.7-AH 補登）**：依 v2.13 後 8 項檢查面審計（per_program_audit §7.5 模板）揭露之 4 項標頭治權自我宣告缺口（第 1/5/6/7 項：治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示），補入核心定義第 6 條 [Sovereignty Declaration] 一次性涵蓋。**補正內容**：(I) 核心定義新增第 6 條 [Sovereignty Declaration]：§3.1 序列模組 / Raw API Schema Authority（憲章 L2440 / L2709）；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不得承擔核心股 derived governance schema（憲章 L2440 / L2710 邊界）；(II) 主權狀態行升至「API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Sovereignty Declaration] 核心定義第 6 條補入；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.13 → v2.14；(IV) 維運矩陣 / report header v2.13 → v2.14；(V) 修訂歷程補入標準 markdown 表格 header。**API、DDL、CLI 介面、13 張 DATASET_REGISTRY、`probe_api_contracts()` 邏輯、verdict 動態計算（L393-396）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `core/__init__.py v1.15` 標頭治權對齊風格一致）。同步入憲：憲章 §二 L2408 / §3.1 L2440 / §3.2 L2483 模組登錄版本升至 v2.14；§14.7-AH 新增逐元件審計修訂紀錄。 | SUPERSEDED |
 | v2.13 | 2026-05-20 | Codex | **[Zero Hardcoded Verdict] 核心定義第 5 條補入（逐元件審計 Step 1.1.2 100% 合規補強）**：依逐元件治權合規審計 Step 1.1.2 修補後再審 minor 補強建議，補入核心定義第 5 條 [Zero Hardcoded Verdict] 顯式對齊憲章 §5.6.3。**補正內容**：(I) 核心定義新增第 5 條「[Zero Hardcoded Verdict]: 主權判定（PERFECT / WARNING / FAILED）必須依執行結果動態計算，嚴禁硬編碼。對齊憲章 §5.6.3 與 §3.2 Step 2 接受標準」；(II) 主權狀態行更新為「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] 核心定義補入；100% 合規)」；(III) TOOL_VER v2.12 → v2.13；(IV) 維運矩陣 / report header v2.12 → v2.13。**程式邏輯（L391-393 之 verdict 計算）原已 §5.6.3 合規**，本次純為核心定義條之顯式宣告（與 `finmind_client.py v4.46` 之第 5 條 [Zero Hardcoded Verdict] 治權慣例對齊）。API、DDL、CLI 介面、13 張 DATASET_REGISTRY、所有公開行為皆無變更。 | SUPERSEDED |
 | v2.12 | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + `CONSTITUTION_VER` 模組常數補入（逐元件審計 Step 1.1.2 補正）**：依逐元件治權合規審計 Step 1.1.2 揭露之兩項違規：(1) 缺 `CONSTITUTION_VER` 模組常數（違反憲章 L26「所有 §3.1/§3.2 登錄模組之 `CONSTITUTION_VER` 同步至 v6.0.0」；先前只有 `self.constitution_ver` attribute）；(2) 修訂歷程缺 v6.0.0 升版條目（雖 self.constitution_ver = "v6.0.0" 已在 L204，但歷程未追蹤升版）；(3) L307 docstring 殘留 v5.4.22 cosmetic 字串。本次補正：(I) 新增 `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v2.12"` 模組常數；(II) 補入本 v2.12 修訂條目；(III) L307 docstring「執行憲法 v5.4.22 API-first 標準」→「執行憲法 v6.0.0 API-first 標準」；(IV) 維運矩陣 / report header 之 v2.11 cosmetic → v2.12。**API Contract First 邏輯、13 張 DATASET_REGISTRY、雙引號 DDL 封裝、--init/--force/--table/--skip-api-contract CLI 與所有公開行為皆無變更**；本補正純為標頭治權對齊。 | SUPERSEDED |
 | v2.11 | 2026-05-14 | Codex | **API 欄位鏡像修正**：補齊 FinMind API 實際回傳欄位大小寫；移除 `TaiwanStockPrice.spread_per` schema-only 欄位，使 API contract probe 全量通過。 | SUPERSEDED |
@@ -45,7 +46,7 @@ import argparse
 # 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v2.14"
+TOOL_VER = "v2.15"
 
 # ── 系統級架構引導 ──
 _THIS_FILE = Path(__file__).resolve()
@@ -154,7 +155,7 @@ DATASET_REGISTRY = {
         "columns": {
             "date": "DATE", "stock_id": "VARCHAR(255)", 
             "country": "VARCHAR(255)", "revenue": "NUMERIC(20, 6)", 
-            "revenue_month": "NUMERIC(20, 6)", "revenue_year": "NUMERIC(20, 6)", "create_time": "TIMESTAMP"
+            "revenue_month": "NUMERIC(20, 6)", "revenue_year": "NUMERIC(20, 6)", "create_time": "DATE"
         },
         "unique_constraints": ["date", "stock_id"]
     },
@@ -377,7 +378,7 @@ class SovereignSchemaManager:
     def report_results(self, start_time, ddl_executed=True):
         """顯示詳細結果訊息 (憲法 5.6 條款)"""
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.14)")
+        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.15)")
         print("🛡️" * 40)
         print(f"治權基準 : 系統架構大憲章_{self.constitution_ver}.md")
         print(f"核心技術 : API Contract First + Absolute Case Sovereignty")
