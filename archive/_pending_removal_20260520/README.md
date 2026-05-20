@@ -30,9 +30,10 @@
 | `archive_backup_v5_2_stable_core/` | `archive/backup_v5.2_stable_core/`（v5.2 stable 備份）| 6 |
 | `archive_legacy_scripts/` | `archive/legacy_scripts/`（legacy 程式）| 6 |
 | `root_legacy_md/` | 根目錄 v5.x 時代 audit / plan / 計畫檔（2026-05-20 加入）| 8 |
-| **總計** | | **61** |
+| `root_legacy_txt/` | 根目錄 v5.x 時代 health check / schema 稽核 / dependency raw dump（2026-05-20 加入）| 3 |
+| **總計** | | **64** |
 
-> **注**：54 個 .py 檔案 + 8 個 .md 檔案 + 部分目錄之 __init__.py + README 等補檔
+> **注**：54 個 .py 檔案 + 8 個 .md 檔案 + 3 個 .txt 檔案 + 部分目錄之 __init__.py + README 等補檔
 >
 > **root_legacy_md/ 8 檔來源**（v5.x 之審查 / 計畫 / walkthrough，皆無治權核心引用）：
 >
@@ -41,6 +42,12 @@
 > - `第四輪優化審查報告_資料抓取層.md`（22K，2026-04-27 資料抓取層專題）
 > - `系統架構全面審查報告.md`（31K，2026-04-27 v4.0 Trinity 全面審查）
 > - `implementation_plan.md` / `task.md` / `walkthrough.md`（v5.x 優化計畫三件套）
+>
+> **root_legacy_txt/ 3 檔來源**（執行 artifact / 應屬 outputs/ 或 logs/ 但歷史落到 root）：
+>
+> - `health_check_output.txt`（6.9K，2026-05-01 v5.0 時代 Antigravity Quant health check 輸出）
+> - `schema_check_report.txt`（5.6K，2026-05-10 schema 稽核日誌）
+> - `requirements_raw.txt`（84B，依賴掃描 raw dump；含 stdlib `re/multiprocessing` 混雜，非權威清單）
 
 ---
 
