@@ -1,9 +1,102 @@
 # 《2026 動力學金融矩陣》(2026 Kinetic Finance Matrix)
-> **版本 v4.0 (Trinity Edition)**：融合「第一性原則、動力學模型與宏觀場景模擬」的資產管理框架。
+> **憲章版本 v6.0.0-FINAL** (2026-05-20 治權結構自我治理飽和定版)
+> **產品版本 v4.0 (Trinity Edition)**：融合「第一性原則、動力學模型與宏觀場景模擬」的資產管理框架。
 
 本矩陣旨在利用市場動力學衝量 (Kinetic Impulse)、統計學過濾與產業技術結構變化，在 2026 年預期技術週期臨界點到來之際，為核心資產（2330, 2317, 2454 等）提供具備「反脆弱性」的決策支撐。
 
 ---
+
+## 🏛️ 系統治權狀態（v6.0.0-FINAL）
+
+**最後定版**: 2026-05-20 (`v6.0.0-FINAL-2026-05-20`)
+**治權狀態**: 治權結構自我治理飽和（saturated self-governance）
+**完整度評估**: 88%（依 [`reports/系統核心完整度評估報告_v3_20260520_FINAL.md`](reports/系統核心完整度評估報告_v3_20260520_FINAL.md)）
+
+### v6.0.0-FINAL 七大成就
+
+| # | 成就 |
+|---|---|
+| 1️⃣ | **§0.0 五件套 Type-1 元規則完整**（§0.0-E.4 / F / G / H / I）|
+| 2️⃣ | **§0.0-H 通用模板三場景驗證完整**（新建 / 擴張 / 追溯）|
+| 3️⃣ | **§0.0-I 結構性 100% future-proof**（empirically verified）|
+| 4️⃣ | **§0.1-F 哲學閉合 85%**（路徑 A A1+A2 完成；理論上限）|
+| 5️⃣ | **三大基柱證偽承諾 24 項**（§0.1-E 10 + §0.2-E 6 + §0.3-E 8）|
+| 6️⃣ | **工程核心五支落地鏈穩定**（平均合規度 ~88%）|
+| 7️⃣ | **自我修正能力 4 次實證**（P2 否決 / AG 自修 / I 一致性 / G.0 抽象化）|
+
+### 治權層級類型系統（依憲章 §0.0-G.0）
+
+```text
+Type-0 公理層 ───── §0 系統核心思想（最高指導原則）
+        ↓
+Type-1 元規則層 ─── §0.0-E.4 統合層不下沉
+                   §0.0-F   工具規則不上升
+                   §0.0-G   程式變動須憲章先行
+                   §0.0-H   Level 1 強制契約通用模板
+                   §0.0-I   單一引用源原則
+        ↓
+Type-2 治權契約層 ─ §0.0-A〜D 統合 + 完整度基線
+                   §0.1〜§0.4 四大支柱
+                   §6.7 / §7 / §8 / §9.x 強制契約
+        ↓
+Type-3 實作層 ──── scripts/core/*.py 五支落地鏈程式
+                   scripts/pipeline/*.py 過渡工具
+                   scripts/evaluation/*.py 評估工具
+                   scripts/maintenance/*.py 維運工具
+```
+
+### 五支落地鏈程式（§0.0-A.1〜A.5）
+
+| # | 程式 | 版本 | 合規度 | 治權位階 |
+|---|---|---|---|---|
+| 1 | [`scripts/core/core_universe_builder.py`](scripts/core/core_universe_builder.py) | v0.2 | 82% | §0.0-A.1 / §6.7 SQL SSOT |
+| 2 | [`scripts/core/feature_store_builder.py`](scripts/core/feature_store_builder.py) | v0.3 | 96.25% | §0.0-A.2 / §9.9 |
+| 3 | [`scripts/core/model_trainer.py`](scripts/core/model_trainer.py) | v0.1 | 78% | §0.0-A.3 / §8.3 |
+| 4 | [`scripts/core/prediction_engine.py`](scripts/core/prediction_engine.py) | v0.2 | 88% | §0.0-A.4 / §9.1 |
+| 5 | [`scripts/core/portfolio_sizer.py`](scripts/core/portfolio_sizer.py) | v0.2 | 97.5% | §0.0-A.5 / §9.2 |
+
+### 核心文件導引
+
+| 文件 | 用途 | 必讀對象 |
+|---|---|---|
+| [`reports/系統架構大憲章_v6.0.0.md`](reports/系統架構大憲章_v6.0.0.md) | 系統最高指導原則 / 治權結構 SSOT | 所有後繼者 |
+| [`reports/系統核心完整度評估報告_v3_20260520_FINAL.md`](reports/系統核心完整度評估報告_v3_20260520_FINAL.md) | v6.0.0-FINAL 定版正式狀態書 | 當前狀態查詢 |
+| [`CLAUDE.md`](CLAUDE.md) | AI 協作工具規則 SSOT | AI 工具使用者 |
+| [`reports/path_a_preferential_attachment_research_20260520.md`](reports/path_a_preferential_attachment_research_20260520.md) | §14.7-AG 路徑 A 優先依附推導研究 | §0.1-F 哲學閉合 |
+| [`reports/p1_v02_execution_runbook_20260520.md`](reports/p1_v02_execution_runbook_20260520.md) | P1 v0.2 ablation 主環境執行手冊 | 主環境執行者 |
+
+### v6.0.0 完整封存鏈（git tags 歷史）
+
+```text
+2026-05-19  v6.0.0-doctrine-six-pack                              §0.0-A〜F 三件套
+2026-05-19  v6.1.0-charter-first-sealed                           §0.0-G + H + §9.2
+2026-05-19  v6.1.0-charter-first-coherent                         §0.0-I + 4 一致性
+2026-05-19  v6.1.0-charter-100-percent-future-proof               §0.0-G.0 抽象化
+2026-05-19  v6.1.0-milestone-charter-perfect                      並行實作落地
+2026-05-20  v6.1.1-P0-verified-P2-rejected                        P0 80% + P2 否決
+2026-05-20  v6.1.2-P0-v02-completed                               P0 97.5% 完成
+2026-05-20  v6.1.3-P1-v01-upside-downside-features-landed         P1 v0.1 96.25%
+2026-05-20  v6.1.4-P1-v02-runbook-prepared                        P1 v0.2 前置
+2026-05-20  v6.1.4.1-completeness-v2-assessment                   評估 v2 (76→85%)
+2026-05-20  v6.1.5-9.1-retroactive-8subsection                    §0.0-H 第三場景
+2026-05-20  v6.1.6-path-a-A1-research-enacted                     路徑 A A1 (60%)
+2026-05-20  v6.1.6.1-AG-self-correction-A3-to-A3prime             A3 類型論修正
+2026-05-20  v6.1.7-A2-0.1-F-formal-closure                        A2 §0.1-F (85%)
+2026-05-20  🏛️ v6.0.0-FINAL-2026-05-20                          治權飽和定版
+2026-05-20  v6.0.0-FINAL-assessment-v3                            正式狀態書
+```
+
+### v6.0.0-FINAL 後之治權路徑
+
+| 路徑 | 觸發條件 |
+|---|---|
+| **v6.0.0-patch**（持續）| 活憲章呼吸 / Level 2 內容更新 |
+| **v6.1.0**（待大事件）| T2.3-T2.5 證偽通過後 A3' / §6.7-8 追溯適用 §0.0-H / 新增第六支落地鏈 |
+| **v7.0.0**（遠期）| 治權結構根本變動 |
+
+---
+
+## 📖 詳細產品內容（v4.0 Trinity Edition 之原始 README）
 
 ## 🏛️ 核心理念與典範轉移 (Paradigm Shift)
 
