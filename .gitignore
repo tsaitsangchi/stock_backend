@@ -108,6 +108,10 @@ reports/*
 # 每次重建/sync 產生之最終 audit 報告（憲章引用即追蹤；建議只保留 *_HHMM 之 final 版）
 !reports/compliance_audit_*.md
 !reports/core_universe_audit_*.md
+# audit 工具設計研究 + 逐元件實證執行紀錄（§14.7-AH/AI/AJ+ 引用即追蹤）
+!reports/audit_*_design_research_*.md
+!reports/api_schema_compliance_audit_*.md
+!reports/data_schema_*_execution_*.md
 archive/*
 # v6.0.0-FINAL cleanup quarantine（README 追蹤；其他內容由 git mv 既有追蹤）
 !archive/_pending_removal_*/
