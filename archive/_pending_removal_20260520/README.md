@@ -32,8 +32,9 @@
 | `root_legacy_md/` | 根目錄 v5.x 時代 audit / plan / 計畫檔（2026-05-20 加入）| 8 |
 | `root_legacy_txt/` | 根目錄 v5.x 時代 health check / schema 稽核 / dependency raw dump（2026-05-20 加入）| 3 |
 | `root_legacy_py/` | 根目錄 v5.x 時代 config / FastAPI auth / GitHub-Gemini 整合（2026-05-20 加入）| 3 |
+| `root_legacy_sql/` | 根目錄 v5.x legacy DDL（憲章 §9.1-B 明文禁止讀取之 stock_forecast_daily 表）| 1 |
 | `maintenance_v5x_legacy/` | maintenance v5.2 標準 + 治權 0 引用 + 確定 legacy（2026-05-20 加入；路徑丙 Y）| 13 |
-| **總計** | | **80** |
+| **總計** | | **81** |
 
 > **注**：70 個 .py 檔案（54 既有 + 3 root + 13 maintenance）+ 8 個 .md 檔案 + 3 個 .txt 檔案 + 部分目錄之 __init__.py + README 等補檔
 >
@@ -56,6 +57,10 @@
 > - `config.py`（30K，全域設定 + STOCK_CONFIGS 硬編；v6.0 已用 stocks 表治權取代）
 > - `main.py`（2.7K，FastAPI auth 服務；`from scripts.config import DB_CONFIG`；配套於 config.py）
 > - `github_gemini_sync.py`（3.9K，GitHub + Gemini AI integration；standalone 工具）
+>
+> **root_legacy_sql/ 1 檔來源**（v5.x legacy DDL；憲章 §9.1-B 明文列為禁止輸入）：
+>
+> - `create_table.sql`（1.6K，定義 `stock_forecast_daily` 表 — 憲章 L405/L503/L4014/L4165 明文標註為「舊資料流」，§9.1-B 強制禁止讀取；v6.0 已用 `prediction_run` + `prediction_values` 治權取代）
 >
 > **maintenance_v5x_legacy/ 13 檔來源**（皆 0 憲章引用 + 0 完整度評估報告引用；路徑丙 Y 激進版隔離）：
 >
