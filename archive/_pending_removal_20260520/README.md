@@ -29,9 +29,18 @@
 | `archive_backup_v5_2_pre_fix/` | `archive/backup_v5.2_pre_fix/`（v5.2 備份）| 6 |
 | `archive_backup_v5_2_stable_core/` | `archive/backup_v5.2_stable_core/`（v5.2 stable 備份）| 6 |
 | `archive_legacy_scripts/` | `archive/legacy_scripts/`（legacy 程式）| 6 |
-| **總計** | | **53** |
+| `root_legacy_md/` | 根目錄 v5.x 時代 audit / plan / 計畫檔（2026-05-20 加入）| 8 |
+| **總計** | | **61** |
 
-> **注**：54 個 .py 檔案 + 部分目錄之 __init__.py + README 等補檔
+> **注**：54 個 .py 檔案 + 8 個 .md 檔案 + 部分目錄之 __init__.py + README 等補檔
+>
+> **root_legacy_md/ 8 檔來源**（v5.x 之審查 / 計畫 / walkthrough，皆無治權核心引用）：
+>
+> - `System_Audit_Report_2026-04-30.md` / `系統檢核報告_2026-04-30.md`（v5.0 後檢核 31K × 2）
+> - `第三輪優化審查報告.md`（24K，2026-04-27）
+> - `第四輪優化審查報告_資料抓取層.md`（22K，2026-04-27 資料抓取層專題）
+> - `系統架構全面審查報告.md`（31K，2026-04-27 v4.0 Trinity 全面審查）
+> - `implementation_plan.md` / `task.md` / `walkthrough.md`（v5.x 優化計畫三件套）
 
 ---
 
