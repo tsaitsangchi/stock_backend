@@ -1,8 +1,8 @@
 """
-core/__init__.py v1.15 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Aligned)
+core/__init__.py v1.16 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Aligned)
 ================================================================================
 **最後更新日期**: 2026-05-20
-**主權狀態**: ACTIVE (憲法 v6.0.0 標頭治權對齊 + path_setup v4.45 hub 邊界同步)
+**主權狀態**: ACTIVE (憲法 v6.0.0 標頭治權對齊 + [Sovereignty Declaration] 核心定義第 7 條補入；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -14,14 +14,21 @@ core/__init__.py v1.15 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Alig
    `.env` → `path_setup` → `data_schema --init --force` → `core_universe_schema --init`
    → `db_utils` → `audit_supply_chain --include-logs` → `sovereign_sync_engine --seed`
    → `core_universe_builder --dry-run/--commit` → `audit_core_universe`。
-4. [No Hardcoded Verdict]: 中樞稽核之最終判定必須依「import / path / db / §6.7」
+4. [Zero Hardcoded Verdict]: 中樞稽核之最終判定必須依「import / path / db / §6.7」
    四層實況動態計算，**嚴禁硬編碼 PERFECT**（對齊憲章 §5.6 第 3 條「零靜默丟失原則」與
-   §1.2「混合觀測條款」之動態主權判定）。
+   §1.2「混合觀測條款」之動態主權判定；治權慣例對齊 `finmind_client.py v4.46` /
+   `data_schema.py v2.13+` 之 [Zero Hardcoded Verdict]）。
 5. [§6.7 SQL Contract]: 核心股名單必須透過 `db_utils.get_core_stocks_from_db()`
    取得；該函式封裝 `core_universe_membership` JOIN `core_universe_snapshot
    WHERE status='committed'`，嚴禁回查 v5.2 時代之 `stocks` 表。
 6. [Historical Reference Authority]: 嚴格保留從 v1.0 至今的所有歷史紀錄，
    作為判定系統治權一致性的權威參考。
+7. [Sovereignty Declaration]: 本模組為憲章 §3.2 橫切基礎設施 hub（憲章 L2457 /
+   L2488 / L5589）；承擔 25 維路徑接口與 db_utils 公共 API 之鏡像匯出邊界；不涉及
+   §0.1-A 第一性原理 / §0.2-A 八二法則 / §0.3-A 康波週期 / §0.0-E.4 統合層 /
+   §0.0-F.3 AI 協作工具規則五套禁令；不在 §0.1.1 T1/T2/T3 分層內（hub 為
+   infrastructure，不執行第一性原理工程公式）；不處理 §8.5 anti-leakage（不涉
+   時間序列建模）；不調度 universe（憲章 L2489 邊界）。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - v6.0.0 對齊)
 
@@ -42,7 +49,7 @@ core/__init__.py v1.15 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Alig
 | **6**   | [同步操作：單一標的核心數據集全同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                          | `sovereign_sync_engine v1.10` |
 | **7**   | [同步操作：核心股 Universe 全量同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core` （§6.7 SQL 契約）                  | `sovereign_sync_engine v1.10` |
 | **8**   | [同步操作：FRED 宏觀指標全譜同步]          | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                                      | `sovereign_sync_engine v1.10` |
-| **HUB** | [中樞主權完整性稽核]                       | `$ python scripts/core/__init__.py`                                                                      | `core/__init__ v1.15` |
+| **HUB** | [中樞主權完整性稽核]                       | `$ python scripts/core/__init__.py`                                                                      | `core/__init__ v1.16` |
 
 💡 **範例完整性說明**：矩陣完整對齊憲章 v6.0.0 第二章九步序列；Step 7 必須透過
    §6.7 SQL 契約讀取 `core_universe_membership`，嚴禁查 v5.2 時代之 `stocks` 表。
@@ -57,7 +64,8 @@ core/__init__.py v1.15 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Alig
 ## 📜 四、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.15** | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + path_setup v4.45 hub 邊界同步（逐元件審計 Step 1.1.1 連帶補正）**：依逐元件治權合規審計 Step 1.1.1 之選項乙（連帶 __init__.py），修補 v1.14 之 cosmetic 字串漂移：(1) Header L2「Constitution v5.4.22 Aligned」→「Constitution v6.0.0 Aligned」；(2) Canonical Execution Order「憲章 v5.4.22 第二章九步序列」→「憲章 v6.0.0」；(3) 全量維運矩陣標題「v5.4.22 對齊」→「v6.0.0 對齊」；(4) 維運矩陣 Step 1 path_setup v4.44 → v4.45；(5) HUB 行 core/__init__ v1.14 → v1.15；(6) 範例完整性說明「v5.4.22 第二章」→「v6.0.0 第二章」；(7) [Boundary Integrity] 條 path_setup v4.44 → v4.45 同步；(8) `HUB_VER` 常數 v1.14 → v1.15。**CONSTITUTION_VER 已在 v1.14 期間補入為 v6.0.0；本次純為標頭治權對齊**。25 維路徑接口、`db_utils v2.45` 公共 API 鏡像、`__all__` 對外匯出清單、四層動態稽核邏輯皆無變更。 | **ACTIVE** |
+| **v1.16** | 2026-05-20 | Codex | **[Sovereignty Declaration] 核心定義第 7 條補入 + 第 4 條 [No Hardcoded Verdict] → [Zero Hardcoded Verdict] 用語對齊（8 項檢查面 100% 合規；對應憲章 §14.7-AI 補登）**：依 v1.15 後 8 項檢查面審計（per_program_audit §7.5 模板）揭露之 4 項標頭治權自我宣告缺口（第 1/5/6/7 項：治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示）+ 1 項字串不一致（第 4 條 [No Hardcoded Verdict] vs 憲章與其他模組 [Zero Hardcoded Verdict]）。**補正內容**：(I) 核心定義第 4 條 [No Hardcoded Verdict] → [Zero Hardcoded Verdict] 用語對齊（對齊 `finmind_client.py v4.46` / `data_schema.py v2.13+` 治權慣例，語義不變）；(II) 核心定義新增第 7 條 [Sovereignty Declaration]：§3.2 橫切基礎設施 hub（憲章 L2457 / L2488 / L5589）；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不調度 universe（憲章 L2489 邊界）；(III) 主權狀態行升至「ACTIVE (憲法 v6.0.0 標頭治權對齊 + [Sovereignty Declaration] 核心定義第 7 條補入；8 項檢查面 100% 合規)」；(IV) HUB_VER v1.15 → v1.16；(V) `run_sovereign_hub_audit` docstring 與 `record_lifecycle` task_name `v1.15` → `v1.16`。**25 維路徑接口、`db_utils v2.45` 公共 API 鏡像、`__all__` 對外匯出清單、四層動態稽核邏輯（import / path / db / §6.7）、verdict 計算邏輯、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `data_schema.py v2.14` 同模式）。同步入憲：憲章 §二 L2425 HUB 步驟 / §3.2 L2457 模組清單 / §3.2 L2488-2489 對齊註記模組登錄版本升至 v1.16；§14.7-AI 新增逐元件審計修訂紀錄。 | **ACTIVE** |
+| v1.15 | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + path_setup v4.45 hub 邊界同步（逐元件審計 Step 1.1.1 連帶補正）**：依逐元件治權合規審計 Step 1.1.1 之選項乙（連帶 __init__.py），修補 v1.14 之 cosmetic 字串漂移：(1) Header L2「Constitution v5.4.22 Aligned」→「Constitution v6.0.0 Aligned」；(2) Canonical Execution Order「憲章 v5.4.22 第二章九步序列」→「憲章 v6.0.0」；(3) 全量維運矩陣標題「v5.4.22 對齊」→「v6.0.0 對齊」；(4) 維運矩陣 Step 1 path_setup v4.44 → v4.45；(5) HUB 行 core/__init__ v1.14 → v1.15；(6) 範例完整性說明「v5.4.22 第二章」→「v6.0.0 第二章」；(7) [Boundary Integrity] 條 path_setup v4.44 → v4.45 同步；(8) `HUB_VER` 常數 v1.14 → v1.15。**CONSTITUTION_VER 已在 v1.14 期間補入為 v6.0.0；本次純為標頭治權對齊**。25 維路徑接口、`db_utils v2.45` 公共 API 鏡像、`__all__` 對外匯出清單、四層動態稽核邏輯皆無變更。 | SUPERSEDED |
 | v1.14 | 2026-05-15 | Codex | **憲法 v5.4.22 演進定稿對齊**：(1) 路徑接口維度由 27 維修正為 **25 維**，
             對齊 `path_setup v4.44` 之 `ALL_PATHS`；(2) 全量維運矩陣重寫為憲章 v5.4.22 九步
             正典序列，新增 Step 2B/2C/3/4B/4C/5/6/7/8；(3) `template_fetcher.py` 全部替換為
@@ -82,7 +90,7 @@ from datetime import datetime
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-HUB_VER = "v1.15"
+HUB_VER = "v1.16"
 EXPECTED_PATH_DIM = 25  # 對齊憲章 §1 第 3 條 + §4 25 維清單
 
 
@@ -373,7 +381,7 @@ def _compute_verdict(failures, warnings_list):
 
 
 def run_sovereign_hub_audit():
-    """執行中樞主權完整性稽核 (v1.15 / 憲法 v6.0.0)。
+    """執行中樞主權完整性稽核 (v1.16 / 憲法 v6.0.0)。
 
     動態四層稽核 (import / path / db / §6.7) — 嚴禁硬編碼 PERFECT。
 
@@ -385,7 +393,7 @@ def run_sovereign_hub_audit():
     all_warnings = []
 
     with record_lifecycle(
-        "sovereign_hub_audit_v1.15",
+        "sovereign_hub_audit_v1.16",
         category="governance",
         stock_id="SYSTEM",
     ) as lc:
