@@ -294,7 +294,167 @@ self.token = os.getenv("FINMIND_TOKEN")
 
 ### 1.1.1 `scripts/core/path_setup.py`
 
-*待 Step 0 完成後啟動*
+#### 1.1.1.1 元件性質
+
+- **類別**：Type-3 治權支援（Path SSOT + Bootstrap Anchor 對齊）
+- **版本**：v4.44（2026-05-15，最後更新）
+- **治權位階**：依憲章 §3.2 / §0.0-G.0 — Type-3 實作層；同時為 Type-2 派生規則之直接落實檔（憲章 §2317-§2335 之 Path Sovereignty 治權邊界）
+- **依賴**：`os` / `sys` / `time` / `pathlib.Path` / `datetime` / `dotenv.load_dotenv`（外部唯一第三方）+ `core.db_utils`（lazy，於 `_load_logging_hooks` 內）
+- **下游依賴方**：`scripts/core/__init__.py`（hub）+ 27 個 `scripts/ingestion/*.py` + 9 個 `scripts/maintenance/*.py` + 18 個 `scripts/fetchers/*.py`（legacy）
+
+#### 1.1.1.2 對應憲章節
+
+| 憲章節 | 引用內容 |
+|---|---|
+| §2317 | 「`.env` 是系統架構的 Bootstrap Anchor」 |
+| §2318 | 「`.env` **不得**成為 25 維路徑清單的 SSOT」 |
+| §2329 | 「`.env` / `path_setup.py` 屬 pre-schema bootstrap」 |
+| §2334 | 「`path_setup.py` 是 Path SSOT」（25 維） |
+| §2335 | 「`.env` 之 `PROJECT_ROOT` 必須與 `path_setup` 計算物理根目錄一致」（Boundary Drift 規範） |
+| §3.2 | path_setup 為治權路徑配發中心 |
+| §0.0-G.0 | Type-3 由 Type-2 授權之精神 |
+
+#### 1.1.1.3 檢查清單與審查實證
+
+**A. 檔頭元數據對齊（§0.0-G.7）**
+
+| 檢查項 | 結果 |
+|---|---|
+| 主權狀態明文 | ✅「PERFECT (憲法 v6.0.0 啟動治理對齊 + 同日 hub 補充相容)」 |
+| 最後更新日期明文 | ✅ 2026-05-15 |
+| 全修訂歷程列表 | ✅ v1.0〜v4.44 6 個版本完整 |
+| 對應 §14.7-X 研究 | ⚠️ **未明文引用任何 §14.7-X 研究報告** |
+| 八子節結構（§0.0-H）| ⚠️ **不適用**（path_setup 為 pre-schema bootstrap，不歸屬 §9.1〜§9.9 之 8 子節範式；憲章未規定 path_setup 須遵守 §0.0-H） |
+
+**B. 治權位階與依賴邊界（§0.0-G.0 / §8.4）**
+
+| 檢查項 | 結果 |
+|---|---|
+| 不繞過 `path_setup` 之 25 維 SSOT | ✅（不存在硬編碼路徑於程式邏輯內）|
+| 載入 `.env` 後僅讀取 `PROJECT_ROOT`（不讀 DB env）| ✅ |
+| `_load_logging_hooks` 採 lazy import core.db_utils | ✅（避免循環依賴）|
+| BOOTSTRAP-DEFERRED 模式避免 DB schema 未建立時阻斷 | ✅（v4.43 已固化）|
+
+**C. 強制契約對齊**
+
+| 契約 | 結果 |
+|---|---|
+| 25 維路徑清單與憲章「25 維治理維度」一致 | ✅（`ALL_PATHS` 共 25 個元素，`get_evaluation_dir()` 為相容別名不計）|
+| `_evaluate_anchor()` 之 MISSING/MISMATCHED 處理 | ✅（v4.43 已固化）|
+| Sovereignty Status 三態 (PERFECT/WARNING/FAILED) | ✅ |
+| `ensure_all_dirs()` 自癒契約 | ✅（mkdir(parents=True, exist_ok=True)）|
+
+**D. 治權禁令遵守（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3）**
+
+| 禁令 | 結果 |
+|---|---|
+| §0.1-A 無泛化「第一性原理」 | ✅ |
+| §0.2-A 無泛化「八二法則」 | ✅ |
+| §0.3-A 無泛化「康波週期」 | ✅ |
+| §0.0-E.4 統合三概念之禁令 | ✅（path_setup 不涉及配置層）|
+| §0.0-F.3 不引用 AI 工具規則 | ✅（無 AI 治權引用，符合）|
+
+**E. T1/T2/T3 分層遵守（§0.1.1）**
+
+| 檢查項 | 結果 |
+|---|---|
+| 程式內部嚴格 T1（事實）| ✅ |
+| 註解 / 終端報表用語不誇張 | ✅（「🛡️」emoji 為純視覺裝飾，不違反 T1）|
+| 無「主權」「絕對」誇張形容跨層 | ⚠️ 用語包含「主權」「絕對物理基準」「封印」等強烈詞彙，但屬路徑治權內部用語（§3.2 治權允許） |
+
+**F. anti-leakage 遵守（§8.5）**
+
+| 檢查項 | 結果 |
+|---|---|
+| 不寫入 feature_store | ✅（不適用）|
+| 不訪問未來資料 | ✅（不適用）|
+
+**G. §0.0-G 憲章先行紀律**
+
+| 檢查項 | 結果 |
+|---|---|
+| 程式修改前是否先入憲（v4.44 標頭明示「憲法 v5.4.22 啟動治理對齊」）| ✅ |
+| 修訂歷程版本對齊憲章 | ✅（v4.43 對齊 v5.4.21；v4.44 對齊 v5.4.22 + v6.0.0）|
+
+#### 1.1.1.4 下游使用面 API 一致性審查（**重大發現**）
+
+> **問題定位**：23 of 25 ingestion 治權核心程式 + 多支 maintenance/fetcher 程式 import `from core.path_setup import ensure_scripts_on_path`，但 `path_setup.py v4.44` **不定義此函式**。
+
+**A. 下游引用之缺失 API 清單**
+
+```bash
+# 實證命令
+$ python3 -c "from core.path_setup import ensure_scripts_on_path"
+ImportError: cannot import name 'ensure_scripts_on_path' from 'core.path_setup'
+
+# 進一步測試
+$ python3 -c "import importlib.util; spec=importlib.util.spec_from_file_location(
+    'm','scripts/ingestion/ingest_technical_data.py');
+    m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)"
+AttributeError: module 'path_setup' has no attribute 'ensure_scripts_on_path'
+```
+
+| API 名稱 | path_setup v4.44 | 引用方數量 | 影響範圍 |
+|---|---|---|---|
+| `ensure_scripts_on_path` | ❌ 未定義 | **23 個 ingestion + 9 個 maintenance/fetcher** = 32+ 處 | ingestion 治權核心 92% 失能 |
+| `ensure_dirs_exist` | ❌ 未定義 | 1（fetchers/parallel_fetch.py）| legacy |
+| `get_logs_dir` | ❌ 未定義（實際是 `get_log_dir`，單複數不一）| 1 | legacy |
+| `get_outputs_dir` | ❌ 未定義（實際是 `get_output_dir`，單複數不一）| 2 | ingestion + fetcher |
+| `get_checkpoints_dir` | ❌ 未定義 | 2 | ingestion + fetcher |
+
+**B. ingestion 治權核心受影響清單（23/25）**
+
+未受影響：`sovereign_sync_engine.py`（治權主檔，無依賴）/ `initialize_market_data.py`（未審）
+
+受影響：`ingest_technical_data.py` / `ingest_derivative_sentiment_data.py` / `ingest_chip_data.py` / `ingest_fred_data.py` / `parallel_ingestion.py` / `ingest_cash_flows_data.py` / `ingest_macro_fundamental_data.py` / `ingest_international_data.py` / `backfill_from_gaps.py` / `ingest_sponsor_chip_data.py` / `search_finmind_datasets.py` / `ingest_block_trading.py` / `ingest_advanced_chip_data.py` / `ingest_extended_derivative_data.py` / `ingest_news_data.py` / `ingest_macro_data.py` / `ingest_month_revenue.py` / `ingest_event_risk_data.py` / `ingest_price_adj_data.py` / `ingest_derivative_data.py` / `ingest_missing_stocks_data.py` / `ingest_fundamental_data.py` / `ingest_total_return_index.py`
+
+**C. 為何主線運行未失敗？**
+
+關鍵：v6.0.0-FINAL **不直接調用 `python scripts/ingestion/ingest_*.py`**。所有 ingestion 由 `sovereign_sync_engine.py`（唯一授權同步載體）內部執行 FinMind/FRED API 抓取，不 import 任何 `ingest_*.py` 模組。
+
+但這意味著：
+1. 23 支 ingest_*.py 為「**治權核心內無法運行的死碼**」（Type-3 但 import fails）
+2. 若有 ad-hoc 操作員依憲章 §0.0-A 嘗試獨立執行任一 ingest_*.py，將立即遇到 ImportError → AttributeError
+3. Phase A 審計將其判為「治權核心」是基於檔案位置而非可運行性
+
+#### 1.1.1.5 Step 1.1.1 裁決
+
+**綜合 PASS/WARN/FAIL 統計**：
+
+- ✅ 符合項（11 項）：
+  1. 主權狀態 / 修訂歷程 / 版本標頭明文
+  2. v1.0〜v4.44 6 個版本歷程完整
+  3. 25 維路徑清單與憲章一致
+  4. `_evaluate_anchor()` MISSING/MISMATCHED 處理完備
+  5. BOOTSTRAP-DEFERRED 三態 (PERFECT/WARNING/FAILED) 完備
+  6. `ensure_all_dirs()` 自癒契約完備
+  7. `_load_logging_hooks` lazy import 避免循環依賴
+  8. 不繞過 25 維 SSOT（無硬編碼路徑）
+  9. 治權禁令全遵守（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3）
+  10. anti-leakage（不適用，符合）
+  11. §0.0-G 憲章先行紀律（v4.44 對齊 v5.4.22 + v6.0.0）
+
+- ❌ 違規項（**重大** 1 項）：
+  1. **下游使用面 API 殘缺**：v4.44 不定義 `ensure_scripts_on_path`、`ensure_dirs_exist`、`get_logs_dir`、`get_outputs_dir`、`get_checkpoints_dir`，但 23/25 ingestion 治權核心 + 多支 maintenance/fetcher 引用。此導致治權核心內 32+ 處 import-time failure（AttributeError）
+
+- ⚠️ 待釐清項（2 項）：
+  1. 標頭未明文引用 §14.7-X 研究報告（憲章未規定 path_setup 須引用）
+  2. T1/T2/T3 用語「主權」「絕對」「封印」屬路徑治權內部用語（§3.2 允許）但跨層讀者可能誤解
+
+- 💡 憲章補強建議（2 項）：
+  1. **API 契約入憲**：憲章 §3.2 應明文 path_setup 對下游揭露之函式名單（25 維 + ALL_PATHS + ensure_all_dirs），並規定**新增/移除任何函式須先入憲**
+  2. **死碼治權判別**：Phase A 程式碼治權審計應補入「**import-time runnability** 檢查」，不可只依檔案位置判定治權地位
+
+- 📝 修訂建議書條目（3 項）：
+  1. **【選項甲 - 補強 path_setup.py】** 補入 4 個 legacy API：`ensure_scripts_on_path(file)` / `ensure_dirs_exist()` / `get_logs_dir()` / `get_outputs_dir()` / `get_checkpoints_dir()` 為相容別名（與 `get_evaluation_dir` 相同模式）
+  2. **【選項乙 - 重構 ingest_*.py】** 統一改為 `from core.path_setup import ensure_all_dirs` 並補上 sys.path bootstrap 樣板（23+ 處改動）
+  3. **【選項丙 - 治權重分類】** Phase A 審計重判：將 23 支非可運行 ingest_*.py 自治權核心退至「歷史/實驗層」，由 sovereign_sync_engine 接管實際同步
+
+**狀態**：⚠️ **Step 1.1.1 PASS（11 PERFECT）+ 1 重大違規（治權邊界 API 殘缺）**
+
+**結論**：path_setup.py 本身 PERFECT 對齊憲章 §3.2 / §2317-§2335，但下游使用面契約不一致——23/25 ingestion 治權核心引用之 4 個 API（ensure_scripts_on_path 等）未定義。建議優先採選項甲（最小衝擊），同時導入「死碼治權判別」機制。
+
+**下一步**：階段 1.1.2 `scripts/core/db_utils.py`
 
 ### 1.1.2 `scripts/core/db_utils.py`
 
