@@ -1,8 +1,8 @@
 """
-data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
+data_schema.py v2.13 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊)
+**最後更新日期**: 2026-05-20
+**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] 核心定義補入；100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -10,15 +10,18 @@ data_schema.py v2.11 (Quantum Finance API-First Schema Sovereignty Edition)
 2. [Absolute Case Sovereignty]: 強制執行雙引號封裝 DDL，確保物理層與 API 原始大小寫 1:1 鏡像。
 3. [Defensive Architecture]: 統一字串為 VARCHAR(255)，數值為 NUMERIC(20, 6)。
 4. [Hybrid Observability]: 整合 pipeline_execution_log 與詳細之終端重鑄報告。
+5. [Zero Hardcoded Verdict]: 主權判定（PERFECT / WARNING / FAILED）必須依執行結果動態計算，嚴禁硬編碼。對齊憲章 §5.6.3「禁止硬編碼 PERFECT」與 §3.2 Step 2 接受標準。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.11 |
-| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.11 |
+| **1. [重鑄：資料庫主權初始化]** | `$ python scripts/core/data_schema.py --init --force`                 | data_schema v2.13 |
+| **2. [重鑄：單一表主權重鑄]**   | `$ python scripts/core/data_schema.py --init --table [Name]`          | data_schema v2.13 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
-| **v2.11** | 2026-05-14 | Codex | **API 欄位鏡像修正**：補齊 FinMind API 實際回傳欄位大小寫；移除 `TaiwanStockPrice.spread_per` schema-only 欄位，使 API contract probe 全量通過。 | **ACTIVE** |
+| **v2.13** | 2026-05-20 | Codex | **[Zero Hardcoded Verdict] 核心定義第 5 條補入（逐元件審計 Step 1.1.2 100% 合規補強）**：依逐元件治權合規審計 Step 1.1.2 修補後再審 minor 補強建議，補入核心定義第 5 條 [Zero Hardcoded Verdict] 顯式對齊憲章 §5.6.3。**補正內容**：(I) 核心定義新增第 5 條「[Zero Hardcoded Verdict]: 主權判定（PERFECT / WARNING / FAILED）必須依執行結果動態計算，嚴禁硬編碼。對齊憲章 §5.6.3 與 §3.2 Step 2 接受標準」；(II) 主權狀態行更新為「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] 核心定義補入；100% 合規)」；(III) TOOL_VER v2.12 → v2.13；(IV) 維運矩陣 / report header v2.12 → v2.13。**程式邏輯（L391-393 之 verdict 計算）原已 §5.6.3 合規**，本次純為核心定義條之顯式宣告（與 `finmind_client.py v4.46` 之第 5 條 [Zero Hardcoded Verdict] 治權慣例對齊）。API、DDL、CLI 介面、13 張 DATASET_REGISTRY、所有公開行為皆無變更。 | **ACTIVE** |
+| v2.12 | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + `CONSTITUTION_VER` 模組常數補入（逐元件審計 Step 1.1.2 補正）**：依逐元件治權合規審計 Step 1.1.2 揭露之兩項違規：(1) 缺 `CONSTITUTION_VER` 模組常數（違反憲章 L26「所有 §3.1/§3.2 登錄模組之 `CONSTITUTION_VER` 同步至 v6.0.0」；先前只有 `self.constitution_ver` attribute）；(2) 修訂歷程缺 v6.0.0 升版條目（雖 self.constitution_ver = "v6.0.0" 已在 L204，但歷程未追蹤升版）；(3) L307 docstring 殘留 v5.4.22 cosmetic 字串。本次補正：(I) 新增 `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v2.12"` 模組常數；(II) 補入本 v2.12 修訂條目；(III) L307 docstring「執行憲法 v5.4.22 API-first 標準」→「執行憲法 v6.0.0 API-first 標準」；(IV) 維運矩陣 / report header 之 v2.11 cosmetic → v2.12。**API Contract First 邏輯、13 張 DATASET_REGISTRY、雙引號 DDL 封裝、--init/--force/--table/--skip-api-contract CLI 與所有公開行為皆無變更**；本補正純為標頭治權對齊。 | SUPERSEDED |
+| v2.11 | 2026-05-14 | Codex | **API 欄位鏡像修正**：補齊 FinMind API 實際回傳欄位大小寫；移除 `TaiwanStockPrice.spread_per` schema-only 欄位，使 API contract probe 全量通過。 | SUPERSEDED |
 | v2.10 | 2026-05-14 | Codex | **API Contract First**：`--init` / `--force` 前先探測 FinMind 與 FRED API 契約；契約失敗時停止 DDL，離線復原需明示 `--skip-api-contract`。 | SUPERSEDED |
 | v2.9 | 2026-05-13 | Antigravity | **創世圓滿**：對齊憲法 v5.4.18；對齊「大憲章」命名體系。 | SUPERSEDED |
 | v2.8 | 2026-05-13 | Antigravity | **崩潰修復**：對齊憲法 v5.4.17；補齊 pipeline_execution_log 欄位。 | ARCHIVED |
@@ -33,6 +36,12 @@ import os, sys, time, requests
 from pathlib import Path
 from datetime import datetime
 import argparse
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
+# ──────────────────────────────────────────────────────────────────────────────
+CONSTITUTION_VER = "v6.0.0"
+TOOL_VER = "v2.13"
 
 # ── 系統級架構引導 ──
 _THIS_FILE = Path(__file__).resolve()
@@ -304,7 +313,7 @@ class SovereignSchemaManager:
         return self.contract_stats["failed"] == 0
 
     def init_tables(self, target_table=None, force=False, skip_api_contract=False):
-        """執行憲法 v5.4.22 API-first 標準之物理初始化"""
+        """執行憲法 v6.0.0 API-first 標準之物理初始化"""
         start_time = time.time()
         if not skip_api_contract and not self.probe_api_contracts(target_table=target_table):
             self.stats["failed"] += 1
@@ -364,7 +373,7 @@ class SovereignSchemaManager:
     def report_results(self, start_time, ddl_executed=True):
         """顯示詳細結果訊息 (憲法 5.6 條款)"""
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.11)")
+        print("🚀 Quantum Finance: 資料庫主權初始化報告 (v2.13)")
         print("🛡️" * 40)
         print(f"治權基準 : 系統架構大憲章_{self.constitution_ver}.md")
         print(f"核心技術 : API Contract First + Absolute Case Sovereignty")
