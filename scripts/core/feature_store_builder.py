@@ -2,7 +2,7 @@
 feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
 ================================================================================
 最後更新日期: 2026-05-19
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 + §0.0-D.6 升版條件 #1 interaction features)
+主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 + §9.9 P1 v0.1 upside/downside decomposition)
 最高原則: Feature Store Build Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -58,7 +58,8 @@ feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-19 | Codex | §0.0-D.6 升版條件 #1 落地：新增 interaction 群 4 features（feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q / feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d）；feature_set_version v0.1 → v0.2；總特徵數 27 → 31；新增 `_compute_interaction_features()` 方法；不引入新 raw 資料源、不違反 §0.1-A 禁令、保留 cross-sectional variance > 0；既有 v0.1 committed feature sets 不受影響（only future runs build v0.2）。後續需重訓 model 才能實際使用新特徵。 | **ACTIVE** |
+| **v0.2** | 2026-05-19 | Codex | §0.0-D.6 升版條件 #1 落地：新增 interaction 群 4 features（feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q / feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d）；feature_set_version v0.1 → v0.2；總特徵數 27 → 31；新增 `_compute_interaction_features()` 方法；不引入新 raw 資料源、不違反 §0.1-A 禁令、保留 cross-sectional variance > 0；既有 v0.1 committed feature sets 不受影響（only future runs build v0.2）。後續需重訓 model 才能實際使用新特徵。 | **SUPERSEDED (ablation IC = +0.0131 HARMFUL, §0.0-D.6 #1 已實證否決)** |
+| **v0.3** | 2026-05-20 | Codex | §9.9 P1 v0.1 落地：新增 4 個 upside/downside 分離特徵（upside_volatility_60d / downside_volatility_60d / upside_capture_60d / downside_capture_60d）至 price 群；feature_set_version v0.2 → v0.3；總特徵數 31 → 31（27 base + 4 upside/downside；v0.2 interaction 不繼承）；新增 4 個 static method `_upside_volatility / _downside_volatility / _upside_capture / _downside_capture`；採 version-aware 邏輯，v0.3 不寫入 interaction features。對齊 §0.0-C.3 上行凸性壓制 + §0.0-E.6 P1 升版優先級。後續需 v0.4 重訓 model 並驗證 ablation IC。 | **ACTIVE** |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.2 Feature Store 草案落地；27 features × 6 groups（price/liquidity/fundamental/institutional/macro/theme）；as-of-strict 過濾與 zero_fill/drop 雙 imputation 策略；2026-05-17 walk-forward h20 panel 8 點全 PERFECT；2026-05-18 v6.0.0-patch 落地 strict-source build（`fs_20260515_..._strict_source_20260518`）與 §14.7-L 對齊。 | SUPERSEDED |
 ================================================================================
 """
@@ -85,12 +86,13 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
-DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.2"
+TOOL_VER = "v0.3"
+DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.3"
 DEFAULT_LABEL_HORIZON = 20
 
-# § 8.2.2 v0.2 特徵字典（27 base + 4 interaction = 31 features）
-# v0.2 新增 interaction 群：對齊 §0.0-D.6 升版條件 #1（macro × sector_exposure 交互特徵）
+# § 8.2.2 v0.3 特徵字典：27 base + 4 v0.2 interaction (audit trail) + 4 v0.3 upside/downside = 35 total
+# v0.3 active set = 31 features (27 base + 4 upside/downside；v0.2 interaction 不繼承，§9.9-E policy)
+# v0.2 interaction features 保留於 FEATURE_DEFINITIONS 作為 audit trail (依 §0.0-G 治權邊界)
 # 動機：原 macro / theme 為 broadcast 常數，cross-sectional rank model 中 IC=0；
 # 交互特徵將 macro/theme broadcast 與 stock-specific 特徵相乘，恢復 cross-sectional variance。
 FEATURE_DEFINITIONS = [
@@ -103,6 +105,11 @@ FEATURE_DEFINITIONS = [
     {"name": "ma_ratio_20", "group": "price", "source": "TaiwanStockPriceAdj", "window": "20d", "vtype": "numeric", "null": "drop", "desc": "close / MA(close, 20)"},
     {"name": "ma_ratio_60", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "close / MA(close, 60)"},
     {"name": "max_drawdown_252d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "max drawdown over 252 days"},
+    # ── price 群 v0.3 新增（4，§9.9 P1 上行凸性分離）
+    {"name": "upside_volatility_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "RMS of positive daily log returns over 60d；§0.1 ΔlnP 上行凸性表達；§9.9 G1"},
+    {"name": "downside_volatility_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "RMS of negative daily log returns over 60d；下行風險暴露；§9.9 G1"},
+    {"name": "upside_capture_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "mean of positive daily log returns over 60d；§0.1 上行爆發力；§9.9 C"},
+    {"name": "downside_capture_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "mean abs of negative daily log returns over 60d；下行衝擊；§9.9 C"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -460,6 +467,89 @@ class FeatureStoreBuilder:
                     max_dd = dd
         return max_dd
 
+    def _active_feature_definitions(self):
+        """依 feature_set_version 過濾出 active features。
+        v0.1: 27 base
+        v0.2: 27 base + 4 interaction = 31
+        v0.3: 27 base + 4 upside/downside = 31（不繼承 interaction）
+        """
+        version = self.feature_set_version
+        v03_new = {"upside_volatility_60d", "downside_volatility_60d",
+                   "upside_capture_60d", "downside_capture_60d"}
+        v02_interaction = {"feature_macro_vix_x_vol_60d", "feature_macro_dff_x_eps_sum_4q",
+                           "feature_theme_x_log_return_60d", "feature_theme_x_foreign_net_60d"}
+        if version == "feature_set_v0.1":
+            return [fd for fd in FEATURE_DEFINITIONS
+                    if fd["name"] not in v03_new and fd["name"] not in v02_interaction]
+        elif version == "feature_set_v0.2":
+            return [fd for fd in FEATURE_DEFINITIONS if fd["name"] not in v03_new]
+        elif version == "feature_set_v0.3":
+            return [fd for fd in FEATURE_DEFINITIONS if fd["name"] not in v02_interaction]
+        else:
+            return list(FEATURE_DEFINITIONS)
+
+    # ── v0.3 §9.9 Upside/Downside Volatility Decomposition (P1 上行凸性) ──
+
+    @staticmethod
+    def _upside_volatility(closes, n):
+        """RMS of positive daily log returns over n days. §9.9-C / G1 / 上行凸性"""
+        if len(closes) < n + 1:
+            return None
+        pos_rets = []
+        for i in range(len(closes) - n, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                r = math.log(closes[i] / closes[i - 1])
+                if r > 0:
+                    pos_rets.append(r)
+        if len(pos_rets) < 5:  # §9.9-E policy.3 min_observations_upside
+            return None
+        return math.sqrt(sum(r * r for r in pos_rets) / len(pos_rets))
+
+    @staticmethod
+    def _downside_volatility(closes, n):
+        """RMS of negative daily log returns over n days. §9.9-C / G1 / 下行風險"""
+        if len(closes) < n + 1:
+            return None
+        neg_rets = []
+        for i in range(len(closes) - n, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                r = math.log(closes[i] / closes[i - 1])
+                if r < 0:
+                    neg_rets.append(r)
+        if len(neg_rets) < 5:  # §9.9-E policy.4 min_observations_downside
+            return None
+        return math.sqrt(sum(r * r for r in neg_rets) / len(neg_rets))
+
+    @staticmethod
+    def _upside_capture(closes, n):
+        """Mean of positive daily log returns over n days. §9.9-C / 上行爆發力"""
+        if len(closes) < n + 1:
+            return None
+        pos_rets = []
+        for i in range(len(closes) - n, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                r = math.log(closes[i] / closes[i - 1])
+                if r > 0:
+                    pos_rets.append(r)
+        if len(pos_rets) < 5:
+            return None
+        return sum(pos_rets) / len(pos_rets)
+
+    @staticmethod
+    def _downside_capture(closes, n):
+        """Mean abs of negative daily log returns over n days. §9.9-C / 下行衝擊"""
+        if len(closes) < n + 1:
+            return None
+        neg_rets = []
+        for i in range(len(closes) - n, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                r = math.log(closes[i] / closes[i - 1])
+                if r < 0:
+                    neg_rets.append(abs(r))
+        if len(neg_rets) < 5:
+            return None
+        return sum(neg_rets) / len(neg_rets)
+
     def _compute_price_features(self, series):
         if not series:
             return {}
@@ -476,6 +566,12 @@ class FeatureStoreBuilder:
         f["ma_ratio_20"] = self._ma_ratio(closes, 20)
         f["ma_ratio_60"] = self._ma_ratio(closes, 60)
         f["max_drawdown_252d"] = self._max_drawdown(closes, 252)
+
+        # v0.3 §9.9 upside/downside decomposition (4 features)
+        f["upside_volatility_60d"] = self._upside_volatility(closes, 60)
+        f["downside_volatility_60d"] = self._downside_volatility(closes, 60)
+        f["upside_capture_60d"] = self._upside_capture(closes, 60)
+        f["downside_capture_60d"] = self._downside_capture(closes, 60)
 
         # liquidity
         if len(moneys) >= 60:
@@ -584,7 +680,7 @@ class FeatureStoreBuilder:
             cur.close()
             conn.close()
 
-        null_strategy_map = {fd["name"]: fd["null"] for fd in FEATURE_DEFINITIONS}
+        null_strategy_map = {fd["name"]: fd["null"] for fd in self._active_feature_definitions()}
         rows = []
         null_imputed = 0
         for sid in self.core_stocks:
@@ -599,8 +695,10 @@ class FeatureStoreBuilder:
             stock_features["margin_ratio_60d"] = margin.get(sid)
             stock_features.update(self._theme_features(theme.get(sid, "")))
             stock_features.update(macro)
-            # v0.2 §0.0-D.6 交互特徵（必須在所有 base feature 後計算）
-            stock_features.update(self._compute_interaction_features(stock_features))
+            # v0.2 §0.0-D.6 交互特徵：v0.3 起不繼承（§9.9-E policy.7 + §14.7-AD）
+            # v0.2 ablation 實證 IC = +0.0131 (HARMFUL)，僅 v0.2 feature_set 寫入
+            if self.feature_set_version == "feature_set_v0.2":
+                stock_features.update(self._compute_interaction_features(stock_features))
 
             for fname, value in stock_features.items():
                 imputed = False
@@ -640,7 +738,7 @@ class FeatureStoreBuilder:
             [(
                 self.feature_set_id, fd["name"], fd["group"], fd["source"],
                 fd["window"], fd["vtype"], fd["null"], fd["desc"],
-            ) for fd in FEATURE_DEFINITIONS],
+            ) for fd in self._active_feature_definitions()],
         )
 
     def _write_values(self, cur, rows):
@@ -679,7 +777,7 @@ class FeatureStoreBuilder:
                 self.feature_set_id, self.feature_set_version, self.as_of_date,
                 self.source_data_cutoff or self.as_of_date,
                 self.universe_snapshot_id, self.policy_version,
-                len(self.core_stocks), len(FEATURE_DEFINITIONS),
+                len(self.core_stocks), len(self._active_feature_definitions()),
                 self.label_horizon,
                 f"feature_store_builder {TOOL_VER}; §8.2 v0.1 草案；27 features × {len(self.core_stocks)} stocks",
             ),
@@ -704,7 +802,7 @@ class FeatureStoreBuilder:
                     self.feature_set_id, self.feature_set_version, self.as_of_date,
                     self.source_data_cutoff or self.as_of_date,
                     self.universe_snapshot_id, self.policy_version,
-                    len(self.core_stocks), len(FEATURE_DEFINITIONS), self.label_horizon,
+                    len(self.core_stocks), len(self._active_feature_definitions()), self.label_horizon,
                 ),
             )
             self._write_definition(cur)
@@ -744,7 +842,7 @@ class FeatureStoreBuilder:
 
             self._detail(f"🛠️  building feature_set_id={self.feature_set_id}")
             rows = self.build_feature_rows()
-            self.stats["feature_count"] = len(FEATURE_DEFINITIONS)
+            self.stats["feature_count"] = len(self._active_feature_definitions())
 
             if self.commit:
                 self.commit_feature_store(rows)
