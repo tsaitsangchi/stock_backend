@@ -61,6 +61,9 @@ evidently>=0.4.0
 streamlit>=1.30.0
 plotly>=5.18.0
 
+# ── HTTP / 外部 API 客戶端（必裝；治權核心 6 檔使用：sovereign_sync_engine / finmind_client / 多支 ingest_*）─
+requests>=2.31.0
+
 # ── Web / API 服務（必裝）──────────────────────────────────
 fastapi>=0.109.0
 uvicorn>=0.27.0
