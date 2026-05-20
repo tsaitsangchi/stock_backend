@@ -87,6 +87,7 @@ reports/*
 !reports/p1_v02_execution_runbook_*.md
 !reports/v03_upside_downside_ablation_result.json
 !reports/系統核心完整度評估報告.md
+!reports/系統核心完整度評估報告_v*.md
 !reports/audit_doctrine_compliance_*.md
 !reports/portfolio_allocation_proposal_*.md
 !reports/v02_interaction_features_validation_*.md
