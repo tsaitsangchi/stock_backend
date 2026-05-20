@@ -79,6 +79,7 @@ reports/*
 !reports/kwave_transition_review_*.md
 !reports/first_principles_validation_*.md
 !reports/first_principles_completion_diagnosis_*.md
+!reports/v6_*_p0_completion_*.md
 !reports/系統核心完整度評估報告.md
 !reports/audit_doctrine_compliance_*.md
 !reports/portfolio_allocation_proposal_*.md
