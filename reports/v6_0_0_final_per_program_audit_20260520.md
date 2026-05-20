@@ -666,6 +666,78 @@ git pull origin master                                    # 取得 11 個 commit
 3. `.venv/bin/python3 scripts/core/data_schema.py --init --force` — **執行此命令並觀察 PASS/WARN/FAIL；本接續第 1 步**
 4. 將執行結果（PERFECT / WARNING / FAILED 之終端輸出）回報，再進入階段 1.1.3 `core_universe_schema.py` 審查
 
+### 7.8 強制原則：外部資料 ↔ Audit 程式配對
+
+**使用者明示之治權原則**：
+
+> **所有從外部抓取的資料都要有對應的 audit 程式來確認正確性。**
+
+**對齊憲章 §一 4. [Supply Chain Sovereignty]**：
+
+- 「數據契約必須 100% 鏡像對齊外部數據源」
+- 「全譜供應鏈合規稽核必須交叉比對 API + DB 實況（v1.17 補強），不可僅查 API」
+
+#### 7.8.1 現行外部資料 ↔ 同步 + Audit 對映
+
+| 外部來源 | 13 張表 | 同步載體（依 §3.1）| Audit 程式（依 §3.2A）|
+|---|---|---|---|
+| **FinMind API** | TaiwanStockPrice / PriceAdj / PER / InstitutionalInvestorsBuySell / MarginPurchaseShortSale / Shareholding / FinancialStatements / MonthRevenue / Dividend / Info（10 張）| `sovereign_sync_engine.py v1.15`（唯一授權同步載體）| `audit_supply_chain.py v1.18`（schema + DB + logs 三重對齊）|
+| **FRED API** | FredData（1 張）| `sovereign_sync_engine.py v1.15`（透過 `--source fred`）| `audit_supply_chain.py v1.18` |
+| **Infrastructure** | pipeline_execution_log / data_audit_log（2 張）| `data_schema.py --init --force`（一次性建立）| `audit_supply_chain.py v1.18`（含 lifecycle 驗收 + record_lifecycle 回寫驗證）|
+
+**現行配對覆蓋率**：13/13 = **100%**（皆由 `audit_supply_chain.py` 統一驗收 API + DB + logs 三重對齊）。
+
+#### 7.8.2 衍生治權層 audit 矩陣
+
+依憲章 §3.2A 橫切稽核工具 6 員：
+
+| Audit 程式 | 對應外部資料 / 衍生資料 |
+|---|---|
+| `audit_supply_chain.py` | **13 張 raw 表**（FinMind 10 + FRED 1 + infra 2）API ↔ DB ↔ logs |
+| `audit_core_universe.py` | `core_universe_membership` JOIN `core_universe_snapshot`（衍生 §6.7 治權表）|
+| `audit_downstream_readiness.py` | `feature_set_*` / `prediction_run` / `model_registry` 升版 readiness |
+| `audit_leakage.py` | feature/model/prediction 之 §8.5 anti-leakage（時間邊界）|
+| `audit_source_availability.py` | Core 150 strict source availability（§14.7-L mismatch）|
+| `audit_doctrine_compliance.py` | §0 四大支柱 doctrine compliance |
+
+**衍生資料覆蓋率**：100%（每一治權衍生表 / 流程皆有對應 audit）。
+
+#### 7.8.3 未來新增外部資料來源之強制要求
+
+當未來新增任何外部資料來源（如新增 Bloomberg / S&P / 證交所 SOP / 其他 API），**必須同步建立**：
+
+1. **`data_schema.py` 中新增 DDL 條目**（API contract first probe + 雙引號封裝 DDL）
+2. **`sovereign_sync_engine.py` 中新增同步邏輯**（§7 三層防禦：節流 + 退避 + DB resume）
+3. **`audit_supply_chain.py` 中新增驗收項**（API + DB + logs 三重對齊）
+4. **憲章 §3.1 / §3.2 / §3.2A 中登錄新模組**（如另立獨立 audit 程式時）
+5. **任一外部變數須先入 §0.0-I.8**（依憲章先行紀律）
+
+**違反裁決**：未對應 audit 程式之外部資料 = 違反 §一 4. [Supply Chain Sovereignty]，**判為非法資料源**，禁止寫入治權層。
+
+#### 7.8.4 後續逐元件審計時須核對之問題
+
+每審查一支 ingestion / fetcher 程式時，必須交叉確認：
+
+- [ ] 該程式同步之資料表是否在 `DATASET_REGISTRY`（憲章 13 張表基線）？
+- [ ] 對應 audit 程式是否能正確驗收此資料（API 欄位 + DB 列數 + lifecycle log）？
+- [ ] 是否有 row count / freshness / coverage 之動態檢驗（§5.6.3 動態判定）？
+- [ ] 是否寫入 `pipeline_execution_log` + `data_audit_log` 雙日誌（§一 2. [Hybrid Observability]）？
+
+任一項 ❌ 即為**重大違規**，需立即補配 audit。
+
+#### 7.8.5 階段 3 ingestion 25 支審計檢核項目
+
+階段 3 審計每一支 ingestion 程式時，須**在審計報告中明示其對應之 audit 程式**：
+
+| ingestion 程式（25 支）| 同步資料表 | 對應 audit 程式 | 已配對？ |
+|---|---|---|---|
+| `sovereign_sync_engine.py`（主載體）| 全 13 張 | `audit_supply_chain.py` | ✅ |
+| `ingest_*.py` 23 支（皆 ImportError 死碼，Step 1.1.1 已揭露）| — | — | ⚠️ 因死碼無實際同步 |
+| `initialize_market_data.py` | 初始化 | （待 1.1.X 審查時釐清）| ⏳ |
+| `parallel_ingestion.py` | parallel 載體 | （待釐清）| ⏳ |
+
+待逐一審計後填入完整對映表（§ 三 跨元件發現之共通問題章）。
+
 ---
 
 **本報告為「逐元件治權合規審計」之主檔。每完成一個 step 即 commit + tag，可隨時暫停與繼續。**
