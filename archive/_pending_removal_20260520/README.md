@@ -33,8 +33,9 @@
 | `root_legacy_txt/` | 根目錄 v5.x 時代 health check / schema 稽核 / dependency raw dump（2026-05-20 加入）| 3 |
 | `root_legacy_py/` | 根目錄 v5.x 時代 config / FastAPI auth / GitHub-Gemini 整合（2026-05-20 加入）| 3 |
 | `root_legacy_sql/` | 根目錄 v5.x legacy DDL（憲章 §9.1-B 明文禁止讀取之 stock_forecast_daily 表）| 1 |
+| `root_legacy_docker/` | 根目錄 v5.x Dockerfile（CMD 指向不存在路徑；0 治權核心覆蓋；crash 即死）| 1 |
 | `maintenance_v5x_legacy/` | maintenance v5.2 標準 + 治權 0 引用 + 確定 legacy（2026-05-20 加入；路徑丙 Y）| 13 |
-| **總計** | | **81** |
+| **總計** | | **82** |
 
 > **注**：70 個 .py 檔案（54 既有 + 3 root + 13 maintenance）+ 8 個 .md 檔案 + 3 個 .txt 檔案 + 部分目錄之 __init__.py + README 等補檔
 >
@@ -61,6 +62,10 @@
 > **root_legacy_sql/ 1 檔來源**（v5.x legacy DDL；憲章 §9.1-B 明文列為禁止輸入）：
 >
 > - `create_table.sql`（1.6K，定義 `stock_forecast_daily` 表 — 憲章 L405/L503/L4014/L4165 明文標註為「舊資料流」，§9.1-B 強制禁止讀取；v6.0 已用 `prediction_run` + `prediction_values` 治權取代）
+>
+> **root_legacy_docker/ 1 檔來源**（v5.x Dockerfile；3 重大不對齊）：
+>
+> - `Dockerfile`（674B）— (1) CMD 指向 `scripts/portfolio_optimizer.py` 此檔不存在（實際在 scripts/pipeline 或 evaluation，皆非治權層）；v6.0 治權核心為 `scripts/core/portfolio_sizer.py`；(2) 0/9 v6.0 治權核心程式被引用；(3) 不處理 `.env` 啟動錨點 → 容器啟動時 `db_utils.get_db_connection()` G1 必然失敗。憲章 / 評估 / README / CLAUDE 均 0 引用。v6.0 容器化非當前優先級，待 v6.1.0+ 視需求重寫。
 >
 > **maintenance_v5x_legacy/ 13 檔來源**（皆 0 憲章引用 + 0 完整度評估報告引用；路徑丙 Y 激進版隔離）：
 >
