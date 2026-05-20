@@ -204,24 +204,40 @@ tsmc_predictor/
 pip install -r requirements.txt
 ```
 
-### 2. 確認 PostgreSQL 連線
+### 2. 環境變數設定 (`.env`)
 
-修改 `data_pipeline.py` 中的 `DB_CONFIG`：
-```python
-DB_CONFIG = {
-    "dbname":   "stock",
-    "user":     "stock",
-    "password": "stock",
-    "host": "localhost",
-    "port":     "5432",
-}
-```
+依憲章 [`§0.0-I.8 .env 環境變數契約清單`](reports/系統架構大憲章_v6.0.0.md) — **14 變數 / 7 強制 + 7 可選**（單一引用源，禁止他處重複枚舉）。
 
-連線診斷：
 ```bash
-python data_pipeline.py
+cp .env.example .env
+vim .env   # 填入下列 7 個強制變數；其餘可暫留 placeholder
 ```
-成功會印出 shape、date range、最後 5 筆關鍵欄及缺失率。
+
+**強制 7 變數**（缺一即無法啟動 v6.0.0 治權核心）：
+
+| 變數 | 用途 |
+|---|---|
+| `PROJECT_ROOT` | 物理路徑錨點（必須與本機 `stock_backend` 絕對路徑完全一致；§2335 Boundary Drift）|
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | PostgreSQL 五件套；缺一即 `db_utils.get_db_connection()` G1 失敗 |
+| `FINMIND_TOKEN` | FinMind JWT（從 [finmindtrade.com](https://finmindtrade.com) 申請；§3.1 §7 唯一數據主權；含個人身份資訊絕對機密）|
+
+**可選 7 變數**：`ENV` / `LOG_LEVEL` / `TZ` / `MLFLOW_TRACKING_URI` / `GEMINI_API_KEY` / `FRED_API_KEY` / `GITHUB_TOKEN`（用途細節依 §0.0-I.8）
+
+**啟動三段對齊診斷**：
+
+```bash
+# 1. 驗證 .env 之 PROJECT_ROOT 與物理路徑對齊
+python scripts/core/path_setup.py
+
+# 2. 驗證 DB 五件套 + 連線
+python scripts/core/db_utils.py
+```
+
+**安全提醒**：
+
+- `.env` 已被 `.gitignore` 排除，**切勿提交**至版本控制
+- 密鑰（`*_TOKEN` / `*_API_KEY` / `DB_PASSWORD`）只能存在於 `.env` 或受控秘密管理機制中（依憲章 §2319）
+- 任一變數之新增 / 改名 / 刪除須先動憲章 §0.0-I.8 再改 `.env` / `.env.example`（§0.0-G 憲章先行紀律）
 
 ### 3. 資料抓取與更新
 
