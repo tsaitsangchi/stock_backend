@@ -112,6 +112,8 @@ reports/*
 !reports/audit_*_design_research_*.md
 !reports/api_schema_compliance_audit_*.md
 !reports/data_schema_*_execution_*.md
+# 跨平台接力 / session handoff 紀錄（跨機接續必要文件）
+!reports/session_handoff_*.md
 archive/*
 # v6.0.0-FINAL cleanup quarantine（README 追蹤；其他內容由 git mv 既有追蹤）
 !archive/_pending_removal_*/
