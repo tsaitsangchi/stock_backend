@@ -1,16 +1,16 @@
 """
-core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Aligned)
+core/__init__.py v1.15 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Aligned)
 ================================================================================
-**最後更新日期**: 2026-05-15
-**主權狀態**: ACTIVE (憲法 v6.0.0 演進定稿對齊 + 動態四層稽核)
+**最後更新日期**: 2026-05-20
+**主權狀態**: ACTIVE (憲法 v6.0.0 標頭治權對齊 + path_setup v4.45 hub 邊界同步)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Hub Sovereignty]: 本模組為 `scripts/core` package 之唯一接口中樞，所有
    外部調用必須經由此 25 維全譜路徑接口與 db_utils 公共 API 集中導出。
 2. [Boundary Integrity]: 路徑接口維度鎖定為 **25 維**，嚴禁回到 v5.2/v5.3
-   時代之 27 維誤宣告（對齊 `path_setup.py v4.44` 之 `ALL_PATHS`）。
-3. [Canonical Execution Order]: 維運矩陣必須鏡像憲章 v5.4.22 第二章九步序列：
+   時代之 27 維誤宣告（對齊 `path_setup.py v4.45` 之 `ALL_PATHS`）。
+3. [Canonical Execution Order]: 維運矩陣必須鏡像憲章 v6.0.0 第二章九步序列：
    `.env` → `path_setup` → `data_schema --init --force` → `core_universe_schema --init`
    → `db_utils` → `audit_supply_chain --include-logs` → `sovereign_sync_engine --seed`
    → `core_universe_builder --dry-run/--commit` → `audit_core_universe`。
@@ -23,12 +23,12 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 6. [Historical Reference Authority]: 嚴格保留從 v1.0 至今的所有歷史紀錄，
    作為判定系統治權一致性的權威參考。
 
-## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - v5.4.22 對齊)
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - v6.0.0 對齊)
 
 | Step | 維運需求場景 (Scenario) | 權威指令 (Authoritative Command) | 對齊模組 |
 | :--- | :--- | :--- | :--- |
 | **0**   | [啟動錨點：`.env` 設定確認]                | `PROJECT_ROOT=/home/hugo/project/stock_backend`                                                          | `.env Bootstrap Anchor` |
-| **1**   | [環境前置：路徑與目錄自癒]                 | `$ python scripts/core/path_setup.py`                                                                    | `path_setup v4.44` |
+| **1**   | [環境前置：路徑與目錄自癒]                 | `$ python scripts/core/path_setup.py`                                                                    | `path_setup v4.45` |
 | **2**   | [標準序列：Raw API Schema 主權重鑄]        | `$ python scripts/core/data_schema.py --init --force`                                                    | `data_schema v2.11` |
 | **2A**  | [離線復原：略過 API 契約探測]              | `$ python scripts/core/data_schema.py --init --force --skip-api-contract`                                | `data_schema v2.11` |
 | **2B**  | [標準序列：核心股治理 Schema 初始化]       | `$ python scripts/core/core_universe_schema.py --init`                                                   | `core_universe_schema v0.2` |
@@ -42,9 +42,9 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 | **6**   | [同步操作：單一標的核心數據集全同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                          | `sovereign_sync_engine v1.10` |
 | **7**   | [同步操作：核心股 Universe 全量同步]       | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core` （§6.7 SQL 契約）                  | `sovereign_sync_engine v1.10` |
 | **8**   | [同步操作：FRED 宏觀指標全譜同步]          | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                                      | `sovereign_sync_engine v1.10` |
-| **HUB** | [中樞主權完整性稽核]                       | `$ python scripts/core/__init__.py`                                                                      | `core/__init__ v1.14` |
+| **HUB** | [中樞主權完整性稽核]                       | `$ python scripts/core/__init__.py`                                                                      | `core/__init__ v1.15` |
 
-💡 **範例完整性說明**：矩陣完整對齊憲章 v5.4.22 第二章九步序列；Step 7 必須透過
+💡 **範例完整性說明**：矩陣完整對齊憲章 v6.0.0 第二章九步序列；Step 7 必須透過
    §6.7 SQL 契約讀取 `core_universe_membership`，嚴禁查 v5.2 時代之 `stocks` 表。
 
 ## ⚔️ 三、五大核心場景對齊 (Five Canonical Scenarios — 憲章 §5.5 第 3 條)
@@ -57,7 +57,8 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
 ## 📜 四、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.14** | 2026-05-15 | Codex | **憲法 v5.4.22 演進定稿對齊**：(1) 路徑接口維度由 27 維修正為 **25 維**，
+| **v1.15** | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + path_setup v4.45 hub 邊界同步（逐元件審計 Step 1.1.1 連帶補正）**：依逐元件治權合規審計 Step 1.1.1 之選項乙（連帶 __init__.py），修補 v1.14 之 cosmetic 字串漂移：(1) Header L2「Constitution v5.4.22 Aligned」→「Constitution v6.0.0 Aligned」；(2) Canonical Execution Order「憲章 v5.4.22 第二章九步序列」→「憲章 v6.0.0」；(3) 全量維運矩陣標題「v5.4.22 對齊」→「v6.0.0 對齊」；(4) 維運矩陣 Step 1 path_setup v4.44 → v4.45；(5) HUB 行 core/__init__ v1.14 → v1.15；(6) 範例完整性說明「v5.4.22 第二章」→「v6.0.0 第二章」；(7) [Boundary Integrity] 條 path_setup v4.44 → v4.45 同步；(8) `HUB_VER` 常數 v1.14 → v1.15。**CONSTITUTION_VER 已在 v1.14 期間補入為 v6.0.0；本次純為標頭治權對齊**。25 維路徑接口、`db_utils v2.45` 公共 API 鏡像、`__all__` 對外匯出清單、四層動態稽核邏輯皆無變更。 | **ACTIVE** |
+| v1.14 | 2026-05-15 | Codex | **憲法 v5.4.22 演進定稿對齊**：(1) 路徑接口維度由 27 維修正為 **25 維**，
             對齊 `path_setup v4.44` 之 `ALL_PATHS`；(2) 全量維運矩陣重寫為憲章 v5.4.22 九步
             正典序列，新增 Step 2B/2C/3/4B/4C/5/6/7/8；(3) `template_fetcher.py` 全部替換為
             `sovereign_sync_engine.py v1.10`；(4) 中樞稽核改為「import / path / db / §6.7」
@@ -65,7 +66,7 @@ core/__init__.py v1.14 (Quantum Finance Sovereign Hub - Constitution v5.4.22 Ali
             `PROJECT_ROOT` 但 `path_setup.py` 僅匯出 `PROJECT_ROOT_CALC`，改為正確匯入並
             重新導出別名；(6) 補上 `get_evaluation_dir()` 相容別名匯入（不計入 25 維）；
             (7) 補上 §6.7 核心同步資產數即時稽核；(8) 補上 `__all__` 對外匯出清單，
-            鎖定 25 維路徑接口 + db_utils 公共 API 鏡像匯出邊界。 | **ACTIVE** |
+            鎖定 25 維路徑接口 + db_utils 公共 API 鏡像匯出邊界。 | SUPERSEDED |
 | v1.13 | 2026-05-12 | Antigravity | **治權終極校準**：補全「場景治權」與「範例窮舉」條款，對齊 v5.2 旗艦版憲法新條款。 | ARCHIVED |
 | v1.12 | 2026-05-12 | Antigravity | **旗艦化重鑄**：注入「中樞主權校驗」邏輯，對齊全量維運矩陣。 | SUPERSEDED |
 | v1.11 | 2026-05-12 | Antigravity | **憲法化對齊**：對齊 v5.2 主權標準。 | SUPERSEDED |
@@ -81,7 +82,7 @@ from datetime import datetime
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-HUB_VER = "v1.14"
+HUB_VER = "v1.15"
 EXPECTED_PATH_DIM = 25  # 對齊憲章 §1 第 3 條 + §4 25 維清單
 
 
@@ -372,7 +373,7 @@ def _compute_verdict(failures, warnings_list):
 
 
 def run_sovereign_hub_audit():
-    """執行中樞主權完整性稽核 (v1.14 / 憲法 v5.4.22)。
+    """執行中樞主權完整性稽核 (v1.15 / 憲法 v6.0.0)。
 
     動態四層稽核 (import / path / db / §6.7) — 嚴禁硬編碼 PERFECT。
 
@@ -384,7 +385,7 @@ def run_sovereign_hub_audit():
     all_warnings = []
 
     with record_lifecycle(
-        "sovereign_hub_audit_v1.14",
+        "sovereign_hub_audit_v1.15",
         category="governance",
         stock_id="SYSTEM",
     ) as lc:
