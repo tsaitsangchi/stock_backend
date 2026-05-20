@@ -526,4 +526,146 @@ AttributeError: module 'path_setup' has no attribute 'ensure_scripts_on_path'
 
 ---
 
+## 七、接續執行指引（2026-05-20 換機接力點）
+
+### 7.1 當前狀態快照
+
+**作業日期**：2026-05-20（Asia/Taipei）
+**HEAD commit**：`4822795`
+**Tag 已封存**：`v6.0.0-FINAL-audit-step0-env-remediation-completed`
+
+**今日完成（11 個 commits）**：
+
+| Commit | 範圍 |
+|---|---|
+| `4822795` | data_schema v2.13（[Zero Hardcoded Verdict] 補入 / 100% 合規）|
+| `229967b` | path_setup v4.45 + __init__ v1.15 標頭 v6.0.0 對齊（選項乙）|
+| `00494c6` | 隔離 Dockerfile（v5.x；CMD 指向不存在路徑）|
+| `788bdd2` | 隔離 create_table.sql（§9.1-B 禁止來源）|
+| `1cd9b23` | 隔離 3 root .txt |
+| `ac03ac3` | 隔離 8 root .md |
+| `15021fa` | 隔離 16 .py（3 root + 13 maintenance；路徑丙 Y）|
+| `4510e93` | requirements.txt 補 requests（治權核心 6 檔依賴）|
+| `cdba6c9` | Step 1.1.1 path_setup.py 審查記錄 |
+| `08af007` | Step 0 .env 修補包（憲章 §0.0-I.8 + .env.example + README）|
+| `4a29b3c` | Step 0 .env 環境設定檢查 |
+
+**v6.0.0-FINAL 治權核心邊界縮容**：
+
+| 範圍 | 變動前 | 變動後 |
+|---|---|---|
+| 根目錄 .md | 10 | 2（CLAUDE.md / README.md）|
+| 根目錄 .txt | 4 | 1（requirements.txt）|
+| 根目錄 .py | 3 | 0 |
+| 根目錄 .sql | 1 | 0 |
+| 根目錄 Dockerfile | 1 | 0 |
+| scripts/maintenance/ | 21 | 8 |
+| 隔離區總檔數 | 64 | 82 |
+
+### 7.2 換機接力第 1 步：執行 `data_schema.py --init --force`
+
+**接續執行起點**：
+
+```bash
+cd /home/hugo/project/stock_backend
+git pull origin master                                    # 取得 11 個 commits + 修補
+.venv/bin/python3 scripts/core/data_schema.py --init --force
+```
+
+**預期執行結果**（v2.13）：
+
+1. **Step A：API Contract First Probe**
+   - 探測 FinMind 10 個 dataset 之欄位契約（須網路通；無 token 即離線回退）
+   - 探測 FRED `DFF` series 契約
+   - PASS / WARN / FAIL 三態動態判定
+
+2. **Step B：DDL 主權重鑄**（API probe 通過後）
+   - 重建 13 張表（2 infra + 10 FinMind raw + 1 FRED）
+   - 雙引號封裝 / VARCHAR(255) 防禦性寬容 / `idx_*_date` 索引
+
+3. **Step C：報告輸出**
+   - PERFECT ALIGNMENT / WARNING / FAILED
+   - sys.exit(0/1) 依結果
+
+**離線復原指令**（若 FinMind/FRED API 失效）：
+
+```bash
+.venv/bin/python3 scripts/core/data_schema.py --init --force --skip-api-contract
+```
+
+### 7.3 換機接力第 2-N 步：後續審計順序
+
+依憲章 §二 全量維運矩陣序列：
+
+| 順位 | 程式 | 對應 Step | 動作 |
+|---|---|---|---|
+| **下一支** | `scripts/core/core_universe_schema.py` | 憲章 Step 2B | 階段 1.1.3 審查 |
+| 後續 | `scripts/core/db_utils.py` | 憲章 Step 2C | 階段 1.1.4 審查 |
+| 後續 | `scripts/core/finmind_client.py` | §3.2 橫切 library | 階段 1.1.5 審查 |
+| 後續 | `scripts/core/feature_store_schema.py` | feature store schema | 階段 1.1.6 審查 |
+| 後續 | `scripts/core/model_metadata.py` | 模型元數據 | 階段 1.1.7 審查 |
+| 後續 | `scripts/core/migrate_stocks_config.py` | 一次性遷移 | 階段 1.1.8 審查 |
+| 後續 | `scripts/core/__init__.py` | hub | 階段 1.1.9 審查（部分已於 1.1.1 連帶完成）|
+| 階段 1.2 | 五支落地鏈（core_universe_builder → portfolio_sizer）| §0.0-A.1-A.5 | 5 支 |
+| 階段 2 | scripts/maintenance/（8 殘留治權）| §3.2A 橫切稽核 | 8 支 |
+| 階段 3 | scripts/ingestion/（25 支）| §3.1 序列模組 | 25 支 |
+
+### 7.4 接續執行 SOP（「中度確認」工作流程）
+
+依 `/home/hugo/.claude/plans/imperative-wiggling-key.md` 之中度確認模式：
+
+```
+1. Claude 讀程式 → 對照 8 項檢查面 → 寫初步審計區塊到報告
+2. Claude 列出本支之 ✅ 符合 N 項 / ❌ 違規 M 項 / ⚠️ 待釐清 K 項 / 💡 補強 J 項
+3. 如有違規：列出修補選項（甲/乙/丙 + 衝擊比較）
+4. 暫停，等待使用者裁決：
+   - 「下一支」→ 維持目前審計記錄，進入下一支
+   - 「採選項甲/乙/丙」→ Claude 寫入修訂建議書，不執行修補
+   - 「先修補再下一支」→ 切換至「重度確認」模式，先實作修補與驗證
+   - 「補充 / 質疑」→ Claude 補強審計或重做某項
+5. 報告寫入此檔
+6. 每階段（1.1 / 1.2 / 2 / 3）末做一次 commit + tag
+```
+
+### 7.5 已建立之治權治理模板（每元件審計時對照）
+
+**完整 8 項檢查面**（依憲章 v6.0.0）：
+
+1. **治權位階**（§0.0-G.0 Type-3 實作層）
+2. **依賴關係**（§8.4 治權邊界 / §3.1 序列模組 vs §3.2 橫切 library）
+3. **強制契約對齊**（§9.1 / §9.2 / §9.9 等 + §6.7 SQL SSOT）
+4. **檔頭元數據**（憲章 §一 1. Authority of Historical Truth；CONSTITUTION_VER 模組常數 + self.constitution_ver 屬性同步至 v6.0.0；§5.6.3 [Zero Hardcoded Verdict]）
+5. **治權禁令遵守**（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 共 5 套禁令）
+6. **T1/T2/T3 分層遵守**（§0.1.1）
+7. **anti-leakage 遵守**（§8.5）
+8. **§0.0-G 憲章先行紀律遵守**（程式版本與憲章一致）
+
+**標準修補模板**（依 Step 1.1.1 / 1.1.2 已驗證之路徑）：
+
+- **小修補（甲）**：補 `CONSTITUTION_VER` + `TOOL_VER` 模組常數 + 修訂歷程 v6.0.0 條目 + cosmetic v5.4.x → v6.0.0
+- **中修補（乙）**：甲 + 連帶 hub `__init__.py` 同步更新
+- **完整修補（v0.X.X 升級）**：甲乙 + 補入 [Zero Hardcoded Verdict] 核心定義第 5 條
+- **重大違規（如 path_setup 下游 API 殘缺）**：留待後續批次（修補建議書）
+
+### 7.6 已知 pending 修補建議書條目
+
+| # | 項目 | 來源 |
+|---|---|---|
+| 1 | path_setup 下游 5 個 API 殘缺（ensure_scripts_on_path / ensure_dirs_exist / get_logs_dir / get_outputs_dir / get_checkpoints_dir）影響 23/25 ingestion 治權核心 | Step 1.1.1 重大違規 |
+| 2 | .env.example 缺 DB_NAME / DB_USER（已修補於 Step 0 之 §0.0-I.8 入憲）| — |
+| 3 | requirements.txt 補 requests（已修補於 commit `4510e93`）| — |
+| 4 | scipy / pandas_ta / pytest 未列於 requirements（留待後續批次 minor）| 隔離 16 檔之 audit |
+| 5 | maintenance 8 個 PERFECT 標頭但憲章 0 引用之灰色檔已隔離（驗證後可刪除）| 路徑丙 Y |
+| 6 | scripts/fetchers/ 為 v5.x legacy，sovereign_sync_engine 已取代，待後續批次處理 | Step 1.1.1 觀察 |
+| 7 | scripts/pipeline/portfolio_optimizer.py 為 legacy（讀 §9.1-B 禁止之 stock_forecast_daily 表）| commit `788bdd2` 觀察 |
+
+### 7.7 接續換機檢核 SOP
+
+1. `cd /home/hugo/project/stock_backend && git pull origin master` — 取得 11 個 commits
+2. `.venv/bin/python3 scripts/core/path_setup.py` — 確認 PERFECT（v4.45 對齊 v6.0.0）
+3. `.venv/bin/python3 scripts/core/data_schema.py --init --force` — **執行此命令並觀察 PASS/WARN/FAIL；本接續第 1 步**
+4. 將執行結果（PERFECT / WARNING / FAILED 之終端輸出）回報，再進入階段 1.1.3 `core_universe_schema.py` 審查
+
+---
+
 **本報告為「逐元件治權合規審計」之主檔。每完成一個 step 即 commit + tag，可隨時暫停與繼續。**
