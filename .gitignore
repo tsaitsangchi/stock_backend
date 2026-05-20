@@ -85,6 +85,8 @@ reports/*
 !reports/v6_*_p1_*.md
 !reports/feature_store_v0*_implementation_audit_*.md
 !reports/p1_v02_execution_runbook_*.md
+!reports/path_a_*.md
+!reports/p1_v02_execution_runbook_*.md
 !reports/v03_upside_downside_ablation_result.json
 !reports/系統核心完整度評估報告.md
 !reports/系統核心完整度評估報告_v*.md
