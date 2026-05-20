@@ -84,6 +84,8 @@ reports/*
 !reports/portfolio_sizer_v0*_implementation_audit_*.md
 !reports/v6_*_p1_*.md
 !reports/feature_store_v0*_implementation_audit_*.md
+!reports/p1_v02_execution_runbook_*.md
+!reports/v03_upside_downside_ablation_result.json
 !reports/系統核心完整度評估報告.md
 !reports/audit_doctrine_compliance_*.md
 !reports/portfolio_allocation_proposal_*.md
