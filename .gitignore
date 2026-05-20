@@ -107,6 +107,9 @@ reports/*
 # 每次重建/sync 產生之最終 audit 報告（憲章引用即追蹤；建議只保留 *_HHMM 之 final 版）
 !reports/compliance_audit_*.md
 !reports/core_universe_audit_*.md
-archive/
+archive/*
+# v6.0.0-FINAL cleanup quarantine（README 追蹤；其他內容由 git mv 既有追蹤）
+!archive/_pending_removal_*/
+!archive/_pending_removal_*/README.md
 .pytest_cache/
 stock_backend/
