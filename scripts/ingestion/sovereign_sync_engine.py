@@ -1,13 +1,13 @@
 """
-sovereign_sync_engine.py v1.15 (Quantum Finance Market Universe Seed Engine)
+sovereign_sync_engine.py v1.16 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition)
 ================================================================================
-**最後更新日期**: 2026-05-18
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE (憲法 v6.0.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊)
+**最後更新日期**: 2026-05-21
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Market Universe Seed]: 第 4 步取得 `TaiwanStockInfo` 市場個股清單，並同步 FRED 核心宏觀資料。
-2. [Schema Sovereignty]: 所有寫入欄位必須 100% 對齊 `data_schema.py v2.11` 的 `DATASET_REGISTRY`。
+1. [Market Universe Seed]: 第 4 步（憲章 §二 Step 4 L2425）取得 `TaiwanStockInfo` 市場個股清單，並同步 FRED 核心宏觀資料。
+2. [Schema Sovereignty]: 所有寫入欄位必須 100% 對齊 `data_schema.py` 當前版本之 `DATASET_REGISTRY`（透過 import；非硬鎖版本）。
 3. [Hybrid Observability]: 使用 `record_lifecycle(... ) as lc`，將 warning / failed 回寫 pipeline lifecycle。
 4. [Zero Silent Drop]: API 空回應、HTTP 4xx/5xx、dropna 全空、DB upsert 失敗皆必須記入 stats 與 terminal report。
 5. [Idempotency]: 使用 ON CONFLICT upsert，確保 seed / sync 可重跑。
@@ -18,7 +18,7 @@ sovereign_sync_engine.py v1.15 (Quantum Finance Market Universe Seed Engine)
    - **L2 事中應對**：402 單次 1800s 探測重試；403/429/5xx/Timeout 三階段退避 [30s, 300s, 1800s]
    - **L3 事後續跑**：DB-driven checkpoint，已同步之 (stock_id, dataset, ≥start_date) 不再呼叫 API
 8. **[402 vs 403 分流]** (v1.10, 憲法 §7.4)：402 預設視為「資料集付費門檻」單次重試；403/429 視為「速率超限」完整三階段退避。
-9. **[Full-Market Restricted Governance Exception]** (v1.13, 憲法 §6.8.7 第 (4) 條)：`--universe full` 解鎖
+9. **[Full-Market Restricted Governance Exception]** (v1.13, 憲法 §6.8.7 第 (4) 條 / §二 Step 4F L2430)：`--universe full` 解鎖
    `core ∪ convex ∪ research ∪ quarantine` 全 2,798 支 sync；**必須**附 `--special-full-market-reason "<≥12 字理由>"`
    且情境屬 §6.8.7 第 (4) 條五類合法清單（DB rebuild bootstrap / Sovereign rebuild / pre-annual audit /
    重大資料源治權變更 / 重大合規事件）；缺 reason 或 reason < 12 字即 preflight FAILED exit 1；
@@ -29,61 +29,136 @@ sovereign_sync_engine.py v1.15 (Quantum Finance Market Universe Seed Engine)
     `--strict-source-history`（強制 `start_date=1990-01-01` + 停用 §7.5 L3 resume，FinMind API 自動回傳真實最早
     可得日期）；FRED 同步維持既有 `asc + offset` 全歷史分頁。`--days` 在 full mode 下退為 safety floor，
     實際同步起點由 strict-source-history 決定；使用者毋須另下 `--strict-source-history` 旗標。
-11. **[Core Full-History Mode `--full-history` Alias]** (v1.15, 憲法 §6.8.7 第 (1A) 條)：核心股全天數補刷模式，
+11. **[Core Full-History Mode `--full-history` Alias]** (v1.15, 憲法 §6.8.7 第 (1A) 條 / §二 Step 4G L2431)：核心股全天數補刷模式，
     為 `--strict-source-history` 之直觀別名旗標；兩旗標**等價**，任一啟用即觸發 §14.7-L 行為
     （start_date=1990-01-01 + §7.5 L3 resume 停用）。適用 `--universe core/convex/research` 或 `--id <stock_id>`，
     **無需** `--special-full-market-reason`（核心股範圍合憲，屬 §6.8.7 第 (1) 條合法範圍）。標準用法：
     `--universe core --all --full-history --dataset-batched --workers 4`，耗時 ~5-10 分鐘、~1-2M rows。
     對 `--universe full` 之語意不變（仍須 reason）。
+12. **[Zero Hardcoded Verdict]** (v1.16, 憲法 §5.6.3)：主權判定動態計算（`_apply_lifecycle_verdict()`）：
+    依 `stats.failed` / `a5_warn_count` / `a5_pause_count` 動態決定 lifecycle marker；§7.6 A5 觸發 (warn_count > 0 或 pause_count > 0)
+    即使 stats.failed=0 也升級為 WARNING；不硬編 PERFECT/WARNING/FAILED 結論。對齊全系統治權慣例
+    （path_setup v4.46 / data_schema v2.16 / db_utils v2.47 / audit_supply_chain v1.19）。
+13. **[Sovereignty Declaration]** (v1.16, 憲法 §3.1 序列模組身分)：本程式為 **§3.1 序列執行模組第 5/9 員**
+    （cross-ref 憲章 §3.1 子表 L2453「`sovereign_sync_engine.py`」），對應 **§二 維運矩陣 Step 4 / 4D / 4E / 4F / 4G / 5 / 6 / 7 / 8**
+    （L2425 / L2428 / L2429 / L2430 / L2431 / L2432 / L2433 / L2434 / L2435），唯一授權之 ingestion 載體。
+    治權邊界：(a) §3.1 序列模組執行 ingestion；(b) 五套禁令（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8）不涉；
+    (c) **T1-T3 不分層**；(d) **§8.5 anti-leakage 不處理**（由 `audit_leakage.py` 負責）；
+    (e) **不選股不評分**（由 `core_universe_builder.py` 負責）；(f) **不持有 Raw API Schema**（由 `data_schema.py` 持有）；
+    (g) **不建 governance tables**（由 `core_universe_schema.py` 負責）；(h) 唯一職責：對齊 `DATASET_REGISTRY` 寫入 FinMind + FRED 原始資料。
+14. **[Historical Reference Authority]** (v1.16)：本程式之 `schema_ver` 屬於記述性快照（記載當下對齊之 `data_schema` 版本），
+    非權威來源；`DATASET_REGISTRY` 之權威來源永遠是 `data_schema.py` 當前版本之 import 結果。§3.1 子表 L2453 之
+    「對齊 `data_schema.py v2.11`」表述為治權記述，非硬鎖版本（憲章本身為快照記錄，本程式對齊當前 `data_schema v2.16`）。
 
-## 📊 二、全量維運指令總矩陣 (per 憲法 v6.0.0 Section 二 / 5.5.3 五大標準)
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
-### A. 5.5.3 五大標準場景 (Core 5 Scenarios)
-| 維運需求場景 (Scenario)                       | 權威指令 / 建議用法                                                                                          | 對齊模組 |
-| :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :--- |
-| **1. [個股同步]**                              | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330`                                              | sovereign_sync_engine v1.15 |
-| **2. [單一 Table 同步]**                       | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --dataset TaiwanStockPrice`                   | sovereign_sync_engine v1.15 |
-| **3. [單一個股所有 Table 同步]**                | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all`                                        | sovereign_sync_engine v1.15 |
-| **4. [研究宇宙第一階段灌溉]**                  | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730`                   | sovereign_sync_engine v1.15 |
-| **5. [核心宇宙最終同步]**                      | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730`                        | sovereign_sync_engine v1.15 |
+> 本程式作為 §3.1 序列模組第 5/9 員（唯一 ingestion 載體），依「灌溉面向」拆分為 8 大功能群；每群對應憲章治權契約。
+> 對齊憲章 §二 維運矩陣 Step 4 / 4D / 4E / 4F / 4G / 5 / 6 / 7 / 8（L2425-2435）。
 
-### B. 補充運行模式 (Auxiliary Modes)
-| 場景                          | 指令                                                                                            | 用途 |
-| :---------------------------- | :--------------------------------------------------------------------------------------------- | :--- |
-| A. 種子灌溉 (TaiwanStockInfo)  | `$ python scripts/ingestion/sovereign_sync_engine.py --seed`                                    | 第 4 步全市場資產名冊重灌 |
-| B. 宏觀指標 (FRED 全譜)        | `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`                             | DFF/UNRATE/T10Y2Y/VIXCLS |
-| C. 選股 phase 全宇宙補刷       | `$ python scripts/ingestion/sovereign_sync_engine.py --all --days 730`                          | 為 CoreScore v0.2 準備 2 年歷史 |
-| D. **全市場全天數 (限定治理例外)** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字理由>"` | §6.8.7 第 (4) 條：「全天數」= 每 (stock_id, dataset) 自 FinMind/FRED API 最早可得日期 → 最新交易日；`--universe full` 自動啟用 strict-source-history，毋須另下 `--days`；強制 reason ≥ 12 字 |
-| E. Strict source history       | `$ python scripts/ingestion/sovereign_sync_engine.py --id <id> --dataset <ds> --strict-source-history --no-resume --days 14000` | §14.7-L core 150 mismatch 精準補刷 |
-| F. **核心股全天數補刷 (v1.15 新增)** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all --full-history --dataset-batched --workers 4` | §6.8.7 第 (1A) 條：core+convex 150 支 × 每股 API 最早可得日期 → 最新交易日；無需 reason；耗時 ~5-10 分鐘 |
+### Group A. 種子灌溉 (Seed Ingestion) — `--seed`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 `TaiwanStockInfo` 全市場資產名冊灌入（~2,798 支）| `sync_finmind(["TaiwanStockInfo"], seed_mode=True)` | §二 Step 4 L2425 |
+| A.2 可與其他旗標組合（如 `--seed --source fred`）| 多軸並行 | §3.1 ingestion 載體 |
+| 對應 CLI | `--seed` | — |
 
-### C. 旗標語意 (Flag Semantics)
-- `--id <stock_id>`：指定單一標的 ID（如 2330）。
-- `--universe research|convex|core|full`：依 §6.7 SQL 契約讀取對應 tier 名單；**v1.13 新增 `full`** = core+convex+research+quarantine 全市場 2,798 支（限定治理例外，須 `--special-full-market-reason`）。
-- `--dataset <name>`：只同步單一 dataset；不傳則用 `DEFAULT_FINMIND_DATASETS`（4 核心表）。
-- `--all`：取代「DEFAULT 4 表」為 `FINMIND_API_TABLES`（除 `TaiwanStockInfo` 外的全部 stock-data tables）。
-- `--days <N>`：增量同步天數（預設 30）。**研究宇宙 / 選股 phase 建議 730；全市場限定例外建議 1100+**。
-- `--seed`：執行 `TaiwanStockInfo` 種子灌溉（與其他旗標可組合）。
-- `--source [finmind|fred]`：限定數據源。
-- **v1.10 新增 (非破壞性)**：`--no-resume` 停用 L3 斷點續傳（除錯用）；`--throttle N` 自訂節流上限（預設 5500/hr，禁止 ≥ 6000）。
-- **v1.11 新增 (非破壞性, §7.6 A1〜A5)**：`--dataset-batched` 改 dataset 優先迴圈 (A1)；`--workers N` 共享 throttle 平行 worker (A2)；`--dynamic-quota --quota-interval N` 動態配額查詢 (A3，N≥100)；A4 per-dataset 配額自動寫入 `data_audit_log`；A5 達 4800/hr 主動 WARN、達 5500/hr 自動暫停 300s。
-- **v1.12 新增 (§14.7-L)**：`--strict-source-history` 將 FinMind stock-level sync 起點固定為 1990-01-01 並自動停用 L3 resume，用於滿足「FinMind API 最早可得日期完全對齊 DB」之精準補刷；禁止用於全市場無界重抓。
-- **v1.13 新增 (§6.8.7 第 (4) 條)**：`--special-full-market-reason "<≥12 字理由>"` — 解鎖 `--universe full` 之治理 gate；reason 寫入 lifecycle 與報表；缺 reason 或 reason < 12 字即 exit 1。
-- **v1.14 行為更新 (§6.8.7 第 (4) 條「全天數」定義明文化)**：「全天數」嚴格定義為「每 (stock_id, dataset) 對自 API 來源端最早可得日期 → DB 最後一個交易日」；`--universe full` 自動啟用 `--strict-source-history`（強制 start_date=1990-01-01 + L3 resume off），使用者毋須另下旗標；`--days` 在 full mode 下退為 safety floor。FRED 序列維持既有全歷史 `asc + offset` 分頁。
-- **v1.15 新增 (§6.8.7 第 (1A) 條)**：`--full-history` 為 `--strict-source-history` 之**直觀別名**；兩旗標等價，任一啟用即觸發 §14.7-L 行為。適用 `--universe core/convex/research` 或 `--id <stock>`，無需 reason；對 `--universe full` 仍須 special reason。
+### Group B. 個股同步 (Single-Stock Sync) — `--id <stock>`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 單一個股單一 dataset | `--id 2330 --dataset TaiwanStockPrice` | §二 Step 5 L2432 |
+| B.2 單一個股核心 4 表預設 | `--id 2330` | §二 Step 6 L2433 |
+| B.3 單一個股全 datasets | `--id 2330 --all` | §3.1 ingestion |
+| 對應 CLI | `--id <stock_id>` (+ optional `--dataset` / `--all`) | — |
 
-### D. 不提供之旗標 (Intentionally Omitted)
-- `--force` (全歷史 from 2000-01-01)：仍維持不提供，避免在 v0.2 builder 完工前耗盡 FinMind quota。
+### Group C. Universe 階段灌溉 (Universe Tier Ingestion) — `--universe research/convex/core`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 研究宇宙第一階段（`--universe research --all --days 730`）| 730d for CoreScore v0.2 | §二 Step 4D L2428 |
+| C.2 凸性宇宙第二階段補刷（`--universe convex --all --days 730`）| 730d | §二 Step 4E L2429 |
+| C.3 核心宇宙最終同步（`--universe core --all --days 730`）| 730d | §二 Step 7 L2434 / 5.5.3 第 5 條 |
+| C.4 核心宇宙日常維運（`--universe core`，不帶 `--all`）| 預設 30d 增量 | §二 Step 7 L2434 |
+| C.5 §6.7 SQL 契約查詢 tier | `UNIVERSE_TIERS["research/convex/core"]` | §6.7 SSOT |
+| 對應 CLI | `--universe research|convex|core [--all] [--days N]` | — |
+
+### Group D. 全市場治理例外 (Full-Market Restricted Governance Exception) — `--universe full`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 全 2,798 支（`core ∪ convex ∪ research ∪ quarantine`）| `UNIVERSE_TIERS["full"]` | §6.8.7 第 (4) 條 |
+| D.2 強制 `--special-full-market-reason "<≥12 字理由>"` | preflight 驗證；缺 reason 或 < 12 字即 exit 1 | §6.8.7 第 (4) 條五類合法清單 |
+| D.3 auto strict-source-history（v1.14 自動啟用）| `start_date=1990-01-01` + L3 resume off | §6.8.7 第 (4) 條 / §14.7-L |
+| D.4 reason 寫入 lifecycle context + 終端報表 | audit trail | §0.4 可觀察性 |
+| D.5 五類合法情境 | DB rebuild / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件 | §6.8.7 第 (4) 條 |
+| 對應 CLI | `--universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"` | §二 Step 4F L2430 |
+
+### Group E. 核心股全天數補刷 (Core Full-History Mode) — `--full-history` / `--strict-source-history`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| E.1 `--full-history` 為 `--strict-source-history` 之直觀別名 | argparse `dest='strict_source_history'` 共用 | §6.8.7 第 (1A) 條 |
+| E.2 適用 `--universe core/convex/research` 或 `--id <stock>` | 無需 reason（核心股範圍合憲）| §6.8.7 第 (1) 條合法範圍 |
+| E.3 觸發 §14.7-L 行為 | `start_date=1990-01-01` + §7.5 L3 resume 停用 | §14.7-L |
+| E.4 標準用法效能 | `--universe core --all --full-history --dataset-batched --workers 4` ~5-10 分鐘 / ~1-2M rows | §6.8.7 第 (1A) 條 |
+| E.5 對 `--universe full` 仍須 reason | 不與 D 衝突 | §6.8.7 第 (4) 條 |
+| 對應 CLI | `--full-history` 或 `--strict-source-history`（任一）| §二 Step 4G L2431 |
+
+### Group F. FRED 宏觀同步 (FRED Macro Sync) — `--source fred`
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| F.1 4 大序列同步（DFF / UNRATE / T10Y2Y / VIXCLS）| `sync_fred()` | §二 Step 8 L2435 |
+| F.2 `asc + offset` 全歷史分頁 | `FRED_PAGE_LIMIT = 100000` | FRED API contract |
+| F.3 dropna 後空集合分支防禦 | v1.7 補正 | [Zero Silent Drop] |
+| F.4 empty-data 失敗分支 | v1.7 補正 | [Zero Silent Drop] |
+| 對應 CLI | `--source fred` | — |
+
+### Group G. §7 三層防禦 + §7.6 進階優化 (Supply Chain Defenses)
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| G.1 L1 滑動窗節流 5500/hr | `FinMindThrottle` (`DEFAULT_THROTTLE_PER_HOUR=5500`)；禁止 ≥ 6000 | §7.2 |
+| G.2 L2 三階段退避 [30s, 300s, 1800s] | `fetch_with_retry()` (`RETRY_BACKOFFS_FULL`) | §7.3 |
+| G.3 L3 DB-driven resume | `is_already_synced()` checkpoint | §7.5 |
+| G.4 402 單次 1800s 探測重試 | `RETRY_BACKOFF_402=[1800]` | §7.4 |
+| G.5 §7.6 A1 dataset 優先迴圈 | `--dataset-batched` | §7.6 A1 |
+| G.6 §7.6 A2 thread-safe 平行 worker | `--workers N` (`threading.Lock`) | §7.6 A2 |
+| G.7 §7.6 A3 動態配額查詢 | `--dynamic-quota --quota-interval N` (N≥100) | §7.6 A3 |
+| G.8 §7.6 A4 per-dataset 配額快照 | `write_data_audit_log(op_type='QUOTA_HOURLY_SNAPSHOT')` | §7.6 A4 |
+| G.9 §7.6 A5 4800/hr WARN + 5500/hr 自動暫停 300s | `A5_WARN_THRESHOLD` / `A5_PAUSE_THRESHOLD` / `A5_PAUSE_DURATION` | §7.6 A5 |
+| 對應 CLI | `--no-resume` / `--throttle N` / `--dataset-batched` / `--workers N` / `--dynamic-quota` / `--quota-interval N` | — |
+
+### Group H. Lifecycle + 動態主權判定 (Verdict)
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| H.1 `record_lifecycle()` context 包裹整個 sync 流程 | `run()` 內之 `with record_lifecycle(...)` | §0.4 可觀察性 |
+| H.2 `stats.failed > 0` → lifecycle FAILED | `_apply_lifecycle_verdict()` | §5.6.3 動態 verdict |
+| H.3 `a5_warn_count > 0` 或 `a5_pause_count > 0` → lifecycle WARNING（即使 stats.failed=0）| v1.11a 邊界補正 | §7.6 A5 升級邏輯 |
+| H.4 PERFECT/WARNING → exit 0；FAILED → exit 1 | `run()` 末段 | §3.1 接受標準 |
+| H.5 `write_data_audit_log()` per-stock × per-dataset 寫入 | op_type 擴充 `RETRY_402_RECOVERED` / `RESUME_SKIP` / `QUOTA_HOURLY_SNAPSHOT` | §0.4 audit trail |
+| 對應 CLI | 所有模式皆觸發 | — |
+
+### 對齊憲章 §二 維運矩陣（標準場景索引）
+| 場景 | 指令 | 對應功能群 |
+| :--- | :--- | :--- |
+| **4. [種子灌溉]** (L2425) | `python scripts/ingestion/sovereign_sync_engine.py --seed` | A + H |
+| **4D. [研究宇宙第一階段]** (L2428) | `--universe research --all --days 730` | C + G + H |
+| **4E. [凸性宇宙第二階段]** (L2429) | `--universe convex --all --days 730` | C + G + H |
+| **4F. [全市場治理例外]** (L2430) | `--universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"` | D + G + H |
+| **4G. [核心股全天數補刷]** (L2431) | `--universe core --all --full-history --dataset-batched --workers 4` | E + G + H |
+| **5. [單一標的指定 dataset]** (L2432) | `--id 2330 --dataset TaiwanStockPrice` | B + G + H |
+| **6. [單一標的核心 datasets]** (L2433) | `--id 2330` | B + G + H |
+| **7. [核心 Universe 同步]** (L2434) | `--universe core --all --days 730` | C + G + H |
+| **8. [FRED 宏觀]** (L2435) | `--source fred` | F + H |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--force` (全歷史 from 2000-01-01)：仍維持不提供，避免在 v0.2 builder 完工前耗盡 FinMind quota。使用者應改用 `--full-history` 或 `--strict-source-history`（屬 Group E）。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.15** | 2026-05-18 | Codex | **§6.8.7 第 (1A) 條核心股全天數補刷 + `--full-history` 別名旗標**：依憲章 v6.0.0-patch §6.8.7 第 (1A) 條新增「核心股全天數補刷」場景，引入 `--full-history` 作為 `--strict-source-history` 之直觀別名（兩旗標等價，任一啟用即觸發 §14.7-L 行為：`start_date=1990-01-01` + §7.5 L3 resume 停用）。argparse 以 `dest='strict_source_history'` 將兩旗標合併為同一狀態變數，使用者下任一即生效；help 文字明示適用場景（core/convex/research 或 --id，無需 reason；對 --universe full 仍須 reason）。同步登錄 §2 維運矩陣 Step 4F、B 子節新增 F「核心股全天數補刷」。本版不改 main() preflight 邏輯、UNIVERSE_TIERS、節流、退避、FRED pagination 或 v1.14 auto-strict 行為。 | **ACTIVE** |
+| **v1.16** | 2026-05-21 | Codex | **8 項標頭強制檢驗 100% 合規 + 維運矩陣重組為 8 大功能群視角 + 治權慣例 3 條入憲**：(a) 主權狀態行補入 v1.16 修補摘要 + §3.1 序列模組身分宣告；(b) 最後更新日期 2026-05-18 → 2026-05-21；(c) 核心定義 11 條 → 14 條：新增 [Zero Hardcoded Verdict] §5.6.3 動態 verdict 對齊 + [Sovereignty Declaration] §3.1 序列模組第 5/9 員身分自我宣告（8 條治權邊界 a-h）+ [Historical Reference Authority]；(d) cross-ref 精確行號補入（§二 Step 4 L2425 / Step 4D-8 L2428-2435 + §3.1 子表 L2453）；(e) 維運矩陣重組為 **8 大功能群**（A. 種子灌溉 / B. 個股同步 / C. Universe 階段灌溉 / D. 全市場治理例外 / E. 核心股全天數 / F. FRED 宏觀 / G. §7 三層防禦 + §7.6 進階優化 / H. Lifecycle + Verdict 動態判定）+ 對齊 §二 維運矩陣 9 個標準場景索引；(f) cosmetic：`data_schema.py v2.11` → 動態對齊當前 `v2.16`；對齊憲章 v6.0.0-FINAL；補入模組級 `CONSTITUTION_VER` + `TOOL_VER` 常數；`self.schema_ver` 更新至 v2.16；**修正 v1.11 ACTIVE → SUPERSEDED 狀態錯誤**（修訂歷程內部矛盾封閉）。介面零變動：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| v1.15 | 2026-05-18 | Codex | **§6.8.7 第 (1A) 條核心股全天數補刷 + `--full-history` 別名旗標**：依憲章 v6.0.0-patch §6.8.7 第 (1A) 條新增「核心股全天數補刷」場景，引入 `--full-history` 作為 `--strict-source-history` 之直觀別名（兩旗標等價，任一啟用即觸發 §14.7-L 行為：`start_date=1990-01-01` + §7.5 L3 resume 停用）。argparse 以 `dest='strict_source_history'` 將兩旗標合併為同一狀態變數，使用者下任一即生效；help 文字明示適用場景（core/convex/research 或 --id，無需 reason；對 --universe full 仍須 reason）。同步登錄 §2 維運矩陣 Step 4F、B 子節新增 F「核心股全天數補刷」。本版不改 main() preflight 邏輯、UNIVERSE_TIERS、節流、退避、FRED pagination 或 v1.14 auto-strict 行為。 | SUPERSEDED |
 | v1.14 | 2026-05-18 | Codex | **§6.8.7 第 (4) 條「全天數」定義明文化 + auto strict-source-history on full universe**：依憲章 v6.0.0-patch 對「全天數」之嚴格定義（每 (stock_id, dataset) 對自 API 來源端最早可得日期 → DB 最後交易日）落地實作：main() preflight 在 `--universe full` 觸發時 **自動啟用** `--strict-source-history`（強制 `start_date=1990-01-01` + 停用 §7.5 L3 resume），使用者毋須另下旗標；`--days` 在 full mode 下退為 safety floor，實際同步起點由 strict-source-history 決定。終端報表加 INFO 列說明此自動行為。FRED 同步維持既有 `asc + offset` 全歷史分頁，不變。本版不改 UNIVERSE_TIERS、節流、退避、reason 驗證或既有旗標語意。 | SUPERSEDED |
 | v1.13 | 2026-05-18 | Codex | **§6.8.7 第 (4) 條全市場全天數限定治理例外**：依憲章 v6.0.0-patch §6.8.7 第 (4) 條修訂，原「全市場 2,798 支全抓禁止」改為限定治理例外。新增 `UNIVERSE_TIERS["full"] = (core, convex, research, quarantine)`；新增 `--special-full-market-reason <reason>` argparse + preflight 驗證（缺 reason 或 reason < 12 字即 exit 1）；reason 寫入 `record_lifecycle` context 與終端報表「special override」列；__main__ 加治權檢查 — `--universe full` 時必須附 reason，反之 reason 不得用於非 full universe；§7.6 A1+A2 平行與 A3 動態配額之必要性提示（不強制 enforce，避免破壞既有 dry-run）。本版不改 schema、upsert、節流、退避、FRED pagination 或 strict-source-history 語意。 | SUPERSEDED |
 | v1.12 | 2026-05-18 | Codex | **§14.7-L strict all-source-history mode**：新增 `--strict-source-history`，使 FinMind 個股同步以 `1990-01-01` 作為授權來源端探測下界，並強制停用 §7.5 L3 resume，避免 partial DB 因「存在任一 >= start_date row」被誤跳過。此模式只改變 start_date/resume 語意，不改 schema、upsert、節流、退避或 FRED pagination；應搭配 `audit_source_availability.py --strict` 產生之 mismatch 清單做 core 150 小範圍精準補刷，不得作為全市場全歷史重抓入口。 | SUPERSEDED |
 | v1.11a | 2026-05-17 | Codex | **§7.6 A3/A5 治權邊界補正**：(A3 修正) `_query_remaining_quota()` 原直接呼叫 `get_user_info()` 未計入 throttle 配額，違反 §7.6 A3「查詢動作本身計入配額」邊界；補正為呼叫成功後在 `throttle.lock` 內遞增 `window` 與 `total_acquired`，避免遞迴 acquire 造成死鎖。(A5 修正) `_apply_lifecycle_verdict()` 原僅輸出 stdout，未對齊 §7.6 A5「達 4,800/hr 時 **lifecycle 寫入 warning**」；補正為當 `a5_warn_count > 0` 或 `a5_pause_count > 0` 時，即使主流程 success 也升級為 lifecycle WARNING；既有 warning/failed 分支則 append A5 訊息進入 lifecycle marker。本補正不改動 CLI、不改動既有節流邏輯，僅封閉 v1.11 對 §7.6 條文之邊界漏洞。 | SUPERSEDED |
-| v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | **ACTIVE** |
+| v1.11 | 2026-05-17 | Codex | §7.6 A1〜A5 進階優化落地版：(A1) 新增 `--dataset-batched` 改外層迴圈優先 dataset，降低單批請求量；(A2) 新增 `--workers N` 平行 worker，共用 thread-safe `FinMindThrottle` (`threading.Lock`)；(A3) 新增 `--dynamic-quota` 與 `--quota-interval N` (N≥100)，每 N 次請求查 FinMind 帳號 API 動態調整節流上限；(A4) `FinMindThrottle` 新增 per-dataset 滑動窗統計，引擎結束時自動寫入 `data_audit_log` op_type=`QUOTA_HOURLY_SNAPSHOT`，不改動既有主鍵；(A5) 4800/hr 觸發一次性 WARN，5500/hr 觸發自動暫停 300s（次數計入 stats）。預設行為 (workers=1, dataset-batched=off, dynamic-quota=off) 完全相容 v1.10。 | SUPERSEDED |
 | v1.10 | 2026-05-15 | Codex | §7 供應鏈速率主權落地版：(1) 新增 `FinMindThrottle` 滑動窗節流 5500/hr；(2) 新增 `fetch_with_retry()` 三階段退避 [30s, 300s, 1800s] 與 402 單次探測重試；(3) 新增 `is_already_synced()` DB-driven L3 斷點續傳；(4) 重寫 `sync_finmind()` 整合三層防禢，新增 `skipped` 與 `recovered` stats 類別；(5) `write_data_audit_log` op_type 擴充 `RETRY_402_RECOVERED` / `RESUME_SKIP`；(6) 連續三次失敗即 FAILED 並寫入 lifecycle；(7) CLI 不變、`--no-resume`、`--throttle` 為非破壞性新增。對齊憲法 v5.4.22 §7.1–7.8 全部條文。 | SUPERSEDED |
 | v1.9 | 2026-05-14 | Auto-patch | 5.5.3 對齊版：矩陣表補滿；--all 旗標語意正式登錄；Phase-Appropriate Lookback。 | SUPERSEDED |
 | v1.8 | 2026-05-14 | Codex | 市場個股資料取得與種子灌溉治理；lifecycle context 接入；動態 PERFECT/WARNING/FAILED。 | SUPERSEDED |
@@ -123,6 +198,10 @@ try:
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
+
+
+CONSTITUTION_VER = "v6.0.0"
+TOOL_VER = "v1.16"
 
 
 # v1.10 phase-aware constants inherited from v1.9
@@ -292,9 +371,9 @@ class SovereignSyncEngine:
                  quota_check_interval=A3_QUOTA_INTERVAL_MIN):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
-        self.constitution_ver = "v6.0.0"
-        self.schema_ver = "v2.11"
-        self.tool_ver = "v1.15"
+        self.constitution_ver = CONSTITUTION_VER
+        self.schema_ver = "v2.16"
+        self.tool_ver = TOOL_VER
         # v1.11 §7.6 A3 動態配額查詢 callback
         quota_fn = self._query_remaining_quota if dynamic_quota else None
         self.throttle = FinMindThrottle(
@@ -831,7 +910,7 @@ class SovereignSyncEngine:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Quantum Finance 主權同步引擎 (v1.15 — §7 速率主權 + §14.7-L strict source history + §6.8.7 第 (1A) 核心股全天數 + 第 (4) 條全市場限定例外)",
+        description=f"Quantum Finance 主權同步引擎 ({TOOL_VER} — §7 速率主權 + §14.7-L strict source history + §6.8.7 第 (1A) 核心股全天數 + 第 (4) 條全市場限定例外 + §3.1 序列模組身分 + 8 大功能群矩陣)",
         epilog="選股 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe research --all --days 730；"
                "核心 phase 範例：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --days 730；"
                "核心股全天數補刷 (v1.15)：python scripts/ingestion/sovereign_sync_engine.py --universe core --all --full-history --dataset-batched --workers 4；"
