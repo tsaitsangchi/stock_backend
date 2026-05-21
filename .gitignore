@@ -112,6 +112,8 @@ reports/*
 !reports/audit_*_design_research_*.md
 !reports/api_schema_compliance_audit_*.md
 !reports/data_schema_*_execution_*.md
+# 跨層治權對映 audit（三支柱 × 資料來源 × 完整度）
+!reports/core_score_*.md
 # 跨平台接力 / session handoff 紀錄（跨機接續必要文件）
 !reports/session_handoff_*.md
 archive/*
