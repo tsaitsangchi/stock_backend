@@ -1,8 +1,8 @@
 """
-db_utils.py v2.46 (Quantum Finance Infrastructure Sovereign Edition)
+db_utils.py v2.47 (Quantum Finance Infrastructure Sovereign Edition)
 ================================================================================
 **最後更新日期**: 2026-05-21
-**主權狀態**: GOVERNANCE SYNC (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)
+**主權狀態**: GOVERNANCE SYNC (憲法 v6.0.0 對齊 + 維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -15,28 +15,84 @@ db_utils.py v2.46 (Quantum Finance Infrastructure Sovereign Edition)
 5. [Zero Hardcoded Verdict]: 主權判定（PERFECT / WARNING / FAILED）必須依執行結果動態計算（`run_diagnostics()` L976-1019），嚴禁硬編碼。對齊憲章 §5.6.3「禁止硬編碼 PERFECT」與 §3.2 Step 2C 接受標準（FAILED → exit 1；PERFECT/WARNING → exit 0）；治權慣例對齊 `data_schema.py v2.13+` / `core/__init__.py v1.16+` / `finmind_client.py v4.46+` / `core_universe_schema.py v0.3+` / `audit_api_schema_compliance.py v0.1+` 之 [Zero Hardcoded Verdict]。
 6. [Sovereignty Declaration]: 本模組為憲章 §3.2 橫切 library / Infrastructure Sovereign Authority（憲章 L2282 §3.2 子表）；承擔 DB 連線池管理 + lifecycle log（pipeline_execution_log）+ audit log（data_audit_log）+ §6.7 SQL 核心股查詢之 public API 治權；同時授權 `python scripts/core/db_utils.py` 之 `__main__` 為憲章 §二 Step 2C 前置依賴檢查（憲章 §二 L2411）；不涉及 §0.1-A 第一性原理 / §0.2-A 八二法則 / §0.3-A 康波週期 / §0.0-E.4 統合層 / §0.0-F.3 AI 協作工具規則五套禁令；不在 §0.1.1 T1/T2/T3 分層內（infrastructure 為基礎設施，不執行第一性原理工程公式）；不處理 §8.5 anti-leakage（DB connection 屬基礎設施，非時間序列建模）；不選股不評分（屬 `core_universe_builder.py` Builder Authority）；不持有 Raw API Schema 治權（屬 `data_schema.py` Raw API Schema Authority）。
 
-## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - 100% Coverage)
-本矩陣遵循「組合完整性原則」，窮舉所有基礎設施維運可能性：
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
-| 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
-| :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [基礎設施：連線診斷]** | `$ python scripts/core/db_utils.py`                                   | db_utils v2.46 |
-| **2. [個股同步：單一標的全數據]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all` | sovereign_sync_engine v1.10 |
-| **3. [單一 Table 同步：初始化]** | `$ python scripts/core/data_schema.py --init --table TaiwanStockPrice`| data_schema |
-| **4. [單一個股所有 Table 同步]** | `$ python scripts/ingestion/sovereign_sync_engine.py --id 2330 --all` | sovereign_sync_engine v1.10 |
-| **5. [所有核心股同步]**   | `$ python scripts/ingestion/sovereign_sync_engine.py --universe core --all` | sovereign_sync_engine v1.10 |
-| **6. [研究宇宙分階段灌溉]** | `$ python scripts/ingestion/sovereign_sync_engine.py --universe research --all` | sovereign_sync_engine v1.10 |
-| **7. [緊急維運：重置連線池]** | `$ python scripts/core/db_utils.py --reset-pool`                      | db_utils v2.46 |
-| **8. [數據稽核：生命週期完整性]** | `$ python scripts/maintenance/check_system_health.py`                  | maintenance |
+依憲章 §3.2 橫切 library 之治權特性，`db_utils.py` 為被多支治權程式 `import` 之
+基礎設施 library；本矩陣按「**功能群視角**」分類 6 大功能群，明示 API 群組與
+治權對應。（v2.47 由原 8 場景視角重組）
 
-💡 **範例完整性說明**: 透過以上 8 種場景組合，維運人員可實現從單一物理連線探測到全宇宙數據毀滅性重刷的所有執行可能性。
+### 🔌 Group A. DB 連線管理 (Infrastructure Resilience)
 
-> 註 (v2.46)：v2.45 完成 §6.7 核心股查詢 SQL 契約 + 跨模組 public API restoration + connection diagnostics；v2.46（2026-05-21）依 CLAUDE.md §四 #4 補入 [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義 + CONSTITUTION_VER/TOOL_VER 模組常數 + cross-ref 行號達 100% 合規。
+| 子項 | API / 指令 | 治權對應 |
+| :--- | :--- | :--- |
+| **A.1 標準連線** | `get_db_connection()`（含 `connect_timeout=10` + 5 件套 env 檢查）| §一 0 / §0.0-I.8 |
+| **A.2 健康診斷** | `db_connection_check()` → (ok, latency_ms) | [Infrastructure Resilience] |
+| **A.3 Transaction context** | `with db_transaction() as cur:` 自動 commit/rollback | [Infrastructure Resilience] |
+| **A.4 Session context** | `with db_session() as conn:` raw 連線 + 自動 commit | [Infrastructure Resilience] |
+| **A.5 連線池重置（CLI）** | `$ python scripts/core/db_utils.py --reset-pool` | 緊急維運 |
+| **A.6 向後相容 alias** | `get_db_conn()` ← legacy 包裝 `get_db_connection()` | 向後相容 |
+| **A.7 連線參數** | `get_connection_params()` → dict | 維運工具 |
+
+### 📝 Group B. Hybrid Observability — 雙日誌系統
+
+| 子項 | API / 寫入表 | 治權對應 |
+| :--- | :--- | :--- |
+| **B.1 生命週期** | `with record_lifecycle(task, category, stock_id) as lc:` → `pipeline_execution_log` | [Hybrid Observability] |
+| **B.2 主動標記失敗** | `lc.mark_failed(msg)` / `lc.mark_warning(msg)` | v2.44 封堵 status 謊報 |
+| **B.3 專項審計** | `write_data_audit_log(table, stock, date, action, rows)` → `data_audit_log` | [Hybrid Observability] |
+| **B.4 pipeline_log 寫入** | `write_pipeline_log(...)` 直寫 | 跨模組相容 |
+| **B.5 evaluation_log 寫入** | `write_evaluation_log(...)` 評估專用 | 跨模組相容 |
+
+### 🏛️ Group C. §6.7 SQL SSOT — 核心股查詢
+
+| 子項 | API | 治權對應 |
+| :--- | :--- | :--- |
+| **C.1 核心股唯一入口** | `get_core_stocks_from_db(as_of_date, tiers)` — JOIN `core_universe_membership` × `core_universe_snapshot WHERE status='committed'` | §6.7 SQL 契約 + [Asset Sovereignty] |
+| **C.2 股票 ID 清單** | `get_db_stock_ids(core_only=True/False, types, conn)` | 包裝 C.1 |
+| **C.3 最新日期查詢** | `get_latest_date(table, stock_id, date_col)` | 同步邊界 |
+| **C.4 安全 start date** | `get_market_safe_start()` / `get_all_safe_starts()` | §8.5 anti-leakage 邊界 |
+| **C.5 cached start 解析** | `resolve_start_cached()` | 同步效能優化 |
+
+### ⚡ Group D. 批次 Upsert + 安全 Commit
+
+| 子項 | API | 用途 |
+| :--- | :--- | :--- |
+| **D.1 批次 upsert** | `bulk_upsert(table, records, unique_cols, page_size=2000)` | execute_values 高效批次 |
+| **D.2 安全 commit** | `safe_commit_rows(conn, sql, rows, template, label)` | rollback 保護 |
+| **D.3 分群 commit** | `commit_per_group()` / `commit_per_stock()` / `commit_per_day()` / `commit_per_stock_per_day()` | 避免長 transaction |
+| **D.4 冪等 DDL** | `ensure_ddl(conn, *ddls)` 預設套用 `DDL_FETCH_LOG` | IF NOT EXISTS 語意 |
+| **D.5 基礎設施 ensure** | `ensure_infrastructure()` | DDL_FETCH_LOG 唯一保證 |
+
+### 🛡️ Group E. 錯誤處理 + Failure Logging
+
+| 子項 | API | 用途 |
+| :--- | :--- | :--- |
+| **E.1 失敗追蹤類別** | `FailureLogger(table_name, db_conn, log_to_db)` 之 `log/add/__call__/dump` 介面 | 集中失敗追蹤 |
+| **E.2 fetch_log 寫入** | `log_fetch_result(table, stock_id, status, rows_inserted, ...)` | 同步成果記錄 |
+| **E.3 型別安全轉換** | `safe_float(value, default)` / `safe_int()` / `safe_date()` | None / 例外處理 |
+| **E.4 批次安全映射** | `map_rows_safe(rows, mapper, label)` | 容錯式 row 處理 |
+| **E.5 重複行去除** | `dedup_rows(rows, key_indices)` | 依 key 去重 |
+| **E.6 失敗 JSON 落地** | `append_failure_json(table_name, item)` → `reports/` | audit trail |
+| **E.7 failure log 路徑** | `get_failure_log_path(table_name)` | 路徑解析 |
+
+### 🩺 Group F. Step 2C 前置依賴檢查（憲章 §二 L2411 授權）
+
+| 子項 | 指令 / API | 治權對應 |
+| :--- | :--- | :--- |
+| **F.1 五軸前置稽核（CLI）** | `$ python scripts/core/db_utils.py` 之 `__main__` | 憲章 §二 L2411 Step 2C |
+| **F.2 verdict 動態判定** | `run_diagnostics()` → PERFECT / WARNING / FAILED | §5.6.3 / §3.2 接受標準 |
+| **F.3 五軸內容** | (1) DB 連線 + latency / (2) §6.7 SQL 查詢 / (3) Public API 20 個契約 / (4) `pipeline_execution_log` 寫入 / (5) `data_audit_log` 寫入 | 治權閉環 |
+| **F.4 exit code 對 §3.2 接受標準** | `sys.exit(0 if status in ("PERFECT", "WARNING") else 1)` L1068 | §3.2 / FAILED 阻斷 Step 3 |
+
+💡 **使用提示**：以上 6 群 + 30+ 子項 API 涵蓋 `db_utils.py` 全部 public 接口；其他治權程式（`data_schema.py` / `core_universe_schema.py` / `sovereign_sync_engine.py` / `core_universe_builder.py` / `audit_supply_chain.py` 等）依各自治權需求 `import` 對應功能群。
+
+> 註 (v2.47)：v2.45 完成 §6.7 核心股查詢 SQL 契約 + 跨模組 public API restoration + connection diagnostics；v2.46 依 CLAUDE.md §四 #4 補入治權核心定義 + 模組常數 + cross-ref 達 100% 合規；v2.47（2026-05-21）將維運矩陣重組為 6 大功能群視角（Group A-F），對齊 db_utils 之 §3.2 橫切 library 治權特性，提升可讀性。
 
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.46** | 2026-05-21 | Codex | **2 條核心定義補入 + 2 模組常數 + cross-ref 行號（CLAUDE.md §四 #4 100% 合規補強；逐元件審計 Step 1.1.4 跟進）**：依昨日剛入憲之 CLAUDE.md §四 #4「8 項標頭強制檢驗」治權原則檢驗，揭露 v2.45 之 5 項缺口：(1) 主權狀態行未明示「憲法 v6.0.0 對齊」；(2) 核心定義缺 [Zero Hardcoded Verdict]（程式邏輯 L976-1019 動態但未顯式宣告）；(3) 核心定義缺 [Sovereignty Declaration]（治權位階 / 5 套禁令 / T1-T3 / §8.5 未明示）；(4) 缺 module-level `CONSTITUTION_VER` + `TOOL_VER` 模組常數（治權慣例對齊 path_setup v4.45+ / data_schema v2.12+）；(5) cross-ref 缺精確行號（與 data_schema 之「L2440 / L2709」/ __init__ 之「L2457 / L2488 / L5589」/ core_universe_schema v0.3 之「L2455 / L2722 / L2348-L2353」/ audit_api_schema_compliance v0.2+ 之「L2483」之治權慣例不對齊）。**補正內容**：(I) 標頭版本 v2.45 → v2.46；(II) 最後更新日期 2026-05-16 → 2026-05-21；(III) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)」；(IV) 核心定義新增第 5 條 [Zero Hardcoded Verdict] 顯式宣告動態 `run_diagnostics()` 對齊 §5.6.3；(V) 核心定義新增第 6 條 [Sovereignty Declaration] 明示 §3.2 橫切 library + Infrastructure Sovereign Authority（cross-ref 憲章 L2282 §3.2 子表）+ Step 2C 前置依賴檢查授權 + 5 套禁令不涉 + T1-T3 不分層 + §8.5 anti-leakage 不處理 + 不選股不評分（Builder Authority 邊界）+ 不持有 Raw API Schema（data_schema Authority 邊界）；(VI) 新增 module-level `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v2.46"` 常數；(VII) 維運矩陣 8 場景 + report header 之 cosmetic v2.45 → v2.46。**所有 public API（`get_db_connection()`, `record_lifecycle()`, `write_data_audit_log()`, `get_core_stocks_from_db()`, `bulk_upsert()`, `FailureLogger`, `DDL_FETCH_LOG` 等 20+ 函式）、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code 對 §3.2 Step 2C 接受標準分流、record_lifecycle 之 _LifecycleContext（v2.44 既有）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 data_schema v2.14 / __init__ v1.16 / core_universe_schema v0.3 / audit_api_schema_compliance v0.2 同模式）。合規度：v2.45 ≈60% → v2.46 100%。 | **ACTIVE** |
+| **v2.47** | 2026-05-21 | Codex | **維運矩陣重組為 6 大功能群視角（功能可讀性提升；採選項丙重寫；對齊 §3.2 橫切 library 治權特性）**：依 v2.46 後再審「db_utils 為橫切 library，舊維運矩陣 8 場景半數借用其他程式之指令，未真正代表 db_utils 自身功能」之問題，採選項丙重組維運矩陣。**補正內容**：(I) 維運矩陣標題「全量維運指令總矩陣」→「全量功能群矩陣」；(II) 由 8 場景視角重組為 6 大功能群分類：Group A DB 連線管理（7 子項）/ Group B Hybrid Observability 雙日誌（5 子項）/ Group C §6.7 SQL SSOT 核心股查詢（5 子項）/ Group D 批次 Upsert + 安全 Commit（5 子項）/ Group E 錯誤處理 + Failure Logging（7 子項）/ Group F Step 2C 前置依賴檢查（4 子項）= 33 子項；(III) 每子項明示 API / 指令 / 治權對應；(IV) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + 維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)」；(V) TOOL_VER v2.46 → v2.47；(VI) 標頭版本 + cosmetic v2.46 → v2.47。**所有 public API、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code、6 條核心定義皆無變更**；本補正純為標頭維運矩陣之視角重組（functional 視角優於 scenario 視角；對齊 db_utils 為橫切 library 之治權特性）。 | **ACTIVE** |
+| v2.46 | 2026-05-21 | Codex | **2 條核心定義補入 + 2 模組常數 + cross-ref 行號（CLAUDE.md §四 #4 100% 合規補強；逐元件審計 Step 1.1.4 跟進）**：依昨日剛入憲之 CLAUDE.md §四 #4「8 項標頭強制檢驗」治權原則檢驗，揭露 v2.45 之 5 項缺口：(1) 主權狀態行未明示「憲法 v6.0.0 對齊」；(2) 核心定義缺 [Zero Hardcoded Verdict]（程式邏輯 L976-1019 動態但未顯式宣告）；(3) 核心定義缺 [Sovereignty Declaration]（治權位階 / 5 套禁令 / T1-T3 / §8.5 未明示）；(4) 缺 module-level `CONSTITUTION_VER` + `TOOL_VER` 模組常數（治權慣例對齊 path_setup v4.45+ / data_schema v2.12+）；(5) cross-ref 缺精確行號（與 data_schema 之「L2440 / L2709」/ __init__ 之「L2457 / L2488 / L5589」/ core_universe_schema v0.3 之「L2455 / L2722 / L2348-L2353」/ audit_api_schema_compliance v0.2+ 之「L2483」之治權慣例不對齊）。**補正內容**：(I) 標頭版本 v2.45 → v2.46；(II) 最後更新日期 2026-05-16 → 2026-05-21；(III) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)」；(IV) 核心定義新增第 5 條 [Zero Hardcoded Verdict] 顯式宣告動態 `run_diagnostics()` 對齊 §5.6.3；(V) 核心定義新增第 6 條 [Sovereignty Declaration] 明示 §3.2 橫切 library + Infrastructure Sovereign Authority（cross-ref 憲章 L2282 §3.2 子表）+ Step 2C 前置依賴檢查授權 + 5 套禁令不涉 + T1-T3 不分層 + §8.5 anti-leakage 不處理 + 不選股不評分（Builder Authority 邊界）+ 不持有 Raw API Schema（data_schema Authority 邊界）；(VI) 新增 module-level `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v2.46"` 常數；(VII) 維運矩陣 8 場景 + report header 之 cosmetic v2.45 → v2.46。**所有 public API（`get_db_connection()`, `record_lifecycle()`, `write_data_audit_log()`, `get_core_stocks_from_db()`, `bulk_upsert()`, `FailureLogger`, `DDL_FETCH_LOG` 等 20+ 函式）、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code 對 §3.2 Step 2C 接受標準分流、record_lifecycle 之 _LifecycleContext（v2.44 既有）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 data_schema v2.14 / __init__ v1.16 / core_universe_schema v0.3 / audit_api_schema_compliance v0.2 同模式）。合規度：v2.45 ≈60% → v2.46 100%。 | SUPERSEDED |
 | v2.45 | 2026-05-14 | Codex (No-touch Zone 授權) | **§6.7 SQL + Public API Restoration + 2026-05-16 Connection Diagnostics + 2026-05-16 exit code 補正**：(1) `get_core_stocks_from_db()` 改查 `core_universe_membership` JOIN `core_universe_snapshot WHERE status='committed'`，封閉 Pending Bug #4；(2) 補回 `get_db_conn`、`ensure_ddl`、`bulk_upsert`、`safe_commit_rows`、`FailureLogger`、`DDL_FETCH_LOG`、`log_fetch_result`、`db_transaction`、`db_session`、`write_pipeline_log`、`write_evaluation_log`、`get_db_stock_ids` 等跨模組 public API；(3) `psycopg2` / `dotenv` 改為延遲失敗，允許常數與 API 匯入測試先行；(4) `get_db_connection()` 補強必要 DB env 檢查、`connect_timeout=10` 與 host/user/dbname 錯誤脈絡，避免 sandbox 或秘密缺失被誤判為 schema drift；(5) **2026-05-16 exit code 補正**：`run_diagnostics()` 補上 `return diag_status`；`__main__` 改依回傳值呼叫 `sys.exit(0 if status in ("PERFECT", "WARNING") else 1)`，對齊憲章 §3.2 Step 2C 接受標準（FAILED 必須 exit 1 阻斷進入 Step 3）。 | SUPERSEDED |
 | v2.44 | 2026-05-14 | Antigravity (Auto-patch, No-touch Zone 授權) | **Bug #2 + Bug #3 雙修補**：(1) `record_lifecycle` 改為 yield 一個可由 caller 標記失敗/警告的 `_LifecycleContext`，封堵「Python 無例外即記 success」之 status 謊報；(2) INSERT 由 5 欄擴張為 8 欄，補寫 start_time / end_time / error_msg，封堵 NULL 漏洞；(3) DB 連線改為僅在 finally 開啟，不再霸佔整個 task 期間；(4) logger 失敗時不再 propagate 例外給 caller。100% backward compatible —— 舊 `with record_lifecycle(...):` 呼叫端零修改。 | SUPERSEDED |
 | v2.43 | 2026-05-12 | Antigravity | **防禦性修復**：補全缺失的 `argparse` 導入，恢復指令列工具之治權效力。 | SUPERSEDED |
@@ -55,7 +111,7 @@ from datetime import date, datetime, timedelta
 # 治權常數 (Constitution Constants) — v2.46 新增（CLAUDE.md §四 #4 / Step 1.1.4 補正）
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v2.46"
+TOOL_VER = "v2.47"
 
 try:
     import psycopg2
@@ -250,7 +306,7 @@ def write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affe
 
 
 def get_db_connection():
-    """建立資料庫連線 (v2.46)"""
+    """建立資料庫連線 (v2.47)"""
     _require_psycopg2()
     required_env = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
     missing_env = [name for name in required_env if not os.getenv(name)]
@@ -933,7 +989,7 @@ def _check_pipeline_log_writable():
                 VALUES (%s, %s, %s, NOW(), NOW(), %s, %s, %s)
                 """,
                 (
-                    "db_diagnostic_v2.46_log_probe",
+                    "db_diagnostic_v2.47_log_probe",
                     "infrastructure",
                     "SYSTEM",
                     "success",
@@ -980,11 +1036,11 @@ def _check_public_api_contract():
 
 
 def run_diagnostics():
-    """執行基礎設施旗艦診斷報告 (v2.46 Standard)"""
+    """執行基礎設施旗艦診斷報告 (v2.47 Standard)"""
     stocks = []
     diag_status = "PERFECT"
     diag_notes = []
-    with record_lifecycle("db_diagnostic_v2.46", category="infrastructure", stock_id="SYSTEM") as lc:
+    with record_lifecycle("db_diagnostic_v2.47", category="infrastructure", stock_id="SYSTEM") as lc:
         ok, latency = db_connection_check()
         if ok:
             try:
@@ -1029,17 +1085,17 @@ def run_diagnostics():
             diag_notes.append(msg)
 
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 基礎設施旗艦診斷啟動 (v2.46)")
+        print("🚀 Quantum Finance: 基礎設施旗艦診斷啟動 (v2.47)")
         print("🛡️" * 40)
 
         print("\n" + "─" * 80)
-        print("📊 基礎設施診斷摘要報告 (Infrastructure Diagnostic Report v2.46)")
+        print("📊 基礎設施診斷摘要報告 (Infrastructure Diagnostic Report v2.47)")
         print("─" * 80)
         print(f"✅ 資料庫狀態   : {'SUCCESS' if ok else 'FAILED'}")
         print(f"🕒 連線延遲     : {latency:.2f} ms")
         print(f"📈 核心資產數   : {len(stocks)} 支 (§6.7 core_universe_membership)")
         print(f"📝 混合日誌狀態 : ACTIVE (pipeline_execution_log [8 欄完整] & data_audit_log)")
-        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v6.0.0 / db_utils v2.46)")
+        print(f"⚖️  系統主權狀態 : {diag_status} (憲法 v6.0.0 / db_utils v2.47)")
         for note in diag_notes:
             print(f"   - {note}")
         print("─" * 80)
