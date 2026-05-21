@@ -738,6 +738,75 @@ git pull origin master                                    # 取得 11 個 commit
 
 待逐一審計後填入完整對映表（§ 三 跨元件發現之共通問題章）。
 
+### 7.9 hub 執行時點之治權建議（治權詮釋；非憲章條款）
+
+**性質聲明**：本子節為**治權詮釋**之記錄；不修改憲章 v6.0.0 任何條款；不取消 §3.2 hub「**任何階段可執行**」之橫切性質（憲章 L47 / L2500）。本記錄僅補入「**hub 治權閉環時點之最佳時機**」之詮釋作為未來執行參考。
+
+#### 7.9.1 4 層稽核 verdict 邏輯（依憲章 L2436）
+
+`core/__init__.py` 之 `run_sovereign_hub_audit()` 執行 4 層動態稽核：
+
+| Layer | 檢查項 | 治權依據 |
+|---|---|---|
+| A | import sanity（path_setup + db_utils）| §3.1 / §3.2 模組可正常 import |
+| B | 25 維路徑接口維度 | §3.2 / §一 3. [Boundary Integrity] |
+| C | DB 連線狀態 | §6.7 / §3.2 |
+| D | §6.7 SQL 查詢（`core_universe_membership` JOIN `core_universe_snapshot`）| §6.7 SQL SSOT |
+
+**Verdict 動態計算**（依憲章 §5.6.3 + L2500）：
+
+```text
+hub PERFECT  ⟺  Layer A ∧ Layer B ∧ Layer C ∧ Layer D 皆 PASS
+hub WARNING  ⟸  Layer D 0-row（DB 連線正常但 §6.7 0 rows；bootstrap state）
+hub FAILED   ⟸  任一 Layer 例外（如 §6.7 query 抛 UndefinedTable）
+```
+
+#### 7.9.2 Layer D PASS 之最早門檻 = Step 4B 之後
+
+| 時點 | `core_universe_membership` 狀態 | Layer D | 整體 verdict |
+|---|---|---|---|
+| Step 0 → Step 2 之間 | 表不存在 | ❌ FAILED（UndefinedTable）| FAILED exit 1 |
+| Step 2B → Step 4B 之間 | 表存在但 0 committed rows | ⚠️ WARNING（0-row bootstrap）| WARNING exit 0 |
+| **Step 4B 之後**（commit）| 表存在 + ≥ 1 committed rows（如 150 支）| ✅ **PASS** | **PERFECT exit 0** |
+
+→ Layer D 達成 PASS 之最早時點 = **`core_universe_builder.py --commit` 之後**。
+
+#### 7.9.3 hub 治權閉環時點之治權詮釋
+
+依「**4 層 PASS / PERFECT**」為治權標準，hub 之**最佳執行時點**：
+
+| 治權層級 | 時點 | 預期 verdict | 治權意義 |
+|---|---|---|---|
+| **🥉 早期 sanity check** | Step 1 後 | FAILED（預期）| import + path 早期診斷；接受 Layer C/D 不 PASS |
+| **🥈 早期不 FAILED** | Step 2B 後 | WARNING exit 0 | 表結構 ready，但 0-row bootstrap |
+| **🥇 治權閉環 PERFECT** | **Step 4B 後（commit）**| ✅ PERFECT | **最早完整 4 層 PASS** |
+| **💎 audit-validated PERFECT** | Step 4C 後 | ✅ PERFECT + audit 驗證 | **最完整治權閉環** |
+
+#### 7.9.4 治權邊界（保持與憲章 §3.2 一致）
+
+本治權詮釋**不**：
+
+- ❌ 不修改憲章 §3.2 hub「任何階段可執行」之橫切性質
+- ❌ 不取消「hub 早期執行得到 WARNING / FAILED 為合法 bootstrap state」之既有規則
+- ❌ 不將 hub 升級為主執行序列之必要步驟
+- ❌ 不修改 §二 維運矩陣之 HUB 列定位
+
+本治權詮釋**僅**：
+
+- ✅ 詮釋「**hub PERFECT verdict 之最早門檻 = Step 4B 後**」
+- ✅ 詮釋「**hub 完整治權閉環時點 = Step 4C 後**」
+- ✅ 提供「**hub 執行時點選擇之治權建議**」記錄
+
+#### 7.9.5 未來升憲提案候選（v6.0.0-patch / v6.1.0）
+
+若未來累積實證證明本治權詮釋值得入憲，可考慮：
+
+- §二 維運矩陣補入「Step 4.5 治權閉環確認」之 hub 建議時點（仍保留 §3.2 任何階段可執行性質）
+- __init__.py [Canonical Execution Order] 核心定義第 3 條補入「治權閉環確認步」之治權建議
+- §3.2 hub 子節補入「最佳執行時點」之治權詮釋
+
+→ **本次不執行**升憲；僅記錄治權詮釋於本審計報告 §7.9。
+
 ---
 
 **本報告為「逐元件治權合規審計」之主檔。每完成一個 step 即 commit + tag，可隨時暫停與繼續。**
