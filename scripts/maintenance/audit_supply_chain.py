@@ -1,28 +1,85 @@
 """
-audit_supply_chain.py v1.18 (Post-Schema Compliance Audit Edition)
+audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Matrix Edition)
 ================================================================================
-**最後更新日期**: 2026-05-14
-**主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊)
+**最後更新日期**: 2026-05-21
+**主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊 + §3.2A 橫切稽核身分自我宣告 + 維運矩陣重組為 5 大功能群視角；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Post-Schema Audit]: 本工具定位於 `data_schema.py v2.11 --init --force` 之後，驗收 API + DB + logs。
-2. [API Contract Reuse]: API 欄位契約以 `data_schema.py v2.11` 的 API-first probe 為權威來源。
-3. [Database State Verification]: 必須驗收 13 張實體表、欄位大小寫、row count、FRED series 與 freshness 能力。
+1. [Post-Schema Audit]: 本工具定位於 `data_schema.py --init --force` 之後（憲章 §二 序列 L2403、Step 3 維運矩陣 L2422-2423），驗收 API + DB + logs 三軸對齊。
+2. [API Contract Reuse]: API 欄位契約以 `data_schema.py` 當前版本之 API-first probe 為權威來源（透過 import `SovereignSchemaManager` / `DATASET_REGISTRY` / `FINMIND_API_TABLES`），不重新定義契約。
+3. [Database State Verification]: 必須驗收 13 張實體表、欄位大小寫、row count、FRED series 完整性與 freshness 能力。
 4. [Lifecycle Integrity]: 必須驗收 `pipeline_execution_log` / `data_audit_log`，並透過 `record_lifecycle(... ) as lc` 回寫 warning / failed。
-5. [Truth-based Verdict]: 主權判定必須動態計算：FAIL > 0 -> FAILED；WARN > 0 -> WARNING；皆 0 -> PERFECT。
+5. [Zero Hardcoded Verdict]: 主權判定動態計算（`compute_verdict()`）：FAIL > 0 → FAILED；WARN > 0 → WARNING；皆 0 → PERFECT，對齊 §5.6.3。
+6. [Sovereignty Declaration]: 本程式為 **§3.2A 橫切稽核工具**（cross-ref 憲章 L2470 §3.2A 子表 / L2478 本程式列項 / L2485 §3.2A 治權邊界），執行時點對應 **§3.1 Step 3**（§二 序列 L2403 / 維運矩陣 L2422-2423）。治權邊界：(a) 遵守 §3.2A 治權邊界 L2485（§5.6.3 零硬編 PERFECT、§0.4 可觀察性、§3.2 接受標準：PERFECT/WARNING exit 0；FAILED exit 1）；(b) **不屬 §3.1 序列模組**（不擅自進行 ingestion / decision / sizing）；(c) 五套禁令（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8）不涉；(d) **T1-T3 不分層**；(e) **§8.5 anti-leakage 不處理**（由 `audit_leakage.py` 負責）；(f) **不選股不評分**（由 `core_universe_builder.py` 負責）；(g) **不持有 Raw API Schema**（由 `data_schema.py` 持有）；(h) 唯一職責：API + DB + logs 三軸驗收。
+7. [Historical Reference Authority]: 本程式之 `schema_ver` 屬於記述性快照（記載當下對齊之 `data_schema` 版本），非權威來源；API 契約權威來源永遠是 `data_schema.py` 當前版本之 API-first probe（§3.1 子表 L2452 之「對齊 data_schema.py」表述為治權記述，非硬鎖版本）。
 
-## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
-| 維運需求場景 (Scenario) | 權威指令 / 建議用法 (Exhaustive Examples) | 對齊模組 |
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+> 本程式作為 §3.2A 橫切稽核工具，依「驗收面向」拆分為 5 大功能群；每群對應憲章治權契約。
+> 接受標準（§3.2A L2485 + §3.2 接受標準）：PERFECT/WARNING → exit 0；FAILED → exit 1。
+
+### Group A. API 契約驗收 (API Contract Verification)
+| 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
-| **1. [schema 後驗收：API + DB + logs]** | `$ python scripts/maintenance/audit_supply_chain.py --include-logs` | audit_tool v1.18 |
-| **2. [離線驗收：僅 DB + logs]** | `$ python scripts/maintenance/audit_supply_chain.py --db-only --include-logs` | audit_tool v1.18 |
-| **3. [API 契約驗收：FinMind/FRED]** | `$ python scripts/maintenance/audit_supply_chain.py --api-only` | audit_tool v1.18 |
+| A.1 FinMind 10 表 API 契約 probe（per `FINMIND_API_TABLES`）| `audit_api_contracts(source="finmind")` → `manager._probe_finmind_contract()` | §1.4 / §一 4. [Supply Chain Sovereignty] |
+| A.2 FRED 1 表（`FredData`）API 契約 probe | `audit_api_contracts(source="fred")` → `manager._probe_fred_contract()` | §1.4 / §一 4. [Supply Chain Sovereignty] |
+| A.3 PASS / FAILED / WARNING 三分類紀錄 | `_record("API-Contract", ...)` | §5.6.3 零硬編 |
+| A.4 預設模式合計 11 probes（FinMind 10 + FRED 1）| `audit_api_contracts(source=None)` | §1.4 |
+| 對應 CLI | `--api-only` 或 `--source [finmind|fred]` | — |
+
+### Group B. DB Schema 驗收 (Database Physical Schema)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 `to_regclass` 13 表存在性檢查 | `audit_db_schema()._table_exists()` | §1.4 / §3.1 Step 2 後置 |
+| B.2 欄位 missing / extra 比對 DATASET_REGISTRY | `audit_db_schema()` | §1.4 SSOT |
+| B.3 row count 統計 | `audit_db_schema()` | §0.4 可觀察性 |
+| B.4 欄位大小寫精確匹配 | `actual_cols vs expected_cols` | §1.4 API mirror |
+| 對應 CLI | `--db-only` 或預設 | — |
+
+### Group C. FRED Series & Freshness (FRED 數據新鮮度)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 FredData 表存在性 | `audit_fred_series_and_freshness()._table_exists()` | §1.4 |
+| C.2 4 大 series 完整性（DFF/UNRATE/T10Y2Y/VIXCLS）| `FRED_MACRO_LIST` 比對 | FRED bootstrap |
+| C.3 per-series freshness 閾值（DFF/T10Y2Y/VIXCLS 7d；UNRATE 60d）| `FRED_FRESHNESS_DAYS` | §1.4 |
+| C.4 pre-ingestion DEFERRED 容忍 | row_count == 0 時不 FAIL | bootstrap-tolerant |
+| 對應 CLI | 預設啟用（非 `--api-only`）| — |
+
+### Group D. Lifecycle Logs 驗收 (Pipeline & Data Audit Logs)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 `pipeline_execution_log` / `data_audit_log` 表存在 | `audit_logs()` | §0.4 / §1.6 Hybrid Observability |
+| D.2 24h 視窗 task status 異常掃描 | `audit_logs(window_hours=24)` | §3.2A / Step 3 log-window L2491 |
+| D.3 task `end_time IS NULL` ANOMALY 偵測 | `audit_logs()` | §0.4 |
+| D.4 `record_lifecycle()` 自我寫入 + warning/failed 回寫 | `run()` 内的 `with record_lifecycle(...)` | §0.4 / §3.2A L2485 |
+| D.5 pre-bootstrap clean window 容忍 | DEFERRED 不 FAIL | L2491 容許 |
+| 對應 CLI | `--include-logs` | — |
+
+### Group E. Verdict 動態判定 (Zero Hardcoded Verdict)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| E.1 PASS / WARN / FAIL 計數 | `_record()` 之 counter | §5.6.3 |
+| E.2 動態 verdict 計算 | `compute_verdict()` | §5.6.3 |
+| E.3 FAILED → `sys.exit(1)` | `run()` 末段 | §3.2 接受標準 / §3.2A L2485 |
+| E.4 PERFECT/WARNING → exit 0 | 隱含預設 | §3.2 接受標準 |
+| E.5 `record_lifecycle` warning/failed 回寫 | `lc.mark_warning()` / `lc.mark_failed()` | §0.4 |
+| E.6 報告產生（`reports/compliance_audit_<ts>.md`）| `generate_report(verdict)` | §0.4 audit trail |
+| 對應 CLI | 所有模式皆觸發 | — |
+
+### 對齊憲章 §二 維運矩陣（標準場景）
+| 場景 | 指令 | 對應功能群 |
+| :--- | :--- | :--- |
+| **3. [schema 後驗收：API+DB+logs]** | `python scripts/maintenance/audit_supply_chain.py --include-logs` | A + B + C + D + E |
+| **3A. [離線驗收：僅 DB+logs]** | `python scripts/maintenance/audit_supply_chain.py --db-only --include-logs` | B + C + D + E |
+| **3B. [API 契約驗收：FinMind/FRED]** | `python scripts/maintenance/audit_supply_chain.py --api-only` | A + E |
+| **3C. [單一來源 API 驗收]** | `python scripts/maintenance/audit_supply_chain.py --api-only --source [finmind|fred]` | A + E |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.18** | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | **ACTIVE** |
+| **v1.19** | 2026-05-21 | Codex | **8 項標頭強制檢驗 100% 合規 + 維運矩陣重組為 5 大功能群視角**：(a) 主權狀態行補入 v1.19 修補摘要；(b) 最後更新日期 2026-05-14 → 2026-05-21；(c) 核心定義新增 [Sovereignty Declaration] §3.2A 橫切稽核身分自我宣告 + [Historical Reference Authority]（[Truth-based Verdict] 重命名為 [Zero Hardcoded Verdict] 對齊 §5.6.3 與全系統治權慣例）；(d) cross-ref 精確行號補入（§3.2A L2470/L2478/L2485 + §二 L2403 + 維運矩陣 L2422-2423 + Step 3 詮釋 L2491）；(e) 維運矩陣重組為 5 大功能群（A. API 契約 / B. DB Schema / C. FRED Freshness / D. Lifecycle Logs / E. Verdict 動態判定），場景擴至 4 條（3/3A/3B/3C）；(f) cosmetic 對齊：`data_schema v2.11` → 動態 `v2.16`；對齊憲章 v5.4.22 → v6.0.0-FINAL；補入模組級 `CONSTITUTION_VER` + `TOOL_VER` 常數；`self.schema_ver` 更新至 v2.16。介面零變動：4 個 CLI flag (`--source` / `--db-only` / `--api-only` / `--include-logs`) 不變、5 大驗收方法不變、`compute_verdict()` 邏輯不變、`record_lifecycle()` 整合不變。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| v1.18 | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | SUPERSEDED |
 | v1.17 | 2026-05-13 | Auto-patch | DB-state aware 稽核；新增 FRED 完整性、lifecycle log 交叉比對、動態 verdict。 | SUPERSEDED |
 | v1.16 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
 ================================================================================
@@ -32,6 +89,9 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+
+CONSTITUTION_VER = "v6.0.0"
+TOOL_VER = "v1.19"
 
 _THIS_FILE = Path(__file__).resolve()
 _MAINTENANCE_DIR = _THIS_FILE.parent
@@ -55,9 +115,9 @@ class ComplianceAuditor:
     INFRA_TABLES = {"pipeline_execution_log", "data_audit_log"}
 
     def __init__(self):
-        self.constitution_ver = "v6.0.0"
-        self.tool_ver = "v1.18"
-        self.schema_ver = "v2.11"
+        self.constitution_ver = CONSTITUTION_VER
+        self.tool_ver = TOOL_VER
+        self.schema_ver = "v2.16"
         self.report_path = get_report_dir() / f"compliance_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
         self.audit_results = []
         self.pass_count = 0
@@ -260,7 +320,7 @@ class ComplianceAuditor:
                 f.write(f"| {source} | {item} | {status} | {safe_detail} |\n")
 
     def run(self, source=None, db_only=False, api_only=False, include_logs=False):
-        task_name = "post_schema_audit_v1.18"
+        task_name = f"post_schema_audit_{TOOL_VER}"
         with record_lifecycle(task_name, category="maintenance", stock_id="SYSTEM") as lifecycle:
             if not db_only:
                 self.audit_api_contracts(source=source)
@@ -292,7 +352,7 @@ class ComplianceAuditor:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Quantum Finance schema 後驗收稽核 (v1.18)")
+    parser = argparse.ArgumentParser(description=f"Quantum Finance schema 後驗收稽核 ({TOOL_VER})")
     parser.add_argument("--source", type=str, choices=["finmind", "fred"], help="只驗收指定 API 來源")
     parser.add_argument("--db-only", action="store_true", help="只跑 DB/logs 驗收，跳過 API 呼叫")
     parser.add_argument("--api-only", action="store_true", help="只跑 API contract 驗收，跳過 DB/logs")
