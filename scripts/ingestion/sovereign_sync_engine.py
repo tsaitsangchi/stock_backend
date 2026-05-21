@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.17 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §14.7-AL Cross-ref Calibration)
+sovereign_sync_engine.py v1.18 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §14.7-AL Cross-ref Calibration · §14.7-AM Zero-to-Full-Market+FRED Sequence Treaty)
 ================================================================================
 **最後更新日期**: 2026-05-21
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + v6.0.0-patch §14.7-AL Step 4.5 hub 治權閉環入憲後行號校準；8 項標頭強制檢驗 100% 合規)
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + v6.0.0-patch §14.7-AL Step 4.5 hub 治權閉環入憲後行號校準 + v6.0.0-patch §14.7-AM 從零→全市場全天數+FRED 全歷史 3 步序列治權範本明文化；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -46,6 +46,10 @@ sovereign_sync_engine.py v1.17 (Quantum Finance Market Universe Seed Engine · F
     verdict 之 floor 門檻 = Step 4B 後（`core_universe_builder --commit` 之後）、ceiling 時點 = Step 4C 後，
     Step 4.5 [hub 治權閉環確認] 屬非必須之 ceiling time-point 選擇；本程式自身執行 Step 4 種子灌溉，**不**直接觸及 Step 4.5
     （hub 屬 §3.2 橫切；本程式屬 §3.1 序列）。
+    **v6.0.0-patch §14.7-AM（2026-05-21 入憲）關聯**：本程式為「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本之**唯一執行載體**
+    （Step 4 `--seed` → Step 4F `--universe full --all --special-full-market-reason "<≥12 字>"` → Step 8 `--source fred`）；
+    FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋**——`--universe full --all` 僅同步 `FINMIND_API_TABLES`（10 raw tables），
+    不觸及 FRED；必須分別執行 Step 4F + Step 8（詳見 Group D + Group F + 治權範本子節）。
     治權邊界：(a) §3.1 序列模組執行 ingestion；(b) 五套禁令（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8）不涉；
     (c) **T1-T3 不分層**；(d) **§8.5 anti-leakage 不處理**（由 `audit_leakage.py` 負責）；
     (e) **不選股不評分**（由 `core_universe_builder.py` 負責）；(f) **不持有 Raw API Schema**（由 `data_schema.py` 持有）；
@@ -92,6 +96,7 @@ sovereign_sync_engine.py v1.17 (Quantum Finance Market Universe Seed Engine · F
 | D.3 auto strict-source-history（v1.14 自動啟用）| `start_date=1990-01-01` + L3 resume off | §6.8.7 第 (4) 條 / §14.7-L |
 | D.4 reason 寫入 lifecycle context + 終端報表 | audit trail | §0.4 可觀察性 |
 | D.5 五類合法情境 | DB rebuild / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件 | §6.8.7 第 (4) 條 |
+| D.6 「從零 → 全市場全天數」3 步序列之第 II 步 | Step 4 `--seed` → **Step 4F (本群組)** → Step 8 `--source fred` | §14.7-AM (2026-05-21 入憲) |
 | 對應 CLI | `--universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"` | §二 Step 4F L2432 |
 
 ### Group E. 核心股全天數補刷 (Core Full-History Mode) — `--full-history` / `--strict-source-history`
@@ -107,11 +112,16 @@ sovereign_sync_engine.py v1.17 (Quantum Finance Market Universe Seed Engine · F
 ### Group F. FRED 宏觀同步 (FRED Macro Sync) — `--source fred`
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| F.1 4 大序列同步（DFF / UNRATE / T10Y2Y / VIXCLS）| `sync_fred()` | §二 Step 8 L2437 |
-| F.2 `asc + offset` 全歷史分頁 | `FRED_PAGE_LIMIT = 100000` | FRED API contract |
-| F.3 dropna 後空集合分支防禦 | v1.7 補正 | [Zero Silent Drop] |
-| F.4 empty-data 失敗分支 | v1.7 補正 | [Zero Silent Drop] |
-| 對應 CLI | `--source fred` | — |
+| F.1 4 大序列同步（DFF / UNRATE / T10Y2Y / VIXCLS）| `sync_fred()` (L691-715) | §二 Step 8 L2437 |
+| F.2 「**全歷史**」= 自 FRED API 各序列可得最早日期 → 今天（預設行為）| **無 `observation_start` / `observation_end` 參數** | §14.7-AM (2026-05-21 入憲) |
+| F.3 4 序列各自最早可得日期 | UNRATE 1948-01-01 / DFF 1954-07-01 / T10Y2Y 1976-06-01 / VIXCLS 1990-01-02 | §6.8.8 L3266-3271 / §14.7-AM |
+| F.4 `asc + offset` 全歷史分頁 | `sort_order=asc` + `FRED_PAGE_LIMIT = 100000`；`while len(page) >= FRED_PAGE_LIMIT: offset += FRED_PAGE_LIMIT` | FRED API contract |
+| F.5 `--days N` 在 FRED 路徑**無影響** | 純針對 FinMind stock-level sync | §14.7-AM |
+| F.6 **無需 reason**（FRED 全歷史屬預設行為，非限定治理例外）| 不需 `--special-full-market-reason` | §14.7-AM (vs Group D 對照)|
+| F.7 dropna 後空集合分支防禦 | v1.7 補正 | [Zero Silent Drop] |
+| F.8 empty-data 失敗分支 | v1.7 補正 | [Zero Silent Drop] |
+| F.9 「從零 → 全市場全天數 + FRED 全歷史」3 步序列之第 III 步 | Step 4 `--seed` → Step 4F → **Step 8 (本群組)** | §14.7-AM |
+| 對應 CLI | `--source fred` | §二 Step 8 L2437 |
 
 ### Group G. §7 三層防禦 + §7.6 進階優化 (Supply Chain Defenses)
 | 子項 | 對應方法 / 行為 | 治權契約 |
@@ -150,13 +160,32 @@ sovereign_sync_engine.py v1.17 (Quantum Finance Market Universe Seed Engine · F
 | **7. [核心 Universe 同步]** (L2436) | `--universe core --all --days 730` | C + G + H |
 | **8. [FRED 宏觀]** (L2437) | `--source fred` | F + H |
 
+### 「從零 → 全市場全天數 + FRED 全歷史」執行序列治權範本（§14.7-AM 入憲；2026-05-21）
+
+> 當情境屬 §6.8.7 第 (4) 條五類合法之 **(1) DB rebuild bootstrap** 時，標準執行序列為 3 步：
+
+| 步驟 | 指令 | 涵蓋範圍 | 對應功能群 | 治權契約 |
+| :--- | :--- | :--- | :--- | :--- |
+| **I. Step 4** | `python scripts/ingestion/sovereign_sync_engine.py --seed` | `TaiwanStockInfo` 全市場資產名冊（~2,798 支）| **A** + H | §二 L2425 |
+| **II. Step 4F** | `python scripts/ingestion/sovereign_sync_engine.py --universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字理由>"` | FinMind 10 raw tables × 2,798 支 × 各 (stock_id, dataset) 自 API 最早可得日期 → 今天；自動啟用 `--strict-source-history` | **D** + G + H | §二 L2432 / §6.8.7 第 (4) 條 |
+| **III. Step 8** | `python scripts/ingestion/sovereign_sync_engine.py --source fred` | FRED 4 序列 × 各自最早可得日期 → 今天（**無需 reason**；屬預設行為）| **F** + H | §二 L2437 / §6.8.8 |
+
+**治權邊界 4 點**：
+- (a) FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋兩者**——`--universe full --all` 僅同步 `FINMIND_API_TABLES`（10 raw tables），不觸及 FRED；必須分別執行 Step 4F + Step 8
+- (b) Step 4F 需 `--special-full-market-reason ≥ 12 字`；Step 8 無需 reason（FRED 全歷史屬預設行為）
+- (c) Step 4F 完成後依 §6.8.7-B 強制長跑持久化規範（`tmux` / `systemd-run --user`）與 30 分鐘監控回報
+- (d) Step 4F + Step 8 兩者完成後必須執行雙稽核（`audit_supply_chain.py` + `audit_api_schema_compliance.py --include-fred`）並留 `reports/full_market_sync_*.md` 實證
+
+**典型耗時**：FinMind 全市場全天數約 6-10 小時級（依 quota；§7 三層防禦自動 throttle）；FRED 全歷史約秒級（4 序列 × `asc + offset` pagination）。
+
 ### 不提供之旗標 (Intentionally Omitted)
 - `--force` (全歷史 from 2000-01-01)：仍維持不提供，避免在 v0.2 builder 完工前耗盡 FinMind quota。使用者應改用 `--full-history` 或 `--strict-source-history`（屬 Group E）。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.17** | 2026-05-21 | Codex | **§14.7-AL 入憲後 cross-ref 行號校準 + Step 4.5 hub 治權閉環關聯補入**：依憲章 v6.0.0-patch §14.7-AL（2026-05-21 入憲；commit `961a55f`）於 §二 維運矩陣 Step 4C 後新增 **Step 4.5 [hub 治權閉環確認 ceiling time-point]** 行（憲章 L2429），造成原 L2428 之後行號 **+2 偏移**。本標頭 v1.16 之 10 處 cross-ref 行號漂移已校準：(a) [Sovereignty Declaration] 內 Step 4D-8 範圍 L2428-2435 → L2430-2437；(b) [Sovereignty Declaration] 內 §3.1 子表 L2453 → L2455；(c) [Historical Reference Authority] 內 §3.1 子表 L2453 → L2455；(d) [Full-Market Restricted Governance Exception] L2430 → L2432；(e) [Core Full-History Mode] L2431 → L2433；(f) 維運矩陣場景索引 8 行（4D-8）行號 +2 校準；(g) 維運矩陣 sub-title 範圍 L2425-2435 → L2425, L2430-2437；(h) [Sovereignty Declaration] 補入 §14.7-AL 關聯說明（本程式 Step 4 為 hub 治權閉環必要前置；本程式不直接觸及 Step 4.5 — hub 屬 §3.2，本程式屬 §3.1）；(i) TOOL_VER v1.16 → v1.17；(j) 主權狀態行補入「+ §14.7-AL CROSS-REF CALIBRATION」摘要。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章演進造成下游行號偏移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| **v1.18** | 2026-05-21 | Codex | **§14.7-AM「從零 → 全市場全天數 + FRED 全歷史」執行序列治權範本明文化**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）將本程式之「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本同步寫入標頭。**補正內容 5 處**：(a) 主權狀態行補入「+ §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY」+ v1.18 修補摘要；(b) [Sovereignty Declaration] 補入 §14.7-AM 關聯說明（本程式為「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本之唯一執行載體 + FinMind 與 FRED 無單一指令可同時涵蓋之治權邊界）；(c) Group D 新增 D.6「3 步序列之第 II 步」cross-ref；(d) Group F 從 4 子項擴至 9 子項：F.1 sync_fred() L691-715 / F.2「全歷史」明文（無 observation_start/end）/ F.3 4 序列最早日期（UNRATE 1948-01-01 / DFF 1954-07-01 / T10Y2Y 1976-06-01 / VIXCLS 1990-01-02）/ F.4 asc+offset pagination / F.5 --days 無影響 / F.6 無需 reason / F.7-F.8 既有 zero-silent-drop / F.9「3 步序列之第 III 步」；(e) 9 場景索引後新增「從零 → 全市場全天數 + FRED 全歷史」治權範本 sub-section（3 步序列 I/II/III 表 + 治權邊界 4 點 + 典型耗時）；(f) TOOL_VER v1.17 → v1.18。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章入憲 → 標頭明文同步」之自然對齊；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例 + §0.0-I 單一引用源原則（憲章 §14.7-AM ↔ 本標頭治權範本 sub-section ↔ Group D/F 條目同步）。 | **ACTIVE** |
+| v1.17 | 2026-05-21 | Codex | **§14.7-AL 入憲後 cross-ref 行號校準 + Step 4.5 hub 治權閉環關聯補入**：依憲章 v6.0.0-patch §14.7-AL（2026-05-21 入憲；commit `961a55f`）於 §二 維運矩陣 Step 4C 後新增 **Step 4.5 [hub 治權閉環確認 ceiling time-point]** 行（憲章 L2429），造成原 L2428 之後行號 **+2 偏移**。本標頭 v1.16 之 10 處 cross-ref 行號漂移已校準：(a) [Sovereignty Declaration] 內 Step 4D-8 範圍 L2428-2435 → L2430-2437；(b) [Sovereignty Declaration] 內 §3.1 子表 L2453 → L2455；(c) [Historical Reference Authority] 內 §3.1 子表 L2453 → L2455；(d) [Full-Market Restricted Governance Exception] L2430 → L2432；(e) [Core Full-History Mode] L2431 → L2433；(f) 維運矩陣場景索引 8 行（4D-8）行號 +2 校準；(g) 維運矩陣 sub-title 範圍 L2425-2435 → L2425, L2430-2437；(h) [Sovereignty Declaration] 補入 §14.7-AL 關聯說明（本程式 Step 4 為 hub 治權閉環必要前置；本程式不直接觸及 Step 4.5 — hub 屬 §3.2，本程式屬 §3.1）；(i) TOOL_VER v1.16 → v1.17；(j) 主權狀態行補入「+ §14.7-AL CROSS-REF CALIBRATION」摘要。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章演進造成下游行號偏移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
 | v1.16 | 2026-05-21 | Codex | **8 項標頭強制檢驗 100% 合規 + 維運矩陣重組為 8 大功能群視角 + 治權慣例 3 條入憲**：(a) 主權狀態行補入 v1.16 修補摘要 + §3.1 序列模組身分宣告；(b) 最後更新日期 2026-05-18 → 2026-05-21；(c) 核心定義 11 條 → 14 條：新增 [Zero Hardcoded Verdict] §5.6.3 動態 verdict 對齊 + [Sovereignty Declaration] §3.1 序列模組第 5/9 員身分自我宣告（8 條治權邊界 a-h）+ [Historical Reference Authority]；(d) cross-ref 精確行號補入（§二 Step 4 L2425 / Step 4D-8 L2428-2435 + §3.1 子表 L2453）；(e) 維運矩陣重組為 **8 大功能群**（A. 種子灌溉 / B. 個股同步 / C. Universe 階段灌溉 / D. 全市場治理例外 / E. 核心股全天數 / F. FRED 宏觀 / G. §7 三層防禦 + §7.6 進階優化 / H. Lifecycle + Verdict 動態判定）+ 對齊 §二 維運矩陣 9 個標準場景索引；(f) cosmetic：`data_schema.py v2.11` → 動態對齊當前 `v2.16`；對齊憲章 v6.0.0-FINAL；補入模組級 `CONSTITUTION_VER` + `TOOL_VER` 常數；`self.schema_ver` 更新至 v2.16；**修正 v1.11 ACTIVE → SUPERSEDED 狀態錯誤**（修訂歷程內部矛盾封閉）。介面零變動：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.15 | 2026-05-18 | Codex | **§6.8.7 第 (1A) 條核心股全天數補刷 + `--full-history` 別名旗標**：依憲章 v6.0.0-patch §6.8.7 第 (1A) 條新增「核心股全天數補刷」場景，引入 `--full-history` 作為 `--strict-source-history` 之直觀別名（兩旗標等價，任一啟用即觸發 §14.7-L 行為：`start_date=1990-01-01` + §7.5 L3 resume 停用）。argparse 以 `dest='strict_source_history'` 將兩旗標合併為同一狀態變數，使用者下任一即生效；help 文字明示適用場景（core/convex/research 或 --id，無需 reason；對 --universe full 仍須 reason）。同步登錄 §2 維運矩陣 Step 4F、B 子節新增 F「核心股全天數補刷」。本版不改 main() preflight 邏輯、UNIVERSE_TIERS、節流、退避、FRED pagination 或 v1.14 auto-strict 行為。 | SUPERSEDED |
 | v1.14 | 2026-05-18 | Codex | **§6.8.7 第 (4) 條「全天數」定義明文化 + auto strict-source-history on full universe**：依憲章 v6.0.0-patch 對「全天數」之嚴格定義（每 (stock_id, dataset) 對自 API 來源端最早可得日期 → DB 最後交易日）落地實作：main() preflight 在 `--universe full` 觸發時 **自動啟用** `--strict-source-history`（強制 `start_date=1990-01-01` + 停用 §7.5 L3 resume），使用者毋須另下旗標；`--days` 在 full mode 下退為 safety floor，實際同步起點由 strict-source-history 決定。終端報表加 INFO 列說明此自動行為。FRED 同步維持既有 `asc + offset` 全歷史分頁，不變。本版不改 UNIVERSE_TIERS、節流、退避、reason 驗證或既有旗標語意。 | SUPERSEDED |
@@ -206,7 +235,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v1.17"
+TOOL_VER = "v1.18"
 
 
 # v1.10 phase-aware constants inherited from v1.9
