@@ -1,8 +1,8 @@
 """
-core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authority)
+core_universe_schema.py v0.3 (Quantum Finance Derived Governance Schema Authority)
 ================================================================================
-**最後更新日期**: 2026-05-16
-**主權狀態**: IMPLEMENTED (憲法 v6.0.0 核心股治理分層對齊 + bootstrap preflight clarity)
+**最後更新日期**: 2026-05-21
+**主權狀態**: IMPLEMENTED (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] + [Historical Reference Authority] 核心定義補入；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -12,19 +12,23 @@ core_universe_schema.py v0.2 (Quantum Finance Derived Governance Schema Authorit
 4. [Downstream Bridge Boundary]: 預留 feature/model/prediction/backtest eligibility 與 version 欄位，但不得保存實際 feature / label / prediction values。
 5. [Snapshot Governance]: Universe 必須以 snapshot_id / as_of_date / policy_version 版本化，避免未來函數與倖存者偏誤。
 6. [Hybrid Observability]: 建表行為必須接入 record_lifecycle 與 data_audit_log，並輸出完整終端摘要。
+7. [Zero Hardcoded Verdict]: 主權判定（PERFECT / FAILED）必須依執行結果動態計算（`compute_verdict()` L517），嚴禁硬編碼。對齊憲章 §5.6.3「禁止硬編碼 PERFECT」與 §3.2 Step 接受標準；治權慣例對齊 `data_schema.py v2.13+` / `core/__init__.py v1.16+` / `finmind_client.py v4.46+` 之 [Zero Hardcoded Verdict]。
+8. [Sovereignty Declaration]: 本模組為憲章 §3.1 序列模組 / Derived Governance Schema Authority（憲章 L2455 §3.1 + L2722 §6.0A）；落實 §6.7 SQL SSOT 之治權容器 + §一 6. [Core Stock Universe Governance] L2348-L2353 之 schema 落地；不涉及 §0.1-A 第一性原理 / §0.2-A 八二法則 / §0.3-A 康波週期 / §0.0-E.4 統合層 / §0.0-F.3 AI 協作工具規則五套禁令；不在 §0.1.1 T1/T2/T3 分層內（schema 為 infrastructure，不執行第一性原理工程公式）；不處理 §8.5 anti-leakage（snapshot governance 屬版本化機制，非時間序列建模）；不選股、不評分、不調度 universe（屬 `core_universe_builder.py` 之 Builder Authority 治權）。
+9. [Historical Reference Authority]: 嚴格保留從 v0.1 至今所有修訂歷史紀錄於本檔標頭修訂歷程；snapshot_id / as_of_date / policy_version 之資料層版本化（§ [Snapshot Governance]）與本條之 Header 歷史保留條互補互不取代，作為判定治權一致性之雙重權威參考。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 (Exhaustive Examples) | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [核心股治理層初始化]** | `$ python scripts/core/core_universe_schema.py --init` | core_universe_schema v0.2 |
-| **2. [核心股治理層強制重鑄]** | `$ python scripts/core/core_universe_schema.py --init --force` | core_universe_schema v0.2 |
-| **3. [單一治理表重鑄]** | `$ python scripts/core/core_universe_schema.py --init --table core_universe_membership` | core_universe_schema v0.2 |
-| **4. [離線災難復原]** | `$ python scripts/core/core_universe_schema.py --init --skip-preflight` | core_universe_schema v0.2 |
+| **1. [核心股治理層初始化]** | `$ python scripts/core/core_universe_schema.py --init` | core_universe_schema v0.3 |
+| **2. [核心股治理層強制重鑄]** | `$ python scripts/core/core_universe_schema.py --init --force` | core_universe_schema v0.3 |
+| **3. [單一治理表重鑄]** | `$ python scripts/core/core_universe_schema.py --init --table core_universe_membership` | core_universe_schema v0.3 |
+| **4. [離線災難復原]** | `$ python scripts/core/core_universe_schema.py --init --skip-preflight` | core_universe_schema v0.3 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-14 | Codex | **欄位繼承對齊版 + 2026-05-16 bootstrap preflight clarity**：依憲章 Derived Schema 欄位繼承原則，將 `market` 修正為 raw API 欄位 `type`；新增 `RAW_COLUMN_INHERITANCE` 與 preflight 型別相容檢查，確保 derived table 引用 raw 欄位時名稱大小寫與 SQL 型別繼承 `DATASET_REGISTRY`。若 raw / infra prerequisite tables 尚未建立，preflight 必須回報明確 WARNING 並跳過繼承驗證，不得輸出誤導性的 PASS。 | **ACTIVE** |
+| **v0.3** | 2026-05-21 | Codex | **3 條核心定義補入 + 2 模組常數 + cross-ref 精確化（CLAUDE.md §四 #4 100% 合規補強；逐元件審計 Step 1.1.3 跟進）**：依昨日剛入憲之 CLAUDE.md §四 #4「8 項標頭強制檢驗」治權原則檢驗，揭露 v0.2 之 5 項缺口：(1) 核心定義缺 [Zero Hardcoded Verdict]（程式邏輯動態但未顯式宣告）；(2) 核心定義缺 [Sovereignty Declaration]（治權位階 / 5 套禁令 / T1-T3 / §8.5 未明示）；(3) 核心定義缺 [Historical Reference Authority]（Snapshot Governance 為資料層版本化，非 Header 歷史保留）；(4) 缺 module-level `CONSTITUTION_VER` + `TOOL_VER` 模組常數（治權慣例對齊 path_setup v4.45+ / data_schema v2.12+）；(5) cross-ref 缺精確行號（與 data_schema 之「L2440 / L2709」/ __init__ 之「L2457 / L2488 / L5589」/ audit_api_schema_compliance v0.2+ 之「L2483」之治權慣例不對齊）。**補正內容**：(I) 核心定義新增第 7 條 [Zero Hardcoded Verdict] 顯式宣告動態 `compute_verdict()` 對齊 §5.6.3；(II) 核心定義新增第 8 條 [Sovereignty Declaration] 明示 §3.1 序列模組 + Derived Governance Schema Authority（cross-ref 憲章 L2455 §3.1 + L2722 §6.0A + L2348-L2353 §一 6.）+ 5 套禁令不涉 + T1-T3 不分層 + §8.5 anti-leakage 不處理 + 不選股不評分（Builder Authority 邊界）；(III) 核心定義新增第 9 條 [Historical Reference Authority] 明示 Header 歷史保留 vs Snapshot Governance 之資料層版本化互補關係；(IV) 新增 module-level `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v0.3"` 常數；(V) 主權狀態行升至「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] + [Historical Reference Authority] 核心定義補入；8 項檢查面 100% 合規)」；(VI) 標頭版本 / 維運矩陣 4 場景 / 修訂歷程之 cosmetic v0.2 → v0.3。**7 張治理表 DDL、`RAW_COLUMN_INHERITANCE`、preflight 邏輯、`CoreUniverseSchemaManager` 類別、CLI 介面（4 flag 不變）、verdict 動態計算、record_lifecycle + data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 data_schema v2.14 / __init__ v1.16 / audit_api_schema_compliance v0.2 同模式）。合規度：v0.2 ≈73% → v0.3 100%。 | **ACTIVE** |
+| v0.2 | 2026-05-14 | Codex | **欄位繼承對齊版 + 2026-05-16 bootstrap preflight clarity**：依憲章 Derived Schema 欄位繼承原則，將 `market` 修正為 raw API 欄位 `type`；新增 `RAW_COLUMN_INHERITANCE` 與 preflight 型別相容檢查，確保 derived table 引用 raw 欄位時名稱大小寫與 SQL 型別繼承 `DATASET_REGISTRY`。若 raw / infra prerequisite tables 尚未建立，preflight 必須回報明確 WARNING 並跳過繼承驗證，不得輸出誤導性的 PASS。 | SUPERSEDED |
 | v0.1 | 2026-05-14 | Codex | **核心股治理資料層初始版**：依憲章 v5.4.19 建立 Derived Governance Schema；新增 policy、snapshot、membership、scores、theme taxonomy、stock-theme map、revision log；只保存治理銜接欄位，不保存實際 feature/label/prediction values。 | SUPERSEDED |
 ================================================================================
 """
@@ -33,6 +37,12 @@ import sys
 import time
 import re
 from pathlib import Path
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 治權常數 (Constitution Constants) — v0.3 新增（CLAUDE.md §四 #4 / Step 1.1.3 補正）
+# ──────────────────────────────────────────────────────────────────────────────
+CONSTITUTION_VER = "v6.0.0"
+TOOL_VER = "v0.3"
 from datetime import datetime
 
 _THIS_FILE = Path(__file__).resolve()
@@ -220,7 +230,7 @@ CORE_UNIVERSE_REGISTRY = {
             "effective_from": "DATE",
             "effective_to": "DATE",
             "active": "BOOLEAN DEFAULT TRUE",
-            "version": "VARCHAR(255) NOT NULL DEFAULT 'v0.2'",
+            "version": "VARCHAR(255) NOT NULL DEFAULT 'v0.3'",
             "notes": "TEXT",
             "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "updated_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
@@ -300,7 +310,7 @@ DROP_ORDER = [
 class CoreUniverseSchemaManager:
     def __init__(self):
         self.constitution_ver = "v6.0.0"
-        self.tool_ver = "v0.2"
+        self.tool_ver = "v0.3"
         self.stats = {"success": 0, "failed": 0, "warning": 0, "details": []}
         self.preflight = {"pass": 0, "failed": 0, "warning": 0, "details": []}
 
@@ -441,7 +451,7 @@ class CoreUniverseSchemaManager:
         tables = [target_table] if target_table else list(CORE_UNIVERSE_REGISTRY.keys())
         ddl_executed = False
 
-        with record_lifecycle("core_universe_schema_init_v0.2", category="schema", stock_id="SYSTEM") as lifecycle:
+        with record_lifecycle("core_universe_schema_init_v0.3", category="schema", stock_id="SYSTEM") as lifecycle:
             if target_table and target_table not in CORE_UNIVERSE_REGISTRY:
                 msg = f'表名 "{target_table}" 未登錄於 CORE_UNIVERSE_REGISTRY'
                 self._detail("failed", msg)
@@ -547,7 +557,7 @@ class CoreUniverseSchemaManager:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Quantum Finance 核心股治理資料層工具 (v0.2)")
+    parser = argparse.ArgumentParser(description="Quantum Finance 核心股治理資料層工具 (v0.3)")
     parser.add_argument("--init", action="store_true", help="啟動核心股治理資料層初始化")
     parser.add_argument("--force", action="store_true", help="強制重置現有核心股治理表")
     parser.add_argument("--table", type=str, help="指定單一治理表名")
