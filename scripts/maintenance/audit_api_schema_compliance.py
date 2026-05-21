@@ -1,8 +1,8 @@
 """
-audit_api_schema_compliance.py v0.1 (Quantum Finance 9-Layer Schema + Data Integrity Audit)
+audit_api_schema_compliance.py v0.2 (Quantum Finance 9-Layer Schema + Data Integrity Audit)
 ================================================================================
-**最後更新日期**: 2026-05-20
-**主權狀態**: ACTIVE (憲法 v6.0.0 對齊 + §3.2A 第 6 個橫切稽核工具入憲落地)
+**最後更新日期**: 2026-05-21
+**主權狀態**: ACTIVE (憲法 v6.0.0 對齊 + §3.2A 橫切稽核工具入憲落地 + cross-ref 精確化；100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -16,7 +16,7 @@ audit_api_schema_compliance.py v0.1 (Quantum Finance 9-Layer Schema + Data Integ
    --skip-api-probe 可只跑 DB-side Layer A/E/F/G/H/I 六層。
 5. [Zero Hardcoded Verdict]: 主權判定 PERFECT/FAILED 必須依執行結果動態計算，嚴禁硬編碼。
    對齊憲章 §5.6.3 與 §3.2 Step 接受標準。
-6. [Sovereignty Declaration]: 本模組為憲章 §3.2A 橫切基礎設施稽核工具（憲章 L24XX 第 6 行）；
+6. [Sovereignty Declaration]: 本模組為憲章 §3.2A 橫切基礎設施稽核工具（憲章 L2483）；
    落實 §1.4 [Defensive Architecture] + L2388「SQL 型別寬度不得更窄」+ §6.7 SQL 契約
    referential integrity；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；
    不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage（本工具是 audit，非時間序列建模）；
@@ -25,16 +25,17 @@ audit_api_schema_compliance.py v0.1 (Quantum Finance 9-Layer Schema + Data Integ
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [標準執行：9 層全跑 + FRED]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred` | audit_api_schema_compliance v0.1 |
-| **2. [單一表]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --table TaiwanStockPrice` | audit_api_schema_compliance v0.1 |
-| **3. [離線：只跑 DB-side 6 層]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --skip-api-probe` | audit_api_schema_compliance v0.1 |
-| **4. [自訂 layer]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --layers A,E,H` | audit_api_schema_compliance v0.1 |
-| **5. [自訂取樣大小]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --sample-size 500` | audit_api_schema_compliance v0.1 |
+| **1. [標準執行：9 層全跑 + FRED]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred` | audit_api_schema_compliance v0.2 |
+| **2. [單一表]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --table TaiwanStockPrice` | audit_api_schema_compliance v0.2 |
+| **3. [離線：只跑 DB-side 6 層]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --skip-api-probe` | audit_api_schema_compliance v0.2 |
+| **4. [自訂 layer]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --layers A,E,H` | audit_api_schema_compliance v0.2 |
+| **5. [自訂取樣大小]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --sample-size 500` | audit_api_schema_compliance v0.2 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-20 | Codex | **首版入憲落地（§0.0-G Step 3 完成；對應憲章 §14.7-AJ）**：依使用者要求補齊憲章 L2388「SQL 型別寬度不得更窄」+ §6.7 SQL referential integrity 之 audit 缺口。**9 層動態檢驗**：(A) DDL ↔ DB Physical Consistency（data_type / character_maximum_length / numeric_precision / numeric_scale）；(B) API Sample ↔ DDL Type Compatibility（Decimal cast / date parse）；(C) API Sample Length / Precision Range（max length / max abs vs DDL 範圍）；(D) NULL Ratio Sanity（unique 欄位 NULL > 50% 為 FAILED）；(E) PK / Unique Constraint Uniqueness（COUNT vs COUNT DISTINCT）；(F) Duplicate Row Detection（全欄位重複）；(G) Date Series Continuity（工作日連續性）；(H) Referential Integrity（stock_id ∈ TaiwanStockInfo，依 §6.7）；(I) Value Range Sanity（負值 / 物理常識）。**嚴格模式**：任何 FAILED → exit 1（無 --strict flag）。**取樣大小**：100（預設可調）。**CLI**：--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out。**輸出**：reports/api_schema_compliance_audit_<YYYYMMDD_HHMM>.md 含 9 層細粒度結果。**自我合規**：標頭 6 條核心定義（含 [Zero Hardcoded Verdict] + [Sovereignty Declaration]）對齊 per_program_audit §7.5 八項檢查面；verdict 動態計算對齊 §5.6.3；exit code 對齊 §3.2 接受標準；record_lifecycle + write_data_audit_log 接線對齊 §0.4 可觀察性；DATASET_REGISTRY 為唯一 schema SSOT 對齊 §0.0-I。 | **ACTIVE** |
+| **v0.2** | 2026-05-21 | Codex | **L19 cross-ref 精確化 + 標頭 100% 合規補強（per_program_audit 跟進）**：依逐元件治權合規審計揭露之 1 處 minor 漂移：L19 [Sovereignty Declaration] 條之「憲章 L24XX 第 6 行」為入憲時遺留之未填 placeholder，違反 §0.0-I 單一引用源精神之 cross-ref 精確性要求。**補正內容**：(I) L19 「憲章 L24XX 第 6 行」→「憲章 L2483」（§3.2A 子表 audit_api_schema_compliance 之實際行號）；對齊 `data_schema.py v2.15`「憲章 L2440 / §6.0A L2709」/ `core/__init__.py v1.17`「憲章 L2457 / L2488 / L5589」之具體行號 cross-ref 治權慣例；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + §3.2A 橫切稽核工具入憲落地 + cross-ref 精確化；100% 合規)」；(III) TOOL_VER v0.1 → v0.2；(IV) 標頭版本 / 維運矩陣 5 場景 / 修訂歷程之 cosmetic v0.1 → v0.2。**9 層 audit 邏輯、CLI 介面（--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭 cross-ref 精確化。合規度：v0.1 ≈97%（L24XX placeholder）→ v0.2 100%。 | **ACTIVE** |
+| v0.1 | 2026-05-20 | Codex | **首版入憲落地（§0.0-G Step 3 完成；對應憲章 §14.7-AJ）**：依使用者要求補齊憲章 L2388「SQL 型別寬度不得更窄」+ §6.7 SQL referential integrity 之 audit 缺口。**9 層動態檢驗**：(A) DDL ↔ DB Physical Consistency（data_type / character_maximum_length / numeric_precision / numeric_scale）；(B) API Sample ↔ DDL Type Compatibility（Decimal cast / date parse）；(C) API Sample Length / Precision Range（max length / max abs vs DDL 範圍）；(D) NULL Ratio Sanity（unique 欄位 NULL > 50% 為 FAILED）；(E) PK / Unique Constraint Uniqueness（COUNT vs COUNT DISTINCT）；(F) Duplicate Row Detection（全欄位重複）；(G) Date Series Continuity（工作日連續性）；(H) Referential Integrity（stock_id ∈ TaiwanStockInfo，依 §6.7）；(I) Value Range Sanity（負值 / 物理常識）。**嚴格模式**：任何 FAILED → exit 1（無 --strict flag）。**取樣大小**：100（預設可調）。**CLI**：--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out。**輸出**：reports/api_schema_compliance_audit_<YYYYMMDD_HHMM>.md 含 9 層細粒度結果。**自我合規**：標頭 6 條核心定義（含 [Zero Hardcoded Verdict] + [Sovereignty Declaration]）對齊 per_program_audit §7.5 八項檢查面；verdict 動態計算對齊 §5.6.3；exit code 對齊 §3.2 接受標準；record_lifecycle + write_data_audit_log 接線對齊 §0.4 可觀察性；DATASET_REGISTRY 為唯一 schema SSOT 對齊 §0.0-I。 | SUPERSEDED |
 ================================================================================
 """
 import os
@@ -51,7 +52,7 @@ from decimal import Decimal, InvalidOperation
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 DEFAULT_SAMPLE_SIZE = 100
 
 LAYERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
