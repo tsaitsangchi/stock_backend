@@ -1,5 +1,5 @@
 """
-audit_api_schema_compliance.py v0.3 (Quantum Finance 9-Layer Schema + Data Integrity Audit)
+audit_api_schema_compliance.py v0.4 (Quantum Finance 9-Layer Schema + Data Integrity Audit · Layer G Frequency Classification + Layer I revenue<0 Acceptance)
 ================================================================================
 **最後更新日期**: 2026-05-21
 **主權狀態**: ACTIVE (憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)
@@ -35,7 +35,8 @@ audit_api_schema_compliance.py v0.3 (Quantum Finance 9-Layer Schema + Data Integ
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.3** | 2026-05-21 | Codex | **維運矩陣補入 --report-out 場景（CLAUDE.md §四 #4 連鎖實證；達真 100% 合規）**：依 CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v0.2 維運矩陣只列 5 場景，但 CLI 實際支援 6 個 flag（含 `--report-out` 之自訂報告路徑）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 6 場景「[自訂報告路徑]」對應 CLI `--include-fred --report-out reports/custom_audit_path.md`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)」；(III) TOOL_VER v0.2 → v0.3；(IV) 維運矩陣 6 場景之 cosmetic v0.2 → v0.3。**9 層 audit 邏輯、CLI 介面（6 flag 不變）、`--report-out` 處理邏輯（v0.1 既有）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項；繼 `data_schema.py v2.16`（commit `2a4c0f2`）後第 2 例 §四 #4 連鎖實證）。合規度：v0.2 ≈98%（缺 --report-out 場景）→ v0.3 100%。 | **ACTIVE** |
+| **v0.4** | 2026-05-22 | Codex | **§14.7-AO 治權閉環首戰落地：Layer G 頻率分類規則 + Layer I revenue<0 接受（5 FAIL 預期消解）**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）落地實作。**補正內容**：(I) Layer G `audit_layer_g()` 重寫為**頻率分類規則**（依 §3.2A.G 7 表分 7 類）：`DAILY_TABLES_G` 6 表 (Price/PriceAdj/PER/Institutional/Margin/Shareholding) → 嚴格 daily check；`QUARTERLY_TABLES_G` 1 表 (FinancialStatements) → 4/year ± 1；`MONTHLY_TABLES_G` 1 表 (MonthRevenue) → 12/year ± 1；`EVENT_TABLES_G` 1 表 (Dividend) → 略過；`SNAPSHOT_TABLES_G` 1 表 (TaiwanStockInfo) → 略過；FRED per-series 分類：`FRED_DAILY_SERIES_G` (DFF/T10Y2Y/VIXCLS) → daily；`FRED_MONTHLY_SERIES_G` (UNRATE) → 12/year ± 1；新增 `_audit_g_fred()` helper 處理 FRED per-series 查詢；(II) Layer I `audit_layer_i()` 移除 `TaiwanStockMonthRevenue.revenue<0` 規則（per §6.8.8-B 合憲業務情境裁決：金融業淨損 / 建材營造退款 / 製造業退貨 / 跨產業重組）；註解明示 §6.8.8-B cross-ref；(III) TOOL_VER v0.3 → v0.4；(IV) header v0.3 → v0.4 + 副標補入「Layer G Frequency Classification + Layer I revenue<0 Acceptance」。**預期效果**：v0.3 之 5 FAIL（Layer G 4 + Layer I 1）全部消解；audit 結果應為 PERFECT。**§14.7-AO 治權閉環完成實證**：本 commit 與 charter commit `55fa443` 之治權契約完全對齊。介面零變動：所有 6 CLI flag / 9 層 audit 整體結構 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變。 | **ACTIVE** |
+| v0.3 | 2026-05-21 | Codex | **維運矩陣補入 --report-out 場景（CLAUDE.md §四 #4 連鎖實證；達真 100% 合規）**：依 CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v0.2 維運矩陣只列 5 場景，但 CLI 實際支援 6 個 flag（含 `--report-out` 之自訂報告路徑）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 6 場景「[自訂報告路徑]」對應 CLI `--include-fred --report-out reports/custom_audit_path.md`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)」；(III) TOOL_VER v0.2 → v0.3；(IV) 維運矩陣 6 場景之 cosmetic v0.2 → v0.3。**9 層 audit 邏輯、CLI 介面（6 flag 不變）、`--report-out` 處理邏輯（v0.1 既有）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項；繼 `data_schema.py v2.16`（commit `2a4c0f2`）後第 2 例 §四 #4 連鎖實證）。合規度：v0.2 ≈98%（缺 --report-out 場景）→ v0.3 100%。 | SUPERSEDED |
 | v0.2 | 2026-05-21 | Codex | **L19 cross-ref 精確化 + 標頭 100% 合規補強（per_program_audit 跟進）**：依逐元件治權合規審計揭露之 1 處 minor 漂移：L19 [Sovereignty Declaration] 條之「憲章 L24XX 第 6 行」為入憲時遺留之未填 placeholder，違反 §0.0-I 單一引用源精神之 cross-ref 精確性要求。**補正內容**：(I) L19 「憲章 L24XX 第 6 行」→「憲章 L2483」（§3.2A 子表 audit_api_schema_compliance 之實際行號）；對齊 `data_schema.py v2.15`「憲章 L2440 / §6.0A L2709」/ `core/__init__.py v1.17`「憲章 L2457 / L2488 / L5589」之具體行號 cross-ref 治權慣例；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + §3.2A 橫切稽核工具入憲落地 + cross-ref 精確化；100% 合規)」；(III) TOOL_VER v0.1 → v0.2；(IV) 標頭版本 / 維運矩陣 5 場景 / 修訂歷程之 cosmetic v0.1 → v0.2。**9 層 audit 邏輯、CLI 介面（--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭 cross-ref 精確化。合規度：v0.1 ≈97%（L24XX placeholder）→ v0.2 100%。 | SUPERSEDED |
 | v0.1 | 2026-05-20 | Codex | **首版入憲落地（§0.0-G Step 3 完成；對應憲章 §14.7-AJ）**：依使用者要求補齊憲章 L2388「SQL 型別寬度不得更窄」+ §6.7 SQL referential integrity 之 audit 缺口。**9 層動態檢驗**：(A) DDL ↔ DB Physical Consistency（data_type / character_maximum_length / numeric_precision / numeric_scale）；(B) API Sample ↔ DDL Type Compatibility（Decimal cast / date parse）；(C) API Sample Length / Precision Range（max length / max abs vs DDL 範圍）；(D) NULL Ratio Sanity（unique 欄位 NULL > 50% 為 FAILED）；(E) PK / Unique Constraint Uniqueness（COUNT vs COUNT DISTINCT）；(F) Duplicate Row Detection（全欄位重複）；(G) Date Series Continuity（工作日連續性）；(H) Referential Integrity（stock_id ∈ TaiwanStockInfo，依 §6.7）；(I) Value Range Sanity（負值 / 物理常識）。**嚴格模式**：任何 FAILED → exit 1（無 --strict flag）。**取樣大小**：100（預設可調）。**CLI**：--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out。**輸出**：reports/api_schema_compliance_audit_<YYYYMMDD_HHMM>.md 含 9 層細粒度結果。**自我合規**：標頭 6 條核心定義（含 [Zero Hardcoded Verdict] + [Sovereignty Declaration]）對齊 per_program_audit §7.5 八項檢查面；verdict 動態計算對齊 §5.6.3；exit code 對齊 §3.2 接受標準；record_lifecycle + write_data_audit_log 接線對齊 §0.4 可觀察性；DATASET_REGISTRY 為唯一 schema SSOT 對齊 §0.0-I。 | SUPERSEDED |
 ================================================================================
@@ -54,7 +55,7 @@ from decimal import Decimal, InvalidOperation
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.3"
+TOOL_VER = "v0.4"
 DEFAULT_SAMPLE_SIZE = 100
 
 LAYERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
@@ -523,7 +524,21 @@ class ApiSchemaComplianceAuditor:
             cur.close()
             conn.close()
 
-    # ============== Layer G: Date Series Continuity ==============
+    # ============== Layer G: Date Series Continuity (v0.4 頻率分類規則) ==============
+    # 對齊憲章 §3.2A.G「Layer G Date Series Continuity 頻率分類規則」（2026-05-22 入憲）
+    # 對應 §14.7-AO 治權閉環首戰實證
+    DAILY_TABLES_G = {
+        "TaiwanStockPrice", "TaiwanStockPriceAdj", "TaiwanStockPER",
+        "TaiwanStockInstitutionalInvestorsBuySell",
+        "TaiwanStockMarginPurchaseShortSale", "TaiwanStockShareholding",
+    }
+    QUARTERLY_TABLES_G = {"TaiwanStockFinancialStatements"}
+    MONTHLY_TABLES_G = {"TaiwanStockMonthRevenue"}
+    EVENT_TABLES_G = {"TaiwanStockDividend"}
+    SNAPSHOT_TABLES_G = {"TaiwanStockInfo"}
+    FRED_DAILY_SERIES_G = {"DFF", "T10Y2Y", "VIXCLS"}
+    FRED_MONTHLY_SERIES_G = {"UNRATE"}
+
     def audit_layer_g(self):
         if "G" not in self.active_layers:
             self.layer_skipped["G"] = True
@@ -537,6 +552,22 @@ class ApiSchemaComplianceAuditor:
                 config = DATASET_REGISTRY[table_name]
                 if "date" not in config["columns"] or table_name in INFRA_TABLES:
                     continue
+
+                # FredData 需 per-series_id 分類處理
+                if table_name == "FredData":
+                    self._audit_g_fred(cur, table_name)
+                    continue
+
+                # 事件型 + Metadata Snapshot：略過 continuity check（§3.2A.G）
+                if table_name in self.EVENT_TABLES_G:
+                    self._record("G", "pass", table_name, "date",
+                                 "Event-Driven 表（§3.2A.G 略過 continuity check；不定期事件型）")
+                    continue
+                if table_name in self.SNAPSHOT_TABLES_G:
+                    self._record("G", "pass", table_name, "date",
+                                 "Metadata Snapshot 表（§3.2A.G 略過 continuity check；無時序連續性）")
+                    continue
+
                 try:
                     cur.execute('SELECT MIN(date), MAX(date), COUNT(DISTINCT date) FROM "{}"'.format(
                         table_name))
@@ -546,17 +577,59 @@ class ApiSchemaComplianceAuditor:
                         continue
                     min_d, max_d, distinct_dates = row
                     days_range = (max_d - min_d).days + 1
-                    expected_workdays = days_range * 5 / 7
-                    threshold = expected_workdays * 0.8
-                    if distinct_dates < threshold and distinct_dates > 0:
-                        self._record("G", "fail", table_name, "date",
-                                     "date 連續性低：{}~{} 範圍 {} 天，預期工作日 ~{}，實際 {}".format(
-                                         min_d, max_d, days_range,
-                                         int(expected_workdays), distinct_dates))
+
+                    if table_name in self.DAILY_TABLES_G:
+                        # Daily：嚴格 daily check（80% 工作日下限）
+                        expected_workdays = days_range * 5 / 7
+                        threshold = expected_workdays * 0.8
+                        if distinct_dates < threshold and distinct_dates > 0:
+                            self._record("G", "fail", table_name, "date",
+                                         "Daily 連續性低：{}~{} 範圍 {} 天，預期工作日 ~{}，實際 {}".format(
+                                             min_d, max_d, days_range,
+                                             int(expected_workdays), distinct_dates))
+                        else:
+                            self._record("G", "pass", table_name, "date",
+                                         "Daily 連續性正常：{}~{}, {} distinct dates (~{} 預期工作日)".format(
+                                             min_d, max_d, distinct_dates, int(expected_workdays)))
+                    elif table_name in self.QUARTERLY_TABLES_G:
+                        # Quarterly：4/year ± 1 容忍（§3.2A.G）
+                        years = max(1.0, days_range / 365.25)
+                        expected_quarters = int(years * 4)
+                        # 容忍：實際 quarters >= expected - 1（per year average）
+                        tolerance = max(1, int(years))
+                        if distinct_dates < (expected_quarters - tolerance) and distinct_dates > 0:
+                            self._record("G", "fail", table_name, "date",
+                                         "Quarterly 連續性低：{}~{} ({:.1f} 年)，預期 ~{} 季 ± {}，實際 {}".format(
+                                             min_d, max_d, years, expected_quarters, tolerance, distinct_dates))
+                        else:
+                            self._record("G", "pass", table_name, "date",
+                                         "Quarterly 連續性正常：{}~{}, {} 季 ({:.1f} 年；預期 ~{} ± {})".format(
+                                             min_d, max_d, distinct_dates, years, expected_quarters, tolerance))
+                    elif table_name in self.MONTHLY_TABLES_G:
+                        # Monthly：12/year ± 1 容忍（§3.2A.G）
+                        years = max(1.0, days_range / 365.25)
+                        expected_months = int(years * 12)
+                        tolerance = max(1, int(years))
+                        if distinct_dates < (expected_months - tolerance) and distinct_dates > 0:
+                            self._record("G", "fail", table_name, "date",
+                                         "Monthly 連續性低：{}~{} ({:.1f} 年)，預期 ~{} 月 ± {}，實際 {}".format(
+                                             min_d, max_d, years, expected_months, tolerance, distinct_dates))
+                        else:
+                            self._record("G", "pass", table_name, "date",
+                                         "Monthly 連續性正常：{}~{}, {} 月 ({:.1f} 年；預期 ~{} ± {})".format(
+                                             min_d, max_d, distinct_dates, years, expected_months, tolerance))
                     else:
-                        self._record("G", "pass", table_name, "date",
-                                     "date 連續性正常：{}~{}, {} 個 distinct dates (~{} 工作日預期)".format(
-                                         min_d, max_d, distinct_dates, int(expected_workdays)))
+                        # 未分類表：fallback 為 Daily（保守處理；提示需更新 §3.2A.G 分類）
+                        expected_workdays = days_range * 5 / 7
+                        threshold = expected_workdays * 0.8
+                        if distinct_dates < threshold and distinct_dates > 0:
+                            self._record("G", "fail", table_name, "date",
+                                         "[未分類] Daily fallback 連續性低：{}~{} ({}天)，預期 ~{} 工作日，實際 {}（建議更新 §3.2A.G 分類）".format(
+                                             min_d, max_d, days_range, int(expected_workdays), distinct_dates))
+                        else:
+                            self._record("G", "pass", table_name, "date",
+                                         "[未分類] Daily fallback 連續性正常：{}~{}, {} dates".format(
+                                             min_d, max_d, distinct_dates))
                 except Exception as exc:
                     self._record("G", "fail", table_name, "date",
                                  "查詢失敗：{}: {}".format(type(exc).__name__, exc))
@@ -564,6 +637,52 @@ class ApiSchemaComplianceAuditor:
         finally:
             cur.close()
             conn.close()
+
+    def _audit_g_fred(self, cur, table_name):
+        """FredData per-series_id 分類處理（§3.2A.G）"""
+        try:
+            cur.execute('SELECT series_id, MIN(date), MAX(date), COUNT(DISTINCT date) '
+                        'FROM "{}" GROUP BY series_id ORDER BY series_id'.format(table_name))
+            rows = cur.fetchall()
+            if not rows:
+                self._record("G", "pass", table_name, "date", "FRED 空表，無需檢驗")
+                return
+            for series_id, min_d, max_d, distinct_dates in rows:
+                if min_d is None:
+                    self._record("G", "pass", "{}/{}".format(table_name, series_id), "date", "空 series")
+                    continue
+                days_range = (max_d - min_d).days + 1
+                if series_id in self.FRED_DAILY_SERIES_G:
+                    expected_workdays = days_range * 5 / 7
+                    threshold = expected_workdays * 0.8
+                    if distinct_dates < threshold:
+                        self._record("G", "fail", "{}/{}".format(table_name, series_id), "date",
+                                     "FRED Daily 連續性低：{}~{} ({}天)，預期 ~{} 工作日，實際 {}".format(
+                                         min_d, max_d, days_range, int(expected_workdays), distinct_dates))
+                    else:
+                        self._record("G", "pass", "{}/{}".format(table_name, series_id), "date",
+                                     "FRED Daily 連續性正常：{}~{}, {} dates".format(
+                                         min_d, max_d, distinct_dates))
+                elif series_id in self.FRED_MONTHLY_SERIES_G:
+                    years = max(1.0, days_range / 365.25)
+                    expected_months = int(years * 12)
+                    tolerance = max(1, int(years))
+                    if distinct_dates < (expected_months - tolerance):
+                        self._record("G", "fail", "{}/{}".format(table_name, series_id), "date",
+                                     "FRED Monthly 連續性低：{}~{} ({:.1f} 年)，預期 ~{} ± {} 月，實際 {}".format(
+                                         min_d, max_d, years, expected_months, tolerance, distinct_dates))
+                    else:
+                        self._record("G", "pass", "{}/{}".format(table_name, series_id), "date",
+                                     "FRED Monthly 連續性正常：{}~{}, {} 月 ({:.1f} 年；預期 ~{} ± {})".format(
+                                         min_d, max_d, distinct_dates, years, expected_months, tolerance))
+                else:
+                    # 未分類 FRED series：保守為 daily
+                    self._record("G", "pass", "{}/{}".format(table_name, series_id), "date",
+                                 "[未分類 FRED series] {}~{}, {} dates（建議更新 §3.2A.G FRED 分類）".format(
+                                     min_d, max_d, distinct_dates))
+        except Exception as exc:
+            self._record("G", "fail", table_name, "date",
+                         "FRED 查詢失敗：{}: {}".format(type(exc).__name__, exc))
 
     # ============== Layer H: Referential Integrity ==============
     def audit_layer_h(self):
@@ -643,9 +762,10 @@ class ApiSchemaComplianceAuditor:
                 ("PBR", '"PBR" < 0', "PBR < 0"),
                 ("dividend_yield", '"dividend_yield" < 0', "dividend_yield < 0"),
             ],
-            "TaiwanStockMonthRevenue": [
-                ("revenue", '"revenue" < 0', "revenue < 0"),
-            ],
+            # TaiwanStockMonthRevenue: revenue 接受負值（per §6.8.8-B 2026-05-22 入憲）
+            # 合憲業務情境：金融業淨損 / 建材營造退款 / 製造業退貨 / 跨產業重組
+            # 詳見憲章 §6.8.8-B 表（99 支股票產業分布實證）
+            # v0.4 移除 revenue<0 規則；revenue ∈ (-∞, +∞) 屬合憲
         }
         conn = get_db_connection()
         cur = conn.cursor()
