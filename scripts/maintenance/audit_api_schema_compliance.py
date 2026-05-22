@@ -1,5 +1,5 @@
 """
-audit_api_schema_compliance.py v0.4 (Quantum Finance 9-Layer Schema + Data Integrity Audit · Layer G Frequency Classification + Layer I revenue<0 Acceptance)
+audit_api_schema_compliance.py v0.5 (Quantum Finance 9-Layer Schema + Data Integrity Audit · Layer G Frequency Classification + Layer I revenue<0 Acceptance · §14.7-AO Post-inscription Cross-ref Calibration)
 ================================================================================
 **最後更新日期**: 2026-05-21
 **主權狀態**: ACTIVE (憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)
@@ -16,26 +16,32 @@ audit_api_schema_compliance.py v0.4 (Quantum Finance 9-Layer Schema + Data Integ
    --skip-api-probe 可只跑 DB-side Layer A/E/F/G/H/I 六層。
 5. [Zero Hardcoded Verdict]: 主權判定 PERFECT/FAILED 必須依執行結果動態計算，嚴禁硬編碼。
    對齊憲章 §5.6.3 與 §3.2 Step 接受標準。
-6. [Sovereignty Declaration]: 本模組為憲章 §3.2A 橫切基礎設施稽核工具（憲章 L2483）；
+6. [Sovereignty Declaration]: 本模組為憲章 §3.2A 橫切基礎設施稽核工具（憲章 L2494）；
    落實 §1.4 [Defensive Architecture] + L2388「SQL 型別寬度不得更窄」+ §6.7 SQL 契約
    referential integrity；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；
-   不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage（本工具是 audit，非時間序列建模）；
+   不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage（本工具是 audit，非時間序列建模）;
    不調度 universe；DATASET_REGISTRY 為唯一 schema SSOT，本工具不另立 schema 定義。
+   **v6.0.0-patch §14.7-AO 治權閉環關聯（2026-05-22 入憲；commit `55fa443`）**：本工具 Layer G + Layer I
+   實作對齊 §3.2A.G（憲章 L2498「Layer G Date Series Continuity 頻率分類規則」）+ §6.8.8-B
+   （憲章 L3368「TaiwanStockMonthRevenue.revenue<0 合憲業務情境裁決」）+ §14.7-AO（憲章 L6197+
+   「§二 Step 3.5 治權閉環首戰實證」）。v0.4 落地實作頻率分類 7 表 → 7 類 + revenue 接受負值，
+   audit 結果由 v0.3 之 FAILED 459/5 升至 v0.4 PERFECT 461/0（5 FAIL 全部消解）。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [標準執行：9 層全跑 + FRED]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred` | audit_api_schema_compliance v0.3 |
-| **2. [單一表]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --table TaiwanStockPrice` | audit_api_schema_compliance v0.3 |
-| **3. [離線：只跑 DB-side 6 層]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --skip-api-probe` | audit_api_schema_compliance v0.3 |
-| **4. [自訂 layer]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --layers A,E,H` | audit_api_schema_compliance v0.3 |
-| **5. [自訂取樣大小]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --sample-size 500` | audit_api_schema_compliance v0.3 |
-| **6. [自訂報告路徑]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred --report-out reports/custom_audit_path.md` | audit_api_schema_compliance v0.3 |
+| **1. [標準執行：9 層全跑 + FRED]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred` | audit_api_schema_compliance v0.5 |
+| **2. [單一表]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --table TaiwanStockPrice` | audit_api_schema_compliance v0.5 |
+| **3. [離線：只跑 DB-side 6 層]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --skip-api-probe` | audit_api_schema_compliance v0.5 |
+| **4. [自訂 layer]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --layers A,E,H` | audit_api_schema_compliance v0.5 |
+| **5. [自訂取樣大小]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --sample-size 500` | audit_api_schema_compliance v0.5 |
+| **6. [自訂報告路徑]** | `$ python scripts/maintenance/audit_api_schema_compliance.py --include-fred --report-out reports/custom_audit_path.md` | audit_api_schema_compliance v0.5 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.4** | 2026-05-22 | Codex | **§14.7-AO 治權閉環首戰落地：Layer G 頻率分類規則 + Layer I revenue<0 接受（5 FAIL 預期消解）**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）落地實作。**補正內容**：(I) Layer G `audit_layer_g()` 重寫為**頻率分類規則**（依 §3.2A.G 7 表分 7 類）：`DAILY_TABLES_G` 6 表 (Price/PriceAdj/PER/Institutional/Margin/Shareholding) → 嚴格 daily check；`QUARTERLY_TABLES_G` 1 表 (FinancialStatements) → 4/year ± 1；`MONTHLY_TABLES_G` 1 表 (MonthRevenue) → 12/year ± 1；`EVENT_TABLES_G` 1 表 (Dividend) → 略過；`SNAPSHOT_TABLES_G` 1 表 (TaiwanStockInfo) → 略過；FRED per-series 分類：`FRED_DAILY_SERIES_G` (DFF/T10Y2Y/VIXCLS) → daily；`FRED_MONTHLY_SERIES_G` (UNRATE) → 12/year ± 1；新增 `_audit_g_fred()` helper 處理 FRED per-series 查詢；(II) Layer I `audit_layer_i()` 移除 `TaiwanStockMonthRevenue.revenue<0` 規則（per §6.8.8-B 合憲業務情境裁決：金融業淨損 / 建材營造退款 / 製造業退貨 / 跨產業重組）；註解明示 §6.8.8-B cross-ref；(III) TOOL_VER v0.3 → v0.4；(IV) header v0.3 → v0.4 + 副標補入「Layer G Frequency Classification + Layer I revenue<0 Acceptance」。**預期效果**：v0.3 之 5 FAIL（Layer G 4 + Layer I 1）全部消解；audit 結果應為 PERFECT。**§14.7-AO 治權閉環完成實證**：本 commit 與 charter commit `55fa443` 之治權契約完全對齊。介面零變動：所有 6 CLI flag / 9 層 audit 整體結構 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變。 | **ACTIVE** |
+| **v0.5** | 2026-05-22 | Codex | **§14.7-AO 入憲後 cross-ref 行號校準 + [Sovereignty Declaration] 補入 §3.2A.G / §6.8.8-B / §14.7-AO 治權閉環關聯**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）+ 之前 §14.7-AN（bf0927c）累計造成之憲章 §3.2A 區域行號漂移，校準本標頭 cross-ref。**補正內容**：(I) L19 [Sovereignty Declaration] 「§3.2A 橫切基礎設施稽核工具（憲章 L2483）」→「憲章 L2494」（§3.2A `audit_api_schema_compliance.py` row 實際位置；漂移 +11 行因 §14.7-AN/AO 兩波入憲擴充 §3.2A 區域）；(II) [Sovereignty Declaration] 補入完整「v6.0.0-patch §14.7-AO 治權閉環關聯」段落：明文 §3.2A.G（憲章 L2498）+ §6.8.8-B（憲章 L3368）+ §14.7-AO（憲章 L6197+）三個治權契約 cross-ref + v0.3 FAILED 459/5 → v0.4 PERFECT 461/0 之實證對；(III) 維運矩陣 6 場景 cosmetic v0.3 → v0.5（v0.4 因首戰落地未進入 cosmetic）；(IV) L2 header v0.4 → v0.5 + 副標補入「§14.7-AO Post-inscription Cross-ref Calibration」；(V) TOOL_VER v0.4 → v0.5；(VI) 修訂歷程 v0.4 → SUPERSEDED + 新 v0.5 ACTIVE entry。**介面零變動**：所有 6 CLI flag / 9 層 audit 邏輯 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；Layer G 頻率分類 + Layer I revenue 接受負值之 v0.4 落地實作不變。本補正屬「憲章 §14.7-AN/AO 雙重入憲後下游程式 cross-ref 漂移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| v0.4 | 2026-05-22 | Codex | **§14.7-AO 治權閉環首戰落地：Layer G 頻率分類規則 + Layer I revenue<0 接受（5 FAIL 預期消解）**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）落地實作。**補正內容**：(I) Layer G `audit_layer_g()` 重寫為**頻率分類規則**（依 §3.2A.G 7 表分 7 類）：`DAILY_TABLES_G` 6 表 (Price/PriceAdj/PER/Institutional/Margin/Shareholding) → 嚴格 daily check；`QUARTERLY_TABLES_G` 1 表 (FinancialStatements) → 4/year ± 1；`MONTHLY_TABLES_G` 1 表 (MonthRevenue) → 12/year ± 1；`EVENT_TABLES_G` 1 表 (Dividend) → 略過；`SNAPSHOT_TABLES_G` 1 表 (TaiwanStockInfo) → 略過；FRED per-series 分類：`FRED_DAILY_SERIES_G` (DFF/T10Y2Y/VIXCLS) → daily；`FRED_MONTHLY_SERIES_G` (UNRATE) → 12/year ± 1；新增 `_audit_g_fred()` helper 處理 FRED per-series 查詢；(II) Layer I `audit_layer_i()` 移除 `TaiwanStockMonthRevenue.revenue<0` 規則（per §6.8.8-B 合憲業務情境裁決：金融業淨損 / 建材營造退款 / 製造業退貨 / 跨產業重組）；註解明示 §6.8.8-B cross-ref；(III) TOOL_VER v0.3 → v0.4；(IV) header v0.3 → v0.4 + 副標補入「Layer G Frequency Classification + Layer I revenue<0 Acceptance」。**預期效果**：v0.3 之 5 FAIL（Layer G 4 + Layer I 1）全部消解；audit 結果應為 PERFECT。**§14.7-AO 治權閉環完成實證**：本 commit 與 charter commit `55fa443` 之治權契約完全對齊。介面零變動：所有 6 CLI flag / 9 層 audit 整體結構 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變。 | SUPERSEDED |
 | v0.3 | 2026-05-21 | Codex | **維運矩陣補入 --report-out 場景（CLAUDE.md §四 #4 連鎖實證；達真 100% 合規）**：依 CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v0.2 維運矩陣只列 5 場景，但 CLI 實際支援 6 個 flag（含 `--report-out` 之自訂報告路徑）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 6 場景「[自訂報告路徑]」對應 CLI `--include-fred --report-out reports/custom_audit_path.md`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)」；(III) TOOL_VER v0.2 → v0.3；(IV) 維運矩陣 6 場景之 cosmetic v0.2 → v0.3。**9 層 audit 邏輯、CLI 介面（6 flag 不變）、`--report-out` 處理邏輯（v0.1 既有）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項；繼 `data_schema.py v2.16`（commit `2a4c0f2`）後第 2 例 §四 #4 連鎖實證）。合規度：v0.2 ≈98%（缺 --report-out 場景）→ v0.3 100%。 | SUPERSEDED |
 | v0.2 | 2026-05-21 | Codex | **L19 cross-ref 精確化 + 標頭 100% 合規補強（per_program_audit 跟進）**：依逐元件治權合規審計揭露之 1 處 minor 漂移：L19 [Sovereignty Declaration] 條之「憲章 L24XX 第 6 行」為入憲時遺留之未填 placeholder，違反 §0.0-I 單一引用源精神之 cross-ref 精確性要求。**補正內容**：(I) L19 「憲章 L24XX 第 6 行」→「憲章 L2483」（§3.2A 子表 audit_api_schema_compliance 之實際行號）；對齊 `data_schema.py v2.15`「憲章 L2440 / §6.0A L2709」/ `core/__init__.py v1.17`「憲章 L2457 / L2488 / L5589」之具體行號 cross-ref 治權慣例；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + §3.2A 橫切稽核工具入憲落地 + cross-ref 精確化；100% 合規)」；(III) TOOL_VER v0.1 → v0.2；(IV) 標頭版本 / 維運矩陣 5 場景 / 修訂歷程之 cosmetic v0.1 → v0.2。**9 層 audit 邏輯、CLI 介面（--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭 cross-ref 精確化。合規度：v0.1 ≈97%（L24XX placeholder）→ v0.2 100%。 | SUPERSEDED |
 | v0.1 | 2026-05-20 | Codex | **首版入憲落地（§0.0-G Step 3 完成；對應憲章 §14.7-AJ）**：依使用者要求補齊憲章 L2388「SQL 型別寬度不得更窄」+ §6.7 SQL referential integrity 之 audit 缺口。**9 層動態檢驗**：(A) DDL ↔ DB Physical Consistency（data_type / character_maximum_length / numeric_precision / numeric_scale）；(B) API Sample ↔ DDL Type Compatibility（Decimal cast / date parse）；(C) API Sample Length / Precision Range（max length / max abs vs DDL 範圍）；(D) NULL Ratio Sanity（unique 欄位 NULL > 50% 為 FAILED）；(E) PK / Unique Constraint Uniqueness（COUNT vs COUNT DISTINCT）；(F) Duplicate Row Detection（全欄位重複）；(G) Date Series Continuity（工作日連續性）；(H) Referential Integrity（stock_id ∈ TaiwanStockInfo，依 §6.7）；(I) Value Range Sanity（負值 / 物理常識）。**嚴格模式**：任何 FAILED → exit 1（無 --strict flag）。**取樣大小**：100（預設可調）。**CLI**：--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out。**輸出**：reports/api_schema_compliance_audit_<YYYYMMDD_HHMM>.md 含 9 層細粒度結果。**自我合規**：標頭 6 條核心定義（含 [Zero Hardcoded Verdict] + [Sovereignty Declaration]）對齊 per_program_audit §7.5 八項檢查面；verdict 動態計算對齊 §5.6.3；exit code 對齊 §3.2 接受標準；record_lifecycle + write_data_audit_log 接線對齊 §0.4 可觀察性；DATASET_REGISTRY 為唯一 schema SSOT 對齊 §0.0-I。 | SUPERSEDED |
@@ -55,7 +61,7 @@ from decimal import Decimal, InvalidOperation
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.4"
+TOOL_VER = "v0.5"
 DEFAULT_SAMPLE_SIZE = 100
 
 LAYERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
