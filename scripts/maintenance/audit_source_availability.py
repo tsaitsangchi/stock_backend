@@ -1,8 +1,8 @@
 """
-audit_source_availability.py v0.1 (Core 150 Strict Source Availability Audit)
+audit_source_availability.py v0.2 (Core 150 Strict Source Availability Audit · §6.8.8-C Time-Drift Tolerance)
 ================================================================================
-**最後更新日期**: 2026-05-18
-**主權狀態**: ACTIVE (憲法 v6.0.0 §14.7-L 對齊)
+**最後更新日期**: 2026-05-22
+**主權狀態**: ACTIVE (憲法 v6.0.0 §14.7-L 對齊 + §6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -20,17 +20,29 @@ audit_source_availability.py v0.1 (Core 150 Strict Source Availability Audit)
    對齊憲章 §3.2 接受標準（FAIL → exit 1）。
 5. [Hybrid Observability]: 維運行為觸發 `record_lifecycle` 與 `write_data_audit_log`；
    主權狀態依實況動態計算（PERFECT / WARNING / FAILED），嚴禁硬編
-   （對齊憲章 §5.6.3）。
+   （對齊憲章 §5.6.3 [Zero Hardcoded Verdict]）。
 6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+7. **[Time-Drift Tolerance]** (v0.2, 憲法 §6.8.8-C / §14.7-AP)：對「**audit 觀察時點之自然時間漂移**」之容忍：
+   - **`(api_date_max - db_date_max) ≤ N_calendar_days`** 且 **`abs(api_rows - db_rows) ≤ N`** → 標記為
+     `TIME_DRIFT_OK`（**不**視為 mismatch；不計入 exit 1）
+   - **預設 N = 3 個日曆日**（覆蓋週末 + 1 個工作日緩衝）
+   - CLI: `--drift-tolerance N`（N=0 為嚴格模式；N>0 為容忍模式；預設 3）
+   - 對齊憲章 §6.8.8-C 治權契約：「sync 時點 vs API publish 時點之競爭」+「audit 觀察時點之自然延遲」屬合法漂移
+8. **[Sovereignty Declaration]** (v0.2, 憲章 §3.2A 橫切稽核工具)：本程式為 §3.2A 橫切基礎設施稽核工具
+   （非 §3.1 序列模組）；落實 §14.7-L strict source availability + §6.8.8-C 時點漂移容忍；不涉及 §0.1-A / §0.2-A /
+   §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不調度 universe；
+   不持有 schema 定義；DATASET_REGISTRY + FINMIND_API_TABLES 為唯一 schema 引用源。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.1 |
-| **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.1 |
-| **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.1 |
-| **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.1 |
-| **5. [僅 FinMind（略 FRED）]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict` | audit_source_availability v0.1 |
+| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.2 |
+| **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.2 |
+| **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.2 |
+| **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.2 |
+| **5. [僅 FinMind（略 FRED）]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict` | audit_source_availability v0.2 |
+| **6. [§6.8.8-C 時點漂移容忍：預設 3 個日曆日]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 3` | audit_source_availability v0.2 |
+| **7. [§6.8.8-C 嚴格模式：相容 v0.1]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 0` | audit_source_availability v0.2 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -43,9 +55,13 @@ audit_source_availability.py v0.1 (Core 150 Strict Source Availability Audit)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-18 | Codex | 首版：依憲章 §14.7-L 入憲，比對 core+convex 150 × 9 表之 FinMind `api_rows/api_min/api_max` 與 DB `db_rows/db_min/db_max`；支援 `--snapshot-in/--snapshot-out`、`--strict` exit 1、source-empty 合法分流與 targeted backfill commands；`--include-fred` 另比對 FRED 四序列 valid numeric observations。 | **ACTIVE** |
+| **v0.2** | 2026-05-22 | Codex | **§6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環延伸實證**：依憲章 v6.0.0-patch §6.8.8-C + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）落地實作 audit 觀察時點漂移之容忍規則。**補正內容**：(I) 新增 `--drift-tolerance N` argparse flag（預設 N=3 個日曆日；N=0 為嚴格模式相容 v0.1）；(II) `_classify()` 邏輯擴增 TIME_DRIFT_OK 分支：當 `(api_date_max - db_date_max).days ≤ N` 且 `abs(api_rows - db_rows) ≤ N` 時標記為 TIME_DRIFT_OK（**不**計入 mismatch / 不影響 exit code）；(III) `_classify_fred()` 同步擴增 TIME_DRIFT_OK 分支；(IV) stats 新增 `time_drift_ok` + `fred_time_drift_ok` 計數器；(V) 報告新增 TIME_DRIFT_OK 獨立分類段落；(VI) 核心定義新增 [Time-Drift Tolerance] + [Sovereignty Declaration] 兩條治權慣例；(VII) 維運矩陣補入 6/7 兩個 --drift-tolerance scenarios；(VIII) 新增模組級 CONSTITUTION_VER + TOOL_VER 常數。**§14.7-AP 治權閉環實證**：本 commit 與 charter commit `4d990d0` 之治權契約完全對齊；2026-05-22 11:13 已實證 PERFECT 0/0（mismatch 全部消解後本 v0.2 之容忍規則為日後增量 sync 時自然漂移之預防性容忍）。**介面零變動**：所有既有 CLI flag / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；新增之 `--drift-tolerance` 屬非破壞性 flag（N=0 完全相容 v0.1 行為）。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| v0.1 | 2026-05-18 | Codex | 首版：依憲章 §14.7-L 入憲，比對 core+convex 150 × 9 表之 FinMind `api_rows/api_min/api_max` 與 DB `db_rows/db_min/db_max`；支援 `--snapshot-in/--snapshot-out`、`--strict` exit 1、source-empty 合法分流與 targeted backfill commands；`--include-fred` 另比對 FRED 四序列 valid numeric observations。 | SUPERSEDED |
 ================================================================================
 """
+CONSTITUTION_VER = "v6.0.0"
+TOOL_VER = "v0.2"
+
 import argparse
 import json
 import os
@@ -104,10 +120,13 @@ class SimpleThrottle:
 
 class SourceAvailabilityAuditor:
     def __init__(self, start_date=STRICT_SOURCE_START_DATE, throttle_per_hour=DEFAULT_THROTTLE_PER_HOUR,
-                 snapshot_in=None, snapshot_out=None):
-        self.constitution_ver = "v6.0.0"
-        self.tool_ver = "v0.1"
+                 snapshot_in=None, snapshot_out=None, drift_tolerance=3):
+        # v0.2: drift_tolerance = audit 時點漂移容忍（per §6.8.8-C / §14.7-AP）
+        # 預設 3 個日曆日（覆蓋週末 + 1 工作日緩衝）；0 為嚴格模式相容 v0.1
+        self.constitution_ver = CONSTITUTION_VER
+        self.tool_ver = TOOL_VER
         self.start_date = start_date
+        self.drift_tolerance = max(0, int(drift_tolerance))
         self.client = FinMindClient()
         self.throttle = SimpleThrottle(max_per_hour=throttle_per_hour)
         self.snapshot_in = Path(snapshot_in) if snapshot_in else None
@@ -119,8 +138,10 @@ class SourceAvailabilityAuditor:
         self.checked = 0
         self.mismatch = 0
         self.source_empty_ok = 0
+        self.time_drift_ok = 0  # v0.2 新增：§6.8.8-C 時點漂移容忍計數器
         self.fred_checked = 0
         self.fred_mismatch = 0
+        self.fred_time_drift_ok = 0  # v0.2 新增：FRED 時點漂移容忍計數器
         self.fred_api_errors = 0
 
     def _load_snapshot(self, path):
@@ -306,6 +327,22 @@ class SourceAvailabilityAuditor:
             "db_valid_max": str(max_date) if isinstance(max_date, (date, datetime)) else None,
         }
 
+    def _is_time_drift_ok(self, api_rows, db_rows, api_max, db_max):
+        """v0.2 §6.8.8-C 時點漂移容忍判定：
+        (api_date_max - db_date_max).days ≤ N 且 abs(api_rows - db_rows) ≤ N → TIME_DRIFT_OK
+        """
+        if self.drift_tolerance <= 0:
+            return False
+        if api_max is None or db_max is None:
+            return False
+        try:
+            date_drift_days = (api_max - db_max).days
+            row_drift = abs(api_rows - db_rows)
+            # 必須 API 領先 DB（DB 不應超前 API）且漂移在容忍範圍內
+            return 0 <= date_drift_days <= self.drift_tolerance and row_drift <= self.drift_tolerance
+        except Exception:
+            return False
+
     def _classify(self, row):
         if row["api_status"] != "OK":
             return "API_ERROR"
@@ -317,6 +354,12 @@ class SourceAvailabilityAuditor:
             and row["api_max"] == row["db_max"]
         ):
             return "OK"
+        # v0.2: 嘗試 §6.8.8-C 時點漂移容忍判定
+        if (
+            row["api_min"] == row["db_min"]  # 起點對齊（未漏抓歷史）
+            and self._is_time_drift_ok(row["api_rows"], row["db_rows"], row["api_max"], row["db_max"])
+        ):
+            return "TIME_DRIFT_OK"
         return "MISMATCH"
 
     def _classify_fred(self, row):
@@ -328,6 +371,13 @@ class SourceAvailabilityAuditor:
             and row["api_valid_max"] == row["db_valid_max"]
         ):
             return "OK"
+        # v0.2: 嘗試 §6.8.8-C 時點漂移容忍判定
+        if (
+            row["api_valid_min"] == row["db_valid_min"]  # 起點對齊
+            and self._is_time_drift_ok(row["api_valid_rows"], row["db_valid_rows"],
+                                       row["api_valid_max"], row["db_valid_max"])
+        ):
+            return "TIME_DRIFT_OK"
         return "MISMATCH"
 
     def run(self, stock_id=None, universe="core", dataset=None, all_datasets=False, strict=True, include_fred=False):
@@ -363,6 +413,8 @@ class SourceAvailabilityAuditor:
                         self.checked += 1
                         if row["status"] == "SOURCE_EMPTY_OK":
                             self.source_empty_ok += 1
+                        elif row["status"] == "TIME_DRIFT_OK":
+                            self.time_drift_ok += 1
                         elif row["status"] not in {"OK"}:
                             self.mismatch += 1
                 if include_fred:
@@ -388,7 +440,9 @@ class SourceAvailabilityAuditor:
                         row["status"] = self._classify_fred(row)
                         self.fred_results.append(row)
                         self.fred_checked += 1
-                        if row["status"] != "OK":
+                        if row["status"] == "TIME_DRIFT_OK":
+                            self.fred_time_drift_ok += 1
+                        elif row["status"] != "OK":
                             self.fred_mismatch += 1
             finally:
                 conn.close()
@@ -412,18 +466,26 @@ class SourceAvailabilityAuditor:
 
     def _write_report(self, verdict, stocks, datasets):
         report_path = get_report_dir() / f"source_availability_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
-        mismatches = [r for r in self.results if r["status"] not in {"OK", "SOURCE_EMPTY_OK"}]
+        mismatches = [r for r in self.results if r["status"] not in {"OK", "SOURCE_EMPTY_OK", "TIME_DRIFT_OK"}]
         with open(report_path, "w", encoding="utf-8") as f:
             f.write("# Core 150 strict source availability audit\n\n")
             f.write(f"- **time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"- **constitution**: 系統架構大憲章_{self.constitution_ver}.md §14.7-L\n")
+            f.write(f"- **constitution**: 系統架構大憲章_{self.constitution_ver}.md §14.7-L + §6.8.8-C + §14.7-AP\n")
             f.write(f"- **tool**: audit_source_availability {self.tool_ver}\n")
             f.write(f"- **start_date**: {self.start_date}\n")
+            f.write(f"- **drift_tolerance**: {self.drift_tolerance} day(s) (§6.8.8-C; 0 = strict)\n")
             f.write(f"- **scope**: stocks={len(stocks)}, datasets={len(datasets)}\n")
             f.write(f"- **verdict**: **{verdict}**\n")
-            f.write(f"- **summary**: checked={self.checked}, source_empty_ok={self.source_empty_ok}, mismatch={self.mismatch}, api_errors={self.api_errors}\n\n")
+            f.write(
+                f"- **summary**: checked={self.checked}, source_empty_ok={self.source_empty_ok}, "
+                f"time_drift_ok={self.time_drift_ok}, mismatch={self.mismatch}, api_errors={self.api_errors}\n\n"
+            )
             if self.fred_results:
-                f.write(f"- **fred_summary**: checked={self.fred_checked}, mismatch={self.fred_mismatch}, api_errors={self.fred_api_errors}\n\n")
+                f.write(
+                    f"- **fred_summary**: checked={self.fred_checked}, "
+                    f"time_drift_ok={self.fred_time_drift_ok}, "
+                    f"mismatch={self.fred_mismatch}, api_errors={self.fred_api_errors}\n\n"
+                )
             f.write("## Mismatches\n\n")
             if not mismatches:
                 f.write("None.\n\n")
@@ -463,12 +525,15 @@ class SourceAvailabilityAuditor:
         print(f"🚀 Quantum Finance: strict source availability audit ({self.tool_ver})")
         print("🛡️" * 40)
         print(f"report : {self.report_path}")
+        print(f"drift_tolerance={self.drift_tolerance}")
         print(f"checked={self.checked}")
         print(f"source_empty_ok={self.source_empty_ok}")
+        print(f"time_drift_ok={self.time_drift_ok}")
         print(f"mismatch={self.mismatch}")
         print(f"api_errors={self.api_errors}")
         if self.fred_results:
             print(f"fred_checked={self.fred_checked}")
+            print(f"fred_time_drift_ok={self.fred_time_drift_ok}")
             print(f"fred_mismatch={self.fred_mismatch}")
             print(f"fred_api_errors={self.fred_api_errors}")
         print(f"verdict={verdict}")
@@ -490,6 +555,8 @@ def main():
                         help="also verify FRED DFF/UNRATE/T10Y2Y/VIXCLS valid numeric observations against DB")
     parser.add_argument("--throttle", type=int, default=DEFAULT_THROTTLE_PER_HOUR,
                         help="API requests per hour cap for audit probe")
+    parser.add_argument("--drift-tolerance", type=int, default=3,
+                        help="§6.8.8-C audit 時點漂移容忍 (預設 3 個日曆日；0 = strict mode)")
     args = parser.parse_args()
 
     auditor = SourceAvailabilityAuditor(
@@ -497,6 +564,7 @@ def main():
         throttle_per_hour=args.throttle,
         snapshot_in=args.snapshot_in,
         snapshot_out=args.snapshot_out,
+        drift_tolerance=args.drift_tolerance,
     )
     verdict = auditor.run(
         stock_id=args.id,
