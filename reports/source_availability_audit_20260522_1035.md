@@ -1,0 +1,2408 @@
+# Core 150 strict source availability audit
+
+- **time**: 2026-05-22 10:35:41
+- **constitution**: 系統架構大憲章_v6.0.0.md §14.7-L
+- **tool**: audit_source_availability v0.1
+- **start_date**: 1990-01-01
+- **scope**: stocks=150, datasets=9
+- **verdict**: **FAILED**
+- **summary**: checked=1350, source_empty_ok=0, mismatch=595, api_errors=0
+
+- **fred_summary**: checked=4, mismatch=3, api_errors=0
+
+## Mismatches
+
+| stock_id | dataset | status | api_rows | api_min | api_max | db_rows | db_min | db_max |
+|---|---|---|---:|---|---|---:|---|---|
+| 1503 | TaiwanStockPriceAdj | MISMATCH | 8766 | 1992-01-06 | 2026-05-21 | 8765 | 1992-01-06 | 2026-05-20 |
+| 1503 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 1503 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 1503 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 1504 | TaiwanStockPriceAdj | MISMATCH | 8766 | 1992-01-06 | 2026-05-21 | 8765 | 1992-01-06 | 2026-05-20 |
+| 1504 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 1504 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 1504 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 1513 | TaiwanStockPriceAdj | MISMATCH | 8115 | 1994-03-09 | 2026-05-21 | 8114 | 1994-03-09 | 2026-05-20 |
+| 1513 | TaiwanStockPER | MISMATCH | 5087 | 2005-09-02 | 2026-05-21 | 5086 | 2005-09-02 | 2026-05-20 |
+| 1513 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6234 | 2001-01-05 | 2026-05-21 | 6233 | 2001-01-05 | 2026-05-20 |
+| 1513 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 1514 | TaiwanStockPriceAdj | MISMATCH | 8130 | 1994-03-28 | 2026-05-21 | 8129 | 1994-03-28 | 2026-05-20 |
+| 1514 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 1514 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 1514 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 1519 | TaiwanStockPriceAdj | MISMATCH | 7261 | 1997-04-17 | 2026-05-21 | 7260 | 1997-04-17 | 2026-05-20 |
+| 1519 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 1519 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 1519 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 1560 | TaiwanStockPriceAdj | MISMATCH | 5234 | 2005-02-01 | 2026-05-21 | 5233 | 2005-02-01 | 2026-05-20 |
+| 1560 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 1560 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5109 | 2005-08-10 | 2026-05-21 | 5108 | 2005-08-10 | 2026-05-20 |
+| 1560 | TaiwanStockShareholding | MISMATCH | 5280 | 2005-01-28 | 2026-05-21 | 5279 | 2005-01-28 | 2026-05-20 |
+| 1590 | TaiwanStockPriceAdj | MISMATCH | 3776 | 2010-12-14 | 2026-05-21 | 3775 | 2010-12-14 | 2026-05-20 |
+| 1590 | TaiwanStockPER | MISMATCH | 3781 | 2008-08-15 | 2026-05-21 | 3780 | 2008-08-15 | 2026-05-20 |
+| 1590 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3624 | 2011-07-29 | 2026-05-21 | 3623 | 2011-07-29 | 2026-05-20 |
+| 1590 | TaiwanStockShareholding | MISMATCH | 3810 | 2010-12-10 | 2026-05-21 | 3809 | 2010-12-10 | 2026-05-20 |
+| 1785 | TaiwanStockPriceAdj | MISMATCH | 4997 | 2005-02-01 | 2026-05-21 | 4996 | 2005-02-01 | 2026-05-20 |
+| 1785 | TaiwanStockPER | MISMATCH | 4572 | 2007-01-02 | 2026-05-21 | 4571 | 2007-01-02 | 2026-05-20 |
+| 1785 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4348 | 2007-03-05 | 2026-05-21 | 4347 | 2007-03-05 | 2026-05-20 |
+| 1785 | TaiwanStockShareholding | MISMATCH | 5263 | 2005-01-28 | 2026-05-21 | 5262 | 2005-01-28 | 2026-05-20 |
+| 1795 | TaiwanStockPriceAdj | MISMATCH | 4748 | 2006-12-13 | 2026-05-21 | 4747 | 2006-12-13 | 2026-05-20 |
+| 1795 | TaiwanStockPER | MISMATCH | 3980 | 2010-01-29 | 2026-05-21 | 3979 | 2010-01-29 | 2026-05-20 |
+| 1795 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3861 | 2010-08-18 | 2026-05-21 | 3860 | 2010-08-18 | 2026-05-20 |
+| 1795 | TaiwanStockShareholding | MISMATCH | 4019 | 2010-01-28 | 2026-05-21 | 4018 | 2010-01-28 | 2026-05-20 |
+| 1815 | TaiwanStockPriceAdj | MISMATCH | 4923 | 2006-01-24 | 2026-05-21 | 4922 | 2006-01-24 | 2026-05-20 |
+| 1815 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 1815 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 1815 | TaiwanStockShareholding | MISMATCH | 5028 | 2006-01-20 | 2026-05-21 | 5027 | 2006-01-20 | 2026-05-20 |
+| 2049 | TaiwanStockPriceAdj | MISMATCH | 4644 | 2007-06-21 | 2026-05-21 | 4643 | 2007-06-21 | 2026-05-20 |
+| 2049 | TaiwanStockPER | MISMATCH | 4151 | 2008-08-15 | 2026-05-21 | 4150 | 2008-08-15 | 2026-05-20 |
+| 2049 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4011 | 2010-01-06 | 2026-05-21 | 4010 | 2010-01-06 | 2026-05-20 |
+| 2049 | TaiwanStockShareholding | MISMATCH | 4182 | 2009-06-25 | 2026-05-21 | 4181 | 2009-06-25 | 2026-05-20 |
+| 2059 | TaiwanStockPriceAdj | MISMATCH | 5108 | 2005-04-29 | 2026-05-21 | 5107 | 2005-04-29 | 2026-05-20 |
+| 2059 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 2059 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4515 | 2007-03-05 | 2026-05-21 | 4514 | 2007-03-05 | 2026-05-20 |
+| 2059 | TaiwanStockShareholding | MISMATCH | 4434 | 2008-06-24 | 2026-05-21 | 4433 | 2008-06-24 | 2026-05-20 |
+| 2301 | TaiwanStockPriceAdj | MISMATCH | 8735 | 1992-01-06 | 2026-05-21 | 8734 | 1992-01-06 | 2026-05-20 |
+| 2301 | TaiwanStockPER | MISMATCH | 5090 | 2005-09-02 | 2026-05-21 | 5089 | 2005-09-02 | 2026-05-20 |
+| 2301 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6212 | 2001-01-05 | 2026-05-21 | 6211 | 2001-01-05 | 2026-05-20 |
+| 2301 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2303 | TaiwanStockPriceAdj | MISMATCH | 8755 | 1992-01-06 | 2026-05-21 | 8754 | 1992-01-06 | 2026-05-20 |
+| 2303 | TaiwanStockPER | MISMATCH | 5085 | 2005-09-02 | 2026-05-21 | 5084 | 2005-09-02 | 2026-05-20 |
+| 2303 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6231 | 2001-01-05 | 2026-05-21 | 6230 | 2001-01-05 | 2026-05-20 |
+| 2303 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2308 | TaiwanStockPriceAdj | MISMATCH | 8766 | 1992-01-06 | 2026-05-21 | 8765 | 1992-01-06 | 2026-05-20 |
+| 2308 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2308 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2308 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2313 | TaiwanStockPriceAdj | MISMATCH | 8766 | 1992-01-06 | 2026-05-21 | 8765 | 1992-01-06 | 2026-05-20 |
+| 2313 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2313 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2313 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2316 | TaiwanStockPriceAdj | MISMATCH | 8748 | 1992-01-06 | 2026-05-21 | 8747 | 1992-01-06 | 2026-05-20 |
+| 2316 | TaiwanStockPER | MISMATCH | 5078 | 2005-09-02 | 2026-05-21 | 5077 | 2005-09-02 | 2026-05-20 |
+| 2316 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6231 | 2001-01-05 | 2026-05-21 | 6230 | 2001-01-05 | 2026-05-20 |
+| 2316 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2317 | TaiwanStockPriceAdj | MISMATCH | 8760 | 1992-01-06 | 2026-05-21 | 8759 | 1992-01-06 | 2026-05-20 |
+| 2317 | TaiwanStockPER | MISMATCH | 5090 | 2005-09-02 | 2026-05-21 | 5089 | 2005-09-02 | 2026-05-20 |
+| 2317 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6237 | 2001-01-05 | 2026-05-21 | 6236 | 2001-01-05 | 2026-05-20 |
+| 2317 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2327 | TaiwanStockPriceAdj | MISMATCH | 8198 | 1993-10-23 | 2026-05-21 | 8197 | 1993-10-23 | 2026-05-20 |
+| 2327 | TaiwanStockPER | MISMATCH | 5047 | 2005-09-02 | 2026-05-21 | 5046 | 2005-09-02 | 2026-05-20 |
+| 2327 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6211 | 2001-01-05 | 2026-05-21 | 6210 | 2001-01-05 | 2026-05-20 |
+| 2327 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2329 | TaiwanStockPriceAdj | MISMATCH | 8069 | 1994-04-21 | 2026-05-21 | 8068 | 1994-04-21 | 2026-05-20 |
+| 2329 | TaiwanStockPER | MISMATCH | 5078 | 2005-09-02 | 2026-05-21 | 5077 | 2005-09-02 | 2026-05-20 |
+| 2329 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6201 | 2001-01-05 | 2026-05-21 | 6200 | 2001-01-05 | 2026-05-20 |
+| 2329 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2337 | TaiwanStockPriceAdj | MISMATCH | 7839 | 1995-03-16 | 2026-05-21 | 7838 | 1995-03-16 | 2026-05-20 |
+| 2337 | TaiwanStockPER | MISMATCH | 5075 | 2005-09-02 | 2026-05-21 | 5074 | 2005-09-02 | 2026-05-20 |
+| 2337 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5962 | 2001-01-05 | 2026-05-21 | 5961 | 2001-01-05 | 2026-05-20 |
+| 2337 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2344 | TaiwanStockPriceAdj | MISMATCH | 7686 | 1995-10-19 | 2026-05-21 | 7685 | 1995-10-19 | 2026-05-20 |
+| 2344 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2344 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2344 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2345 | TaiwanStockPriceAdj | MISMATCH | 7665 | 1995-11-16 | 2026-05-21 | 7664 | 1995-11-16 | 2026-05-20 |
+| 2345 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2345 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2345 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2354 | TaiwanStockPriceAdj | MISMATCH | 7406 | 1996-10-09 | 2026-05-21 | 7405 | 1996-10-09 | 2026-05-20 |
+| 2354 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2354 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2354 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2356 | TaiwanStockPriceAdj | MISMATCH | 7380 | 1996-11-14 | 2026-05-21 | 7379 | 1996-11-14 | 2026-05-20 |
+| 2356 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2356 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2356 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2357 | TaiwanStockPriceAdj | MISMATCH | 7353 | 1996-11-15 | 2026-05-21 | 7352 | 1996-11-15 | 2026-05-20 |
+| 2357 | TaiwanStockPER | MISMATCH | 5070 | 2005-09-02 | 2026-05-21 | 5069 | 2005-09-02 | 2026-05-20 |
+| 2357 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6217 | 2001-01-05 | 2026-05-21 | 6216 | 2001-01-05 | 2026-05-20 |
+| 2357 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2360 | TaiwanStockPriceAdj | MISMATCH | 7347 | 1996-12-23 | 2026-05-21 | 7346 | 1996-12-23 | 2026-05-20 |
+| 2360 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2360 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2360 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2363 | TaiwanStockPriceAdj | MISMATCH | 7145 | 1997-08-02 | 2026-05-21 | 7144 | 1997-08-02 | 2026-05-20 |
+| 2363 | TaiwanStockPER | MISMATCH | 5070 | 2005-09-02 | 2026-05-21 | 5069 | 2005-09-02 | 2026-05-20 |
+| 2363 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6221 | 2001-01-05 | 2026-05-21 | 6220 | 2001-01-05 | 2026-05-20 |
+| 2363 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2368 | TaiwanStockPriceAdj | MISMATCH | 7002 | 1998-03-10 | 2026-05-21 | 7001 | 1998-03-10 | 2026-05-20 |
+| 2368 | TaiwanStockPER | MISMATCH | 5089 | 2005-09-02 | 2026-05-21 | 5088 | 2005-09-02 | 2026-05-20 |
+| 2368 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2368 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2374 | TaiwanStockPriceAdj | MISMATCH | 6774 | 1999-01-06 | 2026-05-21 | 6773 | 1999-01-06 | 2026-05-20 |
+| 2374 | TaiwanStockPER | MISMATCH | 5088 | 2005-09-02 | 2026-05-21 | 5087 | 2005-09-02 | 2026-05-20 |
+| 2374 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6235 | 2001-01-05 | 2026-05-21 | 6234 | 2001-01-05 | 2026-05-20 |
+| 2374 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2376 | TaiwanStockPriceAdj | MISMATCH | 6855 | 1998-09-25 | 2026-05-21 | 6854 | 1998-09-25 | 2026-05-20 |
+| 2376 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2376 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2376 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2379 | TaiwanStockPriceAdj | MISMATCH | 6825 | 1998-10-27 | 2026-05-21 | 6824 | 1998-10-27 | 2026-05-20 |
+| 2379 | TaiwanStockPER | MISMATCH | 5088 | 2005-09-02 | 2026-05-21 | 5087 | 2005-09-02 | 2026-05-20 |
+| 2379 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6235 | 2001-01-05 | 2026-05-21 | 6234 | 2001-01-05 | 2026-05-20 |
+| 2379 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2382 | TaiwanStockPriceAdj | MISMATCH | 6779 | 1999-01-11 | 2026-05-21 | 6778 | 1999-01-11 | 2026-05-20 |
+| 2382 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2382 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2382 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2383 | TaiwanStockPriceAdj | MISMATCH | 6807 | 1998-11-30 | 2026-05-21 | 6806 | 1998-11-30 | 2026-05-20 |
+| 2383 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2383 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2383 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2395 | TaiwanStockPriceAdj | MISMATCH | 6529 | 1999-12-14 | 2026-05-21 | 6528 | 1999-12-14 | 2026-05-20 |
+| 2395 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2395 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2395 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 2402 | TaiwanStockPriceAdj | MISMATCH | 6508 | 2000-01-15 | 2026-05-21 | 6507 | 2000-01-15 | 2026-05-20 |
+| 2402 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2402 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2402 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2404 | TaiwanStockPriceAdj | MISMATCH | 6461 | 2000-03-15 | 2026-05-21 | 6460 | 2000-03-15 | 2026-05-20 |
+| 2404 | TaiwanStockPER | MISMATCH | 5089 | 2005-09-02 | 2026-05-21 | 5088 | 2005-09-02 | 2026-05-20 |
+| 2404 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6236 | 2001-01-05 | 2026-05-21 | 6235 | 2001-01-05 | 2026-05-20 |
+| 2404 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2408 | TaiwanStockPriceAdj | MISMATCH | 6332 | 2000-08-18 | 2026-05-21 | 6331 | 2000-08-18 | 2026-05-20 |
+| 2408 | TaiwanStockPER | MISMATCH | 5079 | 2005-09-02 | 2026-05-21 | 5078 | 2005-09-02 | 2026-05-20 |
+| 2408 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6196 | 2001-02-26 | 2026-05-21 | 6195 | 2001-02-26 | 2026-05-20 |
+| 2408 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2412 | TaiwanStockPriceAdj | MISMATCH | 6245 | 2000-10-30 | 2026-05-21 | 6244 | 2000-10-30 | 2026-05-20 |
+| 2412 | TaiwanStockPER | MISMATCH | 5048 | 2005-09-02 | 2026-05-21 | 5047 | 2005-09-02 | 2026-05-20 |
+| 2412 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5704 | 2003-01-07 | 2026-05-21 | 5703 | 2003-01-07 | 2026-05-20 |
+| 2412 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2421 | TaiwanStockPriceAdj | MISMATCH | 6331 | 2000-09-13 | 2026-05-21 | 6330 | 2000-09-13 | 2026-05-20 |
+| 2421 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2421 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6242 | 2001-01-05 | 2026-05-21 | 6241 | 2001-01-05 | 2026-05-20 |
+| 2421 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2441 | TaiwanStockPriceAdj | MISMATCH | 6296 | 2000-10-27 | 2026-05-21 | 6295 | 2000-10-27 | 2026-05-20 |
+| 2441 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2441 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6169 | 2001-04-30 | 2026-05-21 | 6168 | 2001-04-30 | 2026-05-20 |
+| 2441 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2449 | TaiwanStockPriceAdj | MISMATCH | 6163 | 2001-05-10 | 2026-05-21 | 6162 | 2001-05-10 | 2026-05-20 |
+| 2449 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2449 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6001 | 2002-01-02 | 2026-05-21 | 6000 | 2002-01-02 | 2026-05-20 |
+| 2449 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2451 | TaiwanStockPriceAdj | MISMATCH | 6167 | 2001-05-04 | 2026-05-21 | 6166 | 2001-05-04 | 2026-05-20 |
+| 2451 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2451 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6040 | 2001-11-07 | 2026-05-21 | 6039 | 2001-11-07 | 2026-05-20 |
+| 2451 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2454 | TaiwanStockPriceAdj | MISMATCH | 6111 | 2001-07-24 | 2026-05-21 | 6110 | 2001-07-24 | 2026-05-20 |
+| 2454 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2454 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5985 | 2002-01-24 | 2026-05-21 | 5984 | 2002-01-24 | 2026-05-20 |
+| 2454 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2455 | TaiwanStockPriceAdj | MISMATCH | 5979 | 2002-01-25 | 2026-05-21 | 5978 | 2002-01-25 | 2026-05-20 |
+| 2455 | TaiwanStockPER | MISMATCH | 5090 | 2005-09-02 | 2026-05-21 | 5089 | 2005-09-02 | 2026-05-20 |
+| 2455 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5856 | 2002-07-30 | 2026-05-21 | 5855 | 2002-07-30 | 2026-05-20 |
+| 2455 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2467 | TaiwanStockPriceAdj | MISMATCH | 6073 | 2001-09-20 | 2026-05-21 | 6072 | 2001-09-20 | 2026-05-20 |
+| 2467 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2467 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6073 | 2001-09-19 | 2026-05-21 | 6072 | 2001-09-19 | 2026-05-20 |
+| 2467 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2481 | TaiwanStockPriceAdj | MISMATCH | 6068 | 2001-09-20 | 2026-05-21 | 6067 | 2001-09-20 | 2026-05-20 |
+| 2481 | TaiwanStockPER | MISMATCH | 5091 | 2005-09-02 | 2026-05-21 | 5090 | 2005-09-02 | 2026-05-20 |
+| 2481 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6069 | 2001-09-19 | 2026-05-21 | 6068 | 2001-09-19 | 2026-05-20 |
+| 2481 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2486 | TaiwanStockPriceAdj | MISMATCH | 6073 | 2001-09-20 | 2026-05-21 | 6072 | 2001-09-20 | 2026-05-20 |
+| 2486 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 2486 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6073 | 2001-09-19 | 2026-05-21 | 6072 | 2001-09-19 | 2026-05-20 |
+| 2486 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 2492 | TaiwanStockPriceAdj | MISMATCH | 6051 | 2001-09-20 | 2026-05-21 | 6050 | 2001-09-20 | 2026-05-20 |
+| 2492 | TaiwanStockPER | MISMATCH | 5074 | 2005-09-02 | 2026-05-21 | 5073 | 2005-09-02 | 2026-05-20 |
+| 2492 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 6054 | 2001-09-19 | 2026-05-21 | 6053 | 2001-09-19 | 2026-05-20 |
+| 2492 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3006 | TaiwanStockPriceAdj | MISMATCH | 5966 | 2002-03-05 | 2026-05-21 | 5965 | 2002-03-05 | 2026-05-20 |
+| 3006 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3006 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5832 | 2002-09-11 | 2026-05-21 | 5831 | 2002-09-11 | 2026-05-20 |
+| 3006 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3013 | TaiwanStockPriceAdj | MISMATCH | 5829 | 2002-09-17 | 2026-05-21 | 5828 | 2002-09-17 | 2026-05-20 |
+| 3013 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3013 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5701 | 2003-03-26 | 2026-05-21 | 5700 | 2003-03-26 | 2026-05-20 |
+| 3013 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3017 | TaiwanStockPriceAdj | MISMATCH | 5820 | 2002-09-30 | 2026-05-21 | 5819 | 2002-09-30 | 2026-05-20 |
+| 3017 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3017 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5699 | 2003-03-28 | 2026-05-21 | 5698 | 2003-03-28 | 2026-05-20 |
+| 3017 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3019 | TaiwanStockPriceAdj | MISMATCH | 5843 | 2002-08-27 | 2026-05-21 | 5842 | 2002-08-27 | 2026-05-20 |
+| 3019 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3019 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5843 | 2002-08-26 | 2026-05-21 | 5842 | 2002-08-26 | 2026-05-20 |
+| 3019 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3030 | TaiwanStockPriceAdj | MISMATCH | 5799 | 2002-10-30 | 2026-05-21 | 5798 | 2002-10-30 | 2026-05-20 |
+| 3030 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3030 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5799 | 2002-10-29 | 2026-05-21 | 5798 | 2002-10-29 | 2026-05-20 |
+| 3030 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3036 | TaiwanStockPriceAdj | MISMATCH | 5843 | 2002-08-27 | 2026-05-21 | 5842 | 2002-08-27 | 2026-05-20 |
+| 3036 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3036 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5843 | 2002-08-26 | 2026-05-21 | 5842 | 2002-08-26 | 2026-05-20 |
+| 3036 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3037 | TaiwanStockPriceAdj | MISMATCH | 5843 | 2002-08-27 | 2026-05-21 | 5842 | 2002-08-27 | 2026-05-20 |
+| 3037 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3037 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5843 | 2002-08-26 | 2026-05-21 | 5842 | 2002-08-26 | 2026-05-20 |
+| 3037 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3044 | TaiwanStockPriceAdj | MISMATCH | 5843 | 2002-08-27 | 2026-05-21 | 5842 | 2002-08-27 | 2026-05-20 |
+| 3044 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3044 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5843 | 2002-08-26 | 2026-05-21 | 5842 | 2002-08-26 | 2026-05-20 |
+| 3044 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3081 | TaiwanStockPriceAdj | MISMATCH | 2889 | 2014-07-16 | 2026-05-21 | 2888 | 2014-07-16 | 2026-05-20 |
+| 3081 | TaiwanStockPER | MISMATCH | 2633 | 2015-07-22 | 2026-05-21 | 2632 | 2015-07-22 | 2026-05-20 |
+| 3081 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2515 | 2016-01-25 | 2026-05-21 | 2514 | 2016-01-25 | 2026-05-20 |
+| 3081 | TaiwanStockShareholding | MISMATCH | 2664 | 2015-07-21 | 2026-05-21 | 2663 | 2015-07-21 | 2026-05-20 |
+| 3090 | TaiwanStockPriceAdj | MISMATCH | 5471 | 2003-11-11 | 2026-05-21 | 5470 | 2003-11-11 | 2026-05-20 |
+| 3090 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 3090 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 3090 | TaiwanStockShareholding | MISMATCH | 4553 | 2007-12-28 | 2026-05-21 | 4552 | 2007-12-28 | 2026-05-20 |
+| 3105 | TaiwanStockPriceAdj | MISMATCH | 4058 | 2009-10-07 | 2026-05-21 | 4057 | 2009-10-07 | 2026-05-20 |
+| 3105 | TaiwanStockPER | MISMATCH | 3500 | 2011-12-13 | 2026-05-21 | 3499 | 2011-12-13 | 2026-05-20 |
+| 3105 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3398 | 2012-06-14 | 2026-05-21 | 3397 | 2012-06-14 | 2026-05-20 |
+| 3105 | TaiwanStockShareholding | MISMATCH | 3560 | 2011-12-12 | 2026-05-21 | 3559 | 2011-12-12 | 2026-05-20 |
+| 3131 | TaiwanStockPriceAdj | MISMATCH | 4177 | 2009-05-11 | 2026-05-21 | 4176 | 2009-05-11 | 2026-05-20 |
+| 3131 | TaiwanStockPER | MISMATCH | 3738 | 2011-01-17 | 2026-05-21 | 3737 | 2011-01-17 | 2026-05-20 |
+| 3131 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 113 | 2025-11-27 | 2026-05-21 | 112 | 2025-11-27 | 2026-05-20 |
+| 3131 | TaiwanStockShareholding | MISMATCH | 3785 | 2011-01-14 | 2026-05-21 | 3784 | 2011-01-14 | 2026-05-20 |
+| 3163 | TaiwanStockPriceAdj | MISMATCH | 3554 | 2011-11-04 | 2026-05-21 | 3553 | 2011-11-04 | 2026-05-20 |
+| 3163 | TaiwanStockPER | MISMATCH | 3274 | 2012-12-03 | 2026-05-21 | 3273 | 2012-12-03 | 2026-05-20 |
+| 3163 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3153 | 2013-07-02 | 2026-05-21 | 3152 | 2013-07-02 | 2026-05-20 |
+| 3163 | TaiwanStockShareholding | MISMATCH | 3315 | 2012-11-30 | 2026-05-21 | 3314 | 2012-11-30 | 2026-05-20 |
+| 3167 | TaiwanStockPriceAdj | MISMATCH | 4749 | 2006-12-19 | 2026-05-21 | 4748 | 2006-12-19 | 2026-05-20 |
+| 3167 | TaiwanStockPER | MISMATCH | 3075 | 2008-08-15 | 2026-05-21 | 3074 | 2008-08-15 | 2026-05-20 |
+| 3167 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2945 | 2014-04-28 | 2026-05-21 | 2944 | 2014-04-28 | 2026-05-20 |
+| 3167 | TaiwanStockShareholding | MISMATCH | 3099 | 2012-03-29 | 2026-05-21 | 3098 | 2012-03-29 | 2026-05-20 |
+| 3189 | TaiwanStockPriceAdj | MISMATCH | 5299 | 2004-11-02 | 2026-05-21 | 5298 | 2004-11-02 | 2026-05-20 |
+| 3189 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3189 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5177 | 2005-05-04 | 2026-05-21 | 5176 | 2005-05-04 | 2026-05-20 |
+| 3189 | TaiwanStockShareholding | MISMATCH | 5345 | 2004-10-29 | 2026-05-21 | 5344 | 2004-10-29 | 2026-05-20 |
+| 3211 | TaiwanStockPriceAdj | MISMATCH | 5225 | 2004-11-09 | 2026-05-21 | 5224 | 2004-11-09 | 2026-05-20 |
+| 3211 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 3211 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 3211 | TaiwanStockShareholding | MISMATCH | 5323 | 2004-11-05 | 2026-05-21 | 5322 | 2004-11-05 | 2026-05-20 |
+| 3231 | TaiwanStockPriceAdj | MISMATCH | 5599 | 2003-08-20 | 2026-05-21 | 5598 | 2003-08-20 | 2026-05-20 |
+| 3231 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 3231 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5474 | 2004-02-24 | 2026-05-21 | 5473 | 2004-02-24 | 2026-05-20 |
+| 3231 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 3260 | TaiwanStockPriceAdj | MISMATCH | 5245 | 2004-10-11 | 2026-05-21 | 5244 | 2004-10-11 | 2026-05-20 |
+| 3260 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 3260 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 3260 | TaiwanStockShareholding | MISMATCH | 5343 | 2004-10-07 | 2026-05-21 | 5342 | 2004-10-07 | 2026-05-20 |
+| 3264 | TaiwanStockPriceAdj | MISMATCH | 5183 | 2005-01-06 | 2026-05-21 | 5182 | 2005-01-06 | 2026-05-20 |
+| 3264 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 3264 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 3264 | TaiwanStockShareholding | MISMATCH | 5281 | 2005-01-04 | 2026-05-21 | 5280 | 2005-01-04 | 2026-05-20 |
+| 3265 | TaiwanStockPriceAdj | MISMATCH | 5034 | 2005-08-03 | 2026-05-21 | 5033 | 2005-08-03 | 2026-05-20 |
+| 3265 | TaiwanStockPER | MISMATCH | 4728 | 2007-01-02 | 2026-05-21 | 4727 | 2007-01-02 | 2026-05-20 |
+| 3265 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4509 | 2007-03-05 | 2026-05-21 | 4508 | 2007-03-05 | 2026-05-20 |
+| 3265 | TaiwanStockShareholding | MISMATCH | 5148 | 2005-08-01 | 2026-05-21 | 5147 | 2005-08-01 | 2026-05-20 |
+| 3305 | TaiwanStockPriceAdj | MISMATCH | 5064 | 2005-07-01 | 2026-05-21 | 5063 | 2005-07-01 | 2026-05-20 |
+| 3305 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 3305 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4515 | 2007-03-05 | 2026-05-21 | 4514 | 2007-03-05 | 2026-05-20 |
+| 3305 | TaiwanStockShareholding | MISMATCH | 4423 | 2008-07-09 | 2026-05-21 | 4422 | 2008-07-09 | 2026-05-20 |
+| 3324 | TaiwanStockPriceAdj | MISMATCH | 5100 | 2005-05-16 | 2026-05-21 | 5099 | 2005-05-16 | 2026-05-20 |
+| 3324 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 3324 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 3324 | TaiwanStockShareholding | MISMATCH | 5202 | 2005-05-12 | 2026-05-21 | 5201 | 2005-05-12 | 2026-05-20 |
+| 3374 | TaiwanStockPriceAdj | MISMATCH | 4748 | 2006-12-19 | 2026-05-21 | 4747 | 2006-12-19 | 2026-05-20 |
+| 3374 | TaiwanStockPER | MISMATCH | 2710 | 2015-03-30 | 2026-05-21 | 2709 | 2015-03-30 | 2026-05-20 |
+| 3374 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2595 | 2015-10-01 | 2026-05-21 | 2594 | 2015-10-01 | 2026-05-20 |
+| 3374 | TaiwanStockShareholding | MISMATCH | 2741 | 2015-03-27 | 2026-05-21 | 2740 | 2015-03-27 | 2026-05-20 |
+| 3406 | TaiwanStockPriceAdj | MISMATCH | 5016 | 2005-12-21 | 2026-05-21 | 5015 | 2005-12-21 | 2026-05-20 |
+| 3406 | TaiwanStockPER | MISMATCH | 5020 | 2005-12-20 | 2026-05-21 | 5019 | 2005-12-20 | 2026-05-20 |
+| 3406 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4894 | 2006-06-23 | 2026-05-21 | 4893 | 2006-06-23 | 2026-05-20 |
+| 3406 | TaiwanStockShareholding | MISMATCH | 5060 | 2005-12-19 | 2026-05-21 | 5059 | 2005-12-19 | 2026-05-20 |
+| 3443 | TaiwanStockPriceAdj | MISMATCH | 4800 | 2006-11-06 | 2026-05-21 | 4799 | 2006-11-06 | 2026-05-20 |
+| 3443 | TaiwanStockPER | MISMATCH | 4805 | 2006-09-05 | 2026-05-21 | 4804 | 2006-09-05 | 2026-05-20 |
+| 3443 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4620 | 2007-07-31 | 2026-05-21 | 4619 | 2007-07-31 | 2026-05-20 |
+| 3443 | TaiwanStockShareholding | MISMATCH | 4842 | 2006-11-02 | 2026-05-21 | 4841 | 2006-11-02 | 2026-05-20 |
+| 3481 | TaiwanStockPriceAdj | MISMATCH | 4787 | 2006-10-25 | 2026-05-21 | 4786 | 2006-10-25 | 2026-05-20 |
+| 3481 | TaiwanStockPER | MISMATCH | 4792 | 2006-09-05 | 2026-05-21 | 4791 | 2006-09-05 | 2026-05-20 |
+| 3481 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4688 | 2007-04-24 | 2026-05-21 | 4687 | 2007-04-24 | 2026-05-20 |
+| 3481 | TaiwanStockShareholding | MISMATCH | 4850 | 2006-10-23 | 2026-05-21 | 4849 | 2006-10-23 | 2026-05-20 |
+| 3491 | TaiwanStockPriceAdj | MISMATCH | 4757 | 2006-12-19 | 2026-05-21 | 4756 | 2006-12-19 | 2026-05-20 |
+| 3491 | TaiwanStockPER | MISMATCH | 4494 | 2008-01-03 | 2026-05-21 | 4493 | 2008-01-03 | 2026-05-20 |
+| 3491 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4341 | 2008-09-16 | 2026-05-21 | 4340 | 2008-09-16 | 2026-05-20 |
+| 3491 | TaiwanStockShareholding | MISMATCH | 4549 | 2008-01-02 | 2026-05-21 | 4548 | 2008-01-02 | 2026-05-20 |
+| 3515 | TaiwanStockPriceAdj | MISMATCH | 4746 | 2006-12-19 | 2026-05-21 | 4745 | 2006-12-19 | 2026-05-20 |
+| 3515 | TaiwanStockPER | MISMATCH | 4554 | 2007-11-08 | 2026-05-21 | 4553 | 2007-11-08 | 2026-05-20 |
+| 3515 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4431 | 2008-05-08 | 2026-05-21 | 4430 | 2008-05-08 | 2026-05-20 |
+| 3515 | TaiwanStockShareholding | MISMATCH | 4590 | 2007-11-07 | 2026-05-21 | 4589 | 2007-11-07 | 2026-05-20 |
+| 3529 | TaiwanStockPriceAdj | MISMATCH | 4699 | 2007-03-27 | 2026-05-21 | 4698 | 2007-03-27 | 2026-05-20 |
+| 3529 | TaiwanStockPER | MISMATCH | 3733 | 2011-01-24 | 2026-05-21 | 3732 | 2011-01-24 | 2026-05-20 |
+| 3529 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3630 | 2011-07-27 | 2026-05-21 | 3629 | 2011-07-27 | 2026-05-20 |
+| 3529 | TaiwanStockShareholding | MISMATCH | 3780 | 2011-01-21 | 2026-05-21 | 3779 | 2011-01-21 | 2026-05-20 |
+| 3533 | TaiwanStockPriceAdj | MISMATCH | 4754 | 2006-12-13 | 2026-05-21 | 4753 | 2006-12-13 | 2026-05-20 |
+| 3533 | TaiwanStockPER | MISMATCH | 4532 | 2007-12-10 | 2026-05-21 | 4531 | 2007-12-10 | 2026-05-20 |
+| 3533 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4404 | 2008-06-16 | 2026-05-21 | 4403 | 2008-06-16 | 2026-05-20 |
+| 3533 | TaiwanStockShareholding | MISMATCH | 4568 | 2007-12-07 | 2026-05-21 | 4567 | 2007-12-07 | 2026-05-20 |
+| 3563 | TaiwanStockPriceAdj | MISMATCH | 4638 | 2007-06-28 | 2026-05-21 | 4637 | 2007-06-28 | 2026-05-20 |
+| 3563 | TaiwanStockPER | MISMATCH | 3747 | 2011-01-05 | 2026-05-21 | 3746 | 2011-01-05 | 2026-05-20 |
+| 3563 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3573 | 2011-10-18 | 2026-05-21 | 3572 | 2011-10-18 | 2026-05-20 |
+| 3563 | TaiwanStockShareholding | MISMATCH | 1750 | 2019-04-01 | 2026-05-21 | 1749 | 2019-04-01 | 2026-05-20 |
+| 3653 | TaiwanStockPriceAdj | MISMATCH | 4290 | 2008-11-21 | 2026-05-21 | 4289 | 2008-11-21 | 2026-05-20 |
+| 3653 | TaiwanStockPER | MISMATCH | 4049 | 2008-08-15 | 2026-05-21 | 4048 | 2008-08-15 | 2026-05-20 |
+| 3653 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3922 | 2010-05-20 | 2026-05-21 | 3921 | 2010-05-20 | 2026-05-20 |
+| 3653 | TaiwanStockShareholding | MISMATCH | 4080 | 2009-11-17 | 2026-05-21 | 4079 | 2009-11-17 | 2026-05-20 |
+| 3661 | TaiwanStockPriceAdj | MISMATCH | 3762 | 2010-12-24 | 2026-05-21 | 3761 | 2010-12-24 | 2026-05-20 |
+| 3661 | TaiwanStockPER | MISMATCH | 2823 | 2008-08-15 | 2026-05-21 | 2822 | 2008-08-15 | 2026-05-20 |
+| 3661 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2656 | 2015-06-30 | 2026-05-21 | 2655 | 2015-06-30 | 2026-05-20 |
+| 3661 | TaiwanStockShareholding | MISMATCH | 2845 | 2012-03-29 | 2026-05-21 | 2844 | 2012-03-29 | 2026-05-20 |
+| 3665 | TaiwanStockPriceAdj | MISMATCH | 3693 | 2011-04-21 | 2026-05-21 | 3692 | 2011-04-21 | 2026-05-20 |
+| 3665 | TaiwanStockPER | MISMATCH | 3697 | 2008-08-15 | 2026-05-21 | 3696 | 2008-08-15 | 2026-05-20 |
+| 3665 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3561 | 2011-10-28 | 2026-05-21 | 3560 | 2011-10-28 | 2026-05-20 |
+| 3665 | TaiwanStockShareholding | MISMATCH | 3724 | 2011-04-20 | 2026-05-21 | 3723 | 2011-04-20 | 2026-05-20 |
+| 3680 | TaiwanStockPriceAdj | MISMATCH | 4066 | 2009-10-19 | 2026-05-21 | 4065 | 2009-10-19 | 2026-05-20 |
+| 3680 | TaiwanStockPER | MISMATCH | 3587 | 2011-08-31 | 2026-05-21 | 3586 | 2011-08-31 | 2026-05-20 |
+| 3680 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3482 | 2012-03-05 | 2026-05-21 | 3481 | 2012-03-05 | 2026-05-20 |
+| 3680 | TaiwanStockShareholding | MISMATCH | 3632 | 2011-08-30 | 2026-05-21 | 3631 | 2011-08-30 | 2026-05-20 |
+| 3702 | TaiwanStockPriceAdj | MISMATCH | 5039 | 2005-11-10 | 2026-05-21 | 5038 | 2005-11-10 | 2026-05-20 |
+| 3702 | TaiwanStockPER | MISMATCH | 5044 | 2005-11-08 | 2026-05-21 | 5043 | 2005-11-08 | 2026-05-20 |
+| 3702 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5042 | 2005-11-08 | 2026-05-21 | 5041 | 2005-11-08 | 2026-05-20 |
+| 3702 | TaiwanStockShareholding | MISMATCH | 5089 | 2005-11-08 | 2026-05-21 | 5088 | 2005-11-08 | 2026-05-20 |
+| 3706 | TaiwanStockPriceAdj | MISMATCH | 3095 | 2013-09-13 | 2026-05-21 | 3094 | 2013-09-13 | 2026-05-20 |
+| 3706 | TaiwanStockPER | MISMATCH | 3099 | 2008-08-15 | 2026-05-21 | 3098 | 2008-08-15 | 2026-05-20 |
+| 3706 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3097 | 2013-09-11 | 2026-05-21 | 3096 | 2013-09-11 | 2026-05-20 |
+| 3706 | TaiwanStockShareholding | MISMATCH | 3124 | 2012-03-29 | 2026-05-21 | 3123 | 2012-03-29 | 2026-05-20 |
+| 3711 | TaiwanStockPriceAdj | MISMATCH | 1961 | 2018-05-02 | 2026-05-21 | 1960 | 2018-05-02 | 2026-05-20 |
+| 3711 | TaiwanStockPER | MISMATCH | 1963 | 2018-04-30 | 2026-05-21 | 1962 | 2018-04-30 | 2026-05-20 |
+| 3711 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1963 | 2018-04-27 | 2026-05-21 | 1962 | 2018-04-27 | 2026-05-20 |
+| 3711 | TaiwanStockShareholding | MISMATCH | 1979 | 2018-04-27 | 2026-05-21 | 1978 | 2018-04-27 | 2026-05-20 |
+| 3715 | TaiwanStockPriceAdj | MISMATCH | 902 | 2022-08-26 | 2026-05-21 | 901 | 2022-08-26 | 2026-05-20 |
+| 3715 | TaiwanStockPER | MISMATCH | 904 | 2022-08-25 | 2026-05-21 | 903 | 2022-08-25 | 2026-05-20 |
+| 3715 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 904 | 2022-08-24 | 2026-05-21 | 903 | 2022-08-24 | 2026-05-20 |
+| 3715 | TaiwanStockShareholding | MISMATCH | 912 | 2022-08-24 | 2026-05-21 | 911 | 2022-08-24 | 2026-05-20 |
+| 4739 | TaiwanStockPriceAdj | MISMATCH | 3776 | 2010-12-14 | 2026-05-21 | 3775 | 2010-12-14 | 2026-05-20 |
+| 4739 | TaiwanStockPER | MISMATCH | 3529 | 2008-08-15 | 2026-05-21 | 3528 | 2008-08-15 | 2026-05-20 |
+| 4739 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2710 | 2015-04-20 | 2026-05-21 | 2709 | 2015-04-20 | 2026-05-20 |
+| 4739 | TaiwanStockShareholding | MISMATCH | 2136 | 2012-03-29 | 2026-05-21 | 2135 | 2012-03-29 | 2026-05-20 |
+| 4749 | TaiwanStockPriceAdj | MISMATCH | 1379 | 2010-08-10 | 2026-05-21 | 1378 | 2010-08-10 | 2026-05-20 |
+| 4749 | TaiwanStockPER | MISMATCH | 321 | 2025-01-17 | 2026-05-21 | 320 | 2025-01-17 | 2026-05-20 |
+| 4749 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 199 | 2025-07-24 | 2026-05-21 | 198 | 2025-07-24 | 2026-05-20 |
+| 4749 | TaiwanStockShareholding | MISMATCH | 326 | 2025-01-16 | 2026-05-21 | 325 | 2025-01-16 | 2026-05-20 |
+| 4904 | TaiwanStockPriceAdj | MISMATCH | 5599 | 2003-08-04 | 2026-05-21 | 5598 | 2003-08-04 | 2026-05-20 |
+| 4904 | TaiwanStockPER | MISMATCH | 5084 | 2005-09-02 | 2026-05-21 | 5083 | 2005-09-02 | 2026-05-20 |
+| 4904 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5087 | 2005-08-24 | 2026-05-21 | 5086 | 2005-08-24 | 2026-05-20 |
+| 4904 | TaiwanStockShareholding | MISMATCH | 5141 | 2005-08-24 | 2026-05-21 | 5140 | 2005-08-24 | 2026-05-20 |
+| 4916 | TaiwanStockPriceAdj | MISMATCH | 4010 | 2009-12-28 | 2026-05-21 | 4009 | 2009-12-28 | 2026-05-20 |
+| 4916 | TaiwanStockPER | MISMATCH | 3052 | 2008-08-15 | 2026-05-21 | 3051 | 2008-08-15 | 2026-05-20 |
+| 4916 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2924 | 2014-05-28 | 2026-05-21 | 2923 | 2014-05-28 | 2026-05-20 |
+| 4916 | TaiwanStockShareholding | MISMATCH | 3076 | 2012-03-29 | 2026-05-21 | 3075 | 2012-03-29 | 2026-05-20 |
+| 4931 | TaiwanStockPriceAdj | MISMATCH | 3309 | 2010-03-09 | 2026-05-21 | 3308 | 2010-03-09 | 2026-05-20 |
+| 4931 | TaiwanStockPER | MISMATCH | 1621 | 2019-09-17 | 2026-05-21 | 1620 | 2019-09-17 | 2026-05-20 |
+| 4931 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1500 | 2020-03-20 | 2026-05-21 | 1499 | 2020-03-20 | 2026-05-20 |
+| 4931 | TaiwanStockShareholding | MISMATCH | 1636 | 2019-09-16 | 2026-05-21 | 1635 | 2019-09-16 | 2026-05-20 |
+| 4958 | TaiwanStockPriceAdj | MISMATCH | 3519 | 2011-12-27 | 2026-05-21 | 3518 | 2011-12-27 | 2026-05-20 |
+| 4958 | TaiwanStockPER | MISMATCH | 3524 | 2008-08-15 | 2026-05-21 | 3523 | 2008-08-15 | 2026-05-20 |
+| 4958 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3395 | 2012-06-29 | 2026-05-21 | 3394 | 2012-06-29 | 2026-05-20 |
+| 4958 | TaiwanStockShareholding | MISMATCH | 3551 | 2011-12-23 | 2026-05-21 | 3550 | 2011-12-23 | 2026-05-20 |
+| 4967 | TaiwanStockPriceAdj | MISMATCH | 3798 | 2010-10-14 | 2026-05-21 | 3797 | 2010-10-14 | 2026-05-20 |
+| 4967 | TaiwanStockPER | MISMATCH | 1776 | 2019-01-14 | 2026-05-21 | 1775 | 2019-01-14 | 2026-05-20 |
+| 4967 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1660 | 2019-07-22 | 2026-05-21 | 1659 | 2019-07-22 | 2026-05-20 |
+| 4967 | TaiwanStockShareholding | MISMATCH | 1799 | 2019-01-11 | 2026-05-21 | 1798 | 2019-01-11 | 2026-05-20 |
+| 4971 | TaiwanStockPriceAdj | MISMATCH | 3130 | 2013-07-25 | 2026-05-21 | 3129 | 2013-07-25 | 2026-05-20 |
+| 4971 | TaiwanStockPER | MISMATCH | 3010 | 2014-01-02 | 2026-05-21 | 3009 | 2014-01-02 | 2026-05-20 |
+| 4971 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3008 | 2014-01-27 | 2026-05-21 | 3007 | 2014-01-27 | 2026-05-20 |
+| 4971 | TaiwanStockShareholding | MISMATCH | 3158 | 2013-07-23 | 2026-05-21 | 3157 | 2013-07-23 | 2026-05-20 |
+| 4979 | TaiwanStockPriceAdj | MISMATCH | 3795 | 2010-11-17 | 2026-05-21 | 3794 | 2010-11-17 | 2026-05-20 |
+| 4979 | TaiwanStockPER | MISMATCH | 3516 | 2011-12-12 | 2026-05-21 | 3515 | 2011-12-12 | 2026-05-20 |
+| 4979 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3401 | 2012-06-29 | 2026-05-21 | 3400 | 2012-06-29 | 2026-05-20 |
+| 4979 | TaiwanStockShareholding | MISMATCH | 3561 | 2011-12-09 | 2026-05-21 | 3560 | 2011-12-09 | 2026-05-20 |
+| 4991 | TaiwanStockPriceAdj | MISMATCH | 3453 | 2012-04-02 | 2026-05-21 | 3452 | 2012-04-02 | 2026-05-20 |
+| 4991 | TaiwanStockPER | MISMATCH | 2840 | 2014-09-15 | 2026-05-21 | 2839 | 2014-09-15 | 2026-05-20 |
+| 4991 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2730 | 2015-03-19 | 2026-05-21 | 2729 | 2015-03-19 | 2026-05-20 |
+| 4991 | TaiwanStockShareholding | MISMATCH | 2874 | 2014-09-12 | 2026-05-21 | 2873 | 2014-09-12 | 2026-05-20 |
+| 5269 | TaiwanStockPriceAdj | MISMATCH | 3504 | 2012-01-13 | 2026-05-21 | 3503 | 2012-01-13 | 2026-05-20 |
+| 5269 | TaiwanStockPER | MISMATCH | 3283 | 2008-08-15 | 2026-05-21 | 3282 | 2008-08-15 | 2026-05-20 |
+| 5269 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3147 | 2013-07-02 | 2026-05-21 | 3146 | 2013-07-02 | 2026-05-20 |
+| 5269 | TaiwanStockShareholding | MISMATCH | 3309 | 2012-03-29 | 2026-05-21 | 3308 | 2012-03-29 | 2026-05-20 |
+| 5274 | TaiwanStockPriceAdj | MISMATCH | 3427 | 2012-05-14 | 2026-05-21 | 3426 | 2012-05-14 | 2026-05-20 |
+| 5274 | TaiwanStockPER | MISMATCH | 3180 | 2013-04-30 | 2026-05-21 | 3179 | 2013-04-30 | 2026-05-20 |
+| 5274 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2620 | 2015-08-26 | 2026-05-21 | 2619 | 2015-08-26 | 2026-05-20 |
+| 5274 | TaiwanStockShareholding | MISMATCH | 3217 | 2013-04-29 | 2026-05-21 | 3216 | 2013-04-29 | 2026-05-20 |
+| 5289 | TaiwanStockPriceAdj | MISMATCH | 3322 | 2012-10-08 | 2026-05-21 | 3321 | 2012-10-08 | 2026-05-20 |
+| 5289 | TaiwanStockPER | MISMATCH | 3010 | 2014-01-02 | 2026-05-21 | 3009 | 2014-01-02 | 2026-05-20 |
+| 5289 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2928 | 2014-05-30 | 2026-05-21 | 2927 | 2014-05-30 | 2026-05-20 |
+| 5289 | TaiwanStockShareholding | MISMATCH | 3071 | 2013-11-26 | 2026-05-21 | 3070 | 2013-11-26 | 2026-05-20 |
+| 5347 | TaiwanStockPriceAdj | MISMATCH | 6914 | 1998-03-26 | 2026-05-21 | 6913 | 1998-03-26 | 2026-05-20 |
+| 5347 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 5347 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 5347 | TaiwanStockShareholding | MISMATCH | 5371 | 2004-08-04 | 2026-05-21 | 5370 | 2004-08-04 | 2026-05-20 |
+| 5425 | TaiwanStockPriceAdj | MISMATCH | 6415 | 2000-02-22 | 2026-05-21 | 6414 | 2000-02-22 | 2026-05-20 |
+| 5425 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 5425 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 5425 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 5439 | TaiwanStockPriceAdj | MISMATCH | 6319 | 2000-06-27 | 2026-05-21 | 6318 | 2000-06-27 | 2026-05-20 |
+| 5439 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 5439 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 5439 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 5443 | TaiwanStockPriceAdj | MISMATCH | 6948 | 1998-02-10 | 2026-05-21 | 6947 | 1998-02-10 | 2026-05-20 |
+| 5443 | TaiwanStockPER | MISMATCH | 4727 | 2007-01-02 | 2026-05-21 | 4726 | 2007-01-02 | 2026-05-20 |
+| 5443 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4506 | 2007-03-05 | 2026-05-21 | 4505 | 2007-03-05 | 2026-05-20 |
+| 5443 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 5469 | TaiwanStockPriceAdj | MISMATCH | 5604 | 2003-08-04 | 2026-05-21 | 5603 | 2003-08-04 | 2026-05-20 |
+| 5469 | TaiwanStockPER | MISMATCH | 5089 | 2005-09-02 | 2026-05-21 | 5088 | 2005-09-02 | 2026-05-20 |
+| 5469 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5596 | 2003-08-25 | 2026-05-21 | 5595 | 2003-08-25 | 2026-05-20 |
+| 5469 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 5483 | TaiwanStockPriceAdj | MISMATCH | 6140 | 2001-03-05 | 2026-05-21 | 6139 | 2001-03-05 | 2026-05-20 |
+| 5483 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 5483 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 5483 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 5536 | TaiwanStockPriceAdj | MISMATCH | 4040 | 2009-11-13 | 2026-05-21 | 4039 | 2009-11-13 | 2026-05-20 |
+| 5536 | TaiwanStockPER | MISMATCH | 3779 | 2010-11-10 | 2026-05-21 | 3778 | 2010-11-10 | 2026-05-20 |
+| 5536 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3685 | 2011-05-09 | 2026-05-21 | 3684 | 2011-05-09 | 2026-05-20 |
+| 5536 | TaiwanStockShareholding | MISMATCH | 3833 | 2010-11-09 | 2026-05-21 | 3832 | 2010-11-09 | 2026-05-20 |
+| 6138 | TaiwanStockPriceAdj | MISMATCH | 5906 | 2002-01-21 | 2026-05-21 | 5905 | 2002-01-21 | 2026-05-20 |
+| 6138 | TaiwanStockPER | MISMATCH | 4724 | 2007-01-02 | 2026-05-21 | 4723 | 2007-01-02 | 2026-05-20 |
+| 6138 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4505 | 2007-03-05 | 2026-05-21 | 4504 | 2007-03-05 | 2026-05-20 |
+| 6138 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 6139 | TaiwanStockPriceAdj | MISMATCH | 5611 | 2003-08-04 | 2026-05-21 | 5610 | 2003-08-04 | 2026-05-20 |
+| 6139 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 6139 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5596 | 2003-08-25 | 2026-05-21 | 5595 | 2003-08-25 | 2026-05-20 |
+| 6139 | TaiwanStockShareholding | MISMATCH | 5526 | 2004-02-12 | 2026-05-21 | 5525 | 2004-02-12 | 2026-05-20 |
+| 6182 | TaiwanStockPriceAdj | MISMATCH | 5846 | 2002-05-17 | 2026-05-21 | 5845 | 2002-05-17 | 2026-05-20 |
+| 6182 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 6182 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 6182 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 6191 | TaiwanStockPriceAdj | MISMATCH | 5535 | 2003-08-04 | 2026-05-21 | 5534 | 2003-08-04 | 2026-05-20 |
+| 6191 | TaiwanStockPER | MISMATCH | 4754 | 2007-01-02 | 2026-05-21 | 4753 | 2007-01-02 | 2026-05-20 |
+| 6191 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4567 | 2007-03-05 | 2026-05-21 | 4566 | 2007-03-05 | 2026-05-20 |
+| 6191 | TaiwanStockShareholding | MISMATCH | 4604 | 2007-10-18 | 2026-05-21 | 4603 | 2007-10-18 | 2026-05-20 |
+| 6213 | TaiwanStockPriceAdj | MISMATCH | 5540 | 2003-08-04 | 2026-05-21 | 5539 | 2003-08-04 | 2026-05-20 |
+| 6213 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 6213 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4516 | 2007-03-05 | 2026-05-21 | 4515 | 2007-03-05 | 2026-05-20 |
+| 6213 | TaiwanStockShareholding | MISMATCH | 4539 | 2008-01-18 | 2026-05-21 | 4538 | 2008-01-18 | 2026-05-20 |
+| 6215 | TaiwanStockPriceAdj | MISMATCH | 5540 | 2003-08-04 | 2026-05-21 | 5539 | 2003-08-04 | 2026-05-20 |
+| 6215 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 6215 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 6215 | TaiwanStockShareholding | MISMATCH | 4553 | 2007-12-28 | 2026-05-21 | 4552 | 2007-12-28 | 2026-05-20 |
+| 6223 | TaiwanStockPriceAdj | MISMATCH | 5682 | 2003-01-07 | 2026-05-21 | 5681 | 2003-01-07 | 2026-05-20 |
+| 6223 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 6223 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 6223 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 6239 | TaiwanStockPriceAdj | MISMATCH | 5611 | 2003-08-04 | 2026-05-21 | 5610 | 2003-08-04 | 2026-05-20 |
+| 6239 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 6239 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5295 | 2004-11-08 | 2026-05-21 | 5294 | 2004-11-08 | 2026-05-20 |
+| 6239 | TaiwanStockShareholding | MISMATCH | 5339 | 2004-11-08 | 2026-05-21 | 5338 | 2004-11-08 | 2026-05-20 |
+| 6274 | TaiwanStockPriceAdj | MISMATCH | 5445 | 2003-12-19 | 2026-05-21 | 5444 | 2003-12-19 | 2026-05-20 |
+| 6274 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 6274 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 6274 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 6282 | TaiwanStockPriceAdj | MISMATCH | 5585 | 2003-09-09 | 2026-05-21 | 5584 | 2003-09-09 | 2026-05-20 |
+| 6282 | TaiwanStockPER | MISMATCH | 5096 | 2005-09-02 | 2026-05-21 | 5095 | 2005-09-02 | 2026-05-20 |
+| 6282 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 5463 | 2004-03-10 | 2026-05-21 | 5462 | 2004-03-10 | 2026-05-20 |
+| 6282 | TaiwanStockShareholding | MISMATCH | 5525 | 2004-02-12 | 2026-05-21 | 5524 | 2004-02-12 | 2026-05-20 |
+| 6290 | TaiwanStockPriceAdj | MISMATCH | 5085 | 2005-06-06 | 2026-05-21 | 5084 | 2005-06-06 | 2026-05-20 |
+| 6290 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 6290 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 6290 | TaiwanStockShareholding | MISMATCH | 5187 | 2005-06-02 | 2026-05-21 | 5186 | 2005-06-02 | 2026-05-20 |
+| 6291 | TaiwanStockPriceAdj | MISMATCH | 5388 | 2004-01-29 | 2026-05-21 | 5387 | 2004-01-29 | 2026-05-20 |
+| 6291 | TaiwanStockPER | MISMATCH | 4705 | 2007-01-02 | 2026-05-21 | 4704 | 2007-01-02 | 2026-05-20 |
+| 6291 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3871 | 2007-03-05 | 2026-05-21 | 3870 | 2007-03-05 | 2026-05-20 |
+| 6291 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 6442 | TaiwanStockPriceAdj | MISMATCH | 2972 | 2014-03-18 | 2026-05-21 | 2971 | 2014-03-18 | 2026-05-20 |
+| 6442 | TaiwanStockPER | MISMATCH | 2651 | 2008-08-15 | 2026-05-21 | 2650 | 2008-08-15 | 2026-05-20 |
+| 6442 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2514 | 2016-01-21 | 2026-05-21 | 2513 | 2016-01-21 | 2026-05-20 |
+| 6442 | TaiwanStockShareholding | MISMATCH | 2671 | 2012-03-29 | 2026-05-21 | 2670 | 2012-03-29 | 2026-05-20 |
+| 6446 | TaiwanStockPriceAdj | MISMATCH | 2974 | 2014-03-12 | 2026-05-21 | 2973 | 2014-03-12 | 2026-05-20 |
+| 6446 | TaiwanStockPER | MISMATCH | 2279 | 2017-01-03 | 2026-05-21 | 2278 | 2017-01-03 | 2026-05-20 |
+| 6446 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 681 | 2023-07-28 | 2026-05-21 | 680 | 2023-07-28 | 2026-05-20 |
+| 6446 | TaiwanStockShareholding | MISMATCH | 2419 | 2016-07-18 | 2026-05-21 | 2418 | 2016-07-18 | 2026-05-20 |
+| 6488 | TaiwanStockPriceAdj | MISMATCH | 2817 | 2014-10-29 | 2026-05-21 | 2816 | 2014-10-29 | 2026-05-20 |
+| 6488 | TaiwanStockPER | MISMATCH | 2586 | 2015-09-25 | 2026-05-21 | 2585 | 2015-09-25 | 2026-05-20 |
+| 6488 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2477 | 2016-03-28 | 2026-05-21 | 2476 | 2016-03-28 | 2026-05-20 |
+| 6488 | TaiwanStockShareholding | MISMATCH | 2617 | 2015-09-24 | 2026-05-21 | 2616 | 2015-09-24 | 2026-05-20 |
+| 6510 | TaiwanStockPriceAdj | MISMATCH | 2758 | 2015-01-21 | 2026-05-21 | 2757 | 2015-01-21 | 2026-05-20 |
+| 6510 | TaiwanStockPER | MISMATCH | 2469 | 2016-03-24 | 2026-05-21 | 2468 | 2016-03-24 | 2026-05-20 |
+| 6510 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2349 | 2016-09-29 | 2026-05-21 | 2348 | 2016-09-29 | 2026-05-20 |
+| 6510 | TaiwanStockShareholding | MISMATCH | 2497 | 2016-03-23 | 2026-05-21 | 2496 | 2016-03-23 | 2026-05-20 |
+| 6515 | TaiwanStockPriceAdj | MISMATCH | 1578 | 2019-11-20 | 2026-05-21 | 1577 | 2019-11-20 | 2026-05-20 |
+| 6515 | TaiwanStockPER | MISMATCH | 1292 | 2021-01-20 | 2026-05-21 | 1291 | 2021-01-20 | 2026-05-20 |
+| 6515 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1167 | 2021-07-29 | 2026-05-21 | 1166 | 2021-07-29 | 2026-05-20 |
+| 6515 | TaiwanStockShareholding | MISMATCH | 1304 | 2021-01-19 | 2026-05-21 | 1303 | 2021-01-19 | 2026-05-20 |
+| 6531 | TaiwanStockPriceAdj | MISMATCH | 2659 | 2015-06-15 | 2026-05-21 | 2658 | 2015-06-15 | 2026-05-20 |
+| 6531 | TaiwanStockPER | MISMATCH | 2428 | 2008-08-15 | 2026-05-21 | 2427 | 2008-08-15 | 2026-05-20 |
+| 6531 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2299 | 2016-12-09 | 2026-05-21 | 2298 | 2016-12-09 | 2026-05-20 |
+| 6531 | TaiwanStockShareholding | MISMATCH | 2453 | 2012-03-29 | 2026-05-21 | 2452 | 2012-03-29 | 2026-05-20 |
+| 6640 | TaiwanStockPriceAdj | MISMATCH | 2133 | 2017-08-14 | 2026-05-21 | 2132 | 2017-08-14 | 2026-05-20 |
+| 6640 | TaiwanStockPER | MISMATCH | 1839 | 2018-10-23 | 2026-05-21 | 1838 | 2018-10-23 | 2026-05-20 |
+| 6640 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 113 | 2025-11-27 | 2026-05-21 | 112 | 2025-11-27 | 2026-05-20 |
+| 6640 | TaiwanStockShareholding | MISMATCH | 1857 | 2018-10-22 | 2026-05-21 | 1856 | 2018-10-22 | 2026-05-20 |
+| 6643 | TaiwanStockPriceAdj | MISMATCH | 2105 | 2017-09-21 | 2026-05-21 | 2104 | 2017-09-21 | 2026-05-20 |
+| 6643 | TaiwanStockPER | MISMATCH | 1775 | 2019-01-23 | 2026-05-21 | 1774 | 2019-01-23 | 2026-05-20 |
+| 6643 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1657 | 2019-07-25 | 2026-05-21 | 1656 | 2019-07-25 | 2026-05-20 |
+| 6643 | TaiwanStockShareholding | MISMATCH | 1792 | 2019-01-22 | 2026-05-21 | 1791 | 2019-01-22 | 2026-05-20 |
+| 6667 | TaiwanStockPriceAdj | MISMATCH | 2062 | 2017-11-24 | 2026-05-21 | 2061 | 2017-11-24 | 2026-05-20 |
+| 6667 | TaiwanStockPER | MISMATCH | 1824 | 2018-11-13 | 2026-05-21 | 1823 | 2018-11-13 | 2026-05-20 |
+| 6667 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1705 | 2019-05-17 | 2026-05-21 | 1704 | 2019-05-17 | 2026-05-20 |
+| 6667 | TaiwanStockShareholding | MISMATCH | 1842 | 2018-11-12 | 2026-05-21 | 1841 | 2018-11-12 | 2026-05-20 |
+| 6669 | TaiwanStockPriceAdj | MISMATCH | 2070 | 2017-11-14 | 2026-05-21 | 2069 | 2017-11-14 | 2026-05-20 |
+| 6669 | TaiwanStockPER | MISMATCH | 1740 | 2019-03-27 | 2026-05-21 | 1739 | 2019-03-27 | 2026-05-20 |
+| 6669 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1609 | 2019-10-04 | 2026-05-21 | 1608 | 2019-10-04 | 2026-05-20 |
+| 6669 | TaiwanStockShareholding | MISMATCH | 1754 | 2019-03-26 | 2026-05-21 | 1753 | 2019-03-26 | 2026-05-20 |
+| 6683 | TaiwanStockPriceAdj | MISMATCH | 1942 | 2018-05-29 | 2026-05-21 | 1941 | 2018-05-29 | 2026-05-20 |
+| 6683 | TaiwanStockPER | MISMATCH | 1722 | 2019-04-23 | 2026-05-21 | 1721 | 2019-04-23 | 2026-05-20 |
+| 6683 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 113 | 2025-11-27 | 2026-05-21 | 112 | 2025-11-27 | 2026-05-20 |
+| 6683 | TaiwanStockShareholding | MISMATCH | 1737 | 2019-04-22 | 2026-05-21 | 1736 | 2019-04-22 | 2026-05-20 |
+| 6691 | TaiwanStockPriceAdj | MISMATCH | 1890 | 2018-08-09 | 2026-05-21 | 1889 | 2018-08-09 | 2026-05-20 |
+| 6691 | TaiwanStockPER | MISMATCH | 1060 | 2022-01-03 | 2026-05-21 | 1059 | 2022-01-03 | 2026-05-20 |
+| 6691 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 934 | 2022-07-13 | 2026-05-21 | 933 | 2022-07-13 | 2026-05-20 |
+| 6691 | TaiwanStockShareholding | MISMATCH | 1070 | 2021-12-30 | 2026-05-21 | 1069 | 2021-12-30 | 2026-05-20 |
+| 6770 | TaiwanStockPriceAdj | MISMATCH | 1319 | 2020-12-10 | 2026-05-21 | 1318 | 2020-12-10 | 2026-05-20 |
+| 6770 | TaiwanStockPER | MISMATCH | 1079 | 2021-12-06 | 2026-05-21 | 1078 | 2021-12-06 | 2026-05-20 |
+| 6770 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 957 | 2022-06-10 | 2026-05-21 | 956 | 2022-06-10 | 2026-05-20 |
+| 6770 | TaiwanStockShareholding | MISMATCH | 1089 | 2021-12-03 | 2026-05-21 | 1088 | 2021-12-03 | 2026-05-20 |
+| 6781 | TaiwanStockPriceAdj | MISMATCH | 1255 | 2021-03-23 | 2026-05-21 | 1254 | 2021-03-23 | 2026-05-20 |
+| 6781 | TaiwanStockPER | MISMATCH | 1257 | 2021-03-22 | 2026-05-21 | 1256 | 2021-03-22 | 2026-05-20 |
+| 6781 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1126 | 2021-09-28 | 2026-05-21 | 1125 | 2021-09-28 | 2026-05-20 |
+| 6781 | TaiwanStockShareholding | MISMATCH | 1267 | 2021-03-19 | 2026-05-21 | 1266 | 2021-03-19 | 2026-05-20 |
+| 6788 | TaiwanStockPriceAdj | MISMATCH | 1358 | 2020-10-16 | 2026-05-21 | 1357 | 2020-10-16 | 2026-05-20 |
+| 6788 | TaiwanStockPER | MISMATCH | 1125 | 2021-09-29 | 2026-05-21 | 1124 | 2021-09-29 | 2026-05-20 |
+| 6788 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 997 | 2022-04-13 | 2026-05-21 | 996 | 2022-04-13 | 2026-05-20 |
+| 6788 | TaiwanStockShareholding | MISMATCH | 1136 | 2021-09-28 | 2026-05-21 | 1135 | 2021-09-28 | 2026-05-20 |
+| 6805 | TaiwanStockPriceAdj | MISMATCH | 1332 | 2020-11-23 | 2026-05-21 | 1331 | 2020-11-23 | 2026-05-20 |
+| 6805 | TaiwanStockPER | MISMATCH | 612 | 2023-11-09 | 2026-05-21 | 611 | 2023-11-09 | 2026-05-20 |
+| 6805 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 452 | 2024-07-08 | 2026-05-21 | 451 | 2024-07-08 | 2026-05-20 |
+| 6805 | TaiwanStockShareholding | MISMATCH | 618 | 2023-11-08 | 2026-05-21 | 617 | 2023-11-08 | 2026-05-20 |
+| 8021 | TaiwanStockPriceAdj | MISMATCH | 5185 | 2004-12-22 | 2026-05-21 | 5184 | 2004-12-22 | 2026-05-20 |
+| 8021 | TaiwanStockPER | MISMATCH | 4752 | 2007-01-02 | 2026-05-21 | 4751 | 2007-01-02 | 2026-05-20 |
+| 8021 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4510 | 2007-03-05 | 2026-05-21 | 4509 | 2007-03-05 | 2026-05-20 |
+| 8021 | TaiwanStockShareholding | MISMATCH | 4539 | 2008-01-18 | 2026-05-21 | 4538 | 2008-01-18 | 2026-05-20 |
+| 8028 | TaiwanStockPriceAdj | MISMATCH | 3083 | 2006-12-19 | 2026-05-21 | 3082 | 2006-12-19 | 2026-05-20 |
+| 8028 | TaiwanStockPER | MISMATCH | 1914 | 2018-07-10 | 2026-05-21 | 1913 | 2018-07-10 | 2026-05-20 |
+| 8028 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 1778 | 2019-01-18 | 2026-05-21 | 1777 | 2019-01-18 | 2026-05-20 |
+| 8028 | TaiwanStockShareholding | MISMATCH | 1930 | 2018-07-09 | 2026-05-21 | 1929 | 2018-07-09 | 2026-05-20 |
+| 8046 | TaiwanStockPriceAdj | MISMATCH | 4946 | 2006-04-10 | 2026-05-21 | 4945 | 2006-04-10 | 2026-05-20 |
+| 8046 | TaiwanStockPER | MISMATCH | 4950 | 2006-04-07 | 2026-05-21 | 4949 | 2006-04-07 | 2026-05-20 |
+| 8046 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4813 | 2006-10-18 | 2026-05-21 | 4812 | 2006-10-18 | 2026-05-20 |
+| 8046 | TaiwanStockShareholding | MISMATCH | 4988 | 2006-04-06 | 2026-05-21 | 4987 | 2006-04-06 | 2026-05-20 |
+| 8086 | TaiwanStockPriceAdj | MISMATCH | 4757 | 2006-12-19 | 2026-05-21 | 4756 | 2006-12-19 | 2026-05-20 |
+| 8086 | TaiwanStockPER | MISMATCH | 4151 | 2009-06-01 | 2026-05-21 | 4150 | 2009-06-01 | 2026-05-20 |
+| 8086 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4035 | 2009-12-04 | 2026-05-21 | 4034 | 2009-12-04 | 2026-05-20 |
+| 8086 | TaiwanStockShareholding | MISMATCH | 4202 | 2009-05-27 | 2026-05-21 | 4201 | 2009-05-27 | 2026-05-20 |
+| 8088 | TaiwanStockPriceAdj | MISMATCH | 5401 | 2004-03-01 | 2026-05-21 | 5400 | 2004-03-01 | 2026-05-20 |
+| 8088 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 8088 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 8088 | TaiwanStockShareholding | MISMATCH | 5383 | 2004-08-04 | 2026-05-21 | 5382 | 2004-08-04 | 2026-05-20 |
+| 8112 | TaiwanStockPriceAdj | MISMATCH | 5413 | 2004-02-10 | 2026-05-21 | 5412 | 2004-02-10 | 2026-05-20 |
+| 8112 | TaiwanStockPER | MISMATCH | 4759 | 2007-01-02 | 2026-05-21 | 4758 | 2007-01-02 | 2026-05-20 |
+| 8112 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 8112 | TaiwanStockShareholding | MISMATCH | 4553 | 2007-12-28 | 2026-05-21 | 4552 | 2007-12-28 | 2026-05-20 |
+| 8150 | TaiwanStockPriceAdj | MISMATCH | 3189 | 2013-04-22 | 2026-05-21 | 3188 | 2013-04-22 | 2026-05-20 |
+| 8150 | TaiwanStockPER | MISMATCH | 2954 | 2008-08-15 | 2026-05-21 | 2953 | 2008-08-15 | 2026-05-20 |
+| 8150 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 2819 | 2014-10-21 | 2026-05-21 | 2818 | 2014-10-21 | 2026-05-20 |
+| 8150 | TaiwanStockShareholding | MISMATCH | 2981 | 2014-04-10 | 2026-05-21 | 2980 | 2014-04-10 | 2026-05-20 |
+| 8210 | TaiwanStockPriceAdj | MISMATCH | 5108 | 2005-04-29 | 2026-05-21 | 5107 | 2005-04-29 | 2026-05-20 |
+| 8210 | TaiwanStockPER | MISMATCH | 4755 | 2007-01-02 | 2026-05-21 | 4754 | 2007-01-02 | 2026-05-20 |
+| 8210 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4513 | 2007-03-05 | 2026-05-21 | 4512 | 2007-03-05 | 2026-05-20 |
+| 8210 | TaiwanStockShareholding | MISMATCH | 3568 | 2011-11-30 | 2026-05-21 | 3567 | 2011-11-30 | 2026-05-20 |
+| 8227 | TaiwanStockPriceAdj | MISMATCH | 2509 | 2006-12-19 | 2026-05-21 | 2508 | 2006-12-19 | 2026-05-20 |
+| 8227 | TaiwanStockPER | MISMATCH | 822 | 2022-12-20 | 2026-05-21 | 821 | 2022-12-20 | 2026-05-20 |
+| 8227 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 702 | 2023-06-29 | 2026-05-21 | 701 | 2023-06-29 | 2026-05-20 |
+| 8227 | TaiwanStockShareholding | MISMATCH | 831 | 2022-12-19 | 2026-05-21 | 830 | 2022-12-19 | 2026-05-20 |
+| 8271 | TaiwanStockPriceAdj | MISMATCH | 4746 | 2006-12-19 | 2026-05-21 | 4745 | 2006-12-19 | 2026-05-20 |
+| 8271 | TaiwanStockPER | MISMATCH | 3761 | 2008-08-15 | 2026-05-21 | 3760 | 2008-08-15 | 2026-05-20 |
+| 8271 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3631 | 2011-07-11 | 2026-05-21 | 3630 | 2011-07-11 | 2026-05-20 |
+| 8271 | TaiwanStockShareholding | MISMATCH | 3798 | 2010-12-28 | 2026-05-21 | 3797 | 2010-12-28 | 2026-05-20 |
+| 8299 | TaiwanStockPriceAdj | MISMATCH | 5205 | 2004-12-07 | 2026-05-21 | 5204 | 2004-12-07 | 2026-05-20 |
+| 8299 | TaiwanStockPER | MISMATCH | 4738 | 2007-01-02 | 2026-05-21 | 4737 | 2007-01-02 | 2026-05-20 |
+| 8299 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4517 | 2007-03-05 | 2026-05-21 | 4516 | 2007-03-05 | 2026-05-20 |
+| 8299 | TaiwanStockShareholding | MISMATCH | 5303 | 2004-12-03 | 2026-05-21 | 5302 | 2004-12-03 | 2026-05-20 |
+| 8358 | TaiwanStockPriceAdj | MISMATCH | 4546 | 2007-11-08 | 2026-05-21 | 4545 | 2007-11-08 | 2026-05-20 |
+| 8358 | TaiwanStockPER | MISMATCH | 3818 | 2010-09-27 | 2026-05-21 | 3817 | 2010-09-27 | 2026-05-20 |
+| 8358 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 3707 | 2011-04-06 | 2026-05-21 | 3706 | 2011-04-06 | 2026-05-20 |
+| 8358 | TaiwanStockShareholding | MISMATCH | 3865 | 2010-09-24 | 2026-05-21 | 3864 | 2010-09-24 | 2026-05-20 |
+| 8996 | TaiwanStockPER | MISMATCH | 4750 | 2007-01-02 | 2026-05-21 | 4749 | 2007-01-02 | 2026-05-20 |
+| 8996 | TaiwanStockMarginPurchaseShortSale | MISMATCH | 4511 | 2007-03-05 | 2026-05-21 | 4510 | 2007-03-05 | 2026-05-20 |
+| 8996 | TaiwanStockShareholding | MISMATCH | 3020 | 2012-03-29 | 2026-05-21 | 3019 | 2012-03-29 | 2026-05-20 |
+
+## Targeted Backfill Commands
+
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1503 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1503 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1503 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1503 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1504 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1504 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1504 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1504 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1513 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1513 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1513 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1513 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1514 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1514 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1514 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1514 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1519 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1519 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1519 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1519 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1560 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1560 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1560 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1560 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1590 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1590 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1590 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1590 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1785 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1785 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1785 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1785 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1795 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1795 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1795 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1795 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1815 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1815 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1815 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 1815 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2049 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2049 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2049 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2049 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2059 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2059 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2059 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2059 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2301 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2301 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2301 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2301 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2303 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2303 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2303 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2303 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2308 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2308 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2308 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2308 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2313 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2313 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2313 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2313 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2316 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2316 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2316 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2316 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2317 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2317 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2317 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2317 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2327 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2327 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2327 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2327 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2329 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2329 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2329 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2329 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2337 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2337 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2337 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2337 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2344 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2344 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2344 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2344 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2345 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2345 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2345 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2345 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2354 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2354 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2354 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2354 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2356 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2356 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2356 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2356 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2357 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2357 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2357 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2357 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2360 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2360 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2360 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2360 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2363 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2363 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2363 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2363 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2368 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2368 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2368 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2368 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2374 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2374 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2374 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2374 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2376 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2376 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2376 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2376 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2379 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2379 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2379 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2379 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2382 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2382 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2382 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2382 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2383 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2383 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2383 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2383 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2395 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2395 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2395 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2395 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2402 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2402 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2402 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2402 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2404 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2404 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2404 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2404 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2408 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2408 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2408 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2408 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2412 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2412 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2412 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2412 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2421 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2421 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2421 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2421 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2441 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2441 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2441 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2441 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2449 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2449 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2449 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2449 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2451 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2451 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2451 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2451 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2454 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2454 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2454 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2454 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2455 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2455 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2455 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2455 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2467 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2467 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2467 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2467 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2481 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2481 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2481 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2481 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2486 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2486 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2486 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2486 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2492 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2492 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2492 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 2492 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3006 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3006 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3006 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3006 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3013 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3013 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3013 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3013 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3017 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3017 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3017 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3017 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3019 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3019 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3019 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3019 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3030 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3030 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3030 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3030 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3036 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3036 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3036 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3036 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3037 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3037 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3037 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3037 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3044 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3044 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3044 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3044 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3081 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3081 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3081 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3081 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3090 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3090 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3090 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3090 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3105 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3105 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3105 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3105 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3131 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3131 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3131 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3131 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3163 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3163 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3163 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3163 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3167 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3167 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3167 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3167 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3189 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3189 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3189 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3189 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3211 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3211 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3211 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3211 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3231 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3231 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3231 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3231 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3260 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3260 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3260 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3260 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3264 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3264 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3264 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3264 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3265 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3265 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3265 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3265 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3305 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3305 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3305 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3305 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3324 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3324 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3324 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3324 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3374 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3374 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3374 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3374 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3406 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3406 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3406 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3406 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3443 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3443 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3443 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3443 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3481 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3481 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3481 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3481 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3491 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3491 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3491 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3491 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3515 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3515 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3515 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3515 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3529 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3529 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3529 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3529 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3533 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3533 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3533 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3533 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3563 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3563 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3563 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3563 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3653 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3653 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3653 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3653 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3661 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3661 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3661 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3661 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3665 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3665 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3665 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3665 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3680 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3680 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3680 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3680 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3702 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3702 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3702 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3702 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3706 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3706 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3706 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3706 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3711 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3711 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3711 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3711 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3715 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3715 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3715 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 3715 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4739 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4739 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4739 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4739 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4749 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4749 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4749 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4749 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4904 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4904 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4904 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4904 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4916 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4916 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4916 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4916 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4931 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4931 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4931 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4931 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4958 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4958 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4958 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4958 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4967 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4967 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4967 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4967 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4971 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4971 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4971 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4971 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4979 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4979 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4979 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4979 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4991 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4991 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4991 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 4991 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5269 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5269 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5269 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5269 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5274 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5274 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5274 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5274 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5289 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5289 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5289 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5289 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5347 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5347 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5347 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5347 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5425 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5425 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5425 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5425 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5439 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5439 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5439 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5439 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5443 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5443 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5443 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5443 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5469 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5469 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5469 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5469 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5483 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5483 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5483 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5483 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5536 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5536 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5536 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 5536 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6138 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6138 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6138 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6138 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6139 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6139 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6139 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6139 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6182 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6182 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6182 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6182 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6191 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6191 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6191 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6191 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6213 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6213 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6213 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6213 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6215 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6215 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6215 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6215 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6223 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6223 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6223 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6223 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6239 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6239 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6239 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6239 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6274 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6274 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6274 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6274 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6282 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6282 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6282 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6282 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6290 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6290 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6290 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6290 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6291 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6291 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6291 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6291 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6442 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6442 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6442 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6442 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6446 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6446 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6446 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6446 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6488 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6488 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6488 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6488 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6510 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6510 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6510 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6510 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6515 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6515 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6515 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6515 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6531 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6531 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6531 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6531 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6640 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6640 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6640 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6640 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6643 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6643 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6643 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6643 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6667 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6667 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6667 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6667 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6669 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6669 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6669 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6669 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6683 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6683 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6683 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6683 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6691 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6691 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6691 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6691 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6770 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6770 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6770 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6770 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6781 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6781 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6781 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6781 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6788 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6788 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6788 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6788 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6805 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6805 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6805 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 6805 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8021 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8021 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8021 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8021 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8028 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8028 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8028 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8028 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8046 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8046 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8046 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8046 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8086 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8086 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8086 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8086 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8088 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8088 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8088 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8088 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8112 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8112 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8112 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8112 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8150 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8150 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8150 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8150 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8210 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8210 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8210 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8210 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8227 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8227 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8227 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8227 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8271 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8271 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8271 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8271 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8299 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8299 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8299 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8299 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8358 --dataset TaiwanStockPriceAdj --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8358 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8358 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8358 --dataset TaiwanStockShareholding --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8996 --dataset TaiwanStockPER --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8996 --dataset TaiwanStockMarginPurchaseShortSale --strict-source-history
+```
+```bash
+.venv/bin/python scripts/ingestion/sovereign_sync_engine.py --id 8996 --dataset TaiwanStockShareholding --strict-source-history
+```
+
+## FRED Valid Observation Alignment
+
+| series_id | status | api_valid_rows | api_valid_min | api_valid_max | db_valid_rows | db_valid_min | db_valid_max |
+|---|---|---:|---|---|---:|---|---|
+| DFF | MISMATCH | 26257 | 1954-07-01 | 2026-05-20 | 26256 | 1954-07-01 | 2026-05-19 |
+| UNRATE | OK | 939 | 1948-01-01 | 2026-04-01 | 939 | 1948-01-01 | 2026-04-01 |
+| T10Y2Y | MISMATCH | 12490 | 1976-06-01 | 2026-05-21 | 12489 | 1976-06-01 | 2026-05-20 |
+| VIXCLS | MISMATCH | 9190 | 1990-01-02 | 2026-05-20 | 9189 | 1990-01-02 | 2026-05-19 |
