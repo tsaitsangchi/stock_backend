@@ -1,8 +1,8 @@
 """
-audit_source_availability.py v0.2 (Core 150 Strict Source Availability Audit · §6.8.8-C Time-Drift Tolerance)
+audit_source_availability.py v0.3 (Strict Source Availability Audit · §6.8.8-C Time-Drift Tolerance · §6.8.8-D Full-Market Mode)
 ================================================================================
 **最後更新日期**: 2026-05-22
-**主權狀態**: ACTIVE (憲法 v6.0.0 §14.7-L 對齊 + §6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環)
+**主權狀態**: ACTIVE (憲法 v6.0.0 §14.7-L 對齊 + §6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環 + §6.8.8-D 全市場驗證模式 + §14.7-AQ 範圍對稱性補齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -32,17 +32,28 @@ audit_source_availability.py v0.2 (Core 150 Strict Source Availability Audit · 
    （非 §3.1 序列模組）；落實 §14.7-L strict source availability + §6.8.8-C 時點漂移容忍；不涉及 §0.1-A / §0.2-A /
    §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不調度 universe；
    不持有 schema 定義；DATASET_REGISTRY + FINMIND_API_TABLES 為唯一 schema 引用源。
+9. **[Full-Market Audit Mode]** (v0.3, 憲法 §6.8.8-D / §14.7-AQ；2026-05-22 入憲)：對齊 `sovereign_sync_engine` 之
+   §6.8.7 第 (4) 條全市場限定治理例外，落地 audit 側對等驗證範圍：
+   - `--universe full` 解鎖 `core ∪ convex ∪ research ∪ quarantine` ≈ 2,798 支 × 10 datasets 之全市場 audit
+   - **必須**附 `--special-full-market-reason "<≥12 字理由>"`（與 sovereign_sync_engine 同口徑）；缺 reason / reason < 12 字 → preflight exit 1
+   - 五類合法情境：DB rebuild bootstrap / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 重大合規事件
+   - reason 寫入報表 metadata + 終端 summary 留 audit trail
+   - `_resolve_stocks(universe="full")` 對齊 `sovereign_sync_engine.UNIVERSE_TIERS["full"]` SSOT（4-tier union；避免兩工具範圍漂移）
+   - 報表標題去 "Core 150" 字樣（為「Strict source availability audit」）；scope 欄位升級為 `stocks=N (universe=core|full)`
+   - 跨工具治權範本：未來 maintenance audit 工具支援 `--universe full` 一律比照（必須附 reason）
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.2 |
-| **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.2 |
-| **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.2 |
-| **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.2 |
-| **5. [僅 FinMind（略 FRED）]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict` | audit_source_availability v0.2 |
-| **6. [§6.8.8-C 時點漂移容忍：預設 3 個日曆日]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 3` | audit_source_availability v0.2 |
-| **7. [§6.8.8-C 嚴格模式：相容 v0.1]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 0` | audit_source_availability v0.2 |
+| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.3 |
+| **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.3 |
+| **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.3 |
+| **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.3 |
+| **5. [僅 FinMind（略 FRED）]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict` | audit_source_availability v0.3 |
+| **6. [§6.8.8-C 時點漂移容忍：預設 3 個日曆日]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 3` | audit_source_availability v0.3 |
+| **7. [§6.8.8-C 嚴格模式：相容 v0.1]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict --drift-tolerance 0` | audit_source_availability v0.3 |
+| **8. [§6.8.8-D 全市場驗證：~2,798 支]** | `$ python scripts/maintenance/audit_source_availability.py --universe full --all --include-fred --strict --special-full-market-reason "DB rebuild bootstrap 2026-05-22 full-market validation"` | audit_source_availability v0.3 |
+| **9. [§6.8.8-D preflight 拒絕：缺 reason]** | `$ python scripts/maintenance/audit_source_availability.py --universe full --all` → **exit 1**（缺 reason / reason < 12 字 / reason 給但 universe 非 full）| audit_source_availability v0.3 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -55,12 +66,19 @@ audit_source_availability.py v0.2 (Core 150 Strict Source Availability Audit · 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-22 | Codex | **§6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環延伸實證**：依憲章 v6.0.0-patch §6.8.8-C + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）落地實作 audit 觀察時點漂移之容忍規則。**補正內容**：(I) 新增 `--drift-tolerance N` argparse flag（預設 N=3 個日曆日；N=0 為嚴格模式相容 v0.1）；(II) `_classify()` 邏輯擴增 TIME_DRIFT_OK 分支：當 `(api_date_max - db_date_max).days ≤ N` 且 `abs(api_rows - db_rows) ≤ N` 時標記為 TIME_DRIFT_OK（**不**計入 mismatch / 不影響 exit code）；(III) `_classify_fred()` 同步擴增 TIME_DRIFT_OK 分支；(IV) stats 新增 `time_drift_ok` + `fred_time_drift_ok` 計數器；(V) 報告新增 TIME_DRIFT_OK 獨立分類段落；(VI) 核心定義新增 [Time-Drift Tolerance] + [Sovereignty Declaration] 兩條治權慣例；(VII) 維運矩陣補入 6/7 兩個 --drift-tolerance scenarios；(VIII) 新增模組級 CONSTITUTION_VER + TOOL_VER 常數。**§14.7-AP 治權閉環實證**：本 commit 與 charter commit `4d990d0` 之治權契約完全對齊；2026-05-22 11:13 已實證 PERFECT 0/0（mismatch 全部消解後本 v0.2 之容忍規則為日後增量 sync 時自然漂移之預防性容忍）。**介面零變動**：所有既有 CLI flag / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；新增之 `--drift-tolerance` 屬非破壞性 flag（N=0 完全相容 v0.1 行為）。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| **v0.3** | 2026-05-22 | Codex | **§6.8.8-D 全市場驗證模式 + §14.7-AQ 治權範圍對稱性補齊落地**：依憲章 v6.0.0-patch §6.8.8-D + §14.7-AQ（commit `52e4511`；2026-05-22 入憲）落地 audit 側對等於 `sovereign_sync_engine v1.21 --universe full` 之全市場 audit 能力，閉合 §14.7-AQ 識別之治權範圍對稱性缺口（~26,500 對全市場資料原無治權內驗證機制）。**功能變更 5 點**：(I) argparse `--universe choices=["core"]` → `["core", "full"]`；(II) argparse 新增 `--special-full-market-reason` flag + main() preflight 3 分支治權檢查（缺 reason / reason < 12 字 / reason 給但 universe 非 full → exit 1）；(III) `_resolve_stocks(universe="full")` 對齊 `sovereign_sync_engine.UNIVERSE_TIERS["full"]` SSOT，回傳 `core_universe ∪ convex_universe ∪ research_universe ∪ quarantine_universe` 4-tier union ≈ 2,798 支；(IV) `__init__` 新增 `special_full_market_reason` 參數；reason 寫入報表 metadata + 終端 summary 留 audit trail；(V) 新增模組級常數 `FULL_MARKET_REASON_MIN_CHARS = 12` + `FULL_MARKET_REQUIRED_UNIVERSE = "full"`（獨立定義避免 maintenance → ingestion 反向耦合 import；對映 sovereign_sync_engine 同名常數）。**標頭變更**：(a) L2 副標補入「§6.8.8-D Full-Market Mode」；(b) L5 主權狀態行補入 §6.8.8-D + §14.7-AQ；(c) 核心定義 8 條 → 9 條：新增 [Full-Market Audit Mode] (v0.3, §6.8.8-D / §14.7-AQ；7 條治權邊界)；(d) 維運矩陣補入場景 8（`--universe full` 含 reason）+ 場景 9（preflight 拒絕 invalid case）；(e) 報表標題去 "Core 150" → "Strict source availability audit"；(f) scope 欄位升級為 `stocks=N (universe=core|full)`；(g) constitution 欄位加 §6.8.8-D + §14.7-AQ；(h) `_print_summary` 加 universe + special_full_market_reason 顯示；(i) TOOL_VER v0.2 → v0.3。**治權邊界嚴守**：所有既有 `--universe core` 行為**完全不變**（v0.2 → v0.3 為新功能擴充非邏輯改寫）；不修改 §6.8.7 第 (4) 條五類合法情境、不修改 §6.8.8 / §6.8.8-A / §6.8.8-B / §6.8.8-C 既有條款、不改 §3.1 / §3.2 / §6.7 / §7 / §8 / §9 強制契約、不改 CoreScore v0.2 與 ThemeResonance 15%、不改 schema 定義（DATASET_REGISTRY + FINMIND_API_TABLES 仍為唯一引用源）。**驗證已通過**：compile OK；preflight 3 分支全部 exit 1 ✓；smoke `--id 2330 --dataset TaiwanStockPrice` verdict=PERFECT；`--help` 顯示 `choices=["core", "full"]` + `--special-full-market-reason`。**對應 §0.0-G 第 15 次跑通**（§14.7-AQ）落地 Phase 2 - 程式單修。 | **ACTIVE** |
+| v0.2 | 2026-05-22 | Codex | **§6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環延伸實證**：依憲章 v6.0.0-patch §6.8.8-C + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）落地實作 audit 觀察時點漂移之容忍規則。**補正內容**：(I) 新增 `--drift-tolerance N` argparse flag（預設 N=3 個日曆日；N=0 為嚴格模式相容 v0.1）；(II) `_classify()` 邏輯擴增 TIME_DRIFT_OK 分支：當 `(api_date_max - db_date_max).days ≤ N` 且 `abs(api_rows - db_rows) ≤ N` 時標記為 TIME_DRIFT_OK（**不**計入 mismatch / 不影響 exit code）；(III) `_classify_fred()` 同步擴增 TIME_DRIFT_OK 分支；(IV) stats 新增 `time_drift_ok` + `fred_time_drift_ok` 計數器；(V) 報告新增 TIME_DRIFT_OK 獨立分類段落；(VI) 核心定義新增 [Time-Drift Tolerance] + [Sovereignty Declaration] 兩條治權慣例；(VII) 維運矩陣補入 6/7 兩個 --drift-tolerance scenarios；(VIII) 新增模組級 CONSTITUTION_VER + TOOL_VER 常數。**§14.7-AP 治權閉環實證**：本 commit 與 charter commit `4d990d0` 之治權契約完全對齊；2026-05-22 11:13 已實證 PERFECT 0/0（mismatch 全部消解後本 v0.2 之容忍規則為日後增量 sync 時自然漂移之預防性容忍）。**介面零變動**：所有既有 CLI flag / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；新增之 `--drift-tolerance` 屬非破壞性 flag（N=0 完全相容 v0.1 行為）。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v0.1 | 2026-05-18 | Codex | 首版：依憲章 §14.7-L 入憲，比對 core+convex 150 × 9 表之 FinMind `api_rows/api_min/api_max` 與 DB `db_rows/db_min/db_max`；支援 `--snapshot-in/--snapshot-out`、`--strict` exit 1、source-empty 合法分流與 targeted backfill commands；`--include-fred` 另比對 FRED 四序列 valid numeric observations。 | SUPERSEDED |
 ================================================================================
 """
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
+TOOL_VER = "v0.3"
+
+# v0.3 §6.8.8-D / §14.7-AQ 全市場驗證模式之治權常數
+# （與 sovereign_sync_engine.FULL_MARKET_REASON_MIN_CHARS / FULL_MARKET_REQUIRED_UNIVERSE 對映；
+#  獨立定義以避免 maintenance → ingestion 之反向耦合 import）
+FULL_MARKET_REASON_MIN_CHARS = 12
+FULL_MARKET_REQUIRED_UNIVERSE = "full"
 
 import argparse
 import json
@@ -120,13 +138,17 @@ class SimpleThrottle:
 
 class SourceAvailabilityAuditor:
     def __init__(self, start_date=STRICT_SOURCE_START_DATE, throttle_per_hour=DEFAULT_THROTTLE_PER_HOUR,
-                 snapshot_in=None, snapshot_out=None, drift_tolerance=3):
+                 snapshot_in=None, snapshot_out=None, drift_tolerance=3,
+                 special_full_market_reason=None):
         # v0.2: drift_tolerance = audit 時點漂移容忍（per §6.8.8-C / §14.7-AP）
         # 預設 3 個日曆日（覆蓋週末 + 1 工作日緩衝）；0 為嚴格模式相容 v0.1
+        # v0.3: special_full_market_reason = §6.8.8-D / §14.7-AQ 全市場 audit 治理理由
+        # 對齊 §6.8.7 第 (4) 條五類合法情境；audit 時 audit trail 留存
         self.constitution_ver = CONSTITUTION_VER
         self.tool_ver = TOOL_VER
         self.start_date = start_date
         self.drift_tolerance = max(0, int(drift_tolerance))
+        self.special_full_market_reason = (special_full_market_reason or "").strip() or None
         self.client = FinMindClient()
         self.throttle = SimpleThrottle(max_per_hour=throttle_per_hour)
         self.snapshot_in = Path(snapshot_in) if snapshot_in else None
@@ -188,9 +210,15 @@ class SourceAvailabilityAuditor:
     def _resolve_stocks(self, stock_id=None, universe="core"):
         if stock_id:
             return [str(stock_id)]
-        if universe != "core":
-            raise ValueError("v0.1 only authorizes --universe core for §6.7 core+convex scope")
-        return list(get_core_stocks_from_db(tiers=("core_universe", "convex_universe")))
+        if universe == "core":
+            return list(get_core_stocks_from_db(tiers=("core_universe", "convex_universe")))
+        if universe == "full":
+            # v0.3 §6.8.8-D / §14.7-AQ: 對齊 sovereign_sync_engine.UNIVERSE_TIERS["full"] SSOT
+            # 全市場 = core ∪ convex ∪ research ∪ quarantine ≈ 2,798 支
+            return list(get_core_stocks_from_db(
+                tiers=("core_universe", "convex_universe", "research_universe", "quarantine_universe")
+            ))
+        raise ValueError(f"Unsupported universe: {universe}; allowed: core / full")
 
     def _resolve_datasets(self, dataset=None, all_datasets=False):
         if dataset:
@@ -453,8 +481,8 @@ class SourceAvailabilityAuditor:
                 lifecycle.mark_failed(f"strict source availability mismatch={self.mismatch}, api_errors={self.api_errors}")
             elif verdict == "WARNING" and hasattr(lifecycle, "mark_warning"):
                 lifecycle.mark_warning(f"source availability mismatch={self.mismatch}, api_errors={self.api_errors}")
-            self._write_report(verdict, stocks, datasets)
-            self._print_summary(verdict)
+            self._write_report(verdict, stocks, datasets, universe=universe)
+            self._print_summary(verdict, universe=universe)
             return verdict
 
     def _verdict(self, strict=True):
@@ -464,17 +492,25 @@ class SourceAvailabilityAuditor:
             return "FAILED" if strict else "WARNING"
         return "PERFECT"
 
-    def _write_report(self, verdict, stocks, datasets):
+    def _write_report(self, verdict, stocks, datasets, universe="core"):
         report_path = get_report_dir() / f"source_availability_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
         mismatches = [r for r in self.results if r["status"] not in {"OK", "SOURCE_EMPTY_OK", "TIME_DRIFT_OK"}]
         with open(report_path, "w", encoding="utf-8") as f:
-            f.write("# Core 150 strict source availability audit\n\n")
+            f.write("# Strict source availability audit\n\n")
             f.write(f"- **time**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"- **constitution**: 系統架構大憲章_{self.constitution_ver}.md §14.7-L + §6.8.8-C + §14.7-AP\n")
+            f.write(
+                f"- **constitution**: 系統架構大憲章_{self.constitution_ver}.md "
+                f"§14.7-L + §6.8.8-C + §14.7-AP + §6.8.8-D + §14.7-AQ\n"
+            )
             f.write(f"- **tool**: audit_source_availability {self.tool_ver}\n")
             f.write(f"- **start_date**: {self.start_date}\n")
             f.write(f"- **drift_tolerance**: {self.drift_tolerance} day(s) (§6.8.8-C; 0 = strict)\n")
-            f.write(f"- **scope**: stocks={len(stocks)}, datasets={len(datasets)}\n")
+            f.write(f"- **scope**: stocks={len(stocks)} (universe={universe}), datasets={len(datasets)}\n")
+            if universe == FULL_MARKET_REQUIRED_UNIVERSE and self.special_full_market_reason:
+                f.write(
+                    f"- **special_full_market_reason**: {self.special_full_market_reason} "
+                    f"(§6.8.7 第 (4) 條 / §6.8.8-D)\n"
+                )
             f.write(f"- **verdict**: **{verdict}**\n")
             f.write(
                 f"- **summary**: checked={self.checked}, source_empty_ok={self.source_empty_ok}, "
@@ -520,11 +556,14 @@ class SourceAvailabilityAuditor:
                     )
         self.report_path = report_path
 
-    def _print_summary(self, verdict):
+    def _print_summary(self, verdict, universe="core"):
         print("\n" + "🛡️" * 40)
         print(f"🚀 Quantum Finance: strict source availability audit ({self.tool_ver})")
         print("🛡️" * 40)
         print(f"report : {self.report_path}")
+        print(f"universe={universe}")
+        if universe == FULL_MARKET_REQUIRED_UNIVERSE and self.special_full_market_reason:
+            print(f"special_full_market_reason : {self.special_full_market_reason}")
         print(f"drift_tolerance={self.drift_tolerance}")
         print(f"checked={self.checked}")
         print(f"source_empty_ok={self.source_empty_ok}")
@@ -541,9 +580,10 @@ class SourceAvailabilityAuditor:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Core 150 FinMind strict source availability audit")
+    parser = argparse.ArgumentParser(description="Strict source availability audit (FinMind + FRED)")
     parser.add_argument("--id", type=str, help="single stock_id")
-    parser.add_argument("--universe", choices=["core"], default="core", help="authorized universe scope")
+    parser.add_argument("--universe", choices=["core", "full"], default="core",
+                        help="authorized universe scope (core ≈ 150；full ≈ 2,798 須附 reason 對齊 §6.8.7 第 (4) 條 / §6.8.8-D)")
     parser.add_argument("--dataset", type=str, help="single FinMind stock-level dataset")
     parser.add_argument("--all", action="store_true", help="audit all FinMind stock-level datasets")
     parser.add_argument("--start-date", default=STRICT_SOURCE_START_DATE,
@@ -557,7 +597,25 @@ def main():
                         help="API requests per hour cap for audit probe")
     parser.add_argument("--drift-tolerance", type=int, default=3,
                         help="§6.8.8-C audit 時點漂移容忍 (預設 3 個日曆日；0 = strict mode)")
+    parser.add_argument("--special-full-market-reason", type=str, default=None,
+                        help=f"(v0.3 §6.8.8-D / §14.7-AQ) 全市場 audit 治理理由 — 必須 ≥ {FULL_MARKET_REASON_MIN_CHARS} 字元；"
+                             "僅在 --universe full 時生效；缺 reason 或字數不足即 exit 1")
     args = parser.parse_args()
+
+    # v0.3 §6.8.8-D / §14.7-AQ preflight 治權檢查（對齊 §6.8.7 第 (4) 條範本）
+    if args.universe == FULL_MARKET_REQUIRED_UNIVERSE:
+        reason = (args.special_full_market_reason or "").strip()
+        if not reason:
+            print(f"❌ [§6.8.8-D / §14.7-AQ] --universe full 必須附 --special-full-market-reason \"<≥{FULL_MARKET_REASON_MIN_CHARS} 字理由>\"")
+            print("   合法情境：DB rebuild bootstrap / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件")
+            sys.exit(1)
+        if len(reason) < FULL_MARKET_REASON_MIN_CHARS:
+            print(f"❌ [§6.8.8-D / §14.7-AQ] --special-full-market-reason 長度 {len(reason)} < {FULL_MARKET_REASON_MIN_CHARS} 字元下限")
+            sys.exit(1)
+    elif args.special_full_market_reason:
+        print(f"❌ [§6.8.8-D / §14.7-AQ] --special-full-market-reason 僅在 --universe full 時生效；"
+              f"目前 --universe={args.universe}，拒絕執行")
+        sys.exit(1)
 
     auditor = SourceAvailabilityAuditor(
         start_date=args.start_date,
@@ -565,6 +623,7 @@ def main():
         snapshot_in=args.snapshot_in,
         snapshot_out=args.snapshot_out,
         drift_tolerance=args.drift_tolerance,
+        special_full_market_reason=args.special_full_market_reason,
     )
     verdict = auditor.run(
         stock_id=args.id,
