@@ -58,6 +58,9 @@ reports/*
 # 重大實證報告（憲章 §14 / §8.8.x 引用之 audit trail）
 !reports/rebuild_execution_log_*.md
 !reports/full_rebuild_*.md
+# rebuild_logs/ 子目錄之執行紀錄（2026-05-21 起新治權閉環實證留存載體）
+!reports/rebuild_logs/
+!reports/rebuild_logs/*.md
 !reports/walk_forward_h20_*.md
 !reports/corescore_v02_execution_log_*.md
 !reports/core_universe_v02_execution_*.md
