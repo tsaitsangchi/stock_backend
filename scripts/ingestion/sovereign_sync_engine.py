@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.20 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3)
+sovereign_sync_engine.py v1.21 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化；8 項標頭強制檢驗 100% 合規)
+**最後更新日期**: 2026-05-22
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -56,6 +56,14 @@ sovereign_sync_engine.py v1.20 (Quantum Finance Market Universe Seed Engine · F
 14. **[Historical Reference Authority]** (v1.16; v1.17 cross-ref 行號校準)：本程式之 `schema_ver` 屬於記述性快照（記載當下對齊之 `data_schema` 版本），
     非權威來源；`DATASET_REGISTRY` 之權威來源永遠是 `data_schema.py` 當前版本之 import 結果。§3.1 子表 L2459 之
     「對齊 `data_schema.py v2.11`」表述為治權記述，非硬鎖版本（憲章本身為快照記錄，本程式對齊當前 `data_schema v2.16`）。
+15. **[§7.5 Strict Resume Mode]** (v1.21, 憲法 §6.8.8-C / §14.7-AP / §7.5 升級註記；2026-05-22 入憲)：L3 DB-driven resume 升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，
+    取代 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定（已知 trade-off 需 `--no-resume` 緩解）。
+    依憲章 §6.8.8-C 與 §14.7-AP 落地：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；
+    (b) `__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 改查 `MAX(date)`；
+    (d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3；0 = 嚴格只跳今天）；(e) `report_results` 印出 drift_tolerance。
+    既有 `--no-resume` 與 `--strict-source-history` 之 resume 停用語意不變；strict mode 僅改判定條件，
+    不改 schema、upsert、節流、退避或 FRED pagination。對應 audit_source_availability v0.2 TIME_DRIFT_OK 之
+    雙向治權閉環（audit 側容忍 + sync 側自動消解）。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
@@ -128,14 +136,15 @@ sovereign_sync_engine.py v1.20 (Quantum Finance Market Universe Seed Engine · F
 | :--- | :--- | :--- |
 | G.1 L1 滑動窗節流 5500/hr | `FinMindThrottle` (`DEFAULT_THROTTLE_PER_HOUR=5500`)；禁止 ≥ 6000 | §7.2 |
 | G.2 L2 三階段退避 [30s, 300s, 1800s] | `fetch_with_retry()` (`RETRY_BACKOFFS_FULL`) | §7.3 |
-| G.3 L3 DB-driven resume | `is_already_synced()` checkpoint | §7.5 |
+| G.3 L3 DB-driven resume (v1.21 strict mode) | `is_already_synced()` 查 `MAX(date)`；max_date ≥ today-N 才跳過 | §7.5 + §6.8.8-C + §14.7-AP |
+| G.3a `--resume-drift-tolerance N` (v1.21 §6.8.8-C) | 預設 N=3 calendar days；0 = 嚴格只跳今天 | §6.8.8-C / §14.7-AP |
 | G.4 402 單次 1800s 探測重試 | `RETRY_BACKOFF_402=[1800]` | §7.4 |
 | G.5 §7.6 A1 dataset 優先迴圈 | `--dataset-batched` | §7.6 A1 |
 | G.6 §7.6 A2 thread-safe 平行 worker | `--workers N` (`threading.Lock`) | §7.6 A2 |
 | G.7 §7.6 A3 動態配額查詢 | `--dynamic-quota --quota-interval N` (N≥100) | §7.6 A3 |
 | G.8 §7.6 A4 per-dataset 配額快照 | `write_data_audit_log(op_type='QUOTA_HOURLY_SNAPSHOT')` | §7.6 A4 |
 | G.9 §7.6 A5 4800/hr WARN + 5500/hr 自動暫停 300s | `A5_WARN_THRESHOLD` / `A5_PAUSE_THRESHOLD` / `A5_PAUSE_DURATION` | §7.6 A5 |
-| 對應 CLI | `--no-resume` / `--throttle N` / `--dataset-batched` / `--workers N` / `--dynamic-quota` / `--quota-interval N` | — |
+| 對應 CLI | `--no-resume` / `--resume-drift-tolerance N` / `--throttle N` / `--dataset-batched` / `--workers N` / `--dynamic-quota` / `--quota-interval N` | — |
 
 ### Group H. Lifecycle + 動態主權判定 (Verdict)
 | 子項 | 對應方法 / 行為 | 治權契約 |
@@ -186,7 +195,8 @@ sovereign_sync_engine.py v1.20 (Quantum Finance Market Universe Seed Engine · F
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.20** | 2026-05-21 | Codex | **§14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + cross-ref 第 3 次校準（16 處）**：依憲章 v6.0.0-patch §14.7-AM 雞與蛋缺陷補強（commit `fea89bf`；2026-05-21 入憲）將「從零 → 全市場全天數」**3 步序列 → 4 步序列**之治權正解寫入標頭。**補正內容 8 項**：(a) L2 header v1.19 → v1.20 + 副標補入「§14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3」；(b) L5 主權狀態補入 v1.20 修補摘要（含 3 次行號校準累計）；(c) [Sovereignty Declaration] 補入「§14.7-AM 雞與蛋缺陷實證 + 4 步序列治權範本」關聯 + 雞與蛋實證明文（`_resolve_stocks()` L767-776 查詢 committed snapshot 之 chicken-and-egg）；(d) Group D 新增 D.6 「4 步序列之第 III 步」+ D.7 「⚠️ 雞與蛋 precondition」兩條目；(e) 治權範本 sub-section **3 步序列 (I/II/III) → 4 步序列 (I/II/III/IV) + V optional**：新增 Step 4B bootstrap_init (II) + Step 4B bootstrap_final (IV) 兩個外部 core_universe_builder 階段；(f) 16 處 cross-ref 行號 +1 校準（憲章 v6.0.0-patch §14.7-AM 補強 commit `fea89bf` 之修訂歷程頂部 +1 entry 造成）；(g) TOOL_VER v1.19 → v1.20；(h) 修訂歷程 v1.19 → SUPERSEDED + 新 v1.20 ACTIVE entry。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留；本程式自身**不處理 bootstrap commit**（屬 `core_universe_builder.py` v0.2 之 `--special-rebalance-reason` + `latest_registry_fallback` mode 治權）。**本日第 3 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 10 處）→ v1.18→v1.19（§14.7-AM #1 15 處 + 雙 ACTIVE 修正）→ v1.20（§14.7-AM 雞與蛋補強 16 處）；累計 41 處校準 + 1 治權違規修正 + 4 步序列治權範本明文化；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| **v1.21** | 2026-05-22 | Codex | **§14.7-AP §7.5 升級配套落地：strict resume mode (DB max_date ≥ today-N days)**：依憲章 v6.0.0-patch §6.8.8-C + §7.5 升級註記 + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）將 §7.5 L3 DB-driven resume 從 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定，升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，自動消解 partial DB 漏抓 trade-off。**功能變更 5 點**：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；(b) `SovereignSyncEngine.__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 邏輯改查 `MAX(date)` + cutoff = today - N days；(d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3，0 = 嚴格只跳今天）；(e) `report_results()` 印出 drift_tolerance + skipped 訊息改為「DB max_date ≥ today-Nd」。**標頭變更**：(f) 副標補入「§14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地」；(g) 主權狀態行補入「§14.7-AP §7.5 STRICT RESUME MODE」+ 「§6.8.8-C audit 時點漂移容忍」+ §14.7-AP 治權閉環延伸；(h) 核心定義 14 條 → 15 條：新增 [§7.5 Strict Resume Mode] (v1.21)；(i) Group G G.3 升級描述 + 新增 G.3a `--resume-drift-tolerance N`；(j) 對應 CLI 補入新 flag；(k) TOOL_VER v1.20 → v1.21；(l) 最後更新日期 2026-05-21 → 2026-05-22；(m) v1.20 SUPERSEDED + 新 v1.21 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` 與 `--strict-source-history` 之 resume 停用語意**不變**；strict mode 僅改判定條件，不改 schema、upsert 或 §7.6 A1-A5 行為。**對應 audit_source_availability v0.2 之 TIME_DRIFT_OK 雙向治權閉環**：audit 側容忍時間漂移 + sync 側日常增量自動消解；雙修並進完成 §14.7-AP 完整治權閉環。**§0.0-G 第 14 次跑通延伸實證**（首例「§14.7-AO 治權閉環完成後當日延伸至 audit_source_availability 雙源比對 → 揭露時間漂移 → 雙修並進落地」）。 | **ACTIVE** |
+| v1.20 | 2026-05-21 | Codex | **§14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + cross-ref 第 3 次校準（16 處）**：依憲章 v6.0.0-patch §14.7-AM 雞與蛋缺陷補強（commit `fea89bf`；2026-05-21 入憲）將「從零 → 全市場全天數」**3 步序列 → 4 步序列**之治權正解寫入標頭。**補正內容 8 項**：(a) L2 header v1.19 → v1.20 + 副標補入「§14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3」；(b) L5 主權狀態補入 v1.20 修補摘要（含 3 次行號校準累計）；(c) [Sovereignty Declaration] 補入「§14.7-AM 雞與蛋缺陷實證 + 4 步序列治權範本」關聯 + 雞與蛋實證明文（`_resolve_stocks()` L767-776 查詢 committed snapshot 之 chicken-and-egg）；(d) Group D 新增 D.6 「4 步序列之第 III 步」+ D.7 「⚠️ 雞與蛋 precondition」兩條目；(e) 治權範本 sub-section **3 步序列 (I/II/III) → 4 步序列 (I/II/III/IV) + V optional**：新增 Step 4B bootstrap_init (II) + Step 4B bootstrap_final (IV) 兩個外部 core_universe_builder 階段；(f) 16 處 cross-ref 行號 +1 校準（憲章 v6.0.0-patch §14.7-AM 補強 commit `fea89bf` 之修訂歷程頂部 +1 entry 造成）；(g) TOOL_VER v1.19 → v1.20；(h) 修訂歷程 v1.19 → SUPERSEDED + 新 v1.20 ACTIVE entry。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留；本程式自身**不處理 bootstrap commit**（屬 `core_universe_builder.py` v0.2 之 `--special-rebalance-reason` + `latest_registry_fallback` mode 治權）。**本日第 3 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 10 處）→ v1.18→v1.19（§14.7-AM #1 15 處 + 雙 ACTIVE 修正）→ v1.20（§14.7-AM 雞與蛋補強 16 處）；累計 41 處校準 + 1 治權違規修正 + 4 步序列治權範本明文化；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.19 | 2026-05-21 | Codex | **§14.7-AM 入憲後 cross-ref 行號第 2 次校準（15 處；本日第 2 次治權邊界相對性循環）**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）之修訂歷程頂部新增 +1 entry 造成 §二 維運矩陣行號 +1 偏移（Step 4 額外 +1，總 +2），本標頭 v1.18 之 15 處 cross-ref 行號漂移已校準：(a) [Market Universe Seed] Step 4 L2425 → L2427；(b) [Full-Market Restricted] Step 4F L2432 → L2433；(c) [Core Full-History] Step 4G L2433 → L2434；(d) [Sovereignty Declaration] §3.1 子表 L2455 → L2458；(e) [Sovereignty Declaration] Step 4-8 範圍 L2425/L2430-2437 → L2427/L2431-2438；(f) [Historical Reference Authority] §3.1 子表 L2455 → L2458；(g) 維運矩陣 sub-title L2425, L2430-2437 → L2427, L2431-2438；(h) 功能群 A.1 Step 4 L2425 → L2427；(i) 功能群 B.1/B.2 Step 5/6 L2434/L2435 → L2435/L2436；(j) 功能群 C.1/C.2/C.3/C.4 L2430/L2431/L2436/L2436 → L2431/L2432/L2437/L2437；(k) 功能群 D 對應 CLI Step 4F L2432 → L2433；(l) 功能群 E 對應 CLI Step 4G L2433 → L2434；(m) 功能群 F.1/對應 CLI Step 8 L2437 → L2438；(n) 維運矩陣場景索引 9 行 L2425/L2430-2437 → L2427/L2431-2438；(o) 治權範本 sub-section Step 引用 L2425/L2432/L2437 → L2427/L2433/L2438。**TOOL_VER v1.18 → v1.19；主權狀態行補入「+ §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2」摘要**。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。**本日第 2 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 入憲後 15 處校準）→ v1.18→v1.19（§14.7-AM 入憲後 15 處再校準），共 30 處校準；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.18 | 2026-05-21 | Codex | **§14.7-AM「從零 → 全市場全天數 + FRED 全歷史」執行序列治權範本明文化**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）將本程式之「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本同步寫入標頭。**補正內容 5 處**：(a) 主權狀態行補入「+ §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY」+ v1.18 修補摘要；(b) [Sovereignty Declaration] 補入 §14.7-AM 關聯說明（本程式為「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本之唯一執行載體 + FinMind 與 FRED 無單一指令可同時涵蓋之治權邊界）；(c) Group D 新增 D.6「3 步序列之第 II 步」cross-ref；(d) Group F 從 4 子項擴至 9 子項：F.1 sync_fred() L691-715 / F.2「全歷史」明文（無 observation_start/end）/ F.3 4 序列最早日期（UNRATE 1948-01-01 / DFF 1954-07-01 / T10Y2Y 1976-06-01 / VIXCLS 1990-01-02）/ F.4 asc+offset pagination / F.5 --days 無影響 / F.6 無需 reason / F.7-F.8 既有 zero-silent-drop / F.9「3 步序列之第 III 步」；(e) 9 場景索引後新增「從零 → 全市場全天數 + FRED 全歷史」治權範本 sub-section（3 步序列 I/II/III 表 + 治權邊界 4 點 + 典型耗時）；(f) TOOL_VER v1.17 → v1.18。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章入憲 → 標頭明文同步」之自然對齊；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例 + §0.0-I 單一引用源原則（憲章 §14.7-AM ↔ 本標頭治權範本 sub-section ↔ Group D/F 條目同步）。 | SUPERSEDED |
 | v1.17 | 2026-05-21 | Codex | **§14.7-AL 入憲後 cross-ref 行號校準 + Step 4.5 hub 治權閉環關聯補入**：依憲章 v6.0.0-patch §14.7-AL（2026-05-21 入憲；commit `961a55f`）於 §二 維運矩陣 Step 4C 後新增 **Step 4.5 [hub 治權閉環確認 ceiling time-point]** 行（憲章 L2429），造成原 L2428 之後行號 **+2 偏移**。本標頭 v1.16 之 10 處 cross-ref 行號漂移已校準：(a) [Sovereignty Declaration] 內 Step 4D-8 範圍 L2428-2435 → L2430-2437；(b) [Sovereignty Declaration] 內 §3.1 子表 L2453 → L2455；(c) [Historical Reference Authority] 內 §3.1 子表 L2453 → L2455；(d) [Full-Market Restricted Governance Exception] L2430 → L2432；(e) [Core Full-History Mode] L2431 → L2433；(f) 維運矩陣場景索引 8 行（4D-8）行號 +2 校準；(g) 維運矩陣 sub-title 範圍 L2425-2435 → L2425, L2430-2437；(h) [Sovereignty Declaration] 補入 §14.7-AL 關聯說明（本程式 Step 4 為 hub 治權閉環必要前置；本程式不直接觸及 Step 4.5 — hub 屬 §3.2，本程式屬 §3.1）；(i) TOOL_VER v1.16 → v1.17；(j) 主權狀態行補入「+ §14.7-AL CROSS-REF CALIBRATION」摘要。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章演進造成下游行號偏移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
@@ -239,7 +249,12 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v1.20"
+TOOL_VER = "v1.21"
+
+# v1.21 §7.5 升級配套（§6.8.8-C / §14.7-AP 入憲；2026-05-22）
+# L3 resume 升級為「DB max_date >= (today - N days) 才跳過」嚴格判定；
+# 取代既有「DB 有 ≥ start_date 任一筆即跳過」過度積極判定。
+RESUME_DRIFT_TOLERANCE_DEFAULT = 3
 
 
 # v1.10 phase-aware constants inherited from v1.9
@@ -406,7 +421,8 @@ class SovereignSyncEngine:
 
     def __init__(self, throttle_per_hour=DEFAULT_THROTTLE_PER_HOUR, resume_enabled=True,
                  workers=1, dataset_batched=False, dynamic_quota=False,
-                 quota_check_interval=A3_QUOTA_INTERVAL_MIN):
+                 quota_check_interval=A3_QUOTA_INTERVAL_MIN,
+                 resume_drift_tolerance=RESUME_DRIFT_TOLERANCE_DEFAULT):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
         self.constitution_ver = CONSTITUTION_VER
@@ -420,6 +436,8 @@ class SovereignSyncEngine:
             quota_check_interval=quota_check_interval,
         )
         self.resume_enabled = resume_enabled
+        # v1.21 §7.5 升級：strict mode 之漂移容忍 (calendar days)
+        self.resume_drift_tolerance = max(0, int(resume_drift_tolerance))
         # v1.11 §7.6 A1 / A2 旗標
         self.dataset_batched = dataset_batched
         self.workers = max(1, int(workers))
@@ -489,10 +507,16 @@ class SovereignSyncEngine:
 
     def is_already_synced(self, stock_id, dataset_name, start_date):
         """
-        §7.5 DB-driven L3 斷點續傳。
-        若 (dataset_name) 表內存在 stock_id 且 date >= start_date 的紀錄，
-        視為「該 (stock_id, dataset, >= start_date) 已同步」並回傳 True。
-        對 TaiwanStockInfo 等市場級或無 stock_id 表，不啟用 checkpoint。
+        §7.5 DB-driven L3 斷點續傳 (v1.21 §6.8.8-C / §14.7-AP 升級).
+
+        v1.21 嚴格判定（取代 v1.10/v1.20 之過度積極判定）：
+        若 (dataset_name) 表內 stock_id 之 MAX(date) >= (today - resume_drift_tolerance days)
+        視為「該 (stock_id, dataset) 已同步至最新」回傳 True；否則為 stale 需 incremental
+        backfill 回傳 False（不跳過）。對 TaiwanStockInfo 等市場級或無 stock_id 表，
+        不啟用 checkpoint。
+
+        舊判定「DB 有 ≥ start_date 任一筆即跳過」屬 §7.5 已知 trade-off（v1.12 緩解需
+        --no-resume）；v1.21 改 max_date 後 partial DB 漏抓於日常增量 sync 中自動消解。
         """
         if not self.resume_enabled:
             return False
@@ -505,17 +529,24 @@ class SovereignSyncEngine:
         if "stock_id" not in columns or "date" not in columns:
             return False
 
+        cutoff = (datetime.now() - timedelta(days=self.resume_drift_tolerance)).date()
+
         conn = get_db_connection()
         try:
             cur = conn.cursor()
             cur.execute(
-                f'SELECT 1 FROM "{dataset_name}" '
-                f'WHERE "stock_id" = %s AND "date" >= %s LIMIT 1',
-                (stock_id, start_date),
+                f'SELECT MAX("date") FROM "{dataset_name}" '
+                f'WHERE "stock_id" = %s',
+                (stock_id,),
             )
             row = cur.fetchone()
             cur.close()
-            return row is not None
+            if not row or row[0] is None:
+                return False
+            db_max = row[0]
+            if hasattr(db_max, "date"):
+                db_max = db_max.date()
+            return db_max >= cutoff
         except Exception:
             return False
         finally:
@@ -678,9 +709,11 @@ class SovereignSyncEngine:
     # ---------- v1.10 重寫的 sync_finmind ----------
 
     def sync_finmind(self, stock_id, dataset_name, start_date):
-        # L3 §7.5 斷點續傳：先看 DB 是否已有資料
+        # L3 §7.5 斷點續傳 (v1.21 §6.8.8-C strict max_date 判定)
         if self.is_already_synced(stock_id, dataset_name, start_date):
-            self._detail("skipped", f"{dataset_name} ({stock_id}): DB 已有 ≥ {start_date} 資料 (§7.5 resume)")
+            self._detail("skipped",
+                         f"{dataset_name} ({stock_id}): DB max_date ≥ today-{self.resume_drift_tolerance}d "
+                         f"(§7.5 v1.21 strict resume)")
             try:
                 write_data_audit_log(dataset_name, "SYNC", datetime.now().date(), "RESUME_SKIP", 0)
             except Exception:
@@ -926,7 +959,8 @@ class SovereignSyncEngine:
             print(f"§6.8.7 special override : {special_full_market_reason}")
         print(f"執行 phase : {phase_label}")
         print(f"§7 節流統計 : acquired={self.throttle.total_acquired}, throttle_sleep={self.throttle.total_throttled_sleep:.0f}s")
-        print(f"§7 L3 續跑 : skipped={self.stats['skipped']}, 402_recovered={self.stats['recovered_402']}")
+        print(f"§7 L3 續跑 : skipped={self.stats['skipped']}, 402_recovered={self.stats['recovered_402']}, "
+              f"drift_tolerance={self.resume_drift_tolerance}d (§6.8.8-C strict)")
         print(f"§7.6 A2 workers={self.workers}, A1 dataset_batched={self.dataset_batched}, "
               f"A3 dynamic_quota={self.dynamic_quota} (adjustments={self.throttle.dynamic_quota_adjustments})")
         print(f"§7.6 A5 預警次數={self.throttle.a5_warn_count}, 自動暫停次數={self.throttle.a5_pause_count}, "
@@ -972,6 +1006,9 @@ if __name__ == "__main__":
     # v1.10 新增（非破壞性）
     parser.add_argument("--no-resume", action="store_true",
                         help="(v1.10) 停用 §7.5 L3 斷點續傳；除錯用，正式運行不建議")
+    parser.add_argument("--resume-drift-tolerance", type=int, default=RESUME_DRIFT_TOLERANCE_DEFAULT,
+                        help=f"(v1.21 §6.8.8-C / §14.7-AP) §7.5 strict resume 漂移容忍（calendar days；預設 "
+                             f"{RESUME_DRIFT_TOLERANCE_DEFAULT}）；max_date ≥ today-N 才跳過；0 = 嚴格只跳今天")
     parser.add_argument("--throttle", type=int, default=DEFAULT_THROTTLE_PER_HOUR,
                         help=f"(v1.10) §7.2 節流上限/小時 (預設 {DEFAULT_THROTTLE_PER_HOUR}，禁止 ≥ {ABSOLUTE_THROTTLE_CEILING})")
     # v1.11 §7.6 A1〜A5 新增（非破壞性）
@@ -1024,6 +1061,7 @@ if __name__ == "__main__":
         dataset_batched=args.dataset_batched,
         dynamic_quota=args.dynamic_quota,
         quota_check_interval=args.quota_interval,
+        resume_drift_tolerance=args.resume_drift_tolerance,
     )
     ok = engine.run(
         stock_id=args.id,
