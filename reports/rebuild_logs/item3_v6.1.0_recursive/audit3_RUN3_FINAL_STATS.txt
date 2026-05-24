@@ -1,0 +1,35 @@
+=== Audit 3 stats from: reports/rebuild_logs/item3_v6.1.0_recursive/audit3_source_availability_RUN3.log ===
+
+--- Start signature ---
+🔍 audit start | universe=full | stocks=2771 | datasets=9 | include_fred=True | drift_tolerance=3 | progress_interval=100
+
+--- Latest progress entry ---
+🔍 progress | stocks=2771/2771 (100.0%) | checked=24939 | source_empty_ok=2946 | time_drift_ok=0 | mismatch=0 | api_errors=0 | retries=0 | elapsed=20246s | eta=0s
+
+--- Completion summary(若 audit 已收尾)---
+(audit not yet completed)
+
+--- Throttle hits ---
+Total throttle sleep events: 1083
+  total_sleep=6523s (108.7 min) | max=615s | mean=6.0s (over 1083 events)
+
+--- Retry events (§6.8.8-E.1) ---
+(no retry events logged)
+Total retry-related log lines: 0
+
+--- API_ERROR samples (first 5)---
+(no errors)
+
+--- Final progress breakdown ---
+🔍 progress
+  stocks=2771/2771 (100.0%)
+  checked=24939
+  source_empty_ok=2946
+  time_drift_ok=0
+  mismatch=0
+  api_errors=0
+  retries=0
+  elapsed=20246s
+  eta=0s
+
+=== End of extract ===
