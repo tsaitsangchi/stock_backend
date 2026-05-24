@@ -198,7 +198,33 @@ tsmc_predictor/
 
 ## 快速開始
 
-### 1. 安裝依賴
+### 0. 跨平台 OS 原生依賴前置（憲章 v6.1.0 §0.0-I.9 / §14.7-AU）
+
+> ⚠️ **必裝**：xgboost / lightgbm 依賴 OpenMP runtime；`psycopg2-binary` 在某些系統需 PostgreSQL client headers。
+> Python pip 套件層**無法**自動裝這些 OS 原生 lib,必須先以 OS 套件管理器安裝。
+
+```bash
+# macOS (Apple Silicon / Intel):
+brew install libomp
+brew install postgresql@17   # 可選;psycopg2-binary 通常含 libpq
+
+# Linux (Ubuntu / Debian):
+sudo apt-get install -y libgomp1 libpq-dev
+
+# Windows:
+# xgboost / lightgbm 內含 vcomp140.dll,通常無需額外安裝
+# PostgreSQL:從官方 installer 或 conda 安裝
+```
+
+**Smoke test**(完成 pip install 後驗證):
+
+```bash
+python -c "import psycopg2, pandas, polars, numpy, requests, sklearn, xgboost, lightgbm; print('✅ all imports OK')"
+```
+
+> 若 xgboost 報 `Library not loaded: @rpath/libomp.dylib`(macOS) → 缺 OpenMP,執行 `brew install libomp`。
+
+### 1. 安裝 Python 依賴
 
 ```bash
 pip install -r requirements.txt
@@ -206,7 +232,12 @@ pip install -r requirements.txt
 
 ### 2. 環境變數設定 (`.env`)
 
-依憲章 [`§0.0-I.8 .env 環境變數契約清單`](reports/系統架構大憲章_v6.0.0.md) — **14 變數 / 7 強制 + 7 可選**（單一引用源，禁止他處重複枚舉）。
+依憲章 [`§0.0-I.8 .env 環境變數契約清單`](reports/系統架構大憲章_v6.1.0.md) — **14 變數 / 7 強制 + 7 可選**（單一引用源，禁止他處重複枚舉）。
+
+> ⚠️ **跨平台路徑提示**(憲章 v6.1.0 §0.0-I.10):`PROJECT_ROOT` 為絕對路徑,須對齊本機實際 repo 物理位置。
+> - **macOS**: `/Users/<user>/project/stock_backend`
+> - **Linux**: `/home/<user>/project/stock_backend`
+> - macOS 上 `/home → Users` 為 symlink,`path_setup.py v4.47+` 會用 `os.path.realpath()` 解析,兩者皆合法。
 
 ```bash
 cp .env.example .env

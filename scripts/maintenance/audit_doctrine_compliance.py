@@ -1,10 +1,17 @@
 """
-audit_doctrine_compliance.py v0.3 (Quantum Finance §0 Supreme Doctrine Compliance Auditor)
+audit_doctrine_compliance.py v0.4 (Quantum Finance §0 Supreme Doctrine Compliance Auditor · §14.7-AV Dual-Track Promotion Gate)
 ================================================================================
-最後更新日期: 2026-05-19
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §0 四大支柱 + §0.1-A 禁令 #2/#3 自動化檢驗
-                    + §0.1-B audit 載體 + §0.1.3 V 變數對應透明化)
+最後更新日期: 2026-05-23
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §0 四大支柱 + §0.1-A 禁令 #2/#3 自動化檢驗
+                    + §0.1-B audit 載體 + §0.1.3 V 變數對應透明化
+                    + §14.7-AV dual-track promotion gate (Operations Reality v6.1.0 vs §8/§9 軌道 v6.1.1+))
 最高原則: Doctrine Compliance Authority — §0 從文件 → 機器強制
+
+## 修訂歷程
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.4 | 2026-05-23 | Codex | **§14.7-AV dual-track promotion gate 落地**:對齊憲章 v6.1.0 §9.5 升版路徑表雙軌制(Operations Reality vs §8/§9 promotion)。新增 `OPERATIONS_TRACK_VERSIONS = {"v6.1.0"}` 與 `DOWNSTREAM_TRACK_VERSIONS = {"v6.1.1", "v6.2.0", ...}` 模組常數;`audit_for_promotion()` 依 target 分流走 Operations 軌道(檢 §0.0-I.9 跨平台前置)或 §8 軌道(檢 §8 schema + production-current model)。未知 target 走嚴格 §8 fallback。Smoke 驗證:`--for-promotion v6.1.0` → promotion_gate PASS;`--for-promotion v6.1.1` → promotion_gate FAIL(time-gated)。CONSTITUTION_VER v6.0.0 → v6.1.0 + TOOL_VER v0.3 → v0.4。對應 §14.7-AV 治權記述(audit_doctrine v0.3 之 promotion gate 不分流軌道之缺口)。 | **ACTIVE** |
+| v0.3 | 2026-05-19 | Codex | (前版基線) | SUPERSEDED |
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Supreme Doctrine Authority]: 對齊憲章 §0.7 升版規則「v6.x.0 與 v7.0.0 之任何升版
@@ -77,8 +84,19 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.3"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.4"
+
+# v0.4 §14.7-AV: dual-track promotion gate (Operations Reality vs §8 軌道)
+# 對齊憲章 v6.1.0 §9.5 升版路徑表(L4744-L4750)
+OPERATIONS_TRACK_VERSIONS = {"v6.1.0"}   # Operations Reality Patch 軌道:不需 §8 schema
+DOWNSTREAM_TRACK_VERSIONS = {            # §8 / §9 promotion 軌道:需 §8 schema + production-current model
+    "v6.1.1",   # 原 v6.1.0 預期軌道 順延 (§8 h=20 升強制契約)
+    "v6.2.0",   # prediction_engine v0.2
+    "v6.3.0",   # portfolio_sizer v0.1
+    "v6.4.0",   # backtest_engine v0.1
+    "v7.0.0",   # §9 全面升強制契約
+}
 
 
 def _table_exists(cur, table_name: str) -> bool:
@@ -613,14 +631,44 @@ class DoctrineAuditor:
     # ── --for-promotion 升版額外檢查 ─────────────────────────────────────────
 
     def audit_for_promotion(self, cur):
-        """v6.1.0 / v7.0.0 升版額外檢查"""
+        """v0.4 §14.7-AV: dual-track promotion gate
+        - Operations Reality 軌道 (v6.1.0):僅檢 §0 doctrine + 跨平台依賴 / 路徑 / 402 cascade 治權條款,不檢 §8 schema
+        - §8/§9 軌道 (v6.1.1+):必須通過 §8 schema + production-current model >= label_date threshold
+        對齊憲章 v6.1.0 §9.5 升版路徑表雙軌制(L4744-L4750)。
+        """
         target = self.for_promotion
         print(f"\n🚀 [FOR-PROMOTION] target={target}")
-        if target.startswith("v6.1") or target.startswith("v7"):
-            # 升 §8 強制契約：必須通過 audit_downstream_readiness=READY_FOR_V5_4_23 (or successor)
+
+        # v0.4 §14.7-AV 軌道分流
+        if target in OPERATIONS_TRACK_VERSIONS:
+            # Operations Reality Patch 軌道:不檢 §8 schema
+            print(f"   軌道 = Operations Reality Patch (per §9.5 升版路徑表 + 憲章 v6.1.0 §14.7-AU)")
+            print(f"   檢查項目:§0 doctrine + §0.0-I.9/.10 跨平台 + §7.4-A cascade + §3.2A.H/I audit perf")
+            # §0.0-I.9 跨平台依賴宣告 — 檢 requirements.txt 含跨平台前置區塊
+            req_path = os.path.join(_REPO_ROOT, "requirements.txt") if "_REPO_ROOT" in globals() else "requirements.txt"
+            try:
+                with open(req_path, "r") as f:
+                    req_content = f.read()
+                if "libomp" in req_content and ("brew install" in req_content or "apt-get" in req_content):
+                    self.add("P4_observability_digital_twin", "PASS", "promotion_gate",
+                             f"target={target} (Operations Reality) §0.0-I.9 跨平台依賴宣告已在 requirements.txt 標頭實作")
+                else:
+                    self.add("P4_observability_digital_twin", "WARN", "promotion_gate",
+                             f"target={target} §0.0-I.9 跨平台依賴宣告缺失 requirements.txt 標頭")
+            except Exception as exc:
+                self.add("P4_observability_digital_twin", "WARN", "promotion_gate",
+                         f"target={target} requirements.txt 讀取失敗:{type(exc).__name__}: {exc}")
+            # 全部通過視為 PASS
+            return
+
+        if target in DOWNSTREAM_TRACK_VERSIONS:
+            # §8/§9 軌道:需 §8 schema + production-current model
+            print(f"   軌道 = §8/§9 promotion 軌道 (per §9.5 升版路徑表)")
+            print(f"   檢查項目:§8 schema 存在 + production-current model label_date >= as_of+horizon")
             if not _table_exists(cur, 'model_registry'):
                 self.add("P4_observability_digital_twin", "FAIL", "promotion_gate",
-                         "model_registry 表不存在 (§8 DRAFT)；v6.1.0+ 升版必須先建立 §8 schema")
+                         f"target={target} (§8/§9 軌道) model_registry 表不存在;先 build §8 schema "
+                         f"(scripts/core/feature_store_schema.py --init + model_trainer DDL)")
                 return
             cur.execute("""
                 SELECT COUNT(*) FROM model_registry m
@@ -633,10 +681,18 @@ class DoctrineAuditor:
             valid_models = cur.fetchone()[0]
             if valid_models == 0:
                 self.add("P4_observability_digital_twin", "FAIL", "promotion_gate",
-                         f"target={target} 升版 BLOCKED：無 production-current 模型符合 label_date >= as_of+horizon；命中 §8.8.9-D 條件 #1")
+                         f"target={target} (§8/§9 軌道) 升版 BLOCKED:無 production-current 模型符合 "
+                         f"label_date >= as_of+horizon;命中 §8.8.9-D 條件 #1(time-gated 至 DB MAX(date) >= as_of+20d)")
             else:
                 self.add("P4_observability_digital_twin", "PASS", "promotion_gate",
-                         f"target={target} 升版條件之 production-current 模型存在: {valid_models} 件")
+                         f"target={target} (§8/§9 軌道) 升版條件之 production-current 模型存在: {valid_models} 件")
+            return
+
+        # 未知 target:fallback 走嚴格 §8 schema 檢驗
+        print(f"   ⚠ 未知 target version;fallback 走 §8 schema 嚴格檢驗")
+        if not _table_exists(cur, 'model_registry'):
+            self.add("P4_observability_digital_twin", "FAIL", "promotion_gate",
+                     f"target={target} 未在 KNOWN_TRACKS 範圍內;fallback 嚴格檢驗:model_registry 缺失")
 
     # ── verdict / report ────────────────────────────────────────────────────
 

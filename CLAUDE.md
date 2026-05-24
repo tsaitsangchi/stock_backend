@@ -77,6 +77,31 @@
 - 任何程式碼修改提案先對照憲章 **§0.0-E.6** 升版優先級（P0/P1/P2/P3）。
 - 若不在優先級內，明文說明為何例外。
 
+### 6. Long-running workflow 心跳可靠性 SHMM(憲章 v6.1.0 §14.7-AX)
+
+任何 Claude session 跑 ≥ 30 min long-running workflow(如 from-zero rebuild、全市場 audit、~9-15h 工作流)時,**必須**建立 **Self-Healing Monitor Mesh (SHMM)**:
+
+1. **N ≥ 3 個獨立 Monitor heartbeat**,週期非整數倍對齊(如 15/20/25/30 min 組合)
+2. **Sentinel timestamp 檔案**(如 `/tmp/claude_loop_last_fire.txt`),任何 wake event 觸發 agent 時必須更新
+3. **Watchdog Monitor**:每 60s 檢查 sentinel age,> 35 min 警報
+4. **Self-healing protocol**:任何 wake event 觸發時必須執行 (a) 更新 sentinel (b) `ps` 驗證 SHMM 對應 shell 存活 (c) 重掛任何死亡 Monitor (d) 報告 workflow 狀態 (e) watchdog 警報則完整健康診斷
+5. **`CronCreate` 不得作為**唯一觸發機制(REPL idle 才 fire,long-running workflow 中經常 miss);Monitor sleep loop 為主軸
+6. **User manual ping 為最後底線**,不依賴用戶記憶觸發
+
+### 7. 跨平台環境前置（憲章 v6.1.0 §0.0-I.9 / §0.0-I.10 / §14.7-AU）
+- AI 協作工具於首次 setup 時須執行下列檢查:
+  - **OS 原生依賴**(per §0.0-I.9):`xgboost` / `lightgbm` 需 OpenMP runtime;`psycopg2-binary` 在某些系統需 PostgreSQL client headers。
+    - macOS: `brew install libomp` + `brew install postgresql@17`(可選)
+    - Linux: `sudo apt-get install -y libgomp1 libpq-dev`
+    - Windows: 通常無需(內含 vcomp140.dll)
+  - **跨平台路徑**(per §0.0-I.10):`.env PROJECT_ROOT` 必須對齊本機物理路徑;macOS `/home/<user>` 為 `/Users/<user>` symlink,`path_setup.py v4.47+` 用 `os.path.realpath()` 解析後比對。
+  - **Import smoke test**(必須通過才能進入後續執行):
+    ```bash
+    python -c "import psycopg2, pandas, polars, numpy, requests, sklearn, xgboost, lightgbm; print('✅ all imports OK')"
+    ```
+- 若 import smoke test 失敗,**先補 OS 層依賴**再執行任何 sync / audit 指令(避免在中途撞錯後 rollback DB)。
+- 對應 `reports/full_market_sync_<時戳>.md` 之 Issue #1 / #2 修正建議。
+
 ---
 
 ## 三、憲章治權索引 (Constitutional Index)

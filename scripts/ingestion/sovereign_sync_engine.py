@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.21 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地)
+sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation 落地)
 ================================================================================
-**最後更新日期**: 2026-05-22
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 (憲法 v6.0.0-FINAL §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化；8 項標頭強制檢驗 100% 合規)
+**最後更新日期**: 2026-05-23
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版**；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -64,6 +64,17 @@ sovereign_sync_engine.py v1.21 (Quantum Finance Market Universe Seed Engine · F
     既有 `--no-resume` 與 `--strict-source-history` 之 resume 停用語意不變；strict mode 僅改判定條件，
     不改 schema、upsert、節流、退避或 FRED pagination。對應 audit_source_availability v0.2 TIME_DRIFT_OK 之
     雙向治權閉環（audit 側容忍 + sync 側自動消解）。
+16. **[§7.4-A Multi-Worker 402 Cascade Mitigation]** (v1.22, 憲法 v6.1.0 §7.4-A / §14.7-AU；2026-05-23 入憲)：
+    multi-worker (`--workers ≥ 2`) 模式下，任一 worker 命中 HTTP 402 即在 `FinMindThrottle.global_402_cooldown_until`
+    設置 cool-down (1800s + 30s buffer)；其他 worker 於下次 `acquire()` 撞 `Paywall402Cascade` exception，
+    呼叫端 `sync_finmind` 立即將該 `(stock × dataset)` `mark_skipped` 並寫 `data_audit_log` op_type=`CASCADE_402_SKIPPED`，
+    **不**集體進入 1800s sleep。本契約解決 2026-05-23 from-zero rebuild Step 4F 實證之 cascade 浪費 (~60min)；
+    (a) `FinMindThrottle.__init__` 新增 `cascade_402_enabled` 參數（預設 True）；(b) 新增 `set_402_cooldown(duration)` /
+    `_check_402_cooldown_unlocked()` 方法；(c) `acquire()` 進入 lock 後第一行檢查 cool-down；
+    (d) `fetch_with_retry()` 於 402 retry 時呼叫 `set_402_cooldown()`；(e) `sync_finmind` `except Paywall402Cascade:`
+    分支寫 audit log；(f) CLI 新增 `--disable-402-cascade-mitigation` flag 完整相容 v1.21；
+    (g) `report_results` 印出 `triggers` / `cascade_skipped` 統計。**single worker (`--workers 1`) 行為與 v1.21 完全相同**
+    （cool-down 仍會設但無 sibling worker 撞）。對齊憲章 §7.4 既有 single-retry 精神（per-worker 仍只 retry 一次）。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
@@ -195,7 +206,8 @@ sovereign_sync_engine.py v1.21 (Quantum Finance Market Universe Seed Engine · F
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.21** | 2026-05-22 | Codex | **§14.7-AP §7.5 升級配套落地：strict resume mode (DB max_date ≥ today-N days)**：依憲章 v6.0.0-patch §6.8.8-C + §7.5 升級註記 + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）將 §7.5 L3 DB-driven resume 從 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定，升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，自動消解 partial DB 漏抓 trade-off。**功能變更 5 點**：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；(b) `SovereignSyncEngine.__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 邏輯改查 `MAX(date)` + cutoff = today - N days；(d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3，0 = 嚴格只跳今天）；(e) `report_results()` 印出 drift_tolerance + skipped 訊息改為「DB max_date ≥ today-Nd」。**標頭變更**：(f) 副標補入「§14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地」；(g) 主權狀態行補入「§14.7-AP §7.5 STRICT RESUME MODE」+ 「§6.8.8-C audit 時點漂移容忍」+ §14.7-AP 治權閉環延伸；(h) 核心定義 14 條 → 15 條：新增 [§7.5 Strict Resume Mode] (v1.21)；(i) Group G G.3 升級描述 + 新增 G.3a `--resume-drift-tolerance N`；(j) 對應 CLI 補入新 flag；(k) TOOL_VER v1.20 → v1.21；(l) 最後更新日期 2026-05-21 → 2026-05-22；(m) v1.20 SUPERSEDED + 新 v1.21 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` 與 `--strict-source-history` 之 resume 停用語意**不變**；strict mode 僅改判定條件，不改 schema、upsert 或 §7.6 A1-A5 行為。**對應 audit_source_availability v0.2 之 TIME_DRIFT_OK 雙向治權閉環**：audit 側容忍時間漂移 + sync 側日常增量自動消解；雙修並進完成 §14.7-AP 完整治權閉環。**§0.0-G 第 14 次跑通延伸實證**（首例「§14.7-AO 治權閉環完成後當日延伸至 audit_source_availability 雙源比對 → 揭露時間漂移 → 雙修並進落地」）。 | **ACTIVE** |
+| **v1.22** | 2026-05-23 | Codex | **§7.4-A Multi-Worker 402 Cascade Mitigation 落地（憲章 v6.1.0 §7.4-A + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §7.4-A（2026-05-23 入憲）落地 multi-worker 402 cascade 防護機制。**Root cause 實證**：2026-05-23 from-zero rebuild Step 4F (`--workers 4`) 揭露兩輪 402 cascade（stock 3388-3402 / stock 6715-6720），4 worker 各自進入 1800s sleep → CPU=0% 集體停擺 30 分 × 2 = ~60min 浪費（占 Step 4F 總耗 7h54m 之 ~13%）。**功能變更 7 點**：(a) 新增 `Paywall402Cascade(requests.HTTPError)` exception class；(b) 新增 `GLOBAL_402_COOLDOWN_BUFFER_SEC = 30` 模組常數；(c) `FinMindThrottle.__init__` 新增 `cascade_402_enabled` 參數（預設 True）+ `global_402_cooldown_until` / `cascade_402_skipped` / `cascade_402_triggers` 屬性；(d) 新增 `set_402_cooldown(duration_seconds=1800)` 方法 + `_check_402_cooldown_unlocked()` 方法；(e) `acquire()` 進入 lock 後第一行 check cool-down（unlocked，呼叫者已持鎖）；(f) `fetch_with_retry()` 於 402 retry 時呼叫 `set_402_cooldown(wait)` + permanent 402 raise 前也呼叫 `set_402_cooldown(RETRY_BACKOFF_402[0])`；(g) `sync_finmind` 加 `except Paywall402Cascade:` 分支 `mark_skipped` + 寫 `data_audit_log` op_type=`CASCADE_402_SKIPPED`。**SovereignSyncEngine.__init__** 新增 `cascade_402_enabled` 參數傳遞至 FinMindThrottle。**CLI 新增 flag**：`--disable-402-cascade-mitigation`（預設 false；true=回退 v1.21 per-worker × 1800s 行為，除錯/對齊 v1.21 audit 用）。**report_results 新增**：`§7.4-A 402 Cascade Mitigation : enabled=... / triggers=... / cascade_skipped=...` 統計行。**標頭變更**：(h) 副標補入「§7.4-A Multi-Worker 402 Cascade Mitigation 落地」；(i) 主權狀態行補入 §7.4-A v1.22 落地 + 憲法 v6.0.0-FINAL → v6.1.0；(j) 核心定義 15 條 → 16 條：新增 [§7.4-A Multi-Worker 402 Cascade Mitigation] (v1.22)；(k) TOOL_VER v1.21 → v1.22 + CONSTITUTION_VER v6.0.0 → v6.1.0；(l) 最後更新日期 2026-05-22 → 2026-05-23；(m) v1.21 SUPERSEDED + 新 v1.22 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` / `--strict-source-history` / `--full-history` / `--special-full-market-reason` 語意**不變**；§7.4 既有 single-retry 精神保留（per-worker 仍只 retry 一次）；§7.3 三階段退避不變；single worker (`--workers 1`) 行為與 v1.21 完全相同（cool-down 仍會設但無 sibling worker 撞）；**不**改 schema、upsert 邏輯、§7.6 A1-A5 行為、§6.8.7 第 (4) 條治理例外、§14.7-AP §7.5 strict resume mode、§14.7-AM 4 步序列範本。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之首個落地（per `reports/系統架構大憲章_v6.1.0.md` §14.7-AU C 表）。**§0.0-G 第 19 次跑通延伸落地**（首次落地式跑通，前 18 次為治權契約入憲）。 | **ACTIVE** |
+| v1.21 | 2026-05-22 | Codex | **§14.7-AP §7.5 升級配套落地：strict resume mode (DB max_date ≥ today-N days)**：依憲章 v6.0.0-patch §6.8.8-C + §7.5 升級註記 + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）將 §7.5 L3 DB-driven resume 從 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定，升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，自動消解 partial DB 漏抓 trade-off。**功能變更 5 點**：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；(b) `SovereignSyncEngine.__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 邏輯改查 `MAX(date)` + cutoff = today - N days；(d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3，0 = 嚴格只跳今天）；(e) `report_results()` 印出 drift_tolerance + skipped 訊息改為「DB max_date ≥ today-Nd」。**標頭變更**：(f) 副標補入「§14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地」；(g) 主權狀態行補入「§14.7-AP §7.5 STRICT RESUME MODE」+ 「§6.8.8-C audit 時點漂移容忍」+ §14.7-AP 治權閉環延伸；(h) 核心定義 14 條 → 15 條：新增 [§7.5 Strict Resume Mode] (v1.21)；(i) Group G G.3 升級描述 + 新增 G.3a `--resume-drift-tolerance N`；(j) 對應 CLI 補入新 flag；(k) TOOL_VER v1.20 → v1.21；(l) 最後更新日期 2026-05-21 → 2026-05-22；(m) v1.20 SUPERSEDED + 新 v1.21 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` 與 `--strict-source-history` 之 resume 停用語意**不變**；strict mode 僅改判定條件，不改 schema、upsert 或 §7.6 A1-A5 行為。**對應 audit_source_availability v0.2 之 TIME_DRIFT_OK 雙向治權閉環**：audit 側容忍時間漂移 + sync 側日常增量自動消解；雙修並進完成 §14.7-AP 完整治權閉環。**§0.0-G 第 14 次跑通延伸實證**（首例「§14.7-AO 治權閉環完成後當日延伸至 audit_source_availability 雙源比對 → 揭露時間漂移 → 雙修並進落地」）。 | SUPERSEDED |
 | v1.20 | 2026-05-21 | Codex | **§14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + cross-ref 第 3 次校準（16 處）**：依憲章 v6.0.0-patch §14.7-AM 雞與蛋缺陷補強（commit `fea89bf`；2026-05-21 入憲）將「從零 → 全市場全天數」**3 步序列 → 4 步序列**之治權正解寫入標頭。**補正內容 8 項**：(a) L2 header v1.19 → v1.20 + 副標補入「§14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3」；(b) L5 主權狀態補入 v1.20 修補摘要（含 3 次行號校準累計）；(c) [Sovereignty Declaration] 補入「§14.7-AM 雞與蛋缺陷實證 + 4 步序列治權範本」關聯 + 雞與蛋實證明文（`_resolve_stocks()` L767-776 查詢 committed snapshot 之 chicken-and-egg）；(d) Group D 新增 D.6 「4 步序列之第 III 步」+ D.7 「⚠️ 雞與蛋 precondition」兩條目；(e) 治權範本 sub-section **3 步序列 (I/II/III) → 4 步序列 (I/II/III/IV) + V optional**：新增 Step 4B bootstrap_init (II) + Step 4B bootstrap_final (IV) 兩個外部 core_universe_builder 階段；(f) 16 處 cross-ref 行號 +1 校準（憲章 v6.0.0-patch §14.7-AM 補強 commit `fea89bf` 之修訂歷程頂部 +1 entry 造成）；(g) TOOL_VER v1.19 → v1.20；(h) 修訂歷程 v1.19 → SUPERSEDED + 新 v1.20 ACTIVE entry。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留；本程式自身**不處理 bootstrap commit**（屬 `core_universe_builder.py` v0.2 之 `--special-rebalance-reason` + `latest_registry_fallback` mode 治權）。**本日第 3 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 10 處）→ v1.18→v1.19（§14.7-AM #1 15 處 + 雙 ACTIVE 修正）→ v1.20（§14.7-AM 雞與蛋補強 16 處）；累計 41 處校準 + 1 治權違規修正 + 4 步序列治權範本明文化；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.19 | 2026-05-21 | Codex | **§14.7-AM 入憲後 cross-ref 行號第 2 次校準（15 處；本日第 2 次治權邊界相對性循環）**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）之修訂歷程頂部新增 +1 entry 造成 §二 維運矩陣行號 +1 偏移（Step 4 額外 +1，總 +2），本標頭 v1.18 之 15 處 cross-ref 行號漂移已校準：(a) [Market Universe Seed] Step 4 L2425 → L2427；(b) [Full-Market Restricted] Step 4F L2432 → L2433；(c) [Core Full-History] Step 4G L2433 → L2434；(d) [Sovereignty Declaration] §3.1 子表 L2455 → L2458；(e) [Sovereignty Declaration] Step 4-8 範圍 L2425/L2430-2437 → L2427/L2431-2438；(f) [Historical Reference Authority] §3.1 子表 L2455 → L2458；(g) 維運矩陣 sub-title L2425, L2430-2437 → L2427, L2431-2438；(h) 功能群 A.1 Step 4 L2425 → L2427；(i) 功能群 B.1/B.2 Step 5/6 L2434/L2435 → L2435/L2436；(j) 功能群 C.1/C.2/C.3/C.4 L2430/L2431/L2436/L2436 → L2431/L2432/L2437/L2437；(k) 功能群 D 對應 CLI Step 4F L2432 → L2433；(l) 功能群 E 對應 CLI Step 4G L2433 → L2434；(m) 功能群 F.1/對應 CLI Step 8 L2437 → L2438；(n) 維運矩陣場景索引 9 行 L2425/L2430-2437 → L2427/L2431-2438；(o) 治權範本 sub-section Step 引用 L2425/L2432/L2437 → L2427/L2433/L2438。**TOOL_VER v1.18 → v1.19；主權狀態行補入「+ §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2」摘要**。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。**本日第 2 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 入憲後 15 處校準）→ v1.18→v1.19（§14.7-AM 入憲後 15 處再校準），共 30 處校準；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.18 | 2026-05-21 | Codex | **§14.7-AM「從零 → 全市場全天數 + FRED 全歷史」執行序列治權範本明文化**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）將本程式之「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本同步寫入標頭。**補正內容 5 處**：(a) 主權狀態行補入「+ §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY」+ v1.18 修補摘要；(b) [Sovereignty Declaration] 補入 §14.7-AM 關聯說明（本程式為「從零 → 全市場全天數 + FRED 全歷史」3 步序列治權範本之唯一執行載體 + FinMind 與 FRED 無單一指令可同時涵蓋之治權邊界）；(c) Group D 新增 D.6「3 步序列之第 II 步」cross-ref；(d) Group F 從 4 子項擴至 9 子項：F.1 sync_fred() L691-715 / F.2「全歷史」明文（無 observation_start/end）/ F.3 4 序列最早日期（UNRATE 1948-01-01 / DFF 1954-07-01 / T10Y2Y 1976-06-01 / VIXCLS 1990-01-02）/ F.4 asc+offset pagination / F.5 --days 無影響 / F.6 無需 reason / F.7-F.8 既有 zero-silent-drop / F.9「3 步序列之第 III 步」；(e) 9 場景索引後新增「從零 → 全市場全天數 + FRED 全歷史」治權範本 sub-section（3 步序列 I/II/III 表 + 治權邊界 4 點 + 典型耗時）；(f) TOOL_VER v1.17 → v1.18。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。本補正屬「憲章入憲 → 標頭明文同步」之自然對齊；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例 + §0.0-I 單一引用源原則（憲章 §14.7-AM ↔ 本標頭治權範本 sub-section ↔ Group D/F 條目同步）。 | SUPERSEDED |
@@ -248,8 +260,8 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v1.21"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v1.22"
 
 # v1.21 §7.5 升級配套（§6.8.8-C / §14.7-AP 入憲；2026-05-22）
 # L3 resume 升級為「DB max_date >= (today - N days) 才跳過」嚴格判定；
@@ -278,6 +290,17 @@ RETRY_BACKOFFS_FULL = [30, 300, 1800]     # §7.3 三階段退避
 RETRY_BACKOFF_402 = [1800]                # §7.4 402 單次探測
 RETRYABLE_STATUS_CODES = {403, 429, 500, 502, 503, 504}
 
+# v1.22 §7.4-A multi-worker 402 cascade mitigation
+GLOBAL_402_COOLDOWN_BUFFER_SEC = 30        # cool-down 比 1800s 多 30s 確保覆蓋本 worker sleep 期間
+
+
+class Paywall402Cascade(requests.HTTPError):
+    """v1.22 §7.4-A: multi-worker 模式下,當任一 worker 命中 HTTP 402 並進入 global cool-down 期間,
+    其他 worker 在 throttle.acquire() 時撞此例外,呼叫端應立即 mark_skipped 該 (stock × dataset),
+    不集體進入 1800s sleep。對齊 §7.4 single-retry 精神(per-worker 仍然只 retry 一次),
+    避免 N worker × 1800s sleep 之 cascade 浪費。"""
+    pass
+
 # v1.11 §7.6 A1〜A5 進階優化常數（憲法固定值，不得由 caller 調整）
 A5_WARN_THRESHOLD = 4800                  # §7.6 A5: 80% 觸發 lifecycle warning（4800 = 6000 × 80%）
 A5_PAUSE_THRESHOLD = 5500                 # §7.6 A5: 達 5500/hr 自動暫停
@@ -293,7 +316,8 @@ class FinMindThrottle:
     """
 
     def __init__(self, max_per_hour=DEFAULT_THROTTLE_PER_HOUR,
-                 quota_query_fn=None, quota_check_interval=A3_QUOTA_INTERVAL_MIN):
+                 quota_query_fn=None, quota_check_interval=A3_QUOTA_INTERVAL_MIN,
+                 cascade_402_enabled=True):
         if max_per_hour >= ABSOLUTE_THROTTLE_CEILING:
             raise ValueError(
                 f"§7.2 違憲：throttle 上限 {max_per_hour} >= {ABSOLUTE_THROTTLE_CEILING}; "
@@ -319,12 +343,45 @@ class FinMindThrottle:
         self.quota_query_fn = quota_query_fn
         self.quota_check_interval = quota_check_interval
         self.dynamic_quota_adjustments = 0
+        # v1.22 §7.4-A multi-worker 402 cascade mitigation
+        self.cascade_402_enabled = cascade_402_enabled
+        self.global_402_cooldown_until = 0.0    # epoch seconds; 0 = no cool-down active
+        self.cascade_402_skipped = 0            # 其他 worker 因 cool-down 而 skip 的次數
+        self.cascade_402_triggers = 0           # 觸發 cool-down 的次數（不同 worker 不同時間皆累計）
+
+    def set_402_cooldown(self, duration_seconds=1800):
+        """v1.22 §7.4-A: 任一 worker 命中 HTTP 402 後設置 global cool-down lock。
+        其他 worker 在 acquire() 時撞 Paywall402Cascade 而立即 skip。"""
+        if not self.cascade_402_enabled:
+            return
+        with self.lock:
+            new_until = time.time() + duration_seconds + GLOBAL_402_COOLDOWN_BUFFER_SEC
+            if new_until > self.global_402_cooldown_until:
+                self.global_402_cooldown_until = new_until
+                self.cascade_402_triggers += 1
+
+    def _check_402_cooldown_unlocked(self):
+        """v1.22 §7.4-A: 若在 global cool-down 內 raise Paywall402Cascade。
+        注意：呼叫者必須已持有 self.lock。"""
+        if not self.cascade_402_enabled:
+            return
+        now = time.time()
+        if now < self.global_402_cooldown_until:
+            self.cascade_402_skipped += 1
+            remaining = int(self.global_402_cooldown_until - now)
+            raise Paywall402Cascade(
+                f"§7.4-A global 402 cool-down active for {remaining}s more; "
+                f"skipping this probe (cascade_402_skipped={self.cascade_402_skipped})"
+            )
 
     def acquire(self, dataset=None):
-        """獲取一個請求 slot；若已達上限則阻塞。v1.11 thread-safe。"""
+        """獲取一個請求 slot；若已達上限則阻塞。v1.11 thread-safe。
+        v1.22 §7.4-A: 進入前先檢查 global 402 cool-down lock。"""
         # A3 動態配額查詢必須在 lock 之外（避免 HTTP 期間阻塞其他 worker）
         do_quota_check = False
         with self.lock:
+            # v1.22 §7.4-A: 立即檢查 cool-down,raise 給呼叫端
+            self._check_402_cooldown_unlocked()
             now = time.time()
             # 主窗口 prune
             while self.window and self.window[0] < now - 3600:
@@ -422,7 +479,8 @@ class SovereignSyncEngine:
     def __init__(self, throttle_per_hour=DEFAULT_THROTTLE_PER_HOUR, resume_enabled=True,
                  workers=1, dataset_batched=False, dynamic_quota=False,
                  quota_check_interval=A3_QUOTA_INTERVAL_MIN,
-                 resume_drift_tolerance=RESUME_DRIFT_TOLERANCE_DEFAULT):
+                 resume_drift_tolerance=RESUME_DRIFT_TOLERANCE_DEFAULT,
+                 cascade_402_enabled=True):
         self.fm_client = FinMindClient()
         self.fred_key = os.getenv("FRED_API_KEY")
         self.constitution_ver = CONSTITUTION_VER
@@ -434,6 +492,7 @@ class SovereignSyncEngine:
             max_per_hour=throttle_per_hour,
             quota_query_fn=quota_fn,
             quota_check_interval=quota_check_interval,
+            cascade_402_enabled=cascade_402_enabled,    # v1.22 §7.4-A
         )
         self.resume_enabled = resume_enabled
         # v1.21 §7.5 升級：strict mode 之漂移容忍 (calendar days)
@@ -594,9 +653,14 @@ class SovereignSyncEngine:
 
             if res.status_code == 402:
                 if not backoff_402:
+                    # v1.22 §7.4-A: permanent 402 仍延展 cool-down 覆蓋未來短期內 sibling worker
+                    self.throttle.set_402_cooldown(RETRY_BACKOFF_402[0])
                     raise requests.HTTPError(f"402 Payment Required (permanent after probe): {res.text[:200]}")
                 wait = backoff_402.pop(0)
-                print(f"⚠ HTTP 402 探測重試：sleep {wait}s（§7.4 單次探測）")
+                # v1.22 §7.4-A: 立即設置 global cool-down,讓 sibling workers acquire() 時 raise Paywall402Cascade
+                # 並 mark_skipped 該 (stock × dataset)；避免 N worker × 1800s sleep 之 cascade 浪費
+                self.throttle.set_402_cooldown(wait)
+                print(f"⚠ HTTP 402 探測重試：sleep {wait}s（§7.4 單次探測；§7.4-A global cool-down 已設置）")
                 time.sleep(wait)
                 recovered_402 = True  # 若下次成功則標註為 recovered
                 continue
@@ -751,6 +815,16 @@ class SovereignSyncEngine:
                 self.stats["success"] += 1
             else:
                 self._detail("success", f"{dataset_name} ({stock_id or 'MARKET'}): {rows} 筆 UPSERT 成功")
+        except Paywall402Cascade as exc:
+            # v1.22 §7.4-A: 其他 worker 因 global cool-down lock 立即跳過此 (stock × dataset)
+            # 不集體 sleep 1800s;cool-down 結束後正常迴圈繼續
+            self._detail("skipped",
+                         f"{dataset_name} ({stock_id or 'MARKET'}): §7.4-A cascade-skip")
+            try:
+                write_data_audit_log(dataset_name, "SYNC", datetime.now().date(),
+                                     "CASCADE_402_SKIPPED", 0)
+            except Exception:
+                pass
         except Exception as exc:
             self._detail("failed", f"{dataset_name} ({stock_id or 'MARKET'}) 失敗: {self._safe_error(exc)}")
 
@@ -965,6 +1039,8 @@ class SovereignSyncEngine:
               f"A3 dynamic_quota={self.dynamic_quota} (adjustments={self.throttle.dynamic_quota_adjustments})")
         print(f"§7.6 A5 預警次數={self.throttle.a5_warn_count}, 自動暫停次數={self.throttle.a5_pause_count}, "
               f"暫停總時長={self.throttle.total_pause_sleep:.0f}s")
+        print(f"§7.4-A 402 Cascade Mitigation : enabled={self.throttle.cascade_402_enabled}, "
+              f"triggers={self.throttle.cascade_402_triggers}, cascade_skipped={self.throttle.cascade_402_skipped}")
         print("─" * 80)
         for detail in self.stats["details"]:
             print(detail)
@@ -1029,6 +1105,9 @@ if __name__ == "__main__":
     parser.add_argument("--special-full-market-reason", type=str, default=None,
                         help=f"(v1.13 §6.8.7 第 (4) 條) 全市場全天數 sync 之治理理由 — 必須 ≥ {FULL_MARKET_REASON_MIN_CHARS} 字元；"
                              "僅在 --universe full 時生效；缺 reason 或字數不足即 exit 1")
+    parser.add_argument("--disable-402-cascade-mitigation", action="store_true",
+                        help="(v1.22 §7.4-A) 停用 multi-worker 402 cascade mitigation；"
+                             "回退 v1.21 行為（per-worker × 1800s sleep）；除錯 / 對齊 v1.21 audit 用，正式運行不建議")
     args = parser.parse_args()
 
     # v1.13 §6.8.7 第 (4) 條 preflight 治權檢查
@@ -1062,6 +1141,7 @@ if __name__ == "__main__":
         dynamic_quota=args.dynamic_quota,
         quota_check_interval=args.quota_interval,
         resume_drift_tolerance=args.resume_drift_tolerance,
+        cascade_402_enabled=(not args.disable_402_cascade_mitigation),  # v1.22 §7.4-A
     )
     ok = engine.run(
         stock_id=args.id,

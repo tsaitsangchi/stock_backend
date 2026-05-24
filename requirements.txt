@@ -2,9 +2,33 @@
 # Quantum Finance 依賴套件清單 (requirements.txt)
 # ─────────────────────────────────────────────
 # 修訂歷程：
+#   v5.3 (2026-05-23): [§0.0-I.9 落地] 新增跨平台 OS 原生依賴前置清單（macOS / Linux / Windows）
+#                       對應憲章 v6.1.0 §0.0-I.9 跨平台依賴宣告治權契約 + §14.7-AU 升版。
 #   v5.2 (2026-05-11): [升級] 導入 Polars 運算引擎與 PyArrow，對齊 DDD 架構數據層需求。
 #   v5.1 (2026-05-08): [修復] 更新 psycopg2-binary 版本以相容 PostgreSQL 17。
 #   v5.0 (2026-04-20): [首發] 建立基礎機器學習與資料處理依賴。
+# ─────────────────────────────────────────────
+#
+# ⚠️ 跨平台 OS 原生依賴前置條件（憲章 v6.1.0 §0.0-I.9 跨平台依賴宣告治權契約）
+# ─────────────────────────────────────────────
+# pip install 之前必須先安裝以下 OS 層原生 lib，否則 xgboost / lightgbm 等套件 import 將失敗：
+#
+# macOS (Apple Silicon / Intel):
+#   brew install libomp      # xgboost / lightgbm 需要 OpenMP runtime (libomp.dylib)
+#   brew install postgresql@17  # psycopg2-binary 通常無需此項（內含 libpq）；若手動編譯則需要
+#
+# Linux (Ubuntu / Debian):
+#   sudo apt-get install -y libgomp1 libpq-dev  # OpenMP + PostgreSQL headers
+#
+# Windows:
+#   xgboost / lightgbm 內含 vcomp140.dll，通常無需額外安裝
+#   PostgreSQL：下載官方 installer 或使用 conda 套件
+#
+# Smoke test（pip install 完成後執行）:
+#   python -c "import psycopg2, pandas, polars, numpy, requests, sklearn, xgboost, lightgbm; print('✅ all imports OK')"
+#
+# 若 xgboost import 失敗顯示 `Library not loaded: @rpath/libomp.dylib`（macOS），
+# 表示 OpenMP runtime 缺失，執行上方 `brew install libomp`。
 # ─────────────────────────────────────────────
 
 # ── PostgreSQL 連線（必裝）──────────────────────────────────

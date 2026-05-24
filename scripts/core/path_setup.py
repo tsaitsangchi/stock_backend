@@ -1,8 +1,8 @@
 """
-path_setup.py v4.46 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
+path_setup.py v4.47 (Quantum Finance Bootstrap-Aligned Path SSOT Edition · §0.0-I.10 Cross-Platform Path Resolution 落地)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: PERFECT (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)
+**最後更新日期**: 2026-05-23
+**主權狀態**: PERFECT (憲法 v6.1.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入 + **§0.0-I.10 跨平台路徑解析 (v4.47 os.path.realpath() 解 symlink 後比對；對齊 §14.7-AU v6.1.0 升版)**；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -18,14 +18,15 @@ path_setup.py v4.46 (Quantum Finance Bootstrap-Aligned Path SSOT Edition)
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix - 100% Coverage)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [路徑治理：全維度稽核]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.46 |
-| **2. [個股同步：環境路徑初始化]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.46 |
-| **3. [啟動錨點：`.env` 與 `PROJECT_ROOT` 對齊驗證]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.46 |
+| **1. [路徑治理：全維度稽核]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.47 |
+| **2. [個股同步：環境路徑初始化]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.47 |
+| **3. [啟動錨點：`.env` 與 `PROJECT_ROOT` 對齊驗證]** | `$ python scripts/core/path_setup.py`                                 | path_setup v4.47 |
 
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v4.46** | 2026-05-21 | Codex | **[Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義 2 條補入（8 項檢查面 100% 合規補強；逐元件審計 Step 1.1.1 跟進）**：依 v4.45 後 8 項檢查面審計揭露之 4 項標頭治權自我宣告缺口（缺 [Zero Hardcoded Verdict] 明文 / 治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示），補入兩條核心定義一次性涵蓋。**補正內容**：(I) 核心定義新增第 7 條 [Zero Hardcoded Verdict]：主權判定動態計算（程式邏輯 L181-187 之 `sovereignty_status` 計算原已 §5.6.3 合規，本次純為核心定義條之顯式宣告）；(II) 核心定義新增第 8 條 [Sovereignty Declaration]：§3.1 序列模組 / Path SSOT Authority（§一 3. / L2334 / L2335）；不涉 5 套禁令；不在 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不承擔 25 維以外之路徑治權；(III) [Hub Compatibility] 核心定義第 6 條之 hub 引用由 `v1.14` 同步至 `v1.16`（對齊 `core/__init__.py` 實際版本）；(IV) 主權狀態行升至「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)」；(V) TOOL_VER v4.45 → v4.46；(VI) 維運矩陣 / Flagship Report / record_lifecycle task_name 之 cosmetic v4.45 → v4.46。**API、ALL_PATHS、25 維接口、自癒邏輯、`_evaluate_anchor()`、verdict 計算邏輯、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `data_schema.py v2.14` / `core/__init__.py v1.16` 同模式）。 | **ACTIVE** |
+| **v4.47** | 2026-05-23 | Codex | **§0.0-I.10 跨平台路徑解析治權契約落地（憲章 v6.1.0 §0.0-I.10 + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §0.0-I.10（2026-05-23 入憲）落地路徑比對改用 `os.path.realpath()` 解析 symlink。**Root cause 實證**：2026-05-23 from-zero rebuild Step 1 揭露 `.env` `PROJECT_ROOT=/home/hugo/project/stock_backend`（Linux 慣例）於 macOS 環境（實際 `/Users/hugo/project/stock_backend`）被 `_evaluate_anchor()` 之裸字串比對判 `MISMATCHED` → 主權狀態 FAILED。雖然 macOS 上 `/home → Users` symlink 可解析（`ls -d /home/hugo/...` 成功），但 v4.46 字串比對未考慮 symlink 同義。**功能變更 1 點**：(a) `_evaluate_anchor()` 升級邏輯：(I) `os.path.realpath()` 解析 env 與 calc 路徑後再比對；(II) realpath 拋例外時返 `failed / PATH RESOLVE ERROR / realpath failure: ...`；(III) realpath 後不對齊返 `failed / MISMATCHED (env → env_real; calc=calc_real)`（真實 mismatch）；(IV) realpath 後對齊但字串不同返 `success / MATCHED (via symlink: env → env_real)`（合法 symlink 同義）；(V) 字串與 realpath 皆對齊返 `success / MATCHED`（原 v4.46 行為）。**標頭變更**：(b) 副標補入「§0.0-I.10 Cross-Platform Path Resolution 落地」；(c) 主權狀態行補入 §0.0-I.10 v4.47 + 憲法 v6.0.0 → v6.1.0；(d) TOOL_VER v4.46 → v4.47 + CONSTITUTION_VER v6.0.0 → v6.1.0；(e) 最後更新日期 2026-05-21 → 2026-05-23；(f) v4.46 SUPERSEDED + 新 v4.47 ACTIVE entry。**治權邊界嚴守**：所有 25 維路徑接口 / `ALL_PATHS` / `ensure_all_dirs()` / 自癒邏輯 / `record_lifecycle` / `verdict` 計算邏輯**全保留**；本補正純為 anchor 比對之 symlink 對齊（macOS / Linux / Windows 跨平台部署相容性）；**不**改 schema / DB / API / Hub / `core/__init__.py` 介面。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之第二個落地（per `reports/系統架構大憲章_v6.1.0.md` §14.7-AU C 表）。**§0.0-G 第 19 次跑通延伸落地之第二棒**。 | **ACTIVE** |
+| v4.46 | 2026-05-21 | Codex | **[Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義 2 條補入（8 項檢查面 100% 合規補強；逐元件審計 Step 1.1.1 跟進）**：依 v4.45 後 8 項檢查面審計揭露之 4 項標頭治權自我宣告缺口（缺 [Zero Hardcoded Verdict] 明文 / 治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示），補入兩條核心定義一次性涵蓋。**補正內容**：(I) 核心定義新增第 7 條 [Zero Hardcoded Verdict]：主權判定動態計算（程式邏輯 L181-187 之 `sovereignty_status` 計算原已 §5.6.3 合規，本次純為核心定義條之顯式宣告）；(II) 核心定義新增第 8 條 [Sovereignty Declaration]：§3.1 序列模組 / Path SSOT Authority（§一 3. / L2334 / L2335）；不涉 5 套禁令；不在 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不承擔 25 維以外之路徑治權；(III) [Hub Compatibility] 核心定義第 6 條之 hub 引用由 `v1.14` 同步至 `v1.16`（對齊 `core/__init__.py` 實際版本）；(IV) 主權狀態行升至「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)」；(V) TOOL_VER v4.45 → v4.46；(VI) 維運矩陣 / Flagship Report / record_lifecycle task_name 之 cosmetic v4.45 → v4.46。**API、ALL_PATHS、25 維接口、自癒邏輯、`_evaluate_anchor()`、verdict 計算邏輯、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `data_schema.py v2.14` / `core/__init__.py v1.16` 同模式）。 | SUPERSEDED |
 | v4.45 | 2026-05-20 | Codex | **v6.0.0 標頭治權對齊 + `CONSTITUTION_VER` 模組常數補入（逐元件審計 Step 1.1.1 補正）**：依逐元件治權合規審計 Step 1.1.1 揭露之兩項違規：(1) 缺 `CONSTITUTION_VER` 模組常數（違反憲章 L26「所有 §3.1/§3.2 登錄模組之 `CONSTITUTION_VER` 同步至 v6.0.0」）；(2) 修訂歷程缺 v6.0.0 升版條目（雖 §6.8.6 已執行字串補正，但 v4.44 條目未更新）。本次補正：(I) 新增 `CONSTITUTION_VER = "v6.0.0"` 模組常數於 25 維路徑接口註冊區之前；(II) 補入本 v4.45 修訂條目記錄 v6.0.0 對齊；(III) [Hub Compatibility] 核心定義第 6 條之 hub 引用維持 `core/__init__.py v1.14`（依 §0.0-I 單一引用源，hub 自身版本變動由 hub 維護）。**API、ALL_PATHS、25 維接口、自癒邏輯、`_evaluate_anchor()` 與所有公開行為皆無變更**；本補正純為標頭治權對齊。 | SUPERSEDED |
 | v4.44 | 2026-05-15 | Codex | **憲法 v5.4.22 同日補充標籤對齊 + 2026-05-16 bootstrap 診斷補正**：標頭由「憲法 v5.4.21 啟動治理對齊」升至「憲法 v5.4.22 啟動治理對齊 + 同日 hub 補充相容」；新增 [Hub Compatibility] 核心定義第 6 條，明定本檔對 `core/__init__.py v1.14` hub 之 import 邊界承諾（`PROJECT_ROOT_CALC` / 25 維 `get_*_dir()` / `get_evaluation_dir()` / `ALL_PATHS` / `ensure_all_dirs()`）。2026-05-16 補正 DB logging hook 不可用時的 `BOOTSTRAP-DEFERRED (DB hook unavailable: ...)` 診斷文字；**API、ALL_PATHS、自癒邏輯與 `_evaluate_anchor()` 皆無變更**。 | SUPERSEDED |
 | v4.43 | 2026-05-14 | Codex | **憲法 v5.4.21 啟動治理對齊**：補齊 Bootstrap Anchor / Path SSOT 契約；新增 `get_evaluation_dir()` 相容別名；`.env` 錨點異常不再回報 PERFECT；DB schema 尚未初始化時進入 `BOOTSTRAP-DEFERRED`；真實 DB audit log 寫入失敗才降級為 warning，不阻斷路徑自癒。 | SUPERSEDED |
@@ -42,8 +43,8 @@ from dotenv import load_dotenv
 # ──────────────────────────────────────────────────────────────────────────────
 # 治權常數 (Constitution Constants) — v4.45 新增（憲章 L26 / Step 1.1.1 補正）
 # ──────────────────────────────────────────────────────────────────────────────
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v4.46"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v4.47"
 
 # ── 系統級架構引導 ──
 _THIS_FILE = Path(__file__).resolve()
@@ -55,7 +56,7 @@ PROJECT_ROOT_CALC = _SCRIPTS_DIR.parent
 load_dotenv(PROJECT_ROOT_CALC / ".env")
 PROJECT_ROOT_ENV = os.getenv("PROJECT_ROOT")
 
-# 25 維路徑接口註冊中心 (v4.46 完備版)
+# 25 維路徑接口註冊中心 (v4.47 完備版)
 def get_root_dir(): return PROJECT_ROOT_CALC
 def get_core_dir(): return PROJECT_ROOT_CALC / "scripts" / "core"
 def get_utils_dir(): return PROJECT_ROOT_CALC / "scripts" / "utils"
@@ -143,20 +144,40 @@ def _mark_lifecycle(lifecycle, level, message):
 
 
 def _evaluate_anchor():
+    """v4.47 §0.0-I.10 跨平台路徑解析：路徑比對改用 os.path.realpath() 解析 symlink
+    後再比對，避免跨平台 (macOS `/home → Users`) 之 symlink 同義路徑被誤判 MISMATCHED。"""
     calculated = str(PROJECT_ROOT_CALC)
     if not PROJECT_ROOT_ENV:
         return "failed", "MISSING (PROJECT_ROOT not set in .env)", "PROJECT_ROOT missing in .env"
-    if PROJECT_ROOT_ENV != calculated:
+    # v4.47 §0.0-I.10：realpath() 解析 symlink 後比對（裸字串比對之升級）
+    try:
+        env_real = os.path.realpath(PROJECT_ROOT_ENV)
+        calc_real = os.path.realpath(calculated)
+    except (TypeError, OSError) as exc:
         return (
             "failed",
-            f"MISMATCHED (env={PROJECT_ROOT_ENV})",
-            f"PROJECT_ROOT mismatch: env={PROJECT_ROOT_ENV}, calc={calculated}",
+            f"PATH RESOLVE ERROR (env={PROJECT_ROOT_ENV})",
+            f"realpath failure: {type(exc).__name__}: {exc}",
+        )
+    if env_real != calc_real:
+        # symlink 解析後仍不對齊：真實 mismatch
+        return (
+            "failed",
+            f"MISMATCHED (env={PROJECT_ROOT_ENV} → {env_real}; calc={calc_real})",
+            f"PROJECT_ROOT mismatch (post-realpath): env_real={env_real}, calc_real={calc_real}",
+        )
+    if PROJECT_ROOT_ENV != calculated:
+        # 字串不同但 realpath 解析後對齊（合法 symlink 同義）
+        return (
+            "success",
+            f"MATCHED (via symlink: env={PROJECT_ROOT_ENV} → {env_real})",
+            None,
         )
     return "success", "MATCHED", None
 
 
 def ensure_all_dirs():
-    """執行物理路徑對齊與自癒 (v4.46 / 憲法 v6.0.0 啟動治理版)"""
+    """執行物理路徑對齊與自癒 (v4.47 / 憲法 v6.1.0 啟動治理版)"""
     start_time = time.time()
     record_lifecycle, write_data_audit_log, log_mode = _load_logging_hooks()
     warnings = []
@@ -168,7 +189,7 @@ def ensure_all_dirs():
     if log_mode.startswith("MOCK"):
         warnings.append(f"Hybrid logging downgraded: {log_mode}")
 
-    with record_lifecycle("path_setup_v4.46", category="maintenance", stock_id="SYSTEM") as lifecycle:
+    with record_lifecycle("path_setup_v4.47", category="maintenance", stock_id="SYSTEM") as lifecycle:
         if anchor_message:
             _mark_lifecycle(lifecycle, anchor_level, anchor_message)
 
@@ -177,7 +198,7 @@ def ensure_all_dirs():
                 "PATH_SOVEREIGNTY",
                 "SYSTEM",
                 datetime.now().strftime("%Y-%m-%d"),
-                "SELF_HEAL_v4.46",
+                "SELF_HEAL_v4.47",
                 len(ALL_PATHS),
             )
         except Exception as e:
@@ -195,17 +216,17 @@ def ensure_all_dirs():
         else:
             sovereignty_status = "PERFECT (已對齊/自癒)"
 
-        # ── 執行後路徑稽核摘要 (Flagship Report v4.46) ──
+        # ── 執行後路徑稽核摘要 (Flagship Report v4.47) ──
         print("\n" + "🛡️" * 40)
-        print("🚀 Quantum Finance: 路徑主權治理中心 (v4.46)")
+        print("🚀 Quantum Finance: 路徑主權治理中心 (v4.47)")
         print("🛡️" * 40)
 
         print("\n" + "─" * 80)
-        print("📊 物理路徑稽核摘要報告 (Path Sovereignty Report v4.46)")
+        print("📊 物理路徑稽核摘要報告 (Path Sovereignty Report v4.47)")
         print("─" * 80)
         print(f"✅ 物理基準 (ROOT) : {PROJECT_ROOT_CALC}")
         print(f"⚓ 錨點對齊 (.env) : {anchor_display}")
-        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v6.0.0)")
+        print("✅ 治理維度        : 25 維全譜路徑 (對齊 v6.1.0)")
         print(f"🕒 處理時長        : {(time.time() - start_time)*1000:.2f} ms")
         print(f"📝 混合日誌模式    : {log_mode}")
         if warnings:

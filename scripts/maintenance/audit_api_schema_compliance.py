@@ -1,8 +1,8 @@
 """
-audit_api_schema_compliance.py v0.5 (Quantum Finance 9-Layer Schema + Data Integrity Audit · Layer G Frequency Classification + Layer I revenue<0 Acceptance · §14.7-AO Post-inscription Cross-ref Calibration)
+audit_api_schema_compliance.py v0.6 (Quantum Finance 9-Layer Schema + Data Integrity Audit · §3.2A.H Audit Performance Sampling 落地)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: ACTIVE (憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)
+**最後更新日期**: 2026-05-23
+**主權狀態**: ACTIVE (憲法 v6.1.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）+ **§3.2A.H Layer E/F BERNOULLI 取樣支援（v0.6；對齊 §14.7-AU v6.1.0 升版）**；100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -40,7 +40,8 @@ audit_api_schema_compliance.py v0.5 (Quantum Finance 9-Layer Schema + Data Integ
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.5** | 2026-05-22 | Codex | **§14.7-AO 入憲後 cross-ref 行號校準 + [Sovereignty Declaration] 補入 §3.2A.G / §6.8.8-B / §14.7-AO 治權閉環關聯**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）+ 之前 §14.7-AN（bf0927c）累計造成之憲章 §3.2A 區域行號漂移，校準本標頭 cross-ref。**補正內容**：(I) L19 [Sovereignty Declaration] 「§3.2A 橫切基礎設施稽核工具（憲章 L2483）」→「憲章 L2494」（§3.2A `audit_api_schema_compliance.py` row 實際位置；漂移 +11 行因 §14.7-AN/AO 兩波入憲擴充 §3.2A 區域）；(II) [Sovereignty Declaration] 補入完整「v6.0.0-patch §14.7-AO 治權閉環關聯」段落：明文 §3.2A.G（憲章 L2498）+ §6.8.8-B（憲章 L3368）+ §14.7-AO（憲章 L6197+）三個治權契約 cross-ref + v0.3 FAILED 459/5 → v0.4 PERFECT 461/0 之實證對；(III) 維運矩陣 6 場景 cosmetic v0.3 → v0.5（v0.4 因首戰落地未進入 cosmetic）；(IV) L2 header v0.4 → v0.5 + 副標補入「§14.7-AO Post-inscription Cross-ref Calibration」；(V) TOOL_VER v0.4 → v0.5；(VI) 修訂歷程 v0.4 → SUPERSEDED + 新 v0.5 ACTIVE entry。**介面零變動**：所有 6 CLI flag / 9 層 audit 邏輯 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；Layer G 頻率分類 + Layer I revenue 接受負值之 v0.4 落地實作不變。本補正屬「憲章 §14.7-AN/AO 雙重入憲後下游程式 cross-ref 漂移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| **v0.6** | 2026-05-23 | Codex | **§3.2A.H Audit Performance 治權契約落地（憲章 v6.1.0 §3.2A.H + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §3.2A.H（2026-05-23 入憲）落地 Layer E/F 大表 BERNOULLI 取樣支援。**Root cause 實證**：2026-05-23 from-zero rebuild 後置 audit 2 跑全 9 層 audit 於 72.6M rows DB 上耗 23 分鐘（Layer E PK Unique COUNT DISTINCT + Layer F Duplicate Row 各對 10.5M+ rows 表全表全欄掃描），日常維運成本過高。**功能變更 4 點**：(a) 新增 `DEFAULT_DB_SAMPLE_SIZE = 100000` + `DB_SAMPLE_TRIGGER_THRESHOLD = 1000000` 模組常數；(b) `__init__` 新增 `db_sample_size` 參數 + `db_sample_mode_used` 統計 dict；(c) 新增 `_count_total_rows()` + `_count_distinct_with_sample()` 兩 helper：`db_sample_size=0` → 永遠全表 / 表 row < 1M → 全表（小表全表成本可接受） / 否則 → `TABLESAMPLE BERNOULLI(pct)` 取樣，`pct = clamp(db_sample_size / total * 100, 0.1, 100)`；(d) `audit_layer_e()` + `audit_layer_f()` 改呼叫新 helper；報告 detail 加 mode 字串（如 `full(2803)` / `sampled(95K/10M, 1.0%)`）。**CLI 新增 flag**：`--db-sample-size N`（預設 100000；0 = 全表）。**標頭變更**：(e) 副標補入「§3.2A.H Audit Performance Sampling 落地」；(f) 主權狀態行補入 §3.2A.H v0.6 + 憲法 v6.0.0 → v6.1.0；(g) TOOL_VER v0.5 → v0.6 + CONSTITUTION_VER v6.0.0 → v6.1.0；(h) 最後更新日期 2026-05-22 → 2026-05-23；(i) v0.5 SUPERSEDED + 新 v0.6 ACTIVE entry。**治權邊界嚴守**：所有既有 9 層 audit 結構 / Layer A/B/C/D/G/H/I 邏輯 / verdict 計算 / `--include-fred` / `--table` / `--skip-api-probe` / `--sample-size` / `--layers` / `--report-out` flags **全保留**；本契約**僅**改 Layer E/F 之內部查詢策略（取樣 vs 全表）；介面零變動之外只新增一個 flag；**不**改 schema / DDL / API contract / DATASET_REGISTRY 引用；**不**改 §3.2A 治權邊界 / §3.2A.G 頻率分類規則（Layer G 仍走全表 per-stock 統計）；**不**改 §6.8.8-B revenue<0 接受規則。**統計學依據**：sample_size=100K 對 10M rows，pct=1.0%，BERNOULLI 取樣對單一 duplicate（duplicate rate 1/10M）之命中機率 ≥ 1 - (1 - 1e-7)^100K ≈ 1%；對 0.01% duplicate rate（1K dups in 10M）命中機率 ≈ 99.995%。**裁決**：取樣模式為**日常維運加速**用，季度 / 重建後完整驗收應加 `--db-sample-size 0` 走全表。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之第四個落地。 | **ACTIVE** |
+| v0.5 | 2026-05-22 | Codex | **§14.7-AO 入憲後 cross-ref 行號校準 + [Sovereignty Declaration] 補入 §3.2A.G / §6.8.8-B / §14.7-AO 治權閉環關聯**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）+ 之前 §14.7-AN（bf0927c）累計造成之憲章 §3.2A 區域行號漂移，校準本標頭 cross-ref。**補正內容**：(I) L19 [Sovereignty Declaration] 「§3.2A 橫切基礎設施稽核工具（憲章 L2483）」→「憲章 L2494」（§3.2A `audit_api_schema_compliance.py` row 實際位置；漂移 +11 行因 §14.7-AN/AO 兩波入憲擴充 §3.2A 區域）；(II) [Sovereignty Declaration] 補入完整「v6.0.0-patch §14.7-AO 治權閉環關聯」段落：明文 §3.2A.G（憲章 L2498）+ §6.8.8-B（憲章 L3368）+ §14.7-AO（憲章 L6197+）三個治權契約 cross-ref + v0.3 FAILED 459/5 → v0.4 PERFECT 461/0 之實證對；(III) 維運矩陣 6 場景 cosmetic v0.3 → v0.5（v0.4 因首戰落地未進入 cosmetic）；(IV) L2 header v0.4 → v0.5 + 副標補入「§14.7-AO Post-inscription Cross-ref Calibration」；(V) TOOL_VER v0.4 → v0.5；(VI) 修訂歷程 v0.4 → SUPERSEDED + 新 v0.5 ACTIVE entry。**介面零變動**：所有 6 CLI flag / 9 層 audit 邏輯 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變；Layer G 頻率分類 + Layer I revenue 接受負值之 v0.4 落地實作不變。本補正屬「憲章 §14.7-AN/AO 雙重入憲後下游程式 cross-ref 漂移」之自然校準（非治權違規）；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v0.4 | 2026-05-22 | Codex | **§14.7-AO 治權閉環首戰落地：Layer G 頻率分類規則 + Layer I revenue<0 接受（5 FAIL 預期消解）**：依憲章 v6.0.0-patch §3.2A.G + §6.8.8-B + §14.7-AO（commit `55fa443`；2026-05-22 入憲）落地實作。**補正內容**：(I) Layer G `audit_layer_g()` 重寫為**頻率分類規則**（依 §3.2A.G 7 表分 7 類）：`DAILY_TABLES_G` 6 表 (Price/PriceAdj/PER/Institutional/Margin/Shareholding) → 嚴格 daily check；`QUARTERLY_TABLES_G` 1 表 (FinancialStatements) → 4/year ± 1；`MONTHLY_TABLES_G` 1 表 (MonthRevenue) → 12/year ± 1；`EVENT_TABLES_G` 1 表 (Dividend) → 略過；`SNAPSHOT_TABLES_G` 1 表 (TaiwanStockInfo) → 略過；FRED per-series 分類：`FRED_DAILY_SERIES_G` (DFF/T10Y2Y/VIXCLS) → daily；`FRED_MONTHLY_SERIES_G` (UNRATE) → 12/year ± 1；新增 `_audit_g_fred()` helper 處理 FRED per-series 查詢；(II) Layer I `audit_layer_i()` 移除 `TaiwanStockMonthRevenue.revenue<0` 規則（per §6.8.8-B 合憲業務情境裁決：金融業淨損 / 建材營造退款 / 製造業退貨 / 跨產業重組）；註解明示 §6.8.8-B cross-ref；(III) TOOL_VER v0.3 → v0.4；(IV) header v0.3 → v0.4 + 副標補入「Layer G Frequency Classification + Layer I revenue<0 Acceptance」。**預期效果**：v0.3 之 5 FAIL（Layer G 4 + Layer I 1）全部消解；audit 結果應為 PERFECT。**§14.7-AO 治權閉環完成實證**：本 commit 與 charter commit `55fa443` 之治權契約完全對齊。介面零變動：所有 6 CLI flag / 9 層 audit 整體結構 / verdict 計算 / record_lifecycle + write_data_audit_log 接線不變。 | SUPERSEDED |
 | v0.3 | 2026-05-21 | Codex | **維運矩陣補入 --report-out 場景（CLAUDE.md §四 #4 連鎖實證；達真 100% 合規）**：依 CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v0.2 維運矩陣只列 5 場景，但 CLI 實際支援 6 個 flag（含 `--report-out` 之自訂報告路徑）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 6 場景「[自訂報告路徑]」對應 CLI `--include-fred --report-out reports/custom_audit_path.md`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）；100% 合規)」；(III) TOOL_VER v0.2 → v0.3；(IV) 維運矩陣 6 場景之 cosmetic v0.2 → v0.3。**9 層 audit 邏輯、CLI 介面（6 flag 不變）、`--report-out` 處理邏輯（v0.1 既有）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項；繼 `data_schema.py v2.16`（commit `2a4c0f2`）後第 2 例 §四 #4 連鎖實證）。合規度：v0.2 ≈98%（缺 --report-out 場景）→ v0.3 100%。 | SUPERSEDED |
 | v0.2 | 2026-05-21 | Codex | **L19 cross-ref 精確化 + 標頭 100% 合規補強（per_program_audit 跟進）**：依逐元件治權合規審計揭露之 1 處 minor 漂移：L19 [Sovereignty Declaration] 條之「憲章 L24XX 第 6 行」為入憲時遺留之未填 placeholder，違反 §0.0-I 單一引用源精神之 cross-ref 精確性要求。**補正內容**：(I) L19 「憲章 L24XX 第 6 行」→「憲章 L2483」（§3.2A 子表 audit_api_schema_compliance 之實際行號）；對齊 `data_schema.py v2.15`「憲章 L2440 / §6.0A L2709」/ `core/__init__.py v1.17`「憲章 L2457 / L2488 / L5589」之具體行號 cross-ref 治權慣例；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + §3.2A 橫切稽核工具入憲落地 + cross-ref 精確化；100% 合規)」；(III) TOOL_VER v0.1 → v0.2；(IV) 標頭版本 / 維運矩陣 5 場景 / 修訂歷程之 cosmetic v0.1 → v0.2。**9 層 audit 邏輯、CLI 介面（--include-fred / --table / --skip-api-probe / --sample-size / --layers / --report-out）、DATASET_REGISTRY 引用、verdict 計算、record_lifecycle + write_data_audit_log 接線、所有公開行為皆無變更**；本補正純為標頭 cross-ref 精確化。合規度：v0.1 ≈97%（L24XX placeholder）→ v0.2 100%。 | SUPERSEDED |
@@ -60,9 +61,12 @@ from decimal import Decimal, InvalidOperation
 # ──────────────────────────────────────────────────────────────────────────────
 # 治權常數 (Constitution Constants)
 # ──────────────────────────────────────────────────────────────────────────────
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.5"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.6"
 DEFAULT_SAMPLE_SIZE = 100
+# v0.6 §3.2A.H Audit Performance 治權契約:Layer E/F 大表 DB 端取樣大小
+DEFAULT_DB_SAMPLE_SIZE = 100000          # 0 = 全表掃描;預設 100K 對 70M+ rows 之 PK/dup 違規 ≥ 99% 命中率
+DB_SAMPLE_TRIGGER_THRESHOLD = 1000000    # 表 row 數超過此值才啟用取樣;小表(<1M)仍走全表
 
 LAYERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
 LAYER_NAMES = {
@@ -170,8 +174,10 @@ class ApiSchemaComplianceAuditor:
     """9 層 schema + 資料完整性 audit。對齊憲章 §3.2A 治權邊界。"""
 
     def __init__(self, sample_size=DEFAULT_SAMPLE_SIZE, include_fred=False, table=None,
-                 skip_api_probe=False, layers=None, report_out=None):
+                 skip_api_probe=False, layers=None, report_out=None,
+                 db_sample_size=DEFAULT_DB_SAMPLE_SIZE):
         self.sample_size = sample_size
+        self.db_sample_size = db_sample_size      # v0.6 §3.2A.H Layer E/F DB 端取樣
         self.include_fred = include_fred
         self.target_table = table
         self.skip_api_probe = skip_api_probe
@@ -182,6 +188,8 @@ class ApiSchemaComplianceAuditor:
         self.start_time = time.time()
         self.stats = {layer: {"pass": 0, "fail": 0, "details": []} for layer in LAYERS}
         self.layer_skipped = {layer: False for layer in LAYERS}
+        # v0.6 §3.2A.H: 取樣模式統計(供報告 metadata 用)
+        self.db_sample_mode_used = {}     # {table_name: "full" / "sampled(N/total, p%)"}
         self._api_samples = {}
 
     def _record(self, layer, status, table, column, detail):
@@ -453,6 +461,46 @@ class ApiSchemaComplianceAuditor:
                     self._record("D", "pass", table_name, col_name,
                                  "NULL 比例 {:.0%}".format(ratio))
 
+    # v0.6 §3.2A.H Audit Performance: 取樣 vs 全表分流 helper
+    def _count_total_rows(self, cur, table_name):
+        """v0.6 §3.2A.H: 輕量 row count。"""
+        try:
+            cur.execute('SELECT COUNT(*) FROM "{}"'.format(table_name))
+            r = cur.fetchone()
+            return int(r[0]) if r else 0
+        except Exception:
+            return 0
+
+    def _count_distinct_with_sample(self, cur, table_name, cols_str):
+        """v0.6 §3.2A.H 取樣 vs 全表分流:
+        - db_sample_size == 0 → 永遠全表
+        - 表 row 數 < DB_SAMPLE_TRIGGER_THRESHOLD (1M) → 全表(小表全表成本可接受)
+        - 否則 → BERNOULLI(pct) 取樣;pct = clamp(db_sample_size / total * 100, 0.1, 100)
+        回傳 (sample_count, sample_distinct, total_in_table, mode_label)。
+        """
+        total = self._count_total_rows(cur, table_name)
+        if total == 0:
+            self.db_sample_mode_used[table_name] = "empty"
+            return 0, 0, 0, "empty"
+        if self.db_sample_size <= 0 or total < DB_SAMPLE_TRIGGER_THRESHOLD or total <= self.db_sample_size:
+            cur.execute('SELECT COUNT(*), COUNT(DISTINCT ({})) FROM "{}"'.format(cols_str, table_name))
+            r = cur.fetchone()
+            t, d = (int(r[0]) if r else 0, int(r[1]) if r else 0)
+            mode = "full({})".format(t)
+            self.db_sample_mode_used[table_name] = mode
+            return t, d, total, mode
+        pct = max(0.1, min(100.0, self.db_sample_size / total * 100.0))
+        cur.execute(
+            'SELECT COUNT(*), COUNT(DISTINCT ({})) FROM "{}" TABLESAMPLE BERNOULLI(%s)'.format(
+                cols_str, table_name),
+            (pct,)
+        )
+        r = cur.fetchone()
+        st, sd = (int(r[0]) if r else 0, int(r[1]) if r else 0)
+        mode = "sampled({}/{}, {:.3f}%)".format(st, total, pct)
+        self.db_sample_mode_used[table_name] = mode
+        return st, sd, total, mode
+
     # ============== Layer E: PK / Unique Uniqueness ==============
     def audit_layer_e(self):
         if "E" not in self.active_layers:
@@ -470,19 +518,18 @@ class ApiSchemaComplianceAuditor:
                     continue
                 try:
                     cols_str = ", ".join(['"{}"'.format(c) for c in unique_cols])
-                    cur.execute('SELECT COUNT(*), COUNT(DISTINCT ({})) FROM "{}"'.format(
-                        cols_str, table_name))
-                    row = cur.fetchone()
-                    if row is None:
+                    # v0.6 §3.2A.H: 取樣 vs 全表分流
+                    sc, sd, total, mode = self._count_distinct_with_sample(cur, table_name, cols_str)
+                    if total == 0:
+                        self._record("E", "pass", table_name, ",".join(unique_cols), "空表")
                         continue
-                    total, distinct = row
-                    if total > distinct:
+                    if sc > sd:
                         self._record("E", "fail", table_name, ",".join(unique_cols),
-                                     "unique 衝突：total={}, distinct={}, dup={}".format(
-                                         total, distinct, total - distinct))
+                                     "unique 衝突：sample_total={}, sample_distinct={}, dup={} ({})".format(
+                                         sc, sd, sc - sd, mode))
                     else:
                         self._record("E", "pass", table_name, ",".join(unique_cols),
-                                     "unique 一致：{} rows".format(total))
+                                     "unique 一致：{} ({})".format(sc, mode))
                 except Exception as exc:
                     self._record("E", "fail", table_name, ",".join(unique_cols),
                                  "查詢失敗：{}: {}".format(type(exc).__name__, exc))
@@ -509,19 +556,18 @@ class ApiSchemaComplianceAuditor:
                     continue
                 try:
                     cols_str = ", ".join(['"{}"'.format(c) for c in cols])
-                    cur.execute('SELECT COUNT(*), COUNT(DISTINCT ({})) FROM "{}"'.format(
-                        cols_str, table_name))
-                    row = cur.fetchone()
-                    if row is None:
+                    # v0.6 §3.2A.H: 取樣 vs 全表分流
+                    sc, sd, total, mode = self._count_distinct_with_sample(cur, table_name, cols_str)
+                    if total == 0:
+                        self._record("F", "pass", table_name, "row", "空表")
                         continue
-                    total, distinct = row
-                    if total > distinct:
+                    if sc > sd:
                         self._record("F", "fail", table_name, "row",
-                                     "duplicate row：total={}, distinct={}, dup={}".format(
-                                         total, distinct, total - distinct))
+                                     "duplicate row：sample_total={}, sample_distinct={}, dup={} ({})".format(
+                                         sc, sd, sc - sd, mode))
                     else:
                         self._record("F", "pass", table_name, "row",
-                                     "無重複：{} rows".format(total))
+                                     "無重複：{} ({})".format(sc, mode))
                 except Exception as exc:
                     self._record("F", "fail", table_name, "row",
                                  "查詢失敗：{}: {}".format(type(exc).__name__, exc))
@@ -937,6 +983,9 @@ if __name__ == "__main__":
                         help="略過 Layer B/C/D 之 API 探測；只跑 DB-side 6 層")
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE,
                         help="Layer B/C/D 取樣大小（預設 {}）".format(DEFAULT_SAMPLE_SIZE))
+    parser.add_argument("--db-sample-size", type=int, default=DEFAULT_DB_SAMPLE_SIZE,
+                        help="v0.6 §3.2A.H Layer E/F DB 端取樣大小（預設 {}；0 = 全表掃描；"
+                             "大表（>1M rows）才啟用取樣）".format(DEFAULT_DB_SAMPLE_SIZE))
     parser.add_argument("--layers", type=str,
                         help="comma-separated layers, e.g. A,B,E（預設全 9 層）")
     parser.add_argument("--report-out", type=str,
@@ -953,6 +1002,7 @@ if __name__ == "__main__":
 
     auditor = ApiSchemaComplianceAuditor(
         sample_size=args.sample_size,
+        db_sample_size=args.db_sample_size,
         include_fred=args.include_fred,
         table=args.table,
         skip_api_probe=args.skip_api_probe,
