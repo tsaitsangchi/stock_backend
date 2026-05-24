@@ -64,6 +64,13 @@
 | 10:06:01 | 18:24 | 2,696 | 10,122,808 | 2,710 | 0 | 0 | 0 | 0 |
 | 10:18:37 | 31:00 | 4,262 | **TPrice 10.5M done + TPriceAdj 6.5M (1,508 stocks 54%)** | — | 0 | 0 | 0 | 0 |
 | 12:36:52 | **2h49m** | **15,246** | **5/9 datasets DONE:** Price 10.5M + PriceAdj 10.5M + PER 7.3M + Inst 25M + Margin 7.7M + Shareholding 5.6M ongoing | — | 0 | 0 | 0 | 0 |
+| 14:18:00 | **4h30m** | **24,944** | **🎉 Step 4F COMPLETE!** 全 9 datasets ✅ + FRED 4 series ✅ / 72,670,986 rows / 21,997 success / 2,947 warning / 0 fail / 主權判定 WARNING | — | 0 | 0 | 0 | 0 |
+
+**🎯 Step 4F 最終結果(2026-05-24 14:18):**
+- **耗時 16,216s = 4h30m**(對比 v6.0.0 baseline 7h54m = **快 43%**)
+- **§7.4-A 0 cascade event**(對比 baseline 4 個 2849s cascade)
+- **資料 100% 對齊 baseline**(72.67M rows 完全一致)
+- **§7.4-A 402 Cascade Mitigation : enabled=True, triggers=0, cascade_skipped=0**(完美驗證 — 整個 Step 4F 期間從未撞 paywall,§7.4-A 預備充足)
 
 **🚀🚀 elapsed 2h49m 5/9 datasets 完成**(對比 v6.0.0 baseline 同階段才 1-2 datasets)。當前 Shareholding 55%。剩 Dividend / FinStmts / MonthRev 3 個 dataset 待跑。
 
@@ -88,11 +95,73 @@
 
 ---
 
-## ⚠️ 待觀察的 cascade 證明點
+## ✅ Phase 3-11 完整進度(Step 4F 完成後)
 
-1. **~10:05**(預估):v1.22 throttle 5500/hr 第一次撞滿,看是否有非 cascade 之 wait
-2. **stock 3388-3402 區段**(預估 ~11:00):歷史 cascade 區域,驗證 §7.4-A
-3. **stock 6715-6720 區段**(預估 ~13:00):第二歷史 cascade 區域
+### Phase 3 Step 4B final(14:20-14:23)
+- ✅ 完成 186 秒
+- snapshot 已 committed:`core_universe_20260524_core_universe_policy_v0_2`
+- core 120 / convex 30 / quarantine 378 / research 2243(與 baseline 一致)
+
+### Phase 5 audit 1 supply_chain(14:23-14:24)
+- ✅ **PERFECT 33/0/0**
+
+### Phase 6 audit 2 v0.6 with `--db-sample-size 100000`(14:24-14:26)
+- ⚠️ **FAILED 1 個 Layer F dup**
+- root cause:`data_audit_log` 表 1 個 multi-worker race condition dup
+  - `TaiwanStockPrice / SYNC / 2024-05-09 / UPSERT / 494 rows / timestamp 2026-05-24 09:48:42.236195`
+  - Step 4F 啟動 ~65s 兩個 worker 並發寫 audit log → 同 microsecond 撞 race
+- 不影響業務資料(TaiwanStockPrice 本身 UPSERT idempotent 正確)
+- **耗時 109s vs v0.5 baseline 23 min = 12.5x 加速**(§3.2A.H 取樣機制驗證)
+
+### Phase 7 audit 3 v0.7(問題序列,§14.7-AW 變種揭露)
+
+| 嘗試 | PID | 配置 | 結果 |
+|---|---|---|---|
+| RUN1 | 35982 | workers 2 / throttle 4500 | ⚠️ Quota cascade(Step 4F 剛結束 quota 未清);stock 500 後大量 api_errors;14:27-15:18 killed |
+| RUN2 | 42162 | workers 1 / throttle 1000(conservative)| ⚠️ 仍撞 quota(900/900 100% fail);15:18-15:26 killed |
+| **RUN3** | **42743** | **workers 2 / throttle 4500**(quota 自然恢復後)| **🟡 進行中 15:35 啟動**;ETA ~20:00 |
+
+### 重要治權發現(§14.7-AW temporal coupling 變種)
+- Step 4F 結束後 1-hour FinMind quota rolling window 仍含 sync 用量
+- 若立刻跑 audit 3 → token-level quota 重壓 → api_errors burst
+- 解法:**等 ~60 分 quota window 自然清空後再跑 audit**(本次驗證 15:33 已可 probe success)
+- §14.7-AW mitigation 對此情境之**短期** mitigation:wait + lower throttle
+- 長期解(候選):build cross-tool quota state in `db_utils` 或 token-tier 升級
+
+### Phase 8 audit 4 core_universe(14:27)
+- ✅ **PERFECT 41/0/0**
+
+### Phase 9 §8 schema build(14:28)
+- ✅ 5 表全建立(feature_store_snapshot / feature_definition / feature_values / model_registry / model_training_run)
+
+### Phase 10 audit_doctrine v0.4 dual-track 驗證(14:28)
+- ✅ **v6.1.0(Operations Reality):21/2/1,promotion_gate PASS**
+- ✅ **v6.1.1(§8 軌道):20/2/2,promotion_gate FAIL**(time-gated 至 ~2026-06-13,符合預期)
+- §14.7-AV dual-track 對稱驗證通過
+
+### Phase 11 Item 3 總結報告(待 audit 3 RUN3 完成後產出)
+
+---
+
+## 🎯 Item 3 重大成就(已驗證 v6.1.0 升版核心契約)
+
+| § 條 | 驗證結果 |
+|---|---|
+| §7.4-A 402 Cascade Mitigation(sovereign_sync v1.22)| ✅ **Step 4F 4h30m / 0 cascade**(快 43% vs baseline 7h54m / 4 cascade)|
+| §0.0-I.10 Cross-Platform Path(path_setup v4.47)| ✅ Step 1 PERFECT(realpath 解 symlink)|
+| §0.0-I.9 跨平台依賴(requirements/README/CLAUDE.md)| ✅ smoke test 通過 |
+| §3.2A.H Audit Performance(audit_api_schema v0.6)| ✅ **23m → 1m49s = 12.5x 加速** |
+| §3.2A.I + §6.8.8-E.1 + §7.4-A audit-side(audit_source v0.7)| ⚠️ workers 2 並行驗證成功;transient retry 驗證成功;但**揭露 §14.7-AW temporal coupling 變種**(待 RUN3 完成驗證)|
+| §14.7-AV dual-track promotion gate(audit_doctrine v0.4)| ✅ v6.1.0 PASS / v6.1.1 FAIL 對稱驗證 |
+| §14.7-AX SHMM 監控可靠性 | ✅ **43/43 全 heartbeat drift 0s** |
+
+---
+
+## 待觀察(歷史已完成)
+
+1. **~10:05**:v1.22 throttle 5500/hr 第一次撞滿 → 改 §7.6 A5(良性 5 min sleep)
+2. **stock 3388-3402 區段** ~11:00 → **未觸發 cascade ✓**
+3. **stock 6715-6720 區段** ~13:00 → **未觸發 cascade ✓**
 
 ---
 
