@@ -82,9 +82,9 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.3"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.3"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
@@ -646,7 +646,31 @@ class CoreUniverseBuilder:
                     "recent_revenue": recent,
                 }
 
-            # TaiwanStockFinancialStatements: coverage + profitability
+            # TaiwanStockFinancialStatements: coverage + profitability + v0.3 毛利率
+            # v0.3 注意：ROE 原計畫實作,但 2026-05-24 揭露 type='EquityAttributableToOwnersOfParent'
+            # 之 value 實為淨利數值(origin_name='淨利(淨損)歸屬於母公司業主'),非真正股東權益;
+            # 此 raw schema 為純 income statement,無 balance sheet equity 欄位 → ROE 無法計算。
+            # 已入憲 §0.1.3-A;改用「最新季 YTD 毛利率」單獨計算(不 SUM 避免 YTD 重複加總)。
+            cur.execute("""
+                WITH latest_per_type AS (
+                    SELECT DISTINCT ON (stock_id, type) stock_id, type, value::numeric AS v
+                    FROM "TaiwanStockFinancialStatements"
+                    WHERE date >= %s AND date <= %s
+                      AND type IN ('GrossProfit', 'Revenue')
+                    ORDER BY stock_id, type, date DESC
+                )
+                SELECT stock_id,
+                    MAX(v) FILTER (WHERE type='GrossProfit') AS latest_gp,
+                    MAX(v) FILTER (WHERE type='Revenue') AS latest_rev
+                FROM latest_per_type
+                GROUP BY stock_id
+            """, (lookback_730, self.as_of_date))
+            latest_margin = {}
+            for sid, gp, rev in cur.fetchall():
+                rev_f = float(rev or 0)
+                gp_f = float(gp or 0)
+                latest_margin[sid] = (gp_f / rev_f) if rev_f > 0 else None
+
             cur.execute("""
                 SELECT stock_id,
                     COUNT(DISTINCT date) as quarter_count,
@@ -663,6 +687,9 @@ class CoreUniverseBuilder:
                     "financial_coverage_8q": min(1.0, (quarter_count or 0) / 8),
                     "eps_sum": float(eps_sum or 0),
                     "net_income_positive": float(net_income_sum or 0) > 0,
+                    "gross_margin": latest_margin.get(sid),
+                    # v0.3 ROE 因 raw data 限制 dropped(見 §0.1.3-A);保留 None 占位
+                    "roe": None,
                 }
 
             # TaiwanStockInstitutionalInvestorsBuySell: net buy/sell by institution type
@@ -722,7 +749,14 @@ class CoreUniverseBuilder:
         return round(min(100.0, max(0.0, total)), 2)
 
     def _fundamental_gravity_score(self, stock_id, revenue_data, financial_data):
-        """FundamentalGravity (20%): revenue growth YoY + profitability"""
+        """FundamentalGravity (20%): YoY + profitability + v0.3 gross_margin
+
+        v0.3(2026-05-24)補入 §0.1.3 之 V 物理基礎細項:毛利率(GrossProfit/Revenue)。
+        原計畫含 ROE,但實作期間揭露 TaiwanStockFinancialStatements 為純 income statement,
+        無真正股東權益欄位(EquityAttributableToOwnersOfParent type 實為淨利數據,
+        mislabeled);ROE 無法計算,已入憲 §0.1.3-A;沿用 None 占位以便未來換 raw 源時補上。
+        新 gm 分項 missing-data 時 0 影響(不雙重懲罰低覆蓋股),clamp [0, 100]。
+        """
         r = revenue_data.get(stock_id, {})
         f = financial_data.get(stock_id, {})
         if not r and not f:
@@ -745,6 +779,20 @@ class CoreUniverseBuilder:
             score += 10.0
         else:
             score -= 15.0
+        # v0.3: 毛利率(GrossProfit / Revenue 之 4Q 累計)
+        gm = f.get("gross_margin")
+        if gm is not None and gm > 0:
+            if gm > 0.40:
+                score += 10.0
+            elif gm > 0.25:
+                score += 5.0
+            elif gm > 0.10:
+                score += 0.0
+            elif gm > 0.05:
+                score -= 3.0
+            else:
+                score -= 8.0
+        # v0.3: ROE — DROPPED(raw data 限制,見 _collect_market_data 註解 + §0.1.3-A)
         coverage = (r.get("revenue_coverage_24m", 0.0) + f.get("financial_coverage_8q", 0.0)) / 2.0
         score += coverage * 10.0
         return round(min(100.0, max(0.0, score)), 2)
@@ -871,20 +919,24 @@ class CoreUniverseBuilder:
 
         exclusion_reason = "; ".join(risk_reasons) if risk_penalty >= 50.0 else None
         selection_reason = (
-            f"CoreScore v0.2: {core_score:.1f} "
+            f"CoreScore v0.3: {core_score:.1f} "
             f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} TR={tr:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
         )
         if exclusion_reason:
             selection_reason = f"quarantine: {exclusion_reason}"
 
+        # v0.3: 透明寫入 FG sub-component(gross_margin / roe)便於下游診斷與 audit
+        f_data = financial_data.get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.2_six_layer",
+            "score_scope": "v0.3_six_layer_extended",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
             "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
             "data_quality_score": dq,
             "liquidity_mass_score": lm,
             "fundamental_gravity_score": fg,
+            "fg_gross_margin": f_data.get("gross_margin"),
+            "fg_roe": f_data.get("roe"),
             "theme_resonance_score": tr,
             "institutional_flow_score": inst_f,
             "volatility_control_score": vc,

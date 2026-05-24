@@ -262,6 +262,8 @@ class CoreUniverseAuditor:
             self.fail("policy_boundary", f"unexpected downstream eligibility policy: {downstream_eligibility}")
         if self.policy_version.endswith("v0.2"):
             self.pass_("policy_score_config", "v0.2 policy uses six-layer CoreScore weights")
+        elif self.policy_version.endswith("v0.3"):
+            self.pass_("policy_score_config", "v0.3 policy uses six-layer CoreScore weights with FG extended sub-scores (gross_margin + ROE)")
         elif liquidity_state == "pending" and fundamental_state == "pending":
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:
@@ -560,17 +562,22 @@ class CoreUniverseAuditor:
             ''',
             (self.snapshot_id,),
         )
-        if self.policy_version.endswith("v0.2"):
+        if self.policy_version.endswith(("v0.2", "v0.3")):
             if non_null_pending_scores > 0:
-                self.pass_("v02_scores_boundary", f"v0.2 six-layer score columns populated rows={non_null_pending_scores}")
+                self.pass_("v02_scores_boundary", f"six-layer score columns populated rows={non_null_pending_scores} (policy={self.policy_version})")
             else:
-                self.fail("v02_scores_boundary", "v0.2 score columns are empty")
+                self.fail("v02_scores_boundary", f"six-layer score columns are empty (policy={self.policy_version})")
         elif non_null_pending_scores == 0:
             self.pass_("pending_scores_boundary", "liquidity/fundamental/institutional/volatility scores remain NULL in v0.1")
         else:
             self.fail("pending_scores_boundary", f"pending score columns unexpectedly populated rows={non_null_pending_scores}")
 
-        expected_scope = "v0.2_six_layer" if self.policy_version.endswith("v0.2") else "metadata_bootstrap_only"
+        if self.policy_version.endswith("v0.2"):
+            expected_scope = "v0.2_six_layer"
+        elif self.policy_version.endswith("v0.3"):
+            expected_scope = "v0.3_six_layer_extended"
+        else:
+            expected_scope = "metadata_bootstrap_only"
         score_scope_mismatch = self._scalar(
             cur,
             '''
