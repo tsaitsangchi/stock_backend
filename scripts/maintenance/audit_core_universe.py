@@ -1,32 +1,45 @@
 """
-audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
+audit_core_universe.py v0.2 (Quantum Finance Core Universe Audit Authority)
 ================================================================================
-最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v6.0.0 核心股結果驗收稽核 + special restore trace audit)
-最高原則: Core Universe Post-Build Verification
+最後更新日期: 2026-05-25
+主權狀態: IMPLEMENTED (憲法 v6.1.0 對齊 + v0.7 builder + v0.6 policy 識別擴張
+        + FG 11 sub-score / IF 12 sub-score / VC 凸性對齊 score_detail 驗收)
+最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Core Universe Post-Build Verification
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Core Universe Audit Authority]: 對齊憲章 §6.7 / §6.8 / §8.8.6，只驗收
    `core_universe_builder.py` 產物，**不重算**核心股名單；本工具不是核心股
    選擇器，是核心股結果之 post-build 驗收。
-2. [Consistency Coverage]: 驗收 policy、snapshot、membership、scores、
+2. [Zero Hardcoded Verdict] (§5.6.3 動態判定): 主權狀態 PASS/WARN/FAIL 由
+   `self.verdict()` 動態計算（FAIL > 0 → FAILED；WARN > 0 → WARNING；else PERFECT），
+   不硬寫；任何「score_scope 未識別」應 fail 而非 silent pass。
+3. [Sovereignty Declaration] (§3.1/§3.2/§3.2A 治權位階): 本工具屬 §6.7 / §6.8
+   核心股治權之 post-build 驗收層；**不**處理 §8.5 anti-leakage（feature_store 層責）；
+   **不**涉 §0.1-A / §0.2-A / §0.3-A 五套禁令（不重算 CoreScore、不外推 K-wave、
+   不寫 alpha 固定值）；**不**分層至 T1/T2/T3（資料驗收屬 T0 治權確認）；
+   policy_version 識別擴張僅作 score_scope 字串一致性驗收，**不**重算 sub-score 數值。
+4. [Consistency Coverage]: 驗收 policy、snapshot、membership、scores、
    revision log 之一致性；驗收 raw 欄位鏡像（§1 第 5 條 Derived Schema
-   欄位繼承）與 v0.1 downstream boundary。
-3. [Annual Rebalance Guard Verification]: 驗收年度重選 / special restore
+   欄位繼承）與 v0.1 downstream boundary；v0.2 新增 score_detail 鍵存在性驗收
+   （FG 11 鍵 / IF 12 鍵 / VC 4 鍵；per policy version）。
+5. [Annual Rebalance Guard Verification]: 驗收年度重選 / special restore
    之 review_cycle、snapshot notes、revision log 留痕；§8.8.6 第 2 條
    same-day reason duplication INFO 偵測（v6.0.0 補登 41 項檢查）。
-4. [Boundary Integrity]: 不保存 feature values、labels、model outputs、
+6. [Boundary Integrity]: 不保存 feature values、labels、model outputs、
    prediction signals；§8 下游治理不在本工具範圍。
-5. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
-   主權狀態動態計算（§5.6.3），FAIL 即 exit 1。
-6. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
+   主權狀態動態計算（§5.6.3），FAIL 即 exit 1；lifecycle task_name 對齊
+   `core_universe_builder_v0.2`（builder 各小版維持同一 task_name）。
+8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準；
+   v0.1 條目（v6.0.0 patch line）保留為歷史記述，不更動（§0.0-I.7 / L26）。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [Step 4C：年度重選後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date 2026-05-14` | audit_core_universe v0.1 |
-| **2. [DB 全重建驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <YYYY-MM-DD>` | audit_core_universe v0.1 |
-| **3. [special restore 後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <restore-date>` | audit_core_universe v0.1 |
+| **1. [Step 4C：年度重選後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date 2026-05-14` | audit_core_universe v0.2 |
+| **2. [DB 全重建驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <YYYY-MM-DD>` | audit_core_universe v0.2 |
+| **3. [special restore 後驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <restore-date>` | audit_core_universe v0.2 |
+| **4. [v0.6 policy 新版驗收]** | `$ python scripts/maintenance/audit_core_universe.py --as-of-date <YYYY-MM-DD> --policy-version core_universe_policy_v0.6` | audit_core_universe v0.2 + builder v0.7 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -38,7 +51,8 @@ audit_core_universe.py v0.1 (Quantum Finance Core Universe Audit Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-14 | Codex | 首版：依憲章 §6.7 / §6.8 / §8.8.6 落地，驗收 policy/snapshot/membership/scores/revision log；2026-05-17 補入 `check_same_day_reason_duplication()`（§8.8.6 第 2 條）；2026-05-18 v6.0.0-patch 補入 §6.8 annual guard 衍生檢查，總檢驗項由 36 → 40 → 41。 | **ACTIVE** |
+| **v0.2** | 2026-05-25 | Codex | **v6.1.0-patch 第十二輪程式：audit 工具配套 v0.7 builder + v0.4/v0.5/v0.6 policy 識別擴張**。對映 §14.7-BC / §14.7-BE / §14.7-BF / §14.7-BG 五輪 builder 升版（v0.3 → v0.7）後 audit 工具長期未追上之治權缺口（builder v0.5 commit `c4dc523` 已標註「audit_core_universe 配套需求：audit 工具需加 `core_universe_policy_v0.4` 識別（另案升版）」），本版一次補完三輪。**補正內容**：(I) `CONSTITUTION_VER v6.0.0 → v6.1.0`、`TOOL_VER v0.1 → v0.2`、`DEFAULT_POLICY_VERSION v0.2 → v0.6`；(II) 新增 `POLICY_SCORE_SCOPE_MAP`（policy_version → 預期 score_scope 對映表，五項：v0.2/v0.3/v0.4/v0.5/v0.6 → "v0.2_six_layer"/"v0.3_six_layer_extended"/"v0.5_eleven_sub_score"/"v0.6_F_proxy_augmented"/"v0.7_VC_convexity_aligned"）；(III) 新增 `EXPECTED_SCORE_DETAIL_KEYS`（per policy 期望 score_detail 鍵集合：v0.4 +6 FG / v0.5 +11 FG +12 IF / v0.6 +11 FG +12 IF +4 VC）；(IV) `check_policy()` 加 v0.4/v0.5/v0.6 三條 score_config 分支；(V) `check_v01_boundary()` 之 `expected_scope` 改 dict lookup，不再 endswith hardcoded；(VI) 新增 `check_score_detail_keys()` 方法驗收 score_detail 鍵集合（FAIL 若缺鍵 > 20%）；(VII) `check_observability()` task_name 列表加 v0.3/v0.4/v0.5/v0.5.1/v0.6/v0.7 builder（雖 lifecycle name 維持 v0.2，但前向相容）；(VIII) `run()` lifecycle name `audit_core_universe_v0.1 → v0.2`；(IX) 標頭 8-項 docstring compliance 重寫（per CLAUDE.md §四 #4）含 [Zero Hardcoded Verdict] + [Sovereignty Declaration] 治權自我宣告。**對既有 snapshot 影響**：零；既有 v0.2 snapshot audit 結果完全 backward-compatible（仍 41/0/0 PERFECT）；新 v0.6 snapshot 經本工具驗收將回報新項目通過。**邏輯動量**：不改任何 CoreScore 重算、不改 §6.7 SSOT 150、不改 §6.4 公式、不改 raw DDL、不改 CLI 參數結構（只 default 值升）、不改 5 張治理表寫入順序、不改 annual_rebalance_guard。**Cross-Reference 精確行號**：constants 區塊 L80-82；POLICY_SCORE_SCOPE_MAP 定義 L114-120；EXPECTED_SCORE_DETAIL_KEYS 定義 L124-158；check_policy 政策版本分支 L329-333；check_v01_boundary 之 expected_scope dict lookup L643；check_score_detail_keys 新方法 L659；check_observability 之 task_name 列表 L733。同步配套：無需新 charter 子節（屬工具配套）；無需新設計研究（屬機械式擴張）。 | **ACTIVE** |
+| v0.1 | 2026-05-14 | Codex | 首版：依憲章 §6.7 / §6.8 / §8.8.6 落地，驗收 policy/snapshot/membership/scores/revision log；2026-05-17 補入 `check_same_day_reason_duplication()`（§8.8.6 第 2 條）；2026-05-18 v6.0.0-patch 補入 §6.8 annual guard 衍生檢查，總檢驗項由 36 → 40 → 41。 | SUPERSEDED |
 ================================================================================
 """
 import argparse
@@ -63,9 +77,9 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.2"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.2"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.6"
 REQUIRED_TABLES = [
     "pipeline_execution_log",
     "data_audit_log",
@@ -94,6 +108,54 @@ ELIGIBILITY_COLUMNS = [
     "backtest_eligible",
     "downstream_ready",
 ]
+
+# v0.2: per policy_version → 預期 score_scope 字串對映表（builder 寫入 score_detail.score_scope；
+# 對映 builder 各版本記述：v0.2/v0.3/v0.5/v0.6/v0.7 score_scope 字串）。
+POLICY_SCORE_SCOPE_MAP = {
+    "core_universe_policy_v0.2": "v0.2_six_layer",
+    "core_universe_policy_v0.3": "v0.3_six_layer_extended",
+    "core_universe_policy_v0.4": "v0.5_eleven_sub_score",
+    "core_universe_policy_v0.5": "v0.6_F_proxy_augmented",
+    "core_universe_policy_v0.6": "v0.7_VC_convexity_aligned",
+}
+
+# v0.2: per policy_version → score_detail 期望鍵集合（驗收 builder 對應版本之 sub-score 透明寫入）。
+# 不驗值（避免重算 CoreScore，違反 [Sovereignty Declaration]）；只驗鍵存在性。
+EXPECTED_SCORE_DETAIL_KEYS = {
+    "core_universe_policy_v0.2": set(),  # baseline，六層 CoreScore 直接寫入欄位，無 sub-score detail
+    "core_universe_policy_v0.3": {
+        "fg_gross_margin", "fg_roe",
+    },
+    "core_universe_policy_v0.4": {
+        "fg_gross_margin", "fg_roe",
+        "fg_per", "fg_pbr", "fg_div_yield", "fg_div_count_5y",
+        "fg_op_margin", "fg_pretax_margin", "fg_continuing_op_ratio", "fg_attributable_ratio",
+        "fg_part_dist_5y_avg",
+    },
+    "core_universe_policy_v0.5": {
+        "fg_gross_margin", "fg_roe",
+        "fg_per", "fg_pbr", "fg_div_yield", "fg_div_count_5y",
+        "fg_op_margin", "fg_pretax_margin", "fg_continuing_op_ratio", "fg_attributable_ratio",
+        "fg_part_dist_5y_avg",
+        "if_dealer_self_net", "if_dealer_hedge_net",
+        "if_margin_bal_60d", "if_short_bal_60d", "if_short_margin_ratio",
+        "if_margin_trend_60d", "if_margin_repay_trend",
+        "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
+        "if_num_shares_issued", "if_foreign_ratio_60d_change",
+    },
+    "core_universe_policy_v0.6": {
+        "fg_gross_margin", "fg_roe",
+        "fg_per", "fg_pbr", "fg_div_yield", "fg_div_count_5y",
+        "fg_op_margin", "fg_pretax_margin", "fg_continuing_op_ratio", "fg_attributable_ratio",
+        "fg_part_dist_5y_avg",
+        "if_dealer_self_net", "if_dealer_hedge_net",
+        "if_margin_bal_60d", "if_short_bal_60d", "if_short_margin_ratio",
+        "if_margin_trend_60d", "if_margin_repay_trend",
+        "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
+        "if_num_shares_issued", "if_foreign_ratio_60d_change",
+        "vc_convexity_60d", "vc_upside_sigma_60d", "vc_downside_sigma_60d", "vc_cc_sigma_60d",
+    },
+}
 
 
 @dataclass
@@ -264,6 +326,12 @@ class CoreUniverseAuditor:
             self.pass_("policy_score_config", "v0.2 policy uses six-layer CoreScore weights")
         elif self.policy_version.endswith("v0.3"):
             self.pass_("policy_score_config", "v0.3 policy uses six-layer CoreScore weights with FG extended sub-scores (gross_margin + ROE)")
+        elif self.policy_version.endswith("v0.4"):
+            self.pass_("policy_score_config", "v0.4 policy uses six-layer CoreScore weights with FG 11 sub-scores (V augmentation Phase C/D + FinStmt + ParticipateDistribution SELECT-only animation)")
+        elif self.policy_version.endswith("v0.5"):
+            self.pass_("policy_score_config", "v0.5 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores (F proxy Phase F.1-F.3: Dealer directional / Margin 4 / Shareholding 5)")
+        elif self.policy_version.endswith("v0.6"):
+            self.pass_("policy_score_config", "v0.6 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores + VC convexity-aware (upside_σ − downside_σ raw-first path)")
         elif liquidity_state == "pending" and fundamental_state == "pending":
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:
@@ -562,7 +630,7 @@ class CoreUniverseAuditor:
             ''',
             (self.snapshot_id,),
         )
-        if self.policy_version.endswith(("v0.2", "v0.3")):
+        if self.policy_version.endswith(("v0.2", "v0.3", "v0.4", "v0.5", "v0.6")):
             if non_null_pending_scores > 0:
                 self.pass_("v02_scores_boundary", f"six-layer score columns populated rows={non_null_pending_scores} (policy={self.policy_version})")
             else:
@@ -572,12 +640,7 @@ class CoreUniverseAuditor:
         else:
             self.fail("pending_scores_boundary", f"pending score columns unexpectedly populated rows={non_null_pending_scores}")
 
-        if self.policy_version.endswith("v0.2"):
-            expected_scope = "v0.2_six_layer"
-        elif self.policy_version.endswith("v0.3"):
-            expected_scope = "v0.3_six_layer_extended"
-        else:
-            expected_scope = "metadata_bootstrap_only"
+        expected_scope = POLICY_SCORE_SCOPE_MAP.get(self.policy_version, "metadata_bootstrap_only")
         score_scope_mismatch = self._scalar(
             cur,
             '''
@@ -591,7 +654,47 @@ class CoreUniverseAuditor:
         if score_scope_mismatch == 0:
             self.pass_("score_scope", f"all score_detail records declare {expected_scope}")
         else:
-            self.fail("score_scope", f"score_detail scope mismatches={score_scope_mismatch}")
+            self.fail("score_scope", f"score_detail scope mismatches={score_scope_mismatch} (expected {expected_scope} for policy={self.policy_version})")
+
+    def check_score_detail_keys(self, cur):
+        """v0.2 新增：驗收 score_detail 中是否含 builder 對應版本之 sub-score 透明寫入鍵。
+
+        - 不驗值（避免重算 CoreScore；違反 [Sovereignty Declaration]）。
+        - 對 baseline policy（v0.2）跳過（無 sub-score detail）。
+        - 對 v0.3+ policy 抽樣 1 row score_detail，比對 EXPECTED_SCORE_DETAIL_KEYS。
+        - 缺鍵 ≤ 20% → WARN；> 20% → FAIL；全鍵齊備 → PASS。
+        """
+        expected_keys = EXPECTED_SCORE_DETAIL_KEYS.get(self.policy_version)
+        if expected_keys is None:
+            self.warn("score_detail_keys", f"policy={self.policy_version} not in EXPECTED_SCORE_DETAIL_KEYS map (skipped)")
+            return
+        if not expected_keys:
+            self.pass_("score_detail_keys", f"policy={self.policy_version} has no sub-score detail expectation (baseline)")
+            return
+        row = self._row(
+            cur,
+            '''
+            SELECT "score_detail"
+            FROM "core_universe_scores"
+            WHERE "snapshot_id" = %s
+            LIMIT 1
+            ''',
+            (self.snapshot_id,),
+        )
+        if not row or row[0] is None:
+            self.fail("score_detail_keys", f"no score_detail row found for snapshot={self.snapshot_id}")
+            return
+        actual_keys = set(row[0].keys()) if isinstance(row[0], dict) else set()
+        missing = expected_keys - actual_keys
+        if not missing:
+            self.pass_("score_detail_keys", f"all {len(expected_keys)} expected score_detail sub-score keys present (policy={self.policy_version})")
+            return
+        miss_ratio = len(missing) / len(expected_keys)
+        sample_missing = sorted(missing)[:5]
+        if miss_ratio > 0.20:
+            self.fail("score_detail_keys", f"missing {len(missing)}/{len(expected_keys)} ({miss_ratio:.0%}) sub-score keys; sample={sample_missing}")
+        else:
+            self.warn("score_detail_keys", f"missing {len(missing)}/{len(expected_keys)} ({miss_ratio:.0%}) sub-score keys; sample={sample_missing}")
 
     def check_observability(self, cur):
         revision_count = self._scalar(
@@ -627,7 +730,17 @@ class CoreUniverseAuditor:
             '''
             SELECT COUNT(*)
             FROM pipeline_execution_log
-            WHERE task_name IN ('core_universe_builder_v0.2', 'core_universe_builder_v0.2_preflight', 'core_universe_builder_v0.1')
+            WHERE task_name IN (
+                'core_universe_builder_v0.1',
+                'core_universe_builder_v0.2',
+                'core_universe_builder_v0.2_preflight',
+                'core_universe_builder_v0.3',
+                'core_universe_builder_v0.4',
+                'core_universe_builder_v0.5',
+                'core_universe_builder_v0.5.1',
+                'core_universe_builder_v0.6',
+                'core_universe_builder_v0.7'
+            )
               AND status IN ('success', 'warning')
             ''',
         )
@@ -660,6 +773,7 @@ class CoreUniverseAuditor:
             self.check_uniqueness_and_pairing(cur)
             self.check_raw_mirror(cur)
             self.check_v01_boundary(cur)
+            self.check_score_detail_keys(cur)
             self.check_observability(cur)
         finally:
             cur.close()
@@ -707,7 +821,7 @@ class CoreUniverseAuditor:
     def run(self):
         start_time = time.time()
         print("🔎 正在驗收核心股 Universe snapshot / membership / scores / governance boundary...")
-        with record_lifecycle("audit_core_universe_v0.1", category="audit", stock_id="SYSTEM") as lifecycle:
+        with record_lifecycle("audit_core_universe_v0.2", category="audit", stock_id="SYSTEM") as lifecycle:
             try:
                 self.run_checks()
                 if self.snapshot_id:
@@ -742,7 +856,7 @@ class CoreUniverseAuditor:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance 核心股 Universe 驗收稽核 (v0.1)")
+    parser = argparse.ArgumentParser(description="Quantum Finance 核心股 Universe 驗收稽核 (v0.2)")
     parser.add_argument("--snapshot-id", type=str, help="指定 snapshot_id；未指定時使用 as-of/policy 或最新 committed snapshot")
     parser.add_argument("--as-of-date", type=str, help="指定 snapshot as_of_date，例如 2026-05-14")
     parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="指定 policy_version")

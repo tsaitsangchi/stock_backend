@@ -101,6 +101,8 @@ reports/*
 !reports/v6_0_0_final_per_program_audit_*.md
 !reports/p1_v02_execution_runbook_*.md
 !reports/v03_upside_downside_ablation_result.json
+!reports/p1_v01_*.md
+!reports/p1_v01_*.json
 !reports/系統核心完整度評估報告.md
 !reports/系統核心完整度評估報告_v*.md
 !reports/audit_doctrine_compliance_*.md
