@@ -53,7 +53,7 @@ import argparse
 # 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v2.20"
+TOOL_VER = "v2.21"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # §8.5-9 Publication-date Discipline Strategy Enforcement Enum
@@ -168,7 +168,16 @@ DATASET_REGISTRY = {
     # --- Fundamental (基本面) ---
     "TaiwanStockFinancialStatements": {
         "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
+            "date": "DATE", "stock_id": "VARCHAR(255)",
+            "type": "VARCHAR(255)", "value": "NUMERIC(20, 6)", "origin_name": "VARCHAR(255)"
+        },
+        "unique_constraints": ["date", "stock_id", "type", "origin_name"]
+    },
+    "TaiwanStockBalanceSheet": {
+        # v2.21 (2026-05-25): §14.7-BI ROE 解鎖 — FinStmt 之姊妹表,提供真權益 (Equity / EquityAttributableToOwnersOfParent / CapitalStock / RetainedEarnings 等 101 types)
+        # 同 FinStmt schema (date, stock_id, type, value, origin_name);quarterly;2011-12-01 ~ now
+        "columns": {
+            "date": "DATE", "stock_id": "VARCHAR(255)",
             "type": "VARCHAR(255)", "value": "NUMERIC(20, 6)", "origin_name": "VARCHAR(255)"
         },
         "unique_constraints": ["date", "stock_id", "type", "origin_name"]
@@ -224,6 +233,7 @@ FINMIND_API_TABLES = {
     "TaiwanStockMarginPurchaseShortSale": {"dataset": "TaiwanStockMarginPurchaseShortSale", "data_id": "2330", "start_date": "2024-05-01"},
     "TaiwanStockShareholding": {"dataset": "TaiwanStockShareholding", "data_id": "2330", "start_date": "2024-05-01"},
     "TaiwanStockFinancialStatements": {"dataset": "TaiwanStockFinancialStatements", "data_id": "2330", "start_date": "2024-01-01"},
+    "TaiwanStockBalanceSheet": {"dataset": "TaiwanStockBalanceSheet", "data_id": "2330", "start_date": "2024-01-01"},
     "TaiwanStockMonthRevenue": {"dataset": "TaiwanStockMonthRevenue", "data_id": "2330", "start_date": "2024-01-01"},
     "TaiwanStockDividend": {"dataset": "TaiwanStockDividend", "data_id": "2330", "start_date": "2020-01-01"},
     "TaiwanStockInfo": {"dataset": "TaiwanStockInfo", "data_id": "", "start_date": "2024-01-01"},
@@ -322,6 +332,13 @@ PUBLICATION_DATE_STRATEGY_REGISTRY = {
         "offset_days": {"Q1": 45, "Q2": 45, "Q3": 45, "Q4": 90},  # FSC 證交法施行細則
         "enforcement": "hardcoded_conservative",
         "description": "硬編法定截止日推算(Q1-Q3 +45 天 / Q4 +90 天);DB 無 publication-date 欄位(§14.7-BA 揭露);實際公告 ≤ 法定截止日",
+    },
+    "TaiwanStockBalanceSheet": {
+        "source": "statutory_filing_deadline",
+        "column": "date",       # statistical quarter-end(同 FinStmt)
+        "offset_days": {"Q1": 45, "Q2": 45, "Q3": 45, "Q4": 90},  # 同 FinStmt(同為證交法 quarterly filing)
+        "enforcement": "hardcoded_conservative",
+        "description": "硬編法定截止日推算(同 FinStmt;Q1-Q3 +45 / Q4 +90);v2.21 §14.7-BI ROE 解鎖新表(Equity / RetainedEarnings 真權益來源,消解 §0.1.3-A.1 FinStmt mislabel)",
     },
     # === Transitional: 暫維持 date, 待研究升版 ===
     "TaiwanStockShareholding": {

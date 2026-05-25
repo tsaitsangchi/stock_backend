@@ -117,6 +117,7 @@ POLICY_SCORE_SCOPE_MAP = {
     "core_universe_policy_v0.4": "v0.5_eleven_sub_score",
     "core_universe_policy_v0.5": "v0.6_F_proxy_augmented",
     "core_universe_policy_v0.6": "v0.7.1_VC_convexity_aligned_rms",
+    "core_universe_policy_v0.7": "v0.8_roe_unlocked_via_balance_sheet",
 }
 
 # v0.2: per policy_version → score_detail 期望鍵集合（驗收 builder 對應版本之 sub-score 透明寫入）。
@@ -154,6 +155,21 @@ EXPECTED_SCORE_DETAIL_KEYS = {
         "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
         "if_num_shares_issued", "if_foreign_ratio_60d_change",
         "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
+    },
+    "core_universe_policy_v0.7": {
+        # v0.6 全部 31 keys + v0.8 新增 2 keys(fg_equity / fg_ni_4q_sum)
+        "fg_gross_margin", "fg_roe",
+        "fg_per", "fg_pbr", "fg_div_yield", "fg_div_count_5y",
+        "fg_op_margin", "fg_pretax_margin", "fg_continuing_op_ratio", "fg_attributable_ratio",
+        "fg_part_dist_5y_avg",
+        "if_dealer_self_net", "if_dealer_hedge_net",
+        "if_margin_bal_60d", "if_short_bal_60d", "if_short_margin_ratio",
+        "if_margin_trend_60d", "if_margin_repay_trend",
+        "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
+        "if_num_shares_issued", "if_foreign_ratio_60d_change",
+        "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
+        # v0.8 §14.7-BI ROE 解鎖 transparency keys
+        "fg_equity", "fg_ni_4q_sum",
     },
 }
 
@@ -332,6 +348,8 @@ class CoreUniverseAuditor:
             self.pass_("policy_score_config", "v0.5 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores (F proxy Phase F.1-F.3: Dealer directional / Margin 4 / Shareholding 5)")
         elif self.policy_version.endswith("v0.6"):
             self.pass_("policy_score_config", "v0.6 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores + VC convexity-aware RMS (upside_RMS − downside_RMS raw-first path;§9.10 正式條文 對齊 §9.9 強制契約)")
+        elif self.policy_version.endswith("v0.7"):
+            self.pass_("policy_score_config", "v0.7 policy uses six-layer CoreScore weights with FG 12 sub-scores (含 ROE 解鎖 from TaiwanStockBalanceSheet) + IF 12 sub-scores + VC convexity-aware RMS;§14.7-BI 資料現實裁決首例「解鎖成功」")
         elif liquidity_state == "pending" and fundamental_state == "pending":
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:
@@ -630,7 +648,7 @@ class CoreUniverseAuditor:
             ''',
             (self.snapshot_id,),
         )
-        if self.policy_version.endswith(("v0.2", "v0.3", "v0.4", "v0.5", "v0.6")):
+        if self.policy_version.endswith(("v0.2", "v0.3", "v0.4", "v0.5", "v0.6", "v0.7")):
             if non_null_pending_scores > 0:
                 self.pass_("v02_scores_boundary", f"six-layer score columns populated rows={non_null_pending_scores} (policy={self.policy_version})")
             else:

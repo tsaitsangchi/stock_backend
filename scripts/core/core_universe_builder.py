@@ -90,7 +90,9 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.7.1"
+TOOL_VER = "v0.8"
+# DEFAULT_POLICY_VERSION 維持 v0.6:v0.8 程式 ready 但 BS sync 受 FinMind sponsor paywall 阻擋
+# (§14.7-BJ 2026-05-25 揭露)。未來升 sponsor 後改 v0.7 並 commit 新 snapshot 即可激活 ROE。
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.6"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
@@ -788,6 +790,44 @@ class CoreUniverseBuilder:
                     else:
                         financial_data[sid]["attributable_ratio"] = -1.0  # sentinel:NCI > NI 異常
 
+            # v0.8 §14.7-BI: ROE 解鎖 — 從 TaiwanStockBalanceSheet 取真權益 (Equity / EquityAttributableToOwnersOfParent)
+            # 消解 §0.1.3-A.1 之 FinStmt mislabel(FinStmt 同名 column 為淨利,BS 同名 column 為真權益,~10x 差距)
+            # ROE = SUM(IncomeAfterTaxes 最近 4Q) / latest Equity (annualized)
+            bs_gate, bs_n_ap = build_publication_date_gate("TaiwanStockBalanceSheet")
+            cur.execute(f"""
+                WITH ni_4q AS (
+                    SELECT stock_id, SUM(value::numeric) AS ni_sum, COUNT(*) AS qc
+                    FROM (
+                        SELECT stock_id, value,
+                               ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
+                        FROM "TaiwanStockFinancialStatements"
+                        WHERE type='IncomeAfterTaxes' AND date >= %s AND {fs_gate}
+                    ) ranked
+                    WHERE rn <= 4
+                    GROUP BY stock_id
+                ),
+                bs_equity AS (
+                    SELECT DISTINCT ON (stock_id) stock_id, value::numeric AS equity
+                    FROM "TaiwanStockBalanceSheet"
+                    WHERE type='EquityAttributableToOwnersOfParent' AND {bs_gate}
+                    ORDER BY stock_id, date DESC
+                )
+                SELECT n.stock_id, n.ni_sum, n.qc, b.equity
+                FROM ni_4q n
+                JOIN bs_equity b USING (stock_id)
+                WHERE n.qc = 4 AND b.equity > 0
+            """, (lookback_730, *([self.as_of_date] * fs_n_ap), *([self.as_of_date] * bs_n_ap)))
+            for sid, ni_sum, qc, equity in cur.fetchall():
+                if sid not in financial_data:
+                    continue
+                ni_f = float(ni_sum or 0)
+                eq_f = float(equity or 0)
+                if eq_f > 0:
+                    roe = ni_f / eq_f
+                    financial_data[sid]["roe"] = roe
+                    financial_data[sid]["equity"] = eq_f
+                    financial_data[sid]["ni_4q_sum"] = ni_f
+
             # v0.5 §14.7-BC: TaiwanStockPER (PER/PBR/dividend_yield)— native_aligned;latest per stock
             per_data = {}
             per_gate, per_n_ap = build_publication_date_gate("TaiwanStockPER")
@@ -1079,7 +1119,30 @@ class CoreUniverseBuilder:
         score += self._operating_margin_score(f.get("op_margin"))
         score += self._attributable_ratio_score(f.get("attributable_ratio"))
 
+        # === v0.8 §14.7-BI 1 個新 sub-score:ROE 解鎖 ===
+        score += self._roe_score(f.get("roe"))
+
         return round(min(100.0, max(0.0, score)), 2)
+
+    def _roe_score(self, roe):
+        """ROE 7 階梯 ±15;v0.8 §14.7-BI 解鎖(從 BalanceSheet.Equity 真權益計算).
+        ROE = NetIncome_4Q / Equity_latest;missing data → 0(不雙重懲罰).
+        """
+        if roe is None:
+            return 0.0
+        if roe > 0.30:
+            return 15.0
+        if roe > 0.20:
+            return 10.0
+        if roe > 0.15:
+            return 5.0
+        if roe > 0.10:
+            return 0.0
+        if roe > 0.05:
+            return -3.0
+        if roe > 0:
+            return -5.0
+        return -10.0
 
     # ── v0.5 §14.7-BC 6 個新 FG sub-score helpers ──────────────────────────
 
@@ -1521,7 +1584,7 @@ class CoreUniverseBuilder:
         sh_data = (shareholding_data or {}).get(stock_id, {})
         inst_data = (institutional_data or {}).get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.7.1_VC_convexity_aligned_rms",
+            "score_scope": "v0.8_roe_unlocked_via_balance_sheet",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
             "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
@@ -1531,6 +1594,8 @@ class CoreUniverseBuilder:
             # v0.3 既有 FG sub-components
             "fg_gross_margin": f_data.get("gross_margin"),
             "fg_roe": f_data.get("roe"),
+            "fg_equity": f_data.get("equity"),
+            "fg_ni_4q_sum": f_data.get("ni_4q_sum"),
             # v0.5 §14.7-BC 新增 6 個 FG sub-components(透明)
             "fg_per": p_data.get("per"),
             "fg_pbr": p_data.get("pbr"),
