@@ -87,6 +87,7 @@ reports/*
 !reports/publication_date_discipline_design_research_*.md
 !reports/v_augmentation_phase_cd_design_research_*.md
 !reports/f_proxy_augmentation_phase_f_design_research_*.md
+!reports/vc_convexity_alignment_design_research_*.md
 !reports/v6_*_p0_completion_*.md
 !reports/v6_*_p0_v02_*.md
 !reports/portfolio_sizer_v0*_implementation_audit_*.md
