@@ -1,8 +1,8 @@
 """
-core_universe_builder.py v0.5.1 (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.6 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 Phase 3 + v0.5 §14.7-BC V 補強 + **v0.5.1 §14.7-BE「資料現實裁決」第 5 次跑通追溯;+ParticipateDistributionOfTotalShares SELECT-only animation;誠實 V 動員 13/22 → 14/22 = 64%(非設計研究 77%)**;policy v0.4)
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 Phase 3 + v0.5 §14.7-BC V 補強 + v0.5.1 §14.7-BE Part SELECT-only + **v0.6 §14.7-BF F proxy 補強 Phase F.1-F.3 落地;IF sub-scores 1 → 9;F proxy 動員 2/25 → 22/25 = 88%**;policy v0.5)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:
@@ -54,7 +54,8 @@ v0.2 六層 CoreScore 評分公式:
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.5.1** | 2026-05-25 | Codex | **§14.7-BE「資料現實裁決」第 5 次跑通追溯落地(+ParticipateDistributionOfTotalShares SELECT-only animation;V 動員 13/22 → 14/22 = 64% 誠實版)**:依憲章 §14.7-BE 入憲(commit 同次)之治權追溯,v0.5 之後落地前主動 DB query 驗證揭露 §14.7-BC §3.2 表「Dividend 4 cols ≥ 30% 覆蓋」實證後**只 1 cols 真實可用**(Remu / EmpCash 民國 100 年後 schema sunset;StockEarnings 2024 5% 邊際)。**追溯修正**:從計畫加 4 cols → 實際只加 ParticipateDistributionOfTotalShares 1 col(2024 86% 覆蓋)。**補正內容**:(I) `_load_dividend()` 加 SELECT `SUM("ParticipateDistributionOfTotalShares") past 5y avg`;(II) dividend_data 加 `part_dist_5y_avg` 鍵;(III) score_detail 補 `fg_part_dist_5y_avg` 透明欄;(IV) **不加新 sub-score**(避免 multicollinearity 與設計爭議;留待 walk-forward IC 證偽後評估;SELECT-only animation = 「raw 讀取 + 透明寫入但不影響 score」);(V) TOOL_VER v0.5 → v0.5.1;(VI) 主權狀態行加 v0.5.1 追溯說明。**邏輯動量**:FG 11 sub-scores 不變(SELECT-only animation 不加 sub-score);CoreScore 6 維權重不變;clamp 不變;CLI / verdict / annual_guard / candidate_fallback 不變;ROE = None 占位維持(§0.1.3-A.1)。**對既有 snapshot 影響**:零;新 v0.4 snapshot 起 score_detail 透明寫入 part_dist_5y_avg。**「資料現實裁決」第 5 次跑通**(對映 §14.7-AX;§14.7-BE 治權層追溯):前 4 次(ROE / publication-date / FRED vintage / Dividend 民國年);本次**事前事前驗證模式**(對映 §14.7-BD 之事後追溯,本子節為事前早期化)— 治權成本最低。**對下游影響**:future v0.4 policy snapshot 之 score_detail 含 fg_part_dist_5y_avg(透明動員;為 future trainer 預備 feature 來源)。本版**不**修改 §6.4 公式、§6.7 SSOT 150、§0.1-A 6 禁令、§0.1.3-A.1 ROE dropped、§6.3 第 4 條 FG 條文、raw DDL。同步配套:憲章 §14.7-BE(同次入憲 commit)+ §14.7-BC §3.2 表覆蓋率口徑追溯(從「全歷史」改「最近 5y rolling」)。 | **ACTIVE** |
+| **v0.6** | 2026-05-25 | Codex | **§14.7-BF F proxy 補強 Phase F.1-F.3 落地(v6.1.0-patch 第十輪程式;類比 v0.5 V 補強模式;IF v0.5.1 → v0.6 升 8 sub-scores)**:依憲章 §14.7-BF 入憲(commit `b28872a`),本版落地 Phase F.1-F.3 完整實作:IF sub-scores 1 → 9(+8 新);F proxy 動員 2/25 → 22/25 = 88%。新增 _load Margin + Shareholding SQL;擴張 _load_institutional 加 dealer_self/hedge 分項;8 個新 sub-scores(Dealer 方向 / Margin 4 / Shareholding 3);IF 權重 10% 維持;DEFAULT_POLICY_VERSION v0.4 → v0.5;TOOL_VER v0.5.1 → v0.6。對既有 snapshot 影響:零(metadata 不變)。「資料現實裁決」第 6 次跑通可能:r > 0.7 觸發 §14.7-BG 追溯。本版不改 §6.4 公式 / §6.7 SSOT / §0.1-A / §0.1.3-A.1 / §6.3 第 6 條條文 / raw DDL / CLI / annual_guard / FG 11 sub-scores。同步配套:憲章 §14.7-BF(commit b28872a)+ 設計研究 reports/f_proxy_augmentation_phase_f_design_research_20260525.md。 | **ACTIVE** |
+| v0.5.1 | 2026-05-25 | Codex | **§14.7-BE「資料現實裁決」第 5 次跑通追溯落地(+ParticipateDistributionOfTotalShares SELECT-only animation;V 動員 13/22 → 14/22 = 64% 誠實版)**:依憲章 §14.7-BE 入憲(commit 同次)之治權追溯,v0.5 之後落地前主動 DB query 驗證揭露 §14.7-BC §3.2 表「Dividend 4 cols ≥ 30% 覆蓋」實證後**只 1 cols 真實可用**(Remu / EmpCash 民國 100 年後 schema sunset;StockEarnings 2024 5% 邊際)。**追溯修正**:從計畫加 4 cols → 實際只加 ParticipateDistributionOfTotalShares 1 col(2024 86% 覆蓋)。**補正內容**:(I) `_load_dividend()` 加 SELECT `SUM("ParticipateDistributionOfTotalShares") past 5y avg`;(II) dividend_data 加 `part_dist_5y_avg` 鍵;(III) score_detail 補 `fg_part_dist_5y_avg` 透明欄;(IV) **不加新 sub-score**(避免 multicollinearity 與設計爭議;留待 walk-forward IC 證偽後評估;SELECT-only animation = 「raw 讀取 + 透明寫入但不影響 score」);(V) TOOL_VER v0.5 → v0.5.1;(VI) 主權狀態行加 v0.5.1 追溯說明。**邏輯動量**:FG 11 sub-scores 不變(SELECT-only animation 不加 sub-score);CoreScore 6 維權重不變;clamp 不變;CLI / verdict / annual_guard / candidate_fallback 不變;ROE = None 占位維持(§0.1.3-A.1)。**對既有 snapshot 影響**:零;新 v0.4 snapshot 起 score_detail 透明寫入 part_dist_5y_avg。**「資料現實裁決」第 5 次跑通**(對映 §14.7-AX;§14.7-BE 治權層追溯):前 4 次(ROE / publication-date / FRED vintage / Dividend 民國年);本次**事前事前驗證模式**(對映 §14.7-BD 之事後追溯,本子節為事前早期化)— 治權成本最低。**對下游影響**:future v0.4 policy snapshot 之 score_detail 含 fg_part_dist_5y_avg(透明動員;為 future trainer 預備 feature 來源)。本版**不**修改 §6.4 公式、§6.7 SSOT 150、§0.1-A 6 禁令、§0.1.3-A.1 ROE dropped、§6.3 第 4 條 FG 條文、raw DDL。同步配套:憲章 §14.7-BE(同次入憲 commit)+ §14.7-BC §3.2 表覆蓋率口徑追溯(從「全歷史」改「最近 5y rolling」)。 | SUPERSEDED |
 | v0.5 | 2026-05-25 | Codex | **§14.7-BC V 補強 Phase C/D + FinStmt 落地(v6.1.0-patch 第七輪程式)**:依憲章 §14.7-BC 入憲(commit `a6904aa`,2026-05-25 夜深++)之 V 補強治權預備,本版落地 Phase B 完整實作:**FG sub-scores 5 → 11(+6 新);V 動員 23% → 77%(5/22 → 17/22 cols)**。**新增 3 個 _load_* 方法**:(I) `_load_per()`:取 candidates 之 latest PER/PBR/dividend_yield(native_aligned gate);(II) `_load_dividend()`:取 past 5y CashEarningsDistribution > 0 之配息次數;(III) `_load_financial()` 擴張:加 OperatingIncome/PreTaxIncome/IncomeFromContinuingOperations/NoncontrollingInterests 4 新 V types(quarter-aware gate)。**新增 industry_median 計算**:在 `_load_market_data()` 末計算 per industry 之 PER/PBR median(min 3 stocks/industry),供 PER/PBR industry-relative score 用。**6 個新 FG sub-scores**(對映 §14.7-BC §4.1-4.6 設計):PER 估值 industry-relative ±20 / PBR 估值 industry-relative ±15 / Dividend yield ±10 / 配息穩定性 ±10 / Operating Margin ±10 / Attributable Ratio ±5。**邏輯動量**:CoreScore v0.2 六層權重不變(0.25 DQ + 0.25 LM + 0.20 FG + 0.15 TR + 0.10 IF + 0.05 VC - RP);FG 權重 20% 維持;clamp 0..100 不變;ROE = None 占位維持(§0.1.3-A.1)。**CLI 介面不變**(--dry-run / --commit / --as-of-date / --policy-version / --special-rebalance-reason);annual_rebalance_guard / candidate_fallback / 5 張治理表寫入順序不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**DEFAULT_POLICY_VERSION v0.3 → v0.4**;TOOL_VER v0.4 → v0.5;主權狀態行加 v0.5 落地說明;標頭核心定義說明補充 V 補強之治權邊界。**對既有 snapshot 影響**:既有 `core_universe_20260524_core_universe_policy_v0_2` 與 v0.3 snapshots **不重 build**(metadata 不變);新 `core_universe_policy_v0.4` snapshot 起適用 v0.5 builder;預期分層 churn rate < 15%。**score_detail 補入 v0.5 sub-scores**(per_rel / pbr_rel / div_yld / div_stability / op_margin / attr_ratio 6 鍵);selection_reason 顯示新 sub-components。**對下游影響**:future v0.4 policy snapshot 之 universe 可能與 v0.3 略有差異(FG 升級 → fundamental_score 變 → 排序略變);現有 v0.3 snapshot 維持為 audit trail。本版**不**修改 §6.4 CoreScore 公式總結構、§6.7 SSOT 150 鎖定、§0.1-A 6 條禁令、§0.1.3-A.1 ROE dropped 裁決、§6.3 第 4 條 FG 條文原文(留待 v6.2.0 升強制契約)、raw DDL、annual_rebalance_guard、candidate_fallback、5 張治理表寫入順序。**證偽承諾**(對接 §0.1-E 框架,§14.7-BC §7):T_FG_v0.5.1 (v0.5 IC ≥ v0.3 baseline) / T_FG_v0.5.2 (fundamental_score 與 industry-rel valuation 相關 > 0.4) / T_FG_v0.5.3 (walk-forward IC stdev ≤ v0.3) / T_FG_v0.5.4 (dry-run mean/std 差異 ∈ [+5, +20])。**audit_core_universe 配套需求**:audit 工具需加 `core_universe_policy_v0.4` 識別(對應 score_detail v0.5 鍵驗收;另案升版)。同步配套:憲章 §14.7-BC(已入憲 commit `a6904aa`)+ 設計研究 `reports/v_augmentation_phase_cd_design_research_20260525.md`(13 章 + 3 附錄)+ 修訂歷程 v6.1.0-patch 2026-05-25 第七輪 entry(程式落地;不需新 charter entry)。 | SUPERSEDED |
 | v0.4 | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 3 落地(配套 data_schema v2.20 SSOT helper + feature_store_builder v0.5;v6.1.0-patch 同次)**:依憲章 §8.5-9.7 Phase 3 升版觸發,加 `from core.data_schema import build_publication_date_gate` SSOT helper,**5 處 SQL gate per-table 分派升版**(僅 CoreScore 計算層:PriceAdj/MonthRevenue/FinStmt latest_margin/FinStmt EPS/Institutional;Preflight 7 處 metadata 統計留 v0.5 升版)。**邏輯動量**:CoreScore v0.2 六層權重不變;v0.3 FG GrossProfit sub-score 維持;ROE dropped 維持;CLI / verdict / annual_guard / candidate_fallback 不變。**對既有 snapshot 影響**:零(既有不重 build;新 v0.4 snapshot 之 FinStmt 之 Q1+45/Q4+90 未公告 quarter 排除,可能微影響 fundamental_score)。**Phase 3 SSOT 配套**:三檔(data_schema v2.20 + feature_store_builder v0.5 + 本 v0.4)共用 build_publication_date_gate 單一 helper。本版**不**改 §6 治理 schema、CoreScore 公式、raw DDL、preflight 結構(僅 SQL gate)、annual_rebalance_guard、5 張治理表寫入順序。 | SUPERSEDED |
 | v0.3 | 2026-05-24 | Codex | **Phase B FG GrossProfit sub-score 落地 + ROE dropped(§0.1.3-A.1「資料現實裁決」首次跑通典範)**:依 §0.1.3-A V 落地度 gap 揭露,於 FG sub-score 新增 GrossProfit/Revenue 毛利率(5 階梯:>40%/>25%/>10%/>5%/其餘 → +10/+5/0/-3/-8);DEFAULT_POLICY_VERSION v0.2 → v0.3;TOOL_VER v0.2 → v0.3;**ROE 因 raw data 限制 dropped**:§0.1.3-A.1 揭露 `EquityAttributableToOwnersOfParent.value ≈ IncomeAfterTaxes.value`(mislabel),非真正股東權益 → ROE 無法計算;builder 保留 `financial_data[sid]['roe'] = None` 占位;對映 §14.7-AX 治權元規則第一次跑通。CoreScore 六層權重不變;committed snapshot `core_universe_20260524_core_universe_policy_v0_2`(audit 41/0/0 PERFECT)。 | SUPERSEDED |
@@ -87,8 +88,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.5.1"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.4"
+TOOL_VER = "v0.6"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.5"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
@@ -808,17 +809,108 @@ class CoreUniverseBuilder:
                     SUM(CASE WHEN name='Investment_Trust'
                              THEN (buy::numeric - sell::numeric) ELSE 0 END) as trust_net,
                     SUM(CASE WHEN name IN ('Dealer_self','Dealer_Hedging')
-                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as prop_net
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as prop_net,
+                    -- v0.6 §14.7-BF Phase F.1: 分項 Dealer 之 self vs hedging
+                    SUM(CASE WHEN name='Dealer_self'
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as dealer_self_net,
+                    SUM(CASE WHEN name='Dealer_Hedging'
+                             THEN (buy::numeric - sell::numeric) ELSE 0 END) as dealer_hedge_net
                 FROM "TaiwanStockInstitutionalInvestorsBuySell"
                 WHERE date >= %s AND {inst_gate}
                 GROUP BY stock_id
             """, (lookback_252, *([self.as_of_date] * inst_n_ap)))
-            for sid, foreign_net, trust_net, prop_net in cur.fetchall():
+            for sid, foreign_net, trust_net, prop_net, d_self, d_hedge in cur.fetchall():
                 institutional_data[sid] = {
                     "foreign_net": float(foreign_net or 0),
                     "trust_net": float(trust_net or 0),
                     "prop_net": float(prop_net or 0),
                     "total_net": float(foreign_net or 0) + float(trust_net or 0) + float(prop_net or 0),
+                    # v0.6 §14.7-BF Phase F.1
+                    "dealer_self_net": float(d_self or 0),
+                    "dealer_hedge_net": float(d_hedge or 0),
+                }
+
+            # v0.6 §14.7-BF Phase F.2: TaiwanStockMarginPurchaseShortSale 60d aggregates
+            # Margin gate = native_aligned(§8.5-9 Phase 3 已用)
+            margin_data = {}
+            margin_gate, m_n_ap = build_publication_date_gate("TaiwanStockMarginPurchaseShortSale")
+            last_20d = self.as_of_date - timedelta(days=30)  # ~20 交易日
+            cur.execute(f"""
+                SELECT stock_id,
+                    AVG("MarginPurchaseTodayBalance"::numeric) as margin_bal_60d_avg,
+                    AVG("ShortSaleTodayBalance"::numeric) as short_bal_60d_avg,
+                    AVG("MarginPurchaseCashRepayment"::numeric) as margin_repay_60d_avg,
+                    AVG("MarginPurchaseTodayBalance"::numeric)
+                        FILTER (WHERE date >= %s) as margin_bal_last_20d,
+                    AVG("MarginPurchaseTodayBalance"::numeric)
+                        FILTER (WHERE date < %s) as margin_bal_prior_40d,
+                    AVG("MarginPurchaseCashRepayment"::numeric)
+                        FILTER (WHERE date >= %s) as margin_repay_last_20d,
+                    AVG("MarginPurchaseCashRepayment"::numeric)
+                        FILTER (WHERE date < %s) as margin_repay_prior_40d
+                FROM "TaiwanStockMarginPurchaseShortSale"
+                WHERE date >= %s AND {margin_gate}
+                GROUP BY stock_id
+            """, (last_20d, last_20d, last_20d, last_20d, lookback_252 - timedelta(days=0), *([self.as_of_date] * m_n_ap)))
+            for sid, m_bal, s_bal, m_repay, m_last20, m_prior40, r_last20, r_prior40 in cur.fetchall():
+                m_bal_f = float(m_bal or 0)
+                s_bal_f = float(s_bal or 0)
+                m_repay_f = float(m_repay or 0)
+                # Trend = (last20 - prior40) / prior40
+                margin_trend = None
+                if m_prior40 and float(m_prior40) > 0:
+                    margin_trend = (float(m_last20 or 0) - float(m_prior40)) / float(m_prior40)
+                repay_trend = None
+                if r_prior40 and float(r_prior40) > 0:
+                    repay_trend = (float(r_last20 or 0) - float(r_prior40)) / float(r_prior40)
+                margin_data[sid] = {
+                    "margin_bal_60d_avg": m_bal_f,
+                    "short_bal_60d_avg": s_bal_f,
+                    "margin_repay_60d_avg": m_repay_f,
+                    "margin_balance_trend_60d": margin_trend,
+                    "margin_repay_trend_60d": repay_trend,
+                    "short_margin_ratio": (s_bal_f / m_bal_f) if m_bal_f > 0 else 0.0,
+                }
+
+            # v0.6 §14.7-BF Phase F.3: TaiwanStockShareholding latest week 之 numeric cols
+            # Shareholding gate = transitional 維持 date(§8.5-9.2 §14.7-BB)
+            shareholding_data = {}
+            sh_gate, sh_n_ap = build_publication_date_gate("TaiwanStockShareholding")
+            cur.execute(f"""
+                SELECT DISTINCT ON (stock_id) stock_id,
+                    "ForeignInvestmentSharesRatio"::numeric as foreign_ratio,
+                    "ForeignInvestmentRemainRatio"::numeric as foreign_remain,
+                    "ForeignInvestmentUpperLimitRatio"::numeric as foreign_limit,
+                    "NumberOfSharesIssued"::numeric as num_shares,
+                    "ChineseInvestmentUpperLimitRatio"::numeric as china_limit
+                FROM "TaiwanStockShareholding"
+                WHERE {sh_gate}
+                ORDER BY stock_id, date DESC
+            """, (*([self.as_of_date] * sh_n_ap),))
+            latest_sh = {sid: (fr, frm, fl, ns, cl) for sid, fr, frm, fl, ns, cl in cur.fetchall()}
+
+            # 60d 前之 foreign_ratio for trend
+            cur.execute(f"""
+                SELECT DISTINCT ON (stock_id) stock_id,
+                    "ForeignInvestmentSharesRatio"::numeric as foreign_ratio_60d_ago
+                FROM "TaiwanStockShareholding"
+                WHERE date <= %s
+                ORDER BY stock_id, date DESC
+            """, (self.as_of_date - timedelta(days=60),))
+            sh_60d_ago = {sid: fr for sid, fr in cur.fetchall()}
+
+            for sid, (fr, frm, fl, ns, cl) in latest_sh.items():
+                fr_f = float(fr) if fr is not None else None
+                fr_60d = sh_60d_ago.get(sid)
+                fr_60d_f = float(fr_60d) if fr_60d is not None else None
+                trend = (fr_f - fr_60d_f) if (fr_f is not None and fr_60d_f is not None) else None
+                shareholding_data[sid] = {
+                    "foreign_ratio": fr_f,
+                    "foreign_remain_ratio": float(frm) if frm is not None else None,
+                    "foreign_upper_limit": float(fl) if fl is not None else None,
+                    "num_shares_issued": float(ns) if ns is not None else None,
+                    "china_upper_limit": float(cl) if cl is not None else None,
+                    "foreign_ratio_60d_change": trend,
                 }
         finally:
             cur.close()
@@ -826,10 +918,11 @@ class CoreUniverseBuilder:
         self._detail(
             f"📊 [MARKET-DATA] price={len(price_data)} revenue={len(revenue_data)} "
             f"financial={len(financial_data)} institutional={len(institutional_data)} "
-            f"per={len(per_data)} dividend={len(dividend_data)}"
+            f"per={len(per_data)} dividend={len(dividend_data)} "
+            f"margin={len(margin_data)} shareholding={len(shareholding_data)}"
         )
         return (price_data, revenue_data, financial_data, institutional_data,
-                per_data, dividend_data)
+                per_data, dividend_data, margin_data, shareholding_data)
 
     def _compute_industry_medians(self, candidates, per_data):
         """v0.5 §14.7-BC: 計算 per industry 之 PER/PBR median(min 3 stocks)
@@ -1083,8 +1176,20 @@ class CoreUniverseBuilder:
                 return float(score)
         return 30.0
 
-    def _institutional_flow_score(self, stock_id, institutional_data):
-        """InstitutionalFlow (10%): 外資 + 投信淨買超趨勢 (單位: 股)"""
+    def _institutional_flow_score(self, stock_id, institutional_data,
+                                   margin_data=None, shareholding_data=None,
+                                   industry_category=None):
+        """InstitutionalFlow (10%): v0.6 9 sub-scores(v0.5 之 1 + v0.6 之 8 新)
+
+        v0.5 既有:Foreign + Trust net(legacy thresholds 維持)
+        v0.6 §14.7-BF 新增 8 sub-scores:
+          Phase F.1:Dealer 方向性(self vs hedging)±5
+          Phase F.2:Margin 4(融資擁擠度 ±5 / 強迫平倉 ±3 / 券資比 ±3 / 融資趨勢 ±3)
+          Phase F.3:Shareholding 3(外資剩餘空間 ±5 / 持股趨勢 ±3 / 法規產業 ±2)
+
+        若 margin_data / shareholding_data 為 None,fallback v0.5 行為(新 sub-scores 返 0)。
+        IF 權重 10% 維持不變;clamp 0..100。
+        """
         inst = institutional_data.get(stock_id, {})
         if not inst:
             return 50.0
@@ -1109,7 +1214,138 @@ class CoreUniverseBuilder:
             score += 5.0
         elif trust_net < -50_000_000:
             score -= 10.0
+
+        # === v0.6 §14.7-BF 8 個新 sub-scores ===
+        score += self._dealer_directional_score(stock_id, institutional_data)
+        score += self._margin_crowding_score(stock_id, margin_data, shareholding_data)
+        score += self._margin_forced_liquidation_score(stock_id, margin_data)
+        score += self._short_margin_ratio_score(stock_id, margin_data)
+        score += self._margin_trend_score(stock_id, margin_data)
+        score += self._foreign_remain_capacity_score(stock_id, shareholding_data)
+        score += self._foreign_holding_trend_score(stock_id, shareholding_data)
+        score += self._regulated_industry_score(stock_id, shareholding_data, industry_category)
+
         return round(min(100.0, max(0.0, score)), 2)
+
+    # ── v0.6 §14.7-BF 8 個新 IF sub-score helpers ──────────────────────────
+
+    def _dealer_directional_score(self, stock_id, institutional_data):
+        """Dealer 方向性 ±5(v0.6 F.1):dealer_self > 0 + hedging < 0 → 自營正面"""
+        if not institutional_data:
+            return 0.0
+        inst = institutional_data.get(stock_id, {})
+        d_self = inst.get("dealer_self_net", 0)
+        d_hedge = inst.get("dealer_hedge_net", 0)
+        if d_self > 10_000_000 and d_hedge < -5_000_000:
+            return 5.0
+        if d_self > 0 and d_hedge < 0:
+            return 2.0
+        if d_self < -10_000_000:
+            return -3.0
+        return 0.0
+
+    def _margin_crowding_score(self, stock_id, margin_data, shareholding_data):
+        """融資擁擠度 ±5(v0.6 F.2):MarginBalance/NumShares 高擁擠 → 反向"""
+        if not margin_data or not shareholding_data:
+            return 0.0
+        m_bal = margin_data.get(stock_id, {}).get("margin_bal_60d_avg", 0)
+        ns = shareholding_data.get(stock_id, {}).get("num_shares_issued")
+        if not m_bal or not ns or ns <= 0:
+            return 0.0
+        ratio = m_bal / ns
+        if ratio > 0.05:
+            return -5.0
+        if ratio > 0.02:
+            return -2.0
+        if ratio > 0.005:
+            return 0.0
+        return 2.0
+
+    def _margin_forced_liquidation_score(self, stock_id, margin_data):
+        """強迫平倉壓力 ±3(v0.6 F.2):CashRepayment 60d trend 上升 → 前兆"""
+        if not margin_data:
+            return 0.0
+        trend = margin_data.get(stock_id, {}).get("margin_repay_trend_60d")
+        if trend is None:
+            return 0.0
+        if trend > 0.30:
+            return -3.0
+        if trend > 0.10:
+            return -1.0
+        return 0.0
+
+    def _short_margin_ratio_score(self, stock_id, margin_data):
+        """券資比 ±3(v0.6 F.2):Short/Margin 極高 → 多空極端"""
+        if not margin_data:
+            return 0.0
+        ratio = margin_data.get(stock_id, {}).get("short_margin_ratio", 0)
+        if ratio > 0.50:
+            return -3.0
+        if ratio > 0.20:
+            return -1.0
+        return 0.0
+
+    def _margin_trend_score(self, stock_id, margin_data):
+        """融資趨勢 ±3(v0.6 F.2):20d vs 40d 比較"""
+        if not margin_data:
+            return 0.0
+        trend = margin_data.get(stock_id, {}).get("margin_balance_trend_60d")
+        if trend is None:
+            return 0.0
+        if trend > 0.50:
+            return -3.0
+        if trend > 0.20:
+            return -1.0
+        if trend < -0.30:
+            return 1.0
+        return 0.0
+
+    def _foreign_remain_capacity_score(self, stock_id, shareholding_data):
+        """外資剩餘空間 ±5(v0.6 F.3):(Limit - Ratio) / Limit"""
+        if not shareholding_data:
+            return 0.0
+        sh = shareholding_data.get(stock_id, {})
+        limit = sh.get("foreign_upper_limit")
+        ratio = sh.get("foreign_ratio")
+        if limit is None or ratio is None or limit <= 0:
+            return 0.0
+        remain_pct = (limit - ratio) / limit
+        if remain_pct > 0.80:
+            return 2.0
+        if remain_pct > 0.50:
+            return 3.0
+        if remain_pct > 0.20:
+            return 5.0
+        return 0.0
+
+    def _foreign_holding_trend_score(self, stock_id, shareholding_data):
+        """外資持股 60d 變化 ±3(v0.6 F.3)"""
+        if not shareholding_data:
+            return 0.0
+        trend = shareholding_data.get(stock_id, {}).get("foreign_ratio_60d_change")
+        if trend is None:
+            return 0.0
+        if trend > 2.0:  # 假設 ratio 為 % 單位,+2pp 為顯著
+            return 3.0
+        if trend > 0.5:
+            return 1.0
+        if trend < -2.0:
+            return -3.0
+        return 0.0
+
+    def _regulated_industry_score(self, stock_id, shareholding_data, industry_category):
+        """法規受限產業 ±2(v0.6 F.3):UpperLimit < 100% → 特殊產業(電信/銀行/媒體/國防)"""
+        if not shareholding_data:
+            return 0.0
+        sh = shareholding_data.get(stock_id, {})
+        limit = sh.get("foreign_upper_limit")
+        if limit is None:
+            return 0.0
+        if limit < 30:
+            return 2.0
+        if limit < 50:
+            return 1.0
+        return 0.0
 
     def _volatility_control_score(self, stock_id, price_data):
         """VolatilityControl (5%): 收盤價變異係數 CV，越低越好"""
@@ -1154,7 +1390,8 @@ class CoreUniverseBuilder:
         return min(risk, 100.0), reasons
 
     def _score_candidate(self, row, price_data, revenue_data, financial_data, institutional_data,
-                         per_data=None, dividend_data=None, industry_median=None):
+                         per_data=None, dividend_data=None, industry_median=None,
+                         margin_data=None, shareholding_data=None):
         """v0.5 §14.7-BC: 六層 CoreScore + FG v0.5 11 sub-scores
         signature 加 per_data / dividend_data / industry_median(v0.5 §14.7-BC)。
         若 None,fallback v0.3 行為(FG v0.5 之 6 個新 sub-score 返 0 中性)。
@@ -1181,7 +1418,11 @@ class CoreUniverseBuilder:
             industry_median=industry_median, industry_category=industry_category,
         )
         tr = self._theme_resonance_score(industry_category)
-        inst_f = self._institutional_flow_score(stock_id, institutional_data)
+        inst_f = self._institutional_flow_score(
+            stock_id, institutional_data,
+            margin_data=margin_data, shareholding_data=shareholding_data,
+            industry_category=industry_category,
+        )
         vc = self._volatility_control_score(stock_id, price_data)
 
         # Extra penalty: high volatility + low liquidity, or major data gap
@@ -1204,7 +1445,7 @@ class CoreUniverseBuilder:
 
         exclusion_reason = "; ".join(risk_reasons) if risk_penalty >= 50.0 else None
         selection_reason = (
-            f"CoreScore v0.5: {core_score:.1f} "
+            f"CoreScore v0.6: {core_score:.1f} "
             f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} TR={tr:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
         )
         if exclusion_reason:
@@ -1214,8 +1455,11 @@ class CoreUniverseBuilder:
         f_data = financial_data.get(stock_id, {})
         p_data = (per_data or {}).get(stock_id, {})
         d_data = (dividend_data or {}).get(stock_id, {})
+        m_data = (margin_data or {}).get(stock_id, {})
+        sh_data = (shareholding_data or {}).get(stock_id, {})
+        inst_data = (institutional_data or {}).get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.5_eleven_sub_score",
+            "score_scope": "v0.6_F_proxy_augmented",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
             "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
@@ -1232,6 +1476,19 @@ class CoreUniverseBuilder:
             "fg_div_count_5y": d_data.get("div_count_5y"),
             # v0.5.1 §14.7-BE SELECT-only animation(透明寫入;不影響 score)
             "fg_part_dist_5y_avg": d_data.get("part_dist_5y_avg"),
+            # v0.6 §14.7-BF IF sub-components(8 新;透明)
+            "if_dealer_self_net": inst_data.get("dealer_self_net"),
+            "if_dealer_hedge_net": inst_data.get("dealer_hedge_net"),
+            "if_margin_bal_60d": m_data.get("margin_bal_60d_avg"),
+            "if_short_bal_60d": m_data.get("short_bal_60d_avg"),
+            "if_short_margin_ratio": m_data.get("short_margin_ratio"),
+            "if_margin_trend_60d": m_data.get("margin_balance_trend_60d"),
+            "if_margin_repay_trend": m_data.get("margin_repay_trend_60d"),
+            "if_foreign_ratio": sh_data.get("foreign_ratio"),
+            "if_foreign_remain_ratio": sh_data.get("foreign_remain_ratio"),
+            "if_foreign_upper_limit": sh_data.get("foreign_upper_limit"),
+            "if_num_shares_issued": sh_data.get("num_shares_issued"),
+            "if_foreign_ratio_60d_change": sh_data.get("foreign_ratio_60d_change"),
             "fg_op_margin": f_data.get("op_margin"),
             "fg_pretax_margin": f_data.get("pretax_margin"),
             "fg_continuing_op_ratio": f_data.get("continuing_op_ratio"),
@@ -1303,7 +1560,9 @@ class CoreUniverseBuilder:
             conn.close()
 
         # v0.5 §14.7-BC: 先計算 industry_median(用 rows + per_data)
-        price_data, revenue_data, financial_data, institutional_data, per_data, dividend_data = self._market_data
+        # v0.6 §14.7-BF: _market_data 8-tuple(加 margin_data + shareholding_data)
+        (price_data, revenue_data, financial_data, institutional_data,
+         per_data, dividend_data, margin_data, shareholding_data) = self._market_data
         from types import SimpleNamespace
         mini_candidates = [SimpleNamespace(stock_id=r[0], industry_category=r[3]) for r in rows]
         industry_median = self._compute_industry_medians(mini_candidates, per_data)
@@ -1317,6 +1576,7 @@ class CoreUniverseBuilder:
                 row, price_data, revenue_data, financial_data, institutional_data,
                 per_data=per_data, dividend_data=dividend_data,
                 industry_median=industry_median,
+                margin_data=margin_data, shareholding_data=shareholding_data,
             )
             for row in rows
         ]
