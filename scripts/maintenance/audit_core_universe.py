@@ -2,8 +2,8 @@
 audit_core_universe.py v0.2 (Quantum Finance Core Universe Audit Authority)
 ================================================================================
 最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0 對齊 + v0.7 builder + v0.6 policy 識別擴張
-        + FG 11 sub-score / IF 12 sub-score / VC 凸性對齊 score_detail 驗收)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 對齊 + v0.7.1 builder 配套(§14.7-BH RMS 公式追溯)
+        + v0.6 policy 識別擴張 + FG 11 sub-score / IF 12 sub-score / VC RMS 凸性對齊 score_detail 驗收)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Core Universe Post-Build Verification
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -116,7 +116,7 @@ POLICY_SCORE_SCOPE_MAP = {
     "core_universe_policy_v0.3": "v0.3_six_layer_extended",
     "core_universe_policy_v0.4": "v0.5_eleven_sub_score",
     "core_universe_policy_v0.5": "v0.6_F_proxy_augmented",
-    "core_universe_policy_v0.6": "v0.7_VC_convexity_aligned",
+    "core_universe_policy_v0.6": "v0.7.1_VC_convexity_aligned_rms",
 }
 
 # v0.2: per policy_version → score_detail 期望鍵集合（驗收 builder 對應版本之 sub-score 透明寫入）。
@@ -153,7 +153,7 @@ EXPECTED_SCORE_DETAIL_KEYS = {
         "if_margin_trend_60d", "if_margin_repay_trend",
         "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
         "if_num_shares_issued", "if_foreign_ratio_60d_change",
-        "vc_convexity_60d", "vc_upside_sigma_60d", "vc_downside_sigma_60d", "vc_cc_sigma_60d",
+        "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
     },
 }
 
@@ -331,7 +331,7 @@ class CoreUniverseAuditor:
         elif self.policy_version.endswith("v0.5"):
             self.pass_("policy_score_config", "v0.5 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores (F proxy Phase F.1-F.3: Dealer directional / Margin 4 / Shareholding 5)")
         elif self.policy_version.endswith("v0.6"):
-            self.pass_("policy_score_config", "v0.6 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores + VC convexity-aware (upside_σ − downside_σ raw-first path)")
+            self.pass_("policy_score_config", "v0.6 policy uses six-layer CoreScore weights with FG 11 sub-scores + IF 12 sub-scores + VC convexity-aware RMS (upside_RMS − downside_RMS raw-first path;§9.10 正式條文 對齊 §9.9 強制契約)")
         elif liquidity_state == "pending" and fundamental_state == "pending":
             self.pass_("policy_pending_scores", "liquidity/fundamental scores are policy-pending in v0.1")
         else:

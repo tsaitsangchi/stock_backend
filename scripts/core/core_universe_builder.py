@@ -1,8 +1,8 @@
 """
-core_universe_builder.py v0.7 (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.7.1 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 + v0.5 §14.7-BC FG + v0.5.1 §14.7-BE Part + v0.6 §14.7-BF F proxy 補強 + **v0.7 §14.7-BG VC 凸性對齊;cv_close → convexity = upside_σ − downside_σ;§9.10 起草 + §9.9 範圍裁決追溯 raw-first 路徑**;policy v0.6)
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 + v0.5 §14.7-BC FG + v0.5.1 §14.7-BE Part + v0.6 §14.7-BF F proxy 補強 + v0.7 §14.7-BG VC 凸性對齊(STDDEV fast-track 試錯) + **v0.7.1 §14.7-BH P1 v0.1 公式對齊 ablation 完成;§9.10 起草 → 正式條文;公式 STDDEV → RMS 對齊 §9.9 強制契約;ablation 揭露 Top-120 overlap 73.3% / max |Δscore| 75 分**;policy v0.6)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:
@@ -54,7 +54,8 @@ v0.2 六層 CoreScore 評分公式:
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.7** | 2026-05-25 | Codex | **§14.7-BG VC 凸性對齊落地(§9.10 起草 raw-first 路徑;cv_close → convexity-aware;首例「直接 from raw OHLC 繞過 feature_store gate」)**:依憲章 §14.7-BG 入憲(commit 同次)之 §9.10 起草 + §9.9 範圍裁決追溯,本版落地 VC 公式升:cv_close(對稱壓制凸性)→ convexity = upside_σ − downside_σ(凸性對齊;對映 §0.0-C.3 修補)。補正內容:(I)_load_market_data 之 PriceAdj SQL 加 LAG window function 計算 log_returns + STDDEV FILTER for upside/downside σ;(II)price_data 加 4 新 keys;(III)_volatility_control_score() 升 v0.7 convexity-aware 5 階梯;(IV)score_detail 補 vc_convexity_60d / vc_upside_sigma / vc_downside_sigma 3 新鍵;(V)TOOL_VER v0.6 → v0.7;(VI)DEFAULT_POLICY_VERSION v0.5 → v0.6。對既有 snapshot 影響:零。§9.9 範圍裁決追溯:本版走 raw-first 路徑(直接從 raw OHLC,不從 feature_store)→ 字面不違反;精神上「不等 ablation」為用戶授權之 fast-track。本版不改 §6.4 公式 / §6.7 SSOT / §0.1-A 6 禁令 / §9.9 強制契約 / §6.3 第 7 條 VC 條文原文 / raw DDL / CLI / annual_guard。同步配套:憲章 §14.7-BG + §9.10 起草(同次)+ 設計研究 reports/vc_convexity_alignment_design_research_20260525.md。 | **ACTIVE** |
+| **v0.7.1** | 2026-05-25 | Codex | **§14.7-BH P1 v0.1 公式對齊 ablation 完成 + §9.10 起草 → 正式條文(公式 STDDEV → RMS)+ §14.7-BG 補註 fast-track 試錯**:依憲章 §14.7-BH 入憲(commit 同次)之治權升版,本版落地 VC 公式追溯修正:`upside_σ` (STDDEV) → `upside_RMS` = SQRT(AVG(lr²) FILTER (WHERE lr > 0)) × √252(對齊 §9.9 P1 v0.1 強制契約之 RMS 定義;對齊金融學 Sortino MAR=0 標準)。**補正內容**:(I) `_load_market_data` SQL 改 `STDDEV(lr) FILTER (WHERE lr > 0/< 0)` → `SQRT(AVG(lr*lr) FILTER (WHERE lr > 0/< 0))`;(II) price_data keys `upside_sigma_60d/downside_sigma_60d` → `upside_rms_60d/downside_rms_60d`(`cc_sigma_60d`/`convexity_60d` 維持);(III) `_volatility_control_score()` 5 階梯不變(公式變但 boundary 不變);(IV) score_detail keys `vc_upside_sigma_60d/vc_downside_sigma_60d` → `vc_upside_rms_60d/vc_downside_rms_60d`;(V) score_scope `v0.7_VC_convexity_aligned` → `v0.7.1_VC_convexity_aligned_rms`;(VI) TOOL_VER v0.7 → v0.7.1;DEFAULT_POLICY_VERSION 不動(仍 v0.6)。**Ablation 實證裁決基礎**:2688 stocks ρ_score = 0.8816 / **Top-120 overlap = 73.3% < 80% 強制門檻** / max abs(Δscore) = 75 分(stock 7839 sign flip 95→20)。**對既有 snapshot 影響**:零(v0.2 snapshot 維持;v0.6 snapshot 尚未產出 → 改公式為最佳時機)。**§0.0-G 第 29 次跑通**(§14.7-AX 公式層揭露第 7 次跑通;對映 §14.7-BH)。本版**不**改 §6.4 公式 / §6.7 SSOT 150 / §0.1-A 6 禁令 / §9.9 強制契約原文(僅 builder-layer 落地對齊)/ §9.1 預測契約 / raw DDL / CLI / annual_guard / FG 11 sub-scores / IF 12 sub-scores。同步配套:憲章 §14.7-BH(同次入憲)+ §9.10 升正式條文 + §14.7-BG 補註 + ablation evidence `reports/p1_v01_rms_vs_stddev_ablation_evidence_20260525_1604.md`(已 commit `88cc617`)+ audit_core_universe v0.2 配套(POLICY_SCORE_SCOPE_MAP 升 v0.7.1)。 | **ACTIVE** |
+| v0.7 | 2026-05-25 | Codex | **§14.7-BG VC 凸性對齊落地(§9.10 起草 raw-first 路徑;cv_close → convexity-aware;首例「直接 from raw OHLC 繞過 feature_store gate」)**:依憲章 §14.7-BG 入憲(commit 同次)之 §9.10 起草 + §9.9 範圍裁決追溯,本版落地 VC 公式升:cv_close(對稱壓制凸性)→ convexity = upside_σ − downside_σ(凸性對齊;對映 §0.0-C.3 修補)。補正內容:(I)_load_market_data 之 PriceAdj SQL 加 LAG window function 計算 log_returns + STDDEV FILTER for upside/downside σ;(II)price_data 加 4 新 keys;(III)_volatility_control_score() 升 v0.7 convexity-aware 5 階梯;(IV)score_detail 補 vc_convexity_60d / vc_upside_sigma / vc_downside_sigma 3 新鍵;(V)TOOL_VER v0.6 → v0.7;(VI)DEFAULT_POLICY_VERSION v0.5 → v0.6。對既有 snapshot 影響:零。§9.9 範圍裁決追溯:本版走 raw-first 路徑(直接從 raw OHLC,不從 feature_store)→ 字面不違反;精神上「不等 ablation」為用戶授權之 fast-track。本版不改 §6.4 公式 / §6.7 SSOT / §0.1-A 6 禁令 / §9.9 強制契約 / §6.3 第 7 條 VC 條文原文 / raw DDL / CLI / annual_guard。同步配套:憲章 §14.7-BG + §9.10 起草(同次)+ 設計研究 reports/vc_convexity_alignment_design_research_20260525.md。**v0.7.1 追溯修正(2026-05-25 同日 §14.7-BH 入憲)**:STDDEV 公式經 ablation 揭露不等價於 §9.9 RMS;v0.7.1 起改 RMS;本 v0.7 標記為 SUPERSEDED。 | SUPERSEDED |
 | v0.6 | 2026-05-25 | Codex | **§14.7-BF F proxy 補強 Phase F.1-F.3 落地(v6.1.0-patch 第十輪程式;類比 v0.5 V 補強模式;IF v0.5.1 → v0.6 升 8 sub-scores)**:依憲章 §14.7-BF 入憲(commit `b28872a`),本版落地 Phase F.1-F.3 完整實作:IF sub-scores 1 → 9(+8 新);F proxy 動員 2/25 → 22/25 = 88%。新增 _load Margin + Shareholding SQL;擴張 _load_institutional 加 dealer_self/hedge 分項;8 個新 sub-scores(Dealer 方向 / Margin 4 / Shareholding 3);IF 權重 10% 維持;DEFAULT_POLICY_VERSION v0.4 → v0.5;TOOL_VER v0.5.1 → v0.6。對既有 snapshot 影響:零(metadata 不變)。「資料現實裁決」第 6 次跑通可能:r > 0.7 觸發 §14.7-BG 追溯。本版不改 §6.4 公式 / §6.7 SSOT / §0.1-A / §0.1.3-A.1 / §6.3 第 6 條條文 / raw DDL / CLI / annual_guard / FG 11 sub-scores。同步配套:憲章 §14.7-BF(commit b28872a)+ 設計研究 reports/f_proxy_augmentation_phase_f_design_research_20260525.md。 | SUPERSEDED |
 | v0.5.1 | 2026-05-25 | Codex | **§14.7-BE「資料現實裁決」第 5 次跑通追溯落地(+ParticipateDistributionOfTotalShares SELECT-only animation;V 動員 13/22 → 14/22 = 64% 誠實版)**:依憲章 §14.7-BE 入憲(commit 同次)之治權追溯,v0.5 之後落地前主動 DB query 驗證揭露 §14.7-BC §3.2 表「Dividend 4 cols ≥ 30% 覆蓋」實證後**只 1 cols 真實可用**(Remu / EmpCash 民國 100 年後 schema sunset;StockEarnings 2024 5% 邊際)。**追溯修正**:從計畫加 4 cols → 實際只加 ParticipateDistributionOfTotalShares 1 col(2024 86% 覆蓋)。**補正內容**:(I) `_load_dividend()` 加 SELECT `SUM("ParticipateDistributionOfTotalShares") past 5y avg`;(II) dividend_data 加 `part_dist_5y_avg` 鍵;(III) score_detail 補 `fg_part_dist_5y_avg` 透明欄;(IV) **不加新 sub-score**(避免 multicollinearity 與設計爭議;留待 walk-forward IC 證偽後評估;SELECT-only animation = 「raw 讀取 + 透明寫入但不影響 score」);(V) TOOL_VER v0.5 → v0.5.1;(VI) 主權狀態行加 v0.5.1 追溯說明。**邏輯動量**:FG 11 sub-scores 不變(SELECT-only animation 不加 sub-score);CoreScore 6 維權重不變;clamp 不變;CLI / verdict / annual_guard / candidate_fallback 不變;ROE = None 占位維持(§0.1.3-A.1)。**對既有 snapshot 影響**:零;新 v0.4 snapshot 起 score_detail 透明寫入 part_dist_5y_avg。**「資料現實裁決」第 5 次跑通**(對映 §14.7-AX;§14.7-BE 治權層追溯):前 4 次(ROE / publication-date / FRED vintage / Dividend 民國年);本次**事前事前驗證模式**(對映 §14.7-BD 之事後追溯,本子節為事前早期化)— 治權成本最低。**對下游影響**:future v0.4 policy snapshot 之 score_detail 含 fg_part_dist_5y_avg(透明動員;為 future trainer 預備 feature 來源)。本版**不**修改 §6.4 公式、§6.7 SSOT 150、§0.1-A 6 禁令、§0.1.3-A.1 ROE dropped、§6.3 第 4 條 FG 條文、raw DDL。同步配套:憲章 §14.7-BE(同次入憲 commit)+ §14.7-BC §3.2 表覆蓋率口徑追溯(從「全歷史」改「最近 5y rolling」)。 | SUPERSEDED |
 | v0.5 | 2026-05-25 | Codex | **§14.7-BC V 補強 Phase C/D + FinStmt 落地(v6.1.0-patch 第七輪程式)**:依憲章 §14.7-BC 入憲(commit `a6904aa`,2026-05-25 夜深++)之 V 補強治權預備,本版落地 Phase B 完整實作:**FG sub-scores 5 → 11(+6 新);V 動員 23% → 77%(5/22 → 17/22 cols)**。**新增 3 個 _load_* 方法**:(I) `_load_per()`:取 candidates 之 latest PER/PBR/dividend_yield(native_aligned gate);(II) `_load_dividend()`:取 past 5y CashEarningsDistribution > 0 之配息次數;(III) `_load_financial()` 擴張:加 OperatingIncome/PreTaxIncome/IncomeFromContinuingOperations/NoncontrollingInterests 4 新 V types(quarter-aware gate)。**新增 industry_median 計算**:在 `_load_market_data()` 末計算 per industry 之 PER/PBR median(min 3 stocks/industry),供 PER/PBR industry-relative score 用。**6 個新 FG sub-scores**(對映 §14.7-BC §4.1-4.6 設計):PER 估值 industry-relative ±20 / PBR 估值 industry-relative ±15 / Dividend yield ±10 / 配息穩定性 ±10 / Operating Margin ±10 / Attributable Ratio ±5。**邏輯動量**:CoreScore v0.2 六層權重不變(0.25 DQ + 0.25 LM + 0.20 FG + 0.15 TR + 0.10 IF + 0.05 VC - RP);FG 權重 20% 維持;clamp 0..100 不變;ROE = None 占位維持(§0.1.3-A.1)。**CLI 介面不變**(--dry-run / --commit / --as-of-date / --policy-version / --special-rebalance-reason);annual_rebalance_guard / candidate_fallback / 5 張治理表寫入順序不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**DEFAULT_POLICY_VERSION v0.3 → v0.4**;TOOL_VER v0.4 → v0.5;主權狀態行加 v0.5 落地說明;標頭核心定義說明補充 V 補強之治權邊界。**對既有 snapshot 影響**:既有 `core_universe_20260524_core_universe_policy_v0_2` 與 v0.3 snapshots **不重 build**(metadata 不變);新 `core_universe_policy_v0.4` snapshot 起適用 v0.5 builder;預期分層 churn rate < 15%。**score_detail 補入 v0.5 sub-scores**(per_rel / pbr_rel / div_yld / div_stability / op_margin / attr_ratio 6 鍵);selection_reason 顯示新 sub-components。**對下游影響**:future v0.4 policy snapshot 之 universe 可能與 v0.3 略有差異(FG 升級 → fundamental_score 變 → 排序略變);現有 v0.3 snapshot 維持為 audit trail。本版**不**修改 §6.4 CoreScore 公式總結構、§6.7 SSOT 150 鎖定、§0.1-A 6 條禁令、§0.1.3-A.1 ROE dropped 裁決、§6.3 第 4 條 FG 條文原文(留待 v6.2.0 升強制契約)、raw DDL、annual_rebalance_guard、candidate_fallback、5 張治理表寫入順序。**證偽承諾**(對接 §0.1-E 框架,§14.7-BC §7):T_FG_v0.5.1 (v0.5 IC ≥ v0.3 baseline) / T_FG_v0.5.2 (fundamental_score 與 industry-rel valuation 相關 > 0.4) / T_FG_v0.5.3 (walk-forward IC stdev ≤ v0.3) / T_FG_v0.5.4 (dry-run mean/std 差異 ∈ [+5, +20])。**audit_core_universe 配套需求**:audit 工具需加 `core_universe_policy_v0.4` 識別(對應 score_detail v0.5 鍵驗收;另案升版)。同步配套:憲章 §14.7-BC(已入憲 commit `a6904aa`)+ 設計研究 `reports/v_augmentation_phase_cd_design_research_20260525.md`(13 章 + 3 附錄)+ 修訂歷程 v6.1.0-patch 2026-05-25 第七輪 entry(程式落地;不需新 charter entry)。 | SUPERSEDED |
@@ -89,7 +90,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.7"
+TOOL_VER = "v0.7.1"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.6"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
@@ -632,8 +633,10 @@ class CoreUniverseBuilder:
                     "price_coverage_252d": min(1.0, (day_count or 0) / 252),
                 }
 
-            # v0.7 §14.7-BG: ΔlnP 凸性計算(60d window;SQL LAG window function;raw OHLC)
-            # 對映 §0.0-C.3 上行凸性壓制修補 + §9.10 起草(raw-first 路徑;不從 feature_store)
+            # v0.7.1 §14.7-BH(§9.10 升正式條文 + §14.7-BG 補註):ΔlnP 凸性計算(60d window;SQL LAG window function;raw OHLC)
+            # 公式對齊 §9.9 P1 v0.1 強制契約:upside/downside_RMS = SQRT(AVG(lr²) FILTER) × √252(取代 STDDEV)
+            # 對映 §0.0-C.3 上行凸性壓制修補 + §9.10 正式條文(raw-first 路徑;不從 feature_store)
+            # v0.7 STDDEV 變體 ablation 揭露不等價於 §9.9 RMS(Top-120 overlap 73.3%;sign flip 75 分);v0.7.1 起改 RMS
             lookback_60d_for_vc = self.as_of_date - timedelta(days=90)  # ~60 交易日
             cur.execute(f"""
                 WITH log_returns AS (
@@ -645,8 +648,8 @@ class CoreUniverseBuilder:
                 )
                 SELECT stock_id,
                     STDDEV(lr) FILTER (WHERE lr IS NOT NULL) * SQRT(252.0) as cc_sigma,
-                    STDDEV(lr) FILTER (WHERE lr > 0) * SQRT(252.0) as upside_sigma,
-                    STDDEV(lr) FILTER (WHERE lr < 0) * SQRT(252.0) as downside_sigma,
+                    SQRT(AVG(lr*lr) FILTER (WHERE lr > 0)) * SQRT(252.0) as upside_rms,
+                    SQRT(AVG(lr*lr) FILTER (WHERE lr < 0)) * SQRT(252.0) as downside_rms,
                     COUNT(*) FILTER (WHERE lr IS NOT NULL) as n_obs
                 FROM log_returns
                 GROUP BY stock_id
@@ -660,8 +663,8 @@ class CoreUniverseBuilder:
                 convexity = (up_f - down_f) if (up_f is not None and down_f is not None) else None
                 price_data[sid].update({
                     "cc_sigma_60d": cc_f,
-                    "upside_sigma_60d": up_f,
-                    "downside_sigma_60d": down_f,
+                    "upside_rms_60d": up_f,
+                    "downside_rms_60d": down_f,
                     "convexity_60d": convexity,
                     "vc_n_obs": int(n or 0),
                 })
@@ -1518,7 +1521,7 @@ class CoreUniverseBuilder:
         sh_data = (shareholding_data or {}).get(stock_id, {})
         inst_data = (institutional_data or {}).get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.7_VC_convexity_aligned",
+            "score_scope": "v0.7.1_VC_convexity_aligned_rms",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
             "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
@@ -1548,10 +1551,10 @@ class CoreUniverseBuilder:
             "if_foreign_upper_limit": sh_data.get("foreign_upper_limit"),
             "if_num_shares_issued": sh_data.get("num_shares_issued"),
             "if_foreign_ratio_60d_change": sh_data.get("foreign_ratio_60d_change"),
-            # v0.7 §14.7-BG VC convexity sub-components(透明寫入;新 VC sub-score 之輸入)
+            # v0.7.1 §14.7-BH VC convexity sub-components(RMS 對齊 §9.9 RMS 強制契約;透明寫入)
             "vc_convexity_60d": price_data.get(stock_id, {}).get("convexity_60d"),
-            "vc_upside_sigma_60d": price_data.get(stock_id, {}).get("upside_sigma_60d"),
-            "vc_downside_sigma_60d": price_data.get(stock_id, {}).get("downside_sigma_60d"),
+            "vc_upside_rms_60d": price_data.get(stock_id, {}).get("upside_rms_60d"),
+            "vc_downside_rms_60d": price_data.get(stock_id, {}).get("downside_rms_60d"),
             "vc_cc_sigma_60d": price_data.get(stock_id, {}).get("cc_sigma_60d"),
             "fg_op_margin": f_data.get("op_margin"),
             "fg_pretax_margin": f_data.get("pretax_margin"),
