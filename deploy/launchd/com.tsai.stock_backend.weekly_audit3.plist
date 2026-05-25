@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tsai.stock_backend.weekly_audit3</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hugo/project/stock_backend/scripts/maintenance/weekly_audit3.sh</string>
+    </array>
+
+    <!-- 週日凌晨 03:00 跑全市場 audit 3 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hugo/project/stock_backend/logs/weekly/launchd_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/hugo/project/stock_backend/logs/weekly/launchd_stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hugo/project/stock_backend</string>
+</dict>
+</plist>

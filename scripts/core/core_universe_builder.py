@@ -91,9 +91,11 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.8"
-# DEFAULT_POLICY_VERSION 維持 v0.6:v0.8 程式 ready 但 BS sync 受 FinMind sponsor paywall 阻擋
-# (§14.7-BJ 2026-05-25 揭露)。未來升 sponsor 後改 v0.7 並 commit 新 snapshot 即可激活 ROE。
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.6"
+# DEFAULT_POLICY_VERSION 升 v0.7(2026-05-26 切 production):§14.7-BI ROE 解鎖 SUCCESS
+# (sponsor confirmed active till 2026-06-24,2353 stocks BS sync 完成,150/150 core+convex 100% ROE coverage)
+# audit v0.7 snapshot:PASS=41 / WARN=1 / FAIL=0,V 動員度 64% → 73%。
+# v0.6 snapshot 保留為 audit trail(歷史記述);新 sync 預設用 v0.7 policy。
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"

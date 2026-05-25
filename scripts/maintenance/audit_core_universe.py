@@ -79,7 +79,7 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.2"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.6"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"
 REQUIRED_TABLES = [
     "pipeline_execution_log",
     "data_audit_log",
