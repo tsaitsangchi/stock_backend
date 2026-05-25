@@ -84,6 +84,7 @@ reports/*
 !reports/first_principles_completion_diagnosis_*.md
 !reports/first_principles_evidence_chain_gap_*.md
 !reports/first_principles_field_inventory_research_*.md
+!reports/publication_date_discipline_design_research_*.md
 !reports/v6_*_p0_completion_*.md
 !reports/v6_*_p0_v02_*.md
 !reports/portfolio_sizer_v0*_implementation_audit_*.md
