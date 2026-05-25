@@ -1,8 +1,8 @@
 """
-core_universe_builder.py v0.4 (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.5 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層正式評分 + v0.3 FG GrossProfit sub-score 落地 + §8.5 第 9 條 Publication-date Discipline Phase 3 落地;讀 data_schema.build_publication_date_gate SSOT helper + 12 處 SQL gate per-table 分派)
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層正式評分 + v0.3 FG GrossProfit + v0.4 §8.5-9 Phase 3 + v0.5 §14.7-BC V 補強 Phase C/D + FinStmt 落地;FG sub-scores 5 → 11;V 動員 23% → 77%;policy v0.3 → v0.4)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:
@@ -38,10 +38,10 @@ v0.2 六層 CoreScore 評分公式:
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [Step 4B-dry：年度重選前驗算]** | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.4 |
-| **2. [Step 4B-commit：年度正式重選]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.4 |
-| **3. [Special override：DB rebuild bootstrap]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "DB rebuild bootstrap YYYY-MM-DD <stage>"` | core_universe_builder v0.4 |
-| **4. [Special override：政策升版]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "Policy upgrade vX.X to vY.Y"` | core_universe_builder v0.4 |
+| **1. [Step 4B-dry：年度重選前驗算]** | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.5 |
+| **2. [Step 4B-commit：年度正式重選]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.5 |
+| **3. [Special override：DB rebuild bootstrap]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "DB rebuild bootstrap YYYY-MM-DD <stage>"` | core_universe_builder v0.5 |
+| **4. [Special override：政策升版]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "Policy upgrade vX.X to vY.Y"` | core_universe_builder v0.5 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -54,7 +54,8 @@ v0.2 六層 CoreScore 評分公式:
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.4** | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 3 落地(配套 data_schema v2.20 SSOT helper + feature_store_builder v0.5;v6.1.0-patch 同次)**:依憲章 §8.5-9.7 Phase 3 升版觸發,加 `from core.data_schema import build_publication_date_gate` SSOT helper,**5 處 SQL gate per-table 分派升版**(僅 CoreScore 計算層:PriceAdj/MonthRevenue/FinStmt latest_margin/FinStmt EPS/Institutional;Preflight 7 處 metadata 統計留 v0.5 升版)。**邏輯動量**:CoreScore v0.2 六層權重不變;v0.3 FG GrossProfit sub-score 維持;ROE dropped 維持;CLI / verdict / annual_guard / candidate_fallback 不變。**對既有 snapshot 影響**:零(既有不重 build;新 v0.4 snapshot 之 FinStmt 之 Q1+45/Q4+90 未公告 quarter 排除,可能微影響 fundamental_score)。**Phase 3 SSOT 配套**:三檔(data_schema v2.20 + feature_store_builder v0.5 + 本 v0.4)共用 build_publication_date_gate 單一 helper。本版**不**改 §6 治理 schema、CoreScore 公式、raw DDL、preflight 結構(僅 SQL gate)、annual_rebalance_guard、5 張治理表寫入順序。 | **ACTIVE** |
+| **v0.5** | 2026-05-25 | Codex | **§14.7-BC V 補強 Phase C/D + FinStmt 落地(v6.1.0-patch 第七輪程式)**:依憲章 §14.7-BC 入憲(commit `a6904aa`,2026-05-25 夜深++)之 V 補強治權預備,本版落地 Phase B 完整實作:**FG sub-scores 5 → 11(+6 新);V 動員 23% → 77%(5/22 → 17/22 cols)**。**新增 3 個 _load_* 方法**:(I) `_load_per()`:取 candidates 之 latest PER/PBR/dividend_yield(native_aligned gate);(II) `_load_dividend()`:取 past 5y CashEarningsDistribution > 0 之配息次數;(III) `_load_financial()` 擴張:加 OperatingIncome/PreTaxIncome/IncomeFromContinuingOperations/NoncontrollingInterests 4 新 V types(quarter-aware gate)。**新增 industry_median 計算**:在 `_load_market_data()` 末計算 per industry 之 PER/PBR median(min 3 stocks/industry),供 PER/PBR industry-relative score 用。**6 個新 FG sub-scores**(對映 §14.7-BC §4.1-4.6 設計):PER 估值 industry-relative ±20 / PBR 估值 industry-relative ±15 / Dividend yield ±10 / 配息穩定性 ±10 / Operating Margin ±10 / Attributable Ratio ±5。**邏輯動量**:CoreScore v0.2 六層權重不變(0.25 DQ + 0.25 LM + 0.20 FG + 0.15 TR + 0.10 IF + 0.05 VC - RP);FG 權重 20% 維持;clamp 0..100 不變;ROE = None 占位維持(§0.1.3-A.1)。**CLI 介面不變**(--dry-run / --commit / --as-of-date / --policy-version / --special-rebalance-reason);annual_rebalance_guard / candidate_fallback / 5 張治理表寫入順序不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**DEFAULT_POLICY_VERSION v0.3 → v0.4**;TOOL_VER v0.4 → v0.5;主權狀態行加 v0.5 落地說明;標頭核心定義說明補充 V 補強之治權邊界。**對既有 snapshot 影響**:既有 `core_universe_20260524_core_universe_policy_v0_2` 與 v0.3 snapshots **不重 build**(metadata 不變);新 `core_universe_policy_v0.4` snapshot 起適用 v0.5 builder;預期分層 churn rate < 15%。**score_detail 補入 v0.5 sub-scores**(per_rel / pbr_rel / div_yld / div_stability / op_margin / attr_ratio 6 鍵);selection_reason 顯示新 sub-components。**對下游影響**:future v0.4 policy snapshot 之 universe 可能與 v0.3 略有差異(FG 升級 → fundamental_score 變 → 排序略變);現有 v0.3 snapshot 維持為 audit trail。本版**不**修改 §6.4 CoreScore 公式總結構、§6.7 SSOT 150 鎖定、§0.1-A 6 條禁令、§0.1.3-A.1 ROE dropped 裁決、§6.3 第 4 條 FG 條文原文(留待 v6.2.0 升強制契約)、raw DDL、annual_rebalance_guard、candidate_fallback、5 張治理表寫入順序。**證偽承諾**(對接 §0.1-E 框架,§14.7-BC §7):T_FG_v0.5.1 (v0.5 IC ≥ v0.3 baseline) / T_FG_v0.5.2 (fundamental_score 與 industry-rel valuation 相關 > 0.4) / T_FG_v0.5.3 (walk-forward IC stdev ≤ v0.3) / T_FG_v0.5.4 (dry-run mean/std 差異 ∈ [+5, +20])。**audit_core_universe 配套需求**:audit 工具需加 `core_universe_policy_v0.4` 識別(對應 score_detail v0.5 鍵驗收;另案升版)。同步配套:憲章 §14.7-BC(已入憲 commit `a6904aa`)+ 設計研究 `reports/v_augmentation_phase_cd_design_research_20260525.md`(13 章 + 3 附錄)+ 修訂歷程 v6.1.0-patch 2026-05-25 第七輪 entry(程式落地;不需新 charter entry)。 | **ACTIVE** |
+| v0.4 | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 3 落地(配套 data_schema v2.20 SSOT helper + feature_store_builder v0.5;v6.1.0-patch 同次)**:依憲章 §8.5-9.7 Phase 3 升版觸發,加 `from core.data_schema import build_publication_date_gate` SSOT helper,**5 處 SQL gate per-table 分派升版**(僅 CoreScore 計算層:PriceAdj/MonthRevenue/FinStmt latest_margin/FinStmt EPS/Institutional;Preflight 7 處 metadata 統計留 v0.5 升版)。**邏輯動量**:CoreScore v0.2 六層權重不變;v0.3 FG GrossProfit sub-score 維持;ROE dropped 維持;CLI / verdict / annual_guard / candidate_fallback 不變。**對既有 snapshot 影響**:零(既有不重 build;新 v0.4 snapshot 之 FinStmt 之 Q1+45/Q4+90 未公告 quarter 排除,可能微影響 fundamental_score)。**Phase 3 SSOT 配套**:三檔(data_schema v2.20 + feature_store_builder v0.5 + 本 v0.4)共用 build_publication_date_gate 單一 helper。本版**不**改 §6 治理 schema、CoreScore 公式、raw DDL、preflight 結構(僅 SQL gate)、annual_rebalance_guard、5 張治理表寫入順序。 | SUPERSEDED |
 | v0.3 | 2026-05-24 | Codex | **Phase B FG GrossProfit sub-score 落地 + ROE dropped(§0.1.3-A.1「資料現實裁決」首次跑通典範)**:依 §0.1.3-A V 落地度 gap 揭露,於 FG sub-score 新增 GrossProfit/Revenue 毛利率(5 階梯:>40%/>25%/>10%/>5%/其餘 → +10/+5/0/-3/-8);DEFAULT_POLICY_VERSION v0.2 → v0.3;TOOL_VER v0.2 → v0.3;**ROE 因 raw data 限制 dropped**:§0.1.3-A.1 揭露 `EquityAttributableToOwnersOfParent.value ≈ IncomeAfterTaxes.value`(mislabel),非真正股東權益 → ROE 無法計算;builder 保留 `financial_data[sid]['roe'] = None` 占位;對映 §14.7-AX 治權元規則第一次跑通。CoreScore 六層權重不變;committed snapshot `core_universe_20260524_core_universe_policy_v0_2`(audit 41/0/0 PERFECT)。 | SUPERSEDED |
 | v0.2 | 2026-05-16 | Codex | CoreScore 六層正式評分入憲（§6.1〜§6.6）：六權重 0.25/0.25/0.20/0.15/0.10/0.05 + RiskPenalty；八類輸入資料契約 preflight；2026-05-17 補入 `--special-rebalance-reason` 與 `_annual_rebalance_guard()`（§6.8 年度重選契約）；2026-05-18 v6.0.0-patch 確認 latest_registry_fallback 低品質入選之透明性裁決。 | SUPERSEDED |
 | v0.1 | 2026-05-14 | Codex | 首版：metadata bootstrap、五分層（core/convex/research/quarantine）；preflight 與覆蓋率摘要；policy/snapshot/membership/scores/revision log 五張治理表寫入。 | SUPERSEDED |
@@ -85,8 +86,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.4"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.3"
+TOOL_VER = "v0.5"
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.4"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
@@ -699,7 +700,90 @@ class CoreUniverseBuilder:
                     "gross_margin": latest_margin.get(sid),
                     # v0.3 ROE 因 raw data 限制 dropped(見 §0.1.3-A);保留 None 占位
                     "roe": None,
+                    # v0.5 §14.7-BC: 4 新 V types(見下方)
+                    "op_margin": None,
+                    "pretax_margin": None,
+                    "continuing_op_ratio": None,
+                    "attributable_ratio": None,
                 }
+
+            # v0.5 §14.7-BC: 4 新 FinStmt V types(OperatingIncome / PreTaxIncome /
+            # IncomeFromContinuingOperations / NoncontrollingInterests)— 取 latest quarter
+            cur.execute(f"""
+                WITH latest_v05 AS (
+                    SELECT DISTINCT ON (stock_id, type) stock_id, type, value::numeric AS v
+                    FROM "TaiwanStockFinancialStatements"
+                    WHERE date >= %s AND {fs_gate}
+                      AND type IN ('OperatingIncome', 'PreTaxIncome',
+                                   'IncomeFromContinuingOperations',
+                                   'NoncontrollingInterests', 'IncomeAfterTaxes', 'Revenue')
+                    ORDER BY stock_id, type, date DESC
+                )
+                SELECT stock_id,
+                    MAX(v) FILTER (WHERE type='OperatingIncome') AS op_inc,
+                    MAX(v) FILTER (WHERE type='PreTaxIncome') AS pretax,
+                    MAX(v) FILTER (WHERE type='IncomeFromContinuingOperations') AS cont_op,
+                    MAX(v) FILTER (WHERE type='NoncontrollingInterests') AS nci,
+                    MAX(v) FILTER (WHERE type='IncomeAfterTaxes') AS net_inc_after_tax,
+                    MAX(v) FILTER (WHERE type='Revenue') AS rev_latest
+                FROM latest_v05
+                GROUP BY stock_id
+            """, (lookback_730, *([self.as_of_date] * fs_n_ap)))
+            for sid, op_inc, pretax, cont_op, nci, nia, rev in cur.fetchall():
+                if sid not in financial_data:
+                    continue
+                rev_f = float(rev or 0)
+                nia_f = float(nia or 0)
+                if rev_f > 0:
+                    if op_inc is not None:
+                        financial_data[sid]["op_margin"] = float(op_inc) / rev_f
+                    if pretax is not None:
+                        financial_data[sid]["pretax_margin"] = float(pretax) / rev_f
+                    if cont_op is not None:
+                        financial_data[sid]["continuing_op_ratio"] = float(cont_op) / rev_f
+                if nia_f > 0 and nci is not None:
+                    nci_f = float(nci)
+                    if nci_f <= nia_f:
+                        financial_data[sid]["attributable_ratio"] = (nia_f - nci_f) / nia_f
+                    else:
+                        financial_data[sid]["attributable_ratio"] = -1.0  # sentinel:NCI > NI 異常
+
+            # v0.5 §14.7-BC: TaiwanStockPER (PER/PBR/dividend_yield)— native_aligned;latest per stock
+            per_data = {}
+            per_gate, per_n_ap = build_publication_date_gate("TaiwanStockPER")
+            cur.execute(f"""
+                SELECT DISTINCT ON (stock_id) stock_id,
+                    "PER"::numeric, "PBR"::numeric, dividend_yield::numeric
+                FROM "TaiwanStockPER"
+                WHERE {per_gate}
+                ORDER BY stock_id, date DESC
+            """, (*([self.as_of_date] * per_n_ap),))
+            for sid, per, pbr, yld in cur.fetchall():
+                per_data[sid] = {
+                    "per": float(per) if per is not None else None,
+                    "pbr": float(pbr) if pbr is not None else None,
+                    "div_yield": float(yld) if yld is not None else None,
+                }
+
+            # v0.5 §14.7-BC + §14.7-BD「資料現實裁決」第 4 次跑通:
+            # TaiwanStockDividend.year 為民國年格式('113年'=西元 2024)非西元 4 位數!
+            # 2026-05-25 dry-run 揭露 SQL `year ~ '^[0-9]{4}$'` 完全 miss(dividend=0)
+            # 修正:解析 '113年' → 民國 113 → 西元 2024;past 5y = [西元-5, 西元當年)
+            roc_5y_ago = (self.as_of_date.year - 5) - 1911  # e.g., 2026-5=2021 → 民國 110
+            roc_current = self.as_of_date.year - 1911       # e.g., 2026 → 民國 115
+            dividend_data = {}
+            cur.execute("""
+                SELECT stock_id, COUNT(DISTINCT year) as div_count_5y
+                FROM "TaiwanStockDividend"
+                WHERE "CashEarningsDistribution" IS NOT NULL
+                  AND "CashEarningsDistribution" > 0
+                  AND year ~ '^[0-9]+年$'
+                  AND CAST(REGEXP_REPLACE(year, '年$', '') AS INTEGER) >= %s
+                  AND CAST(REGEXP_REPLACE(year, '年$', '') AS INTEGER) < %s
+                GROUP BY stock_id
+            """, (roc_5y_ago, roc_current))
+            for sid, cnt in cur.fetchall():
+                dividend_data[sid] = {"div_count_5y": int(cnt or 0)}
 
             # TaiwanStockInstitutionalInvestorsBuySell: net buy/sell by institution type
             # Names: Foreign_Investor, Investment_Trust, Dealer_self, Dealer_Hedging, Foreign_Dealer_Self
@@ -729,9 +813,41 @@ class CoreUniverseBuilder:
             conn.close()
         self._detail(
             f"📊 [MARKET-DATA] price={len(price_data)} revenue={len(revenue_data)} "
-            f"financial={len(financial_data)} institutional={len(institutional_data)}"
+            f"financial={len(financial_data)} institutional={len(institutional_data)} "
+            f"per={len(per_data)} dividend={len(dividend_data)}"
         )
-        return price_data, revenue_data, financial_data, institutional_data
+        return (price_data, revenue_data, financial_data, institutional_data,
+                per_data, dividend_data)
+
+    def _compute_industry_medians(self, candidates, per_data):
+        """v0.5 §14.7-BC: 計算 per industry 之 PER/PBR median(min 3 stocks)
+        供 _per_industry_relative_score / _pbr_industry_relative_score 用。
+        """
+        by_industry = {}
+        for c in candidates:
+            industry = (c.industry_category or "").strip()
+            if not industry:
+                continue
+            p = per_data.get(c.stock_id, {})
+            per = p.get("per")
+            pbr = p.get("pbr")
+            if per is not None and per > 0:
+                by_industry.setdefault(industry, {"per": [], "pbr": []})["per"].append(per)
+            if pbr is not None and pbr > 0:
+                by_industry.setdefault(industry, {"per": [], "pbr": []})["pbr"].append(pbr)
+
+        industry_median = {}
+        for industry, vals in by_industry.items():
+            per_list = sorted(vals.get("per", []))
+            pbr_list = sorted(vals.get("pbr", []))
+            entry = {}
+            if len(per_list) >= 3:
+                entry["per"] = per_list[len(per_list) // 2]
+            if len(pbr_list) >= 3:
+                entry["pbr"] = pbr_list[len(pbr_list) // 2]
+            if entry:
+                industry_median[industry] = entry
+        return industry_median
 
     # ── v0.2 六層評分方法 ──────────────────────────────────────────────────────
 
@@ -759,20 +875,25 @@ class CoreUniverseBuilder:
         total = value_score * 0.85 + continuity * 15.0
         return round(min(100.0, max(0.0, total)), 2)
 
-    def _fundamental_gravity_score(self, stock_id, revenue_data, financial_data):
-        """FundamentalGravity (20%): YoY + profitability + v0.3 gross_margin
+    def _fundamental_gravity_score(self, stock_id, revenue_data, financial_data,
+                                    per_data=None, dividend_data=None,
+                                    industry_median=None, industry_category=None):
+        """FundamentalGravity (20%): v0.5 11-sub-score(v0.3 5 + v0.5 6 新)
 
-        v0.3(2026-05-24)補入 §0.1.3 之 V 物理基礎細項:毛利率(GrossProfit/Revenue)。
-        原計畫含 ROE,但實作期間揭露 TaiwanStockFinancialStatements 為純 income statement,
-        無真正股東權益欄位(EquityAttributableToOwnersOfParent type 實為淨利數據,
-        mislabeled);ROE 無法計算,已入憲 §0.1.3-A;沿用 None 占位以便未來換 raw 源時補上。
-        新 gm 分項 missing-data 時 0 影響(不雙重懲罰低覆蓋股),clamp [0, 100]。
+        v0.3(2026-05-24):Revenue YoY + EPS sum + net_income + GrossProfit + coverage
+        v0.5(2026-05-25 §14.7-BC):+ PER 估值 industry-relative ±20 + PBR 估值 industry-relative ±15
+          + Dividend yield ±10 + 配息穩定性 ±10 + Operating Margin ±10 + Attributable Ratio ±5
+
+        v0.5 之 6 個新 sub-scores 需 per_data/dividend_data/industry_median/industry_category;
+        若任一缺失,fallback to v0.3 行為(該 sub-score 0 contribution,中性)。
+        ROE 維持 None 占位(§0.1.3-A.1)。FG 權重 20% 不變。clamp 0..100。
         """
         r = revenue_data.get(stock_id, {})
         f = financial_data.get(stock_id, {})
-        if not r and not f:
+        if not r and not f and not per_data:
             return 50.0
         score = 50.0
+        # === v0.3 既有(維持)===
         yoy = r.get("yoy_growth", 0.0)
         if yoy > 0.30:
             score += 25.0
@@ -790,7 +911,7 @@ class CoreUniverseBuilder:
             score += 10.0
         else:
             score -= 15.0
-        # v0.3: 毛利率(GrossProfit / Revenue 之 4Q 累計)
+        # v0.3 毛利率
         gm = f.get("gross_margin")
         if gm is not None and gm > 0:
             if gm > 0.40:
@@ -803,10 +924,143 @@ class CoreUniverseBuilder:
                 score -= 3.0
             else:
                 score -= 8.0
-        # v0.3: ROE — DROPPED(raw data 限制,見 _collect_market_data 註解 + §0.1.3-A)
+        # v0.3 coverage bonus
         coverage = (r.get("revenue_coverage_24m", 0.0) + f.get("financial_coverage_8q", 0.0)) / 2.0
         score += coverage * 10.0
+
+        # === v0.5 §14.7-BC 6 個新 sub-scores ===
+        score += self._per_industry_relative_score(stock_id, per_data, industry_median, industry_category)
+        score += self._pbr_industry_relative_score(stock_id, per_data, industry_median, industry_category)
+        score += self._dividend_yield_score(stock_id, per_data)
+        score += self._dividend_stability_score(stock_id, dividend_data)
+        score += self._operating_margin_score(f.get("op_margin"))
+        score += self._attributable_ratio_score(f.get("attributable_ratio"))
+
         return round(min(100.0, max(0.0, score)), 2)
+
+    # ── v0.5 §14.7-BC 6 個新 FG sub-score helpers ──────────────────────────
+
+    def _per_industry_relative_score(self, stock_id, per_data, industry_median, industry_category):
+        """PER 估值(industry-relative)±20;PER < 0 或 > p99=1766 加 risk 警示(本函式只回 score)。"""
+        if not per_data or not industry_median or not industry_category:
+            return 0.0
+        per = per_data.get(stock_id, {}).get("per")
+        if per is None:
+            return 0.0
+        if per <= 0:
+            return -5.0  # 虧損公司
+        if per > 1766.90:  # 全市場 p99 = outlier 處理
+            return -5.0
+        med = industry_median.get(industry_category, {}).get("per")
+        if med is None or med <= 0:
+            return 0.0  # 該 industry < 3 stocks 無 median
+        rel = per / med
+        if rel < 0.7:
+            return 10.0
+        if rel < 1.0:
+            return 5.0
+        if rel <= 1.5:
+            return 0.0
+        if rel <= 2.0:
+            return -5.0
+        return -10.0
+
+    def _pbr_industry_relative_score(self, stock_id, per_data, industry_median, industry_category):
+        """PBR 估值(industry-relative)±15;金融業 special-case(絕對 PBR <=1.5 +3)。"""
+        if not per_data or not industry_median or not industry_category:
+            return 0.0
+        pbr = per_data.get(stock_id, {}).get("pbr")
+        if pbr is None or pbr <= 0:
+            return 0.0
+        # 金融業特殊:絕對 PBR <=1.5 +3(銀行 BV 計算特殊)
+        if "金融" in industry_category or "銀行" in industry_category or "保險" in industry_category:
+            if pbr <= 1.5:
+                return 3.0
+            elif pbr <= 2.5:
+                return 0.0
+            return -3.0
+        med = industry_median.get(industry_category, {}).get("pbr")
+        if med is None or med <= 0:
+            # fallback absolute cap
+            if pbr >= 10:
+                return -5.0
+            if pbr >= 5:
+                return -2.0
+            return 0.0
+        rel = pbr / med
+        if rel < 0.8:
+            return 5.0
+        if rel <= 1.5:
+            return 0.0
+        if rel <= 2.5:
+            return -3.0
+        return -8.0
+
+    def _dividend_yield_score(self, stock_id, per_data):
+        """Dividend yield 評分 ±10;> 10% distress 警示反 -5。"""
+        if not per_data:
+            return 0.0
+        yld = per_data.get(stock_id, {}).get("div_yield")
+        if yld is None:
+            return 0.0
+        if yld > 10:
+            return -5.0  # distress 警示(可能股價暴跌造成偽高 yld)
+        if yld > 5:
+            return 8.0
+        if yld > 3:
+            return 5.0
+        if yld > 1:
+            return 0.0
+        if yld > 0:
+            return -2.0
+        return -5.0  # yld == 0(不配息)
+
+    def _dividend_stability_score(self, stock_id, dividend_data):
+        """配息穩定性 ±10;past 5y 配息次數(CashEarningsDistribution > 0)。"""
+        if not dividend_data:
+            return 0.0
+        cnt = dividend_data.get(stock_id, {}).get("div_count_5y")
+        if cnt is None:
+            return 0.0
+        if cnt >= 5:
+            return 10.0
+        if cnt >= 4:
+            return 6.0
+        if cnt >= 3:
+            return 3.0
+        if cnt >= 2:
+            return 0.0
+        if cnt >= 1:
+            return -2.0
+        return -3.0  # 0 次配息(5y)
+
+    def _operating_margin_score(self, op_margin):
+        """Operating Margin(OperatingIncome / Revenue)±10。"""
+        if op_margin is None:
+            return 0.0
+        if op_margin > 0.30:
+            return 10.0
+        if op_margin > 0.15:
+            return 5.0
+        if op_margin > 0.05:
+            return 0.0
+        if op_margin > 0:
+            return -3.0
+        return -8.0  # 虧損營運
+
+    def _attributable_ratio_score(self, attr_ratio):
+        """Attributable Ratio((NI - NCI) / NI)±5;> 0.95 +3 / 異常 -5。"""
+        if attr_ratio is None:
+            return 0.0
+        if attr_ratio < 0:
+            return -5.0  # sentinel:NCI > NI 異常
+        if attr_ratio > 0.95:
+            return 3.0
+        if attr_ratio > 0.85:
+            return 1.0
+        if attr_ratio > 0.7:
+            return 0.0
+        return -3.0
 
     def _theme_resonance_score(self, industry_category):
         """ThemeResonance (15%): MBNRIC 第六波主題共振 (AI/半導體/生技/綠能)"""
@@ -887,8 +1141,12 @@ class CoreUniverseBuilder:
             reasons.append("missing_type")
         return min(risk, 100.0), reasons
 
-    def _score_candidate(self, row, price_data, revenue_data, financial_data, institutional_data):
-        """v0.2 六層 CoreScore: DQ + LM + FG + TR + IF + VC - RP"""
+    def _score_candidate(self, row, price_data, revenue_data, financial_data, institutional_data,
+                         per_data=None, dividend_data=None, industry_median=None):
+        """v0.5 §14.7-BC: 六層 CoreScore + FG v0.5 11 sub-scores
+        signature 加 per_data / dividend_data / industry_median(v0.5 §14.7-BC)。
+        若 None,fallback v0.3 行為(FG v0.5 之 6 個新 sub-score 返 0 中性)。
+        """
         stock_id, stock_name, type_value, industry_category, source_date = row
 
         # Metadata missing fields (used for risk profile only)
@@ -902,10 +1160,14 @@ class CoreUniverseBuilder:
 
         risk_penalty, risk_reasons = self._risk_profile(type_value, industry_category, missing_fields)
 
-        # Six-layer scoring
+        # Six-layer scoring (v0.5: FG 加 6 新 sub-scores)
         dq = self._data_quality_score_v2(stock_id, price_data, revenue_data, financial_data)
         lm = self._liquidity_mass_score(stock_id, price_data)
-        fg = self._fundamental_gravity_score(stock_id, revenue_data, financial_data)
+        fg = self._fundamental_gravity_score(
+            stock_id, revenue_data, financial_data,
+            per_data=per_data, dividend_data=dividend_data,
+            industry_median=industry_median, industry_category=industry_category,
+        )
         tr = self._theme_resonance_score(industry_category)
         inst_f = self._institutional_flow_score(stock_id, institutional_data)
         vc = self._volatility_control_score(stock_id, price_data)
@@ -930,24 +1192,36 @@ class CoreUniverseBuilder:
 
         exclusion_reason = "; ".join(risk_reasons) if risk_penalty >= 50.0 else None
         selection_reason = (
-            f"CoreScore v0.3: {core_score:.1f} "
+            f"CoreScore v0.5: {core_score:.1f} "
             f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} TR={tr:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
         )
         if exclusion_reason:
             selection_reason = f"quarantine: {exclusion_reason}"
 
-        # v0.3: 透明寫入 FG sub-component(gross_margin / roe)便於下游診斷與 audit
+        # v0.5 §14.7-BC: 透明寫入 FG sub-components 便於下游診斷與 audit
         f_data = financial_data.get(stock_id, {})
+        p_data = (per_data or {}).get(stock_id, {})
+        d_data = (dividend_data or {}).get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.3_six_layer_extended",
+            "score_scope": "v0.5_eleven_sub_score",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
             "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
             "data_quality_score": dq,
             "liquidity_mass_score": lm,
             "fundamental_gravity_score": fg,
+            # v0.3 既有 FG sub-components
             "fg_gross_margin": f_data.get("gross_margin"),
             "fg_roe": f_data.get("roe"),
+            # v0.5 §14.7-BC 新增 6 個 FG sub-components(透明)
+            "fg_per": p_data.get("per"),
+            "fg_pbr": p_data.get("pbr"),
+            "fg_div_yield": p_data.get("div_yield"),
+            "fg_div_count_5y": d_data.get("div_count_5y"),
+            "fg_op_margin": f_data.get("op_margin"),
+            "fg_pretax_margin": f_data.get("pretax_margin"),
+            "fg_continuing_op_ratio": f_data.get("continuing_op_ratio"),
+            "fg_attributable_ratio": f_data.get("attributable_ratio"),
             "theme_resonance_score": tr,
             "institutional_flow_score": inst_f,
             "volatility_control_score": vc,
@@ -1014,7 +1288,24 @@ class CoreUniverseBuilder:
             cur.close()
             conn.close()
 
-        candidates = [self._score_candidate(row, *self._market_data) for row in rows]
+        # v0.5 §14.7-BC: 先計算 industry_median(用 rows + per_data)
+        price_data, revenue_data, financial_data, institutional_data, per_data, dividend_data = self._market_data
+        from types import SimpleNamespace
+        mini_candidates = [SimpleNamespace(stock_id=r[0], industry_category=r[3]) for r in rows]
+        industry_median = self._compute_industry_medians(mini_candidates, per_data)
+        self._detail(
+            f"📊 [INDUSTRY-MEDIAN v0.5] computed for {len(industry_median)} industries "
+            f"(min 3 stocks/industry;PER/PBR median for industry-relative FG sub-scores)"
+        )
+
+        candidates = [
+            self._score_candidate(
+                row, price_data, revenue_data, financial_data, institutional_data,
+                per_data=per_data, dividend_data=dividend_data,
+                industry_median=industry_median,
+            )
+            for row in rows
+        ]
         self._assign_tiers(candidates)
         return candidates
 
