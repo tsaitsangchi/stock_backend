@@ -1,8 +1,8 @@
 """
-data_schema.py v2.19 (Quantum Finance API-First Schema Sovereignty Edition)
+data_schema.py v2.20 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
 **最後更新日期**: 2026-05-25
-**主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
+**主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）+ build_publication_date_gate() helper 升 SSOT（v2.20 Phase 3 配套;兩個 builder 共用）；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -17,14 +17,15 @@ data_schema.py v2.19 (Quantum Finance API-First Schema Sovereignty Edition)
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [重鑄：資料庫主權初始化]**       | `$ python scripts/core/data_schema.py --init --force`                              | data_schema v2.19 |
-| **2. [重鑄：單一表主權重鑄]**         | `$ python scripts/core/data_schema.py --init --table [Name]`                       | data_schema v2.19 |
-| **3. [離線/災難復原：略過 API 契約探測]** | `$ python scripts/core/data_schema.py --init --force --skip-api-contract` | data_schema v2.19 |
+| **1. [重鑄：資料庫主權初始化]**       | `$ python scripts/core/data_schema.py --init --force`                              | data_schema v2.20 |
+| **2. [重鑄：單一表主權重鑄]**         | `$ python scripts/core/data_schema.py --init --table [Name]`                       | data_schema v2.20 |
+| **3. [離線/災難復原：略過 API 契約探測]** | `$ python scripts/core/data_schema.py --init --force --skip-api-contract` | data_schema v2.20 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.19** | 2026-05-25 | Codex | **PUBLICATION_DATE_STRATEGY_REGISTRY['FredData'] 追溯修正 strict → transitional(憲章 §14.7-BB Phase 2 dry-run 揭露驅動;v6.1.0-patch 第五輪 charter 同次配套程式)**:依憲章 v6.1.0-patch §14.7-BB(2026-05-25 夜深入憲),基於 Phase 2 dry-run 實證:5 個 historical as_of_date × 4 FRED series 之 strict vintage gate(`realtime_start <= as_of_date`)**100% loss**。**Root cause**:DB 內 `FredData.realtime_start` 為 ingest 日期(2026-05-21~22 從零重建)非真實 ALFRED vintage。**追溯修正 PUBLICATION_DATE_STRATEGY_REGISTRY['FredData']**:(I) enforcement: `strict` → **`transitional`**(對齊 Shareholding 過渡分類);(II) source: `fred_vintage_start` → **`fred_vintage_pending_alfred`**;(III) column: `realtime_start` → **`date`**(暫維持,同 Shareholding);(IV) description 補入 Phase 2 dry-run 揭露;(V) TOOL_VER v2.18 → v2.19;(VI) 主權狀態行加「FredData strict → transitional 追溯修正(v2.19 §14.7-BB)」;(VII) 維運矩陣 cosmetic v2.18 → v2.19。**邏輯動量**:13 張 DATASET_REGISTRY 不變;PUBLICATION_DATE_STRATEGY_REGISTRY 13 entries 不變(僅 FredData 單筆內容追溯);PUBLICATION_DATE_ENFORCEMENT_TYPES 5 種不變;API contract probe / CLI / verdict 邏輯不變。**對既有 DB 影響**:**零**(本版純為 metadata 註冊追溯,無 DDL 變更)。**對下游 builder/audit 影響(配套 Phase 2 落地之 feature_store_builder v0.4)**:讀此 metadata 時 FRED 走 transitional 路徑(SQL gate 維持 `date <= as_of_date`),與其他 native_aligned 表行為相同。**「資料現實裁決」第三次跑通**(對映 §14.7-AX):2026-05-24 §0.1.3-A.1 ROE → 2026-05-25 §14.7-BA 5 欄位 → **2026-05-25 §14.7-BB FRED**。**追溯適用**:既有 audit / feature_set / model / prediction **皆不受影響**(metadata-only;v2.18 入憲後 builder 尚未實際讀取 strategy,追溯無 builder 副作用)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改其他 12 表之 publication_date_strategy(僅 FredData 追溯)、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict。同步入憲:憲章 §14.7-BB(新建子節) / §8.5-9 4 處追溯修正 / 修訂歷程 v6.1.0-patch 2026-05-25 第五輪 entry。 | **ACTIVE** |
+| **v2.20** | 2026-05-25 | Codex | **`build_publication_date_gate()` helper 升至 data_schema SSOT(Phase 3 配套;helper 從 feature_store_builder v0.4 之 local def 移至 data_schema 模組級;對齊 §0.0-I 單一引用源原則)**:依憲章 §8.5-9 之 Phase 3 落地(core_universe_builder v0.3 → v0.4 之 SQL gate 升版),為避免 helper 在 feature_store_builder + core_universe_builder 重複定義(違 DRY/SSOT),將 helper 從 `feature_store_builder.py v0.4` 之 local `_publication_date_gate()` 升至 `data_schema.py` 模組級 `build_publication_date_gate()`(rename 反映 utility 性質,移除 private underscore prefix)。**設計合理性**:helper 為 `PUBLICATION_DATE_STRATEGY_REGISTRY` 之直接衍生(讀 strategy → 構造 SQL clause 字串),屬同治權位階(data_schema = Raw API Schema + metadata SSOT;helper 為 metadata 之衍生工具,**不執行 SQL,只構造字串**;未違反 data_schema [Sovereignty Declaration] 之治權邊界);對齊既有 `INFRA_TABLES` set 之模組級 utility 慣例。**補正內容**:(I) 新增模組級函式 `build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s") -> tuple[str, int]`(從 feature_store_builder v0.4 之 `_publication_date_gate` 完整移入,介面零變動);(II) TOOL_VER v2.19 → v2.20;(III) 主權狀態行加「build_publication_date_gate() helper 升 SSOT(v2.20 Phase 3 配套;兩個 builder 共用)」;(IV) 維運矩陣 3 場景 cosmetic v2.19 → v2.20。**邏輯動量**:`PUBLICATION_DATE_STRATEGY_REGISTRY` 13 entries 不變(v2.19 之 FRED transitional 追溯維持);`PUBLICATION_DATE_ENFORCEMENT_TYPES` 5 種不變;13 張 DATASET_REGISTRY 不變;API contract probe / CLI / verdict 邏輯不變;helper 介面與行為與 feature_store_builder v0.4 之 local 版本**完全一致**(僅位置移轉)。**對下游 builder 影響**:`feature_store_builder v0.5` 刪 local def 改 `from core.data_schema import build_publication_date_gate`;`core_universe_builder v0.4` 加同 import,12 處 SQL gate 透過 helper 升版;**兩個 builder 共用單一 SSOT helper**。**對既有 DB / snapshot 影響**:**零**(本版純為 helper 位置移轉,無 DDL 變更;builder 升版另案落地)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改 PUBLICATION_DATE_STRATEGY_REGISTRY、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict、**不**修改既有任何函式介面(僅新增 1 個 module-level helper)。同步配套:`feature_store_builder.py v0.4 → v0.5`(刪 local;import)+ `core_universe_builder.py v0.3 → v0.4`(import + SQL gate 升版,Phase 3 落地)。 | **ACTIVE** |
+| v2.19 | 2026-05-25 | Codex | **PUBLICATION_DATE_STRATEGY_REGISTRY['FredData'] 追溯修正 strict → transitional(憲章 §14.7-BB Phase 2 dry-run 揭露驅動;v6.1.0-patch 第五輪 charter 同次配套程式)**:依憲章 v6.1.0-patch §14.7-BB(2026-05-25 夜深入憲),基於 Phase 2 dry-run 實證:5 個 historical as_of_date × 4 FRED series 之 strict vintage gate(`realtime_start <= as_of_date`)**100% loss**。**Root cause**:DB 內 `FredData.realtime_start` 為 ingest 日期(2026-05-21~22 從零重建)非真實 ALFRED vintage。**追溯修正 PUBLICATION_DATE_STRATEGY_REGISTRY['FredData']**:(I) enforcement: `strict` → **`transitional`**(對齊 Shareholding 過渡分類);(II) source: `fred_vintage_start` → **`fred_vintage_pending_alfred`**;(III) column: `realtime_start` → **`date`**(暫維持,同 Shareholding);(IV) description 補入 Phase 2 dry-run 揭露;(V) TOOL_VER v2.18 → v2.19;(VI) 主權狀態行加「FredData strict → transitional 追溯修正(v2.19 §14.7-BB)」;(VII) 維運矩陣 cosmetic v2.18 → v2.19。**邏輯動量**:13 張 DATASET_REGISTRY 不變;PUBLICATION_DATE_STRATEGY_REGISTRY 13 entries 不變(僅 FredData 單筆內容追溯);PUBLICATION_DATE_ENFORCEMENT_TYPES 5 種不變;API contract probe / CLI / verdict 邏輯不變。**對既有 DB 影響**:**零**(本版純為 metadata 註冊追溯,無 DDL 變更)。**對下游 builder/audit 影響(配套 Phase 2 落地之 feature_store_builder v0.4)**:讀此 metadata 時 FRED 走 transitional 路徑(SQL gate 維持 `date <= as_of_date`),與其他 native_aligned 表行為相同。**「資料現實裁決」第三次跑通**(對映 §14.7-AX):2026-05-24 §0.1.3-A.1 ROE → 2026-05-25 §14.7-BA 5 欄位 → **2026-05-25 §14.7-BB FRED**。**追溯適用**:既有 audit / feature_set / model / prediction **皆不受影響**(metadata-only;v2.18 入憲後 builder 尚未實際讀取 strategy,追溯無 builder 副作用)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改其他 12 表之 publication_date_strategy(僅 FredData 追溯)、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict。同步入憲:憲章 §14.7-BB(新建子節) / §8.5-9 4 處追溯修正 / 修訂歷程 v6.1.0-patch 2026-05-25 第五輪 entry。 | SUPERSEDED |
 | v2.18 | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 1 落地（v6.1.0-patch §8.5-9 / §14.7-BA 程式預備升版 A;commit `669b5c8` 入憲後第一支程式落地）**：依憲章 v6.1.0-patch（commit `669b5c8`,2026-05-25 夜）新入憲之 §8.5 第 9 條 Publication-date Discipline 強制契約 + §8.5-9 子節 8 個子子節 + §14.7-BA 治權閉環,本版落地 Phase 1（per §8.5-9.7 升版觸發表）:**PUBLICATION_DATE_STRATEGY_REGISTRY 模組級獨立 dict,對齊 §8.5-9.2 分派表（11 業務+metadata 表 + 2 infra 表 = 13）**。**5 種 enforcement 類別**:(1) `strict`（直接用 publication-date column）:`TaiwanStockDividend.AnnouncementDate` / `FredData.realtime_start`;(2) `hardcoded_conservative`（法定截止日推算）:`TaiwanStockMonthRevenue date + 10 天` / `TaiwanStockFinancialStatements date + 45 天 (Q1-Q3) / 90 天 (Q4)`;(3) `transitional`（暫維持 `date`,待研究升版）:`TaiwanStockShareholding`（`RecentlyDeclareDate` 語意不明,§14.7-BA §3.3 揭露;D2.1 研究方向）;(4) `native_aligned`（`date` = trading day,本就無 publication delay）:`TaiwanStockPrice / PriceAdj / PER / Margin / InstitutionalInvestorsBuySell / TaiwanStockInfo`(InstitutionalInvestorsBuySell 之 T 日 17:30 cron 對齊已於 §6.8.7-A 涵蓋);(5) `infrastructure`（infra 觀測表不適用 publication-date）:`pipeline_execution_log` / `data_audit_log`。**補正內容**:(I) `PUBLICATION_DATE_STRATEGY_REGISTRY` 模組級獨立 dict 涵蓋 13 表項目(source / column / offset_days / enforcement / description 5 鍵);(II) 核心定義新增第 7 條 [Publication-date Strategy SSOT] 顯式宣告 PUBLICATION_DATE_STRATEGY_REGISTRY 為憲章 §8.5-9 之 per-dataset metadata SSOT(對齊 §0.0-I 單一引用源原則);(III) 核心定義第 6 條 [Sovereignty Declaration] 補入「為 §8.5 anti-leakage 8 條 + 第 9 條提供 SSOT metadata 但不執行」之治權邊界明示;(IV) TOOL_VER v2.17 → v2.18;(V) 主權狀態行加「§8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）」;(VI) CONSTITUTION_VER 維持 v6.1.0(主版號,patch 為修訂歷程記述);(VII) 維運矩陣 3 場景之 cosmetic v2.17 → v2.18。**邏輯動量**:13 張 DATASET_REGISTRY 數量不變;12 業務 + infra 表之 columns / unique_constraints / DDL 邏輯不變;API contract probe 邏輯不變;--init / --force / --table / --skip-api-contract CLI 介面不變;verdict 動態計算邏輯不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 DB 影響**:**零**(本版純為 metadata 註冊,無 DDL 變更);既有 snapshot / feature_set / model / prediction 全部不受影響;`--init --force` 之 DROP + CREATE 行為不變。**對下游 builder/audit 影響(待 Phase 2-5)**:`feature_store_builder v0.4` 升 SQL 時可讀此 metadata 取得 effective_publication_date gate 規則;`audit_leakage v0.3` 之 rule 19 publication_date_check 透過此 metadata 驗收。**Phase 1 完成 → Phase 2 預備**:feature_store_builder v0.3 → v0.4 之 SQL gate 升版(讀 PUBLICATION_DATE_STRATEGY_REGISTRY[t])。**追溯適用**:既有 audit 報告 / feature_set v0.1-v0.3 / model_registry / prediction_run **皆不受影響**(本版為 metadata-only 升版;builder 邏輯升 v0.4 後新 snapshot 起適用)。本版**不**修改其他 12 表之 columns / unique_constraints、**不**改 `pipeline_execution_log` / `data_audit_log` DDL、**不**改 13 表之 API contract probe 邏輯、**不**改 CLI 介面、**不**改 verdict 計算邏輯。同步入憲:憲章 §8.5 第 9 條(L4292) / §8.5-9 子節 8 個子子節(L4296-4392) / §14.7-BA(L7844-7928) / 修訂歷程 v6.1.0-patch 2026-05-25 第三輪 entry(L66);程式落地序列 §8.5-9.7 之 Phase 1(本版)。 | SUPERSEDED |
 | v2.17 | 2026-05-25 | Codex | **§3.2A.J `data_audit_log` 5-tuple UNIQUE constraint 落地（v6.1.0-patch §3.2A.J / §14.7-AY 程式預備升版 A）**：依憲章 v6.1.0-patch（commit `4da2450`，2026-05-25）新入憲之 §3.2A.J `db_utils.write_data_audit_log` Audit Log Write-Safe 治權契約（憲章 L2722-2745）+ §14.7-AY §7.4-A 姊妹缺陷補完入憲（憲章 L7480-7568），本版落地裁決第 1 條「`data_schema.py v2.16 → v2.17`：`data_audit_log.unique_constraints` 從 `[]` 改為 5-tuple」。**Root cause（2026-05-24 Audit 2 揭露）**：Step 4F 啟動 ~65 秒兩個 sync_engine worker 並發寫入 `data_audit_log` 撞同 microsecond + 同 5-tuple → race-induced duplicate row 1 個 → Audit 2 verdict=FAILED（業務 dataset 全 PASS，唯一 FAIL 在 infra 觀測表）。**補正內容**：(I) `DATASET_REGISTRY["data_audit_log"]["unique_constraints"]`: `[]` → `["table_name", "stock_id", "data_date", "action_type", "timestamp"]`（5-tuple，timestamp 為 microsecond 精度作 race boundary）；(II) TOOL_VER v2.16 → v2.17；(III) CONSTITUTION_VER v6.0.0 → v6.1.0（對齊現行憲章 v6.1.0-patch）；(IV) 主權狀態行加「§3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地」；(V) 維運矩陣 3 場景之 cosmetic v2.16 → v2.17；(VI) report header v2.16 → v2.17。**邏輯動量**：13 張 DATASET_REGISTRY 數量不變；其他 12 表 unique_constraints 不變；API contract probe 邏輯不變；--init / --force / --table / --skip-api-contract CLI 介面不變；verdict 動態計算邏輯不變；§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 DB 影響**：既存 `data_audit_log` 表若有 race-induced dup（如 2026-05-24 從零驗證留下之 1 個 dup），`--init --force` DROP + CREATE 會清空；非 force 模式需透過 `scripts/maintenance/migrate_data_audit_log_dedup_20260525.py v0.1`（同次入憲之 §14.7-AY 落地 C 項）執行 dedup + ALTER TABLE ADD CONSTRAINT。**db_utils.py 配套升版**：v2.47 → v2.48 之 `write_data_audit_log()` 加 ON CONFLICT DO NOTHING（落地裁決第 2 條，另一支同次升版）。**追溯適用**：v0.1-v0.6 之 `audit_api_schema_compliance` Layer F 對 `data_audit_log` 之 dup>0 記錄重新詮釋為 race-induced artifact；v2.17 / db_utils v2.48 + migration 落地後自動消解。本版**不**修改其他 12 張 dataset 之 unique_constraints、**不**改 `pipeline_execution_log` DDL（其 SERIAL id 自然 unique 不需新約束）、**不**擴張至業務 dataset（已有業務鍵 UNIQUE）。同步入憲：憲章 §3.2A.J（L2722-2745）/ §14.7-AY（L7480-7568）/ 修訂歷程 v6.1.0-patch entry（L66）。 | SUPERSEDED |
 | v2.16 | 2026-05-21 | Codex | **維運矩陣補入 Step 2A「離線/災難復原」場景（CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項首例實證；達 100% 合規）**：依昨日剛入憲之 CLAUDE.md §四 #4「完整度評估必須先檢驗標頭 docstring」治權原則第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v2.15 維運矩陣只列 2 場景（`--init --force` / `--init --table`），但 CLI 實際支援 4 個 flag（含 `--skip-api-contract` 之離線/災難復原 = 憲章 §二 Step 2A）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 3 場景「[離線/災難復原：略過 API 契約探測]」對應 CLI `--init --force --skip-api-contract`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.15 → v2.16；(IV) 維運矩陣 3 場景之 cosmetic v2.15 → v2.16；(V) report header v2.15 → v2.16。**API、DDL、CLI 介面（4 flag 不變）、`probe_api_contracts()` 邏輯、13 張 DATASET_REGISTRY、`init_tables(skip_api_contract=False)` 已有之 `--skip-api-contract` 處理邏輯 L309/L314（v2.10 既有）、verdict 動態計算、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項）。合規度：v2.15 ≈98%（缺 Step 2A 場景）→ v2.16 100%。 | SUPERSEDED |
@@ -52,7 +53,7 @@ import argparse
 # 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v2.19"
+TOOL_VER = "v2.20"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # §8.5-9 Publication-date Discipline Strategy Enforcement Enum
@@ -346,6 +347,63 @@ PUBLICATION_DATE_STRATEGY_REGISTRY = {
         "description": "infra 觀測表;不參與 anti-leakage 流;publication-date 不適用",
     },
 }
+
+
+def build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s") -> tuple[str, int]:
+    """
+    依憲章 §8.5 第 9 條 Publication-date Discipline 為 table 構造 SQL gate clause + 參數計數。
+
+    v2.20 升 SSOT(從 feature_store_builder v0.4 之 local _publication_date_gate 移入;
+    rename 移除 private prefix 反映 utility 性質)。對應憲章 §8.5-9.2 分派表 + §0.0-I 單一引用源。
+
+    讀 `PUBLICATION_DATE_STRATEGY_REGISTRY[table]` 依 enforcement 分派:
+      - native_aligned / transitional: `date <= %s`(1 個 as_of_date 參數)
+      - strict: `"<column>" <= %s`(1 個 as_of_date 參數;column 大寫者加雙引號)
+      - hardcoded_conservative (offset_days = int): `(date + INTERVAL 'N days') <= %s`(1 個)
+      - hardcoded_conservative (offset_days = quarter dict): quarter-aware
+            `((EXTRACT(QUARTER FROM date) IN (1,2,3) AND (date + INTERVAL '45 days') <= %s)
+              OR (EXTRACT(QUARTER FROM date) = 4 AND (date + INTERVAL '90 days') <= %s))`
+            (2 個 as_of_date 參數)
+      - infrastructure: raise ValueError(infra 表不參與 feature/universe builder 流)
+
+    Returns:
+        (where_clause, extra_param_count)
+        e.g. ("\"AnnouncementDate\" <= %s", 1)
+
+    對齊憲章 §8.5-9.2 分派表;§8.5-9.3 透明性要求;v2.20 SSOT 化。
+    """
+    strategy = PUBLICATION_DATE_STRATEGY_REGISTRY.get(table)
+    if strategy is None:
+        raise ValueError(f"table {table!r} 不在 PUBLICATION_DATE_STRATEGY_REGISTRY 內")
+
+    enforcement = strategy["enforcement"]
+    column = strategy["column"]
+    offset = strategy["offset_days"]
+    ap = as_of_param_placeholder
+
+    if enforcement == "infrastructure":
+        raise ValueError(f"table {table!r} 屬 infrastructure(不參與 feature/universe 流);不得在 builder 內使用")
+
+    if enforcement in ("native_aligned", "transitional", "strict"):
+        col_quoted = f'"{column}"' if any(c.isupper() for c in column) else column
+        return f"{col_quoted} <= {ap}", 1
+
+    if enforcement == "hardcoded_conservative":
+        if isinstance(offset, int):
+            return f"(date + INTERVAL '{offset} days') <= {ap}", 1
+        if isinstance(offset, dict):
+            q123_offset = offset.get("Q1", offset.get("Q2", offset.get("Q3", 45)))
+            q4_offset = offset.get("Q4", 90)
+            clause = (
+                f"((EXTRACT(QUARTER FROM date) IN (1,2,3) "
+                f"AND (date + INTERVAL '{q123_offset} days') <= {ap}) "
+                f"OR (EXTRACT(QUARTER FROM date) = 4 "
+                f"AND (date + INTERVAL '{q4_offset} days') <= {ap}))"
+            )
+            return clause, 2
+
+    raise ValueError(f"unknown enforcement {enforcement!r} for table {table!r}")
+
 
 class SovereignSchemaManager:
     def __init__(self):

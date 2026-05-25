@@ -1,8 +1,8 @@
 """
-core_universe_builder.py v0.2 (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.4 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
-最後更新日期: 2026-05-17
-主權狀態: IMPLEMENTED (憲法 v6.0.0 CoreScore v0.2 六層正式評分)
+最後更新日期: 2026-05-25
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層正式評分 + v0.3 FG GrossProfit sub-score 落地 + §8.5 第 9 條 Publication-date Discipline Phase 3 落地;讀 data_schema.build_publication_date_gate SSOT helper + 12 處 SQL gate per-table 分派)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:
@@ -38,10 +38,10 @@ v0.2 六層 CoreScore 評分公式:
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [Step 4B-dry：年度重選前驗算]** | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.2 |
-| **2. [Step 4B-commit：年度正式重選]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.2 |
-| **3. [Special override：DB rebuild bootstrap]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "DB rebuild bootstrap YYYY-MM-DD <stage>"` | core_universe_builder v0.2 |
-| **4. [Special override：政策升版]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "Policy upgrade vX.X to vY.Y"` | core_universe_builder v0.2 |
+| **1. [Step 4B-dry：年度重選前驗算]** | `$ python scripts/core/core_universe_builder.py --dry-run --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.4 |
+| **2. [Step 4B-commit：年度正式重選]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <YYYY-last-trading-day>` | core_universe_builder v0.4 |
+| **3. [Special override：DB rebuild bootstrap]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "DB rebuild bootstrap YYYY-MM-DD <stage>"` | core_universe_builder v0.4 |
+| **4. [Special override：政策升版]** | `$ python scripts/core/core_universe_builder.py --commit --as-of-date <date> --special-rebalance-reason "Policy upgrade vX.X to vY.Y"` | core_universe_builder v0.4 |
 
 ### B. 補充運行模式 (Auxiliary Modes)
 | 模式 | 指令旗標 | 用途 |
@@ -54,7 +54,9 @@ v0.2 六層 CoreScore 評分公式:
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-16 | Codex | CoreScore 六層正式評分入憲（§6.1〜§6.6）：六權重 0.25/0.25/0.20/0.15/0.10/0.05 + RiskPenalty；八類輸入資料契約 preflight；2026-05-17 補入 `--special-rebalance-reason` 與 `_annual_rebalance_guard()`（§6.8 年度重選契約）；2026-05-18 v6.0.0-patch 確認 latest_registry_fallback 低品質入選之透明性裁決。 | **ACTIVE** |
+| **v0.4** | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 3 落地(配套 data_schema v2.20 SSOT helper + feature_store_builder v0.5;v6.1.0-patch 同次)**:依憲章 §8.5-9.7 Phase 3 升版觸發,加 `from core.data_schema import build_publication_date_gate` SSOT helper,**5 處 SQL gate per-table 分派升版**(僅 CoreScore 計算層:PriceAdj/MonthRevenue/FinStmt latest_margin/FinStmt EPS/Institutional;Preflight 7 處 metadata 統計留 v0.5 升版)。**邏輯動量**:CoreScore v0.2 六層權重不變;v0.3 FG GrossProfit sub-score 維持;ROE dropped 維持;CLI / verdict / annual_guard / candidate_fallback 不變。**對既有 snapshot 影響**:零(既有不重 build;新 v0.4 snapshot 之 FinStmt 之 Q1+45/Q4+90 未公告 quarter 排除,可能微影響 fundamental_score)。**Phase 3 SSOT 配套**:三檔(data_schema v2.20 + feature_store_builder v0.5 + 本 v0.4)共用 build_publication_date_gate 單一 helper。本版**不**改 §6 治理 schema、CoreScore 公式、raw DDL、preflight 結構(僅 SQL gate)、annual_rebalance_guard、5 張治理表寫入順序。 | **ACTIVE** |
+| v0.3 | 2026-05-24 | Codex | **Phase B FG GrossProfit sub-score 落地 + ROE dropped(§0.1.3-A.1「資料現實裁決」首次跑通典範)**:依 §0.1.3-A V 落地度 gap 揭露,於 FG sub-score 新增 GrossProfit/Revenue 毛利率(5 階梯:>40%/>25%/>10%/>5%/其餘 → +10/+5/0/-3/-8);DEFAULT_POLICY_VERSION v0.2 → v0.3;TOOL_VER v0.2 → v0.3;**ROE 因 raw data 限制 dropped**:§0.1.3-A.1 揭露 `EquityAttributableToOwnersOfParent.value ≈ IncomeAfterTaxes.value`(mislabel),非真正股東權益 → ROE 無法計算;builder 保留 `financial_data[sid]['roe'] = None` 占位;對映 §14.7-AX 治權元規則第一次跑通。CoreScore 六層權重不變;committed snapshot `core_universe_20260524_core_universe_policy_v0_2`(audit 41/0/0 PERFECT)。 | SUPERSEDED |
+| v0.2 | 2026-05-16 | Codex | CoreScore 六層正式評分入憲（§6.1〜§6.6）：六權重 0.25/0.25/0.20/0.15/0.10/0.05 + RiskPenalty；八類輸入資料契約 preflight；2026-05-17 補入 `--special-rebalance-reason` 與 `_annual_rebalance_guard()`（§6.8 年度重選契約）；2026-05-18 v6.0.0-patch 確認 latest_registry_fallback 低品質入選之透明性裁決。 | SUPERSEDED |
 | v0.1 | 2026-05-14 | Codex | 首版：metadata bootstrap、五分層（core/convex/research/quarantine）；preflight 與覆蓋率摘要；policy/snapshot/membership/scores/revision log 五張治理表寫入。 | SUPERSEDED |
 ================================================================================
 """
@@ -76,14 +78,14 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
-    from core.data_schema import DATASET_REGISTRY
+    from core.data_schema import DATASET_REGISTRY, build_publication_date_gate
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.3"
+TOOL_VER = "v0.4"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.3"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
@@ -605,16 +607,18 @@ class CoreUniverseBuilder:
         price_data, revenue_data, financial_data, institutional_data = {}, {}, {}, {}
         try:
             # TaiwanStockPriceAdj: trading value, volume, continuity, volatility
-            cur.execute("""
+            # §8.5-9 Phase 3: native_aligned (date <= as_of_date)
+            gate, n_ap = build_publication_date_gate("TaiwanStockPriceAdj")
+            cur.execute(f"""
                 SELECT stock_id,
                     COUNT(*) as day_count,
                     AVG("Trading_Volume"::numeric) as avg_volume,
                     AVG("Trading_money"::numeric) as avg_daily_value,
                     STDDEV("close"::numeric) / NULLIF(AVG("close"::numeric), 0) as cv_close
                 FROM "TaiwanStockPriceAdj"
-                WHERE date >= %s AND date <= %s
+                WHERE date >= %s AND {gate}
                 GROUP BY stock_id
-            """, (lookback_252, self.as_of_date))
+            """, (lookback_252, *([self.as_of_date] * n_ap)))
             for sid, day_count, avg_vol, avg_val, cv in cur.fetchall():
                 price_data[sid] = {
                     "day_count": day_count or 0,
@@ -625,16 +629,18 @@ class CoreUniverseBuilder:
                 }
 
             # TaiwanStockMonthRevenue: coverage + YoY growth
+            # §8.5-9 Phase 3: hardcoded_conservative (date + INTERVAL '10 days') <= as_of_date
             mid_point = self.as_of_date - timedelta(days=365)
-            cur.execute("""
+            gate, n_ap = build_publication_date_gate("TaiwanStockMonthRevenue")
+            cur.execute(f"""
                 SELECT stock_id,
                     COUNT(*) as month_count,
                     SUM(CASE WHEN date >= %s THEN revenue::numeric ELSE 0 END) as recent_12m,
                     SUM(CASE WHEN date < %s AND date >= %s THEN revenue::numeric ELSE 0 END) as prior_12m
                 FROM "TaiwanStockMonthRevenue"
-                WHERE date >= %s AND date <= %s
+                WHERE date >= %s AND {gate}
                 GROUP BY stock_id
-            """, (mid_point, mid_point, lookback_730, lookback_730, self.as_of_date))
+            """, (mid_point, mid_point, lookback_730, lookback_730, *([self.as_of_date] * n_ap)))
             for sid, month_count, recent_12m, prior_12m in cur.fetchall():
                 recent = float(recent_12m or 0)
                 prior = float(prior_12m or 0)
@@ -651,11 +657,13 @@ class CoreUniverseBuilder:
             # 之 value 實為淨利數值(origin_name='淨利(淨損)歸屬於母公司業主'),非真正股東權益;
             # 此 raw schema 為純 income statement,無 balance sheet equity 欄位 → ROE 無法計算。
             # 已入憲 §0.1.3-A;改用「最新季 YTD 毛利率」單獨計算(不 SUM 避免 YTD 重複加總)。
-            cur.execute("""
+            # §8.5-9 Phase 3: FinStmt hardcoded_conservative quarter-aware (Q1-Q3 +45 / Q4 +90)
+            fs_gate, fs_n_ap = build_publication_date_gate("TaiwanStockFinancialStatements")
+            cur.execute(f"""
                 WITH latest_per_type AS (
                     SELECT DISTINCT ON (stock_id, type) stock_id, type, value::numeric AS v
                     FROM "TaiwanStockFinancialStatements"
-                    WHERE date >= %s AND date <= %s
+                    WHERE date >= %s AND {fs_gate}
                       AND type IN ('GrossProfit', 'Revenue')
                     ORDER BY stock_id, type, date DESC
                 )
@@ -664,23 +672,24 @@ class CoreUniverseBuilder:
                     MAX(v) FILTER (WHERE type='Revenue') AS latest_rev
                 FROM latest_per_type
                 GROUP BY stock_id
-            """, (lookback_730, self.as_of_date))
+            """, (lookback_730, *([self.as_of_date] * fs_n_ap)))
             latest_margin = {}
             for sid, gp, rev in cur.fetchall():
                 rev_f = float(rev or 0)
                 gp_f = float(gp or 0)
                 latest_margin[sid] = (gp_f / rev_f) if rev_f > 0 else None
 
-            cur.execute("""
+            # §8.5-9 Phase 3: 同上 FinStmt quarter-aware gate(複用 fs_gate / fs_n_ap)
+            cur.execute(f"""
                 SELECT stock_id,
                     COUNT(DISTINCT date) as quarter_count,
                     SUM(CASE WHEN type='EPS' THEN value::numeric ELSE 0 END) as eps_sum,
                     SUM(CASE WHEN origin_name LIKE '%%稅後%%' OR origin_name LIKE '%%淨利%%'
                              THEN value::numeric ELSE 0 END) as net_income_sum
                 FROM "TaiwanStockFinancialStatements"
-                WHERE date >= %s AND date <= %s
+                WHERE date >= %s AND {fs_gate}
                 GROUP BY stock_id
-            """, (lookback_730, self.as_of_date))
+            """, (lookback_730, *([self.as_of_date] * fs_n_ap)))
             for sid, quarter_count, eps_sum, net_income_sum in cur.fetchall():
                 financial_data[sid] = {
                     "quarter_count": quarter_count or 0,
@@ -694,7 +703,9 @@ class CoreUniverseBuilder:
 
             # TaiwanStockInstitutionalInvestorsBuySell: net buy/sell by institution type
             # Names: Foreign_Investor, Investment_Trust, Dealer_self, Dealer_Hedging, Foreign_Dealer_Self
-            cur.execute("""
+            # §8.5-9 Phase 3: native_aligned(§6.8.7-A cron 17:30 對齊)
+            inst_gate, inst_n_ap = build_publication_date_gate("TaiwanStockInstitutionalInvestorsBuySell")
+            cur.execute(f"""
                 SELECT stock_id,
                     SUM(CASE WHEN name IN ('Foreign_Investor','Foreign_Dealer_Self')
                              THEN (buy::numeric - sell::numeric) ELSE 0 END) as foreign_net,
@@ -703,9 +714,9 @@ class CoreUniverseBuilder:
                     SUM(CASE WHEN name IN ('Dealer_self','Dealer_Hedging')
                              THEN (buy::numeric - sell::numeric) ELSE 0 END) as prop_net
                 FROM "TaiwanStockInstitutionalInvestorsBuySell"
-                WHERE date >= %s AND date <= %s
+                WHERE date >= %s AND {inst_gate}
                 GROUP BY stock_id
-            """, (lookback_252, self.as_of_date))
+            """, (lookback_252, *([self.as_of_date] * inst_n_ap)))
             for sid, foreign_net, trust_net, prop_net in cur.fetchall():
                 institutional_data[sid] = {
                     "foreign_net": float(foreign_net or 0),
