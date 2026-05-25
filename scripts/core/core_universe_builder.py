@@ -1,8 +1,8 @@
 """
-core_universe_builder.py v0.5 (Quantum Finance Core Universe Selection Authority)
+core_universe_builder.py v0.5.1 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
 最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層正式評分 + v0.3 FG GrossProfit + v0.4 §8.5-9 Phase 3 + v0.5 §14.7-BC V 補強 Phase C/D + FinStmt 落地;FG sub-scores 5 → 11;V 動員 23% → 77%;policy v0.3 → v0.4)
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 Phase 3 + v0.5 §14.7-BC V 補強 + **v0.5.1 §14.7-BE「資料現實裁決」第 5 次跑通追溯;+ParticipateDistributionOfTotalShares SELECT-only animation;誠實 V 動員 13/22 → 14/22 = 64%(非設計研究 77%)**;policy v0.4)
 最高原則: Core Universe Selection Authority
 
 v0.2 六層 CoreScore 評分公式:
@@ -54,7 +54,8 @@ v0.2 六層 CoreScore 評分公式:
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.5** | 2026-05-25 | Codex | **§14.7-BC V 補強 Phase C/D + FinStmt 落地(v6.1.0-patch 第七輪程式)**:依憲章 §14.7-BC 入憲(commit `a6904aa`,2026-05-25 夜深++)之 V 補強治權預備,本版落地 Phase B 完整實作:**FG sub-scores 5 → 11(+6 新);V 動員 23% → 77%(5/22 → 17/22 cols)**。**新增 3 個 _load_* 方法**:(I) `_load_per()`:取 candidates 之 latest PER/PBR/dividend_yield(native_aligned gate);(II) `_load_dividend()`:取 past 5y CashEarningsDistribution > 0 之配息次數;(III) `_load_financial()` 擴張:加 OperatingIncome/PreTaxIncome/IncomeFromContinuingOperations/NoncontrollingInterests 4 新 V types(quarter-aware gate)。**新增 industry_median 計算**:在 `_load_market_data()` 末計算 per industry 之 PER/PBR median(min 3 stocks/industry),供 PER/PBR industry-relative score 用。**6 個新 FG sub-scores**(對映 §14.7-BC §4.1-4.6 設計):PER 估值 industry-relative ±20 / PBR 估值 industry-relative ±15 / Dividend yield ±10 / 配息穩定性 ±10 / Operating Margin ±10 / Attributable Ratio ±5。**邏輯動量**:CoreScore v0.2 六層權重不變(0.25 DQ + 0.25 LM + 0.20 FG + 0.15 TR + 0.10 IF + 0.05 VC - RP);FG 權重 20% 維持;clamp 0..100 不變;ROE = None 占位維持(§0.1.3-A.1)。**CLI 介面不變**(--dry-run / --commit / --as-of-date / --policy-version / --special-rebalance-reason);annual_rebalance_guard / candidate_fallback / 5 張治理表寫入順序不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**DEFAULT_POLICY_VERSION v0.3 → v0.4**;TOOL_VER v0.4 → v0.5;主權狀態行加 v0.5 落地說明;標頭核心定義說明補充 V 補強之治權邊界。**對既有 snapshot 影響**:既有 `core_universe_20260524_core_universe_policy_v0_2` 與 v0.3 snapshots **不重 build**(metadata 不變);新 `core_universe_policy_v0.4` snapshot 起適用 v0.5 builder;預期分層 churn rate < 15%。**score_detail 補入 v0.5 sub-scores**(per_rel / pbr_rel / div_yld / div_stability / op_margin / attr_ratio 6 鍵);selection_reason 顯示新 sub-components。**對下游影響**:future v0.4 policy snapshot 之 universe 可能與 v0.3 略有差異(FG 升級 → fundamental_score 變 → 排序略變);現有 v0.3 snapshot 維持為 audit trail。本版**不**修改 §6.4 CoreScore 公式總結構、§6.7 SSOT 150 鎖定、§0.1-A 6 條禁令、§0.1.3-A.1 ROE dropped 裁決、§6.3 第 4 條 FG 條文原文(留待 v6.2.0 升強制契約)、raw DDL、annual_rebalance_guard、candidate_fallback、5 張治理表寫入順序。**證偽承諾**(對接 §0.1-E 框架,§14.7-BC §7):T_FG_v0.5.1 (v0.5 IC ≥ v0.3 baseline) / T_FG_v0.5.2 (fundamental_score 與 industry-rel valuation 相關 > 0.4) / T_FG_v0.5.3 (walk-forward IC stdev ≤ v0.3) / T_FG_v0.5.4 (dry-run mean/std 差異 ∈ [+5, +20])。**audit_core_universe 配套需求**:audit 工具需加 `core_universe_policy_v0.4` 識別(對應 score_detail v0.5 鍵驗收;另案升版)。同步配套:憲章 §14.7-BC(已入憲 commit `a6904aa`)+ 設計研究 `reports/v_augmentation_phase_cd_design_research_20260525.md`(13 章 + 3 附錄)+ 修訂歷程 v6.1.0-patch 2026-05-25 第七輪 entry(程式落地;不需新 charter entry)。 | **ACTIVE** |
+| **v0.5.1** | 2026-05-25 | Codex | **§14.7-BE「資料現實裁決」第 5 次跑通追溯落地(+ParticipateDistributionOfTotalShares SELECT-only animation;V 動員 13/22 → 14/22 = 64% 誠實版)**:依憲章 §14.7-BE 入憲(commit 同次)之治權追溯,v0.5 之後落地前主動 DB query 驗證揭露 §14.7-BC §3.2 表「Dividend 4 cols ≥ 30% 覆蓋」實證後**只 1 cols 真實可用**(Remu / EmpCash 民國 100 年後 schema sunset;StockEarnings 2024 5% 邊際)。**追溯修正**:從計畫加 4 cols → 實際只加 ParticipateDistributionOfTotalShares 1 col(2024 86% 覆蓋)。**補正內容**:(I) `_load_dividend()` 加 SELECT `SUM("ParticipateDistributionOfTotalShares") past 5y avg`;(II) dividend_data 加 `part_dist_5y_avg` 鍵;(III) score_detail 補 `fg_part_dist_5y_avg` 透明欄;(IV) **不加新 sub-score**(避免 multicollinearity 與設計爭議;留待 walk-forward IC 證偽後評估;SELECT-only animation = 「raw 讀取 + 透明寫入但不影響 score」);(V) TOOL_VER v0.5 → v0.5.1;(VI) 主權狀態行加 v0.5.1 追溯說明。**邏輯動量**:FG 11 sub-scores 不變(SELECT-only animation 不加 sub-score);CoreScore 6 維權重不變;clamp 不變;CLI / verdict / annual_guard / candidate_fallback 不變;ROE = None 占位維持(§0.1.3-A.1)。**對既有 snapshot 影響**:零;新 v0.4 snapshot 起 score_detail 透明寫入 part_dist_5y_avg。**「資料現實裁決」第 5 次跑通**(對映 §14.7-AX;§14.7-BE 治權層追溯):前 4 次(ROE / publication-date / FRED vintage / Dividend 民國年);本次**事前事前驗證模式**(對映 §14.7-BD 之事後追溯,本子節為事前早期化)— 治權成本最低。**對下游影響**:future v0.4 policy snapshot 之 score_detail 含 fg_part_dist_5y_avg(透明動員;為 future trainer 預備 feature 來源)。本版**不**修改 §6.4 公式、§6.7 SSOT 150、§0.1-A 6 禁令、§0.1.3-A.1 ROE dropped、§6.3 第 4 條 FG 條文、raw DDL。同步配套:憲章 §14.7-BE(同次入憲 commit)+ §14.7-BC §3.2 表覆蓋率口徑追溯(從「全歷史」改「最近 5y rolling」)。 | **ACTIVE** |
+| v0.5 | 2026-05-25 | Codex | **§14.7-BC V 補強 Phase C/D + FinStmt 落地(v6.1.0-patch 第七輪程式)**:依憲章 §14.7-BC 入憲(commit `a6904aa`,2026-05-25 夜深++)之 V 補強治權預備,本版落地 Phase B 完整實作:**FG sub-scores 5 → 11(+6 新);V 動員 23% → 77%(5/22 → 17/22 cols)**。**新增 3 個 _load_* 方法**:(I) `_load_per()`:取 candidates 之 latest PER/PBR/dividend_yield(native_aligned gate);(II) `_load_dividend()`:取 past 5y CashEarningsDistribution > 0 之配息次數;(III) `_load_financial()` 擴張:加 OperatingIncome/PreTaxIncome/IncomeFromContinuingOperations/NoncontrollingInterests 4 新 V types(quarter-aware gate)。**新增 industry_median 計算**:在 `_load_market_data()` 末計算 per industry 之 PER/PBR median(min 3 stocks/industry),供 PER/PBR industry-relative score 用。**6 個新 FG sub-scores**(對映 §14.7-BC §4.1-4.6 設計):PER 估值 industry-relative ±20 / PBR 估值 industry-relative ±15 / Dividend yield ±10 / 配息穩定性 ±10 / Operating Margin ±10 / Attributable Ratio ±5。**邏輯動量**:CoreScore v0.2 六層權重不變(0.25 DQ + 0.25 LM + 0.20 FG + 0.15 TR + 0.10 IF + 0.05 VC - RP);FG 權重 20% 維持;clamp 0..100 不變;ROE = None 占位維持(§0.1.3-A.1)。**CLI 介面不變**(--dry-run / --commit / --as-of-date / --policy-version / --special-rebalance-reason);annual_rebalance_guard / candidate_fallback / 5 張治理表寫入順序不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**DEFAULT_POLICY_VERSION v0.3 → v0.4**;TOOL_VER v0.4 → v0.5;主權狀態行加 v0.5 落地說明;標頭核心定義說明補充 V 補強之治權邊界。**對既有 snapshot 影響**:既有 `core_universe_20260524_core_universe_policy_v0_2` 與 v0.3 snapshots **不重 build**(metadata 不變);新 `core_universe_policy_v0.4` snapshot 起適用 v0.5 builder;預期分層 churn rate < 15%。**score_detail 補入 v0.5 sub-scores**(per_rel / pbr_rel / div_yld / div_stability / op_margin / attr_ratio 6 鍵);selection_reason 顯示新 sub-components。**對下游影響**:future v0.4 policy snapshot 之 universe 可能與 v0.3 略有差異(FG 升級 → fundamental_score 變 → 排序略變);現有 v0.3 snapshot 維持為 audit trail。本版**不**修改 §6.4 CoreScore 公式總結構、§6.7 SSOT 150 鎖定、§0.1-A 6 條禁令、§0.1.3-A.1 ROE dropped 裁決、§6.3 第 4 條 FG 條文原文(留待 v6.2.0 升強制契約)、raw DDL、annual_rebalance_guard、candidate_fallback、5 張治理表寫入順序。**證偽承諾**(對接 §0.1-E 框架,§14.7-BC §7):T_FG_v0.5.1 (v0.5 IC ≥ v0.3 baseline) / T_FG_v0.5.2 (fundamental_score 與 industry-rel valuation 相關 > 0.4) / T_FG_v0.5.3 (walk-forward IC stdev ≤ v0.3) / T_FG_v0.5.4 (dry-run mean/std 差異 ∈ [+5, +20])。**audit_core_universe 配套需求**:audit 工具需加 `core_universe_policy_v0.4` 識別(對應 score_detail v0.5 鍵驗收;另案升版)。同步配套:憲章 §14.7-BC(已入憲 commit `a6904aa`)+ 設計研究 `reports/v_augmentation_phase_cd_design_research_20260525.md`(13 章 + 3 附錄)+ 修訂歷程 v6.1.0-patch 2026-05-25 第七輪 entry(程式落地;不需新 charter entry)。 | SUPERSEDED |
 | v0.4 | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 3 落地(配套 data_schema v2.20 SSOT helper + feature_store_builder v0.5;v6.1.0-patch 同次)**:依憲章 §8.5-9.7 Phase 3 升版觸發,加 `from core.data_schema import build_publication_date_gate` SSOT helper,**5 處 SQL gate per-table 分派升版**(僅 CoreScore 計算層:PriceAdj/MonthRevenue/FinStmt latest_margin/FinStmt EPS/Institutional;Preflight 7 處 metadata 統計留 v0.5 升版)。**邏輯動量**:CoreScore v0.2 六層權重不變;v0.3 FG GrossProfit sub-score 維持;ROE dropped 維持;CLI / verdict / annual_guard / candidate_fallback 不變。**對既有 snapshot 影響**:零(既有不重 build;新 v0.4 snapshot 之 FinStmt 之 Q1+45/Q4+90 未公告 quarter 排除,可能微影響 fundamental_score)。**Phase 3 SSOT 配套**:三檔(data_schema v2.20 + feature_store_builder v0.5 + 本 v0.4)共用 build_publication_date_gate 單一 helper。本版**不**改 §6 治理 schema、CoreScore 公式、raw DDL、preflight 結構(僅 SQL gate)、annual_rebalance_guard、5 張治理表寫入順序。 | SUPERSEDED |
 | v0.3 | 2026-05-24 | Codex | **Phase B FG GrossProfit sub-score 落地 + ROE dropped(§0.1.3-A.1「資料現實裁決」首次跑通典範)**:依 §0.1.3-A V 落地度 gap 揭露,於 FG sub-score 新增 GrossProfit/Revenue 毛利率(5 階梯:>40%/>25%/>10%/>5%/其餘 → +10/+5/0/-3/-8);DEFAULT_POLICY_VERSION v0.2 → v0.3;TOOL_VER v0.2 → v0.3;**ROE 因 raw data 限制 dropped**:§0.1.3-A.1 揭露 `EquityAttributableToOwnersOfParent.value ≈ IncomeAfterTaxes.value`(mislabel),非真正股東權益 → ROE 無法計算;builder 保留 `financial_data[sid]['roe'] = None` 占位;對映 §14.7-AX 治權元規則第一次跑通。CoreScore 六層權重不變;committed snapshot `core_universe_20260524_core_universe_policy_v0_2`(audit 41/0/0 PERFECT)。 | SUPERSEDED |
 | v0.2 | 2026-05-16 | Codex | CoreScore 六層正式評分入憲（§6.1〜§6.6）：六權重 0.25/0.25/0.20/0.15/0.10/0.05 + RiskPenalty；八類輸入資料契約 preflight；2026-05-17 補入 `--special-rebalance-reason` 與 `_annual_rebalance_guard()`（§6.8 年度重選契約）；2026-05-18 v6.0.0-patch 確認 latest_registry_fallback 低品質入選之透明性裁決。 | SUPERSEDED |
@@ -86,7 +87,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.5"
+TOOL_VER = "v0.5.1"
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.4"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
@@ -767,23 +768,34 @@ class CoreUniverseBuilder:
 
             # v0.5 §14.7-BC + §14.7-BD「資料現實裁決」第 4 次跑通:
             # TaiwanStockDividend.year 為民國年格式('113年'=西元 2024)非西元 4 位數!
-            # 2026-05-25 dry-run 揭露 SQL `year ~ '^[0-9]{4}$'` 完全 miss(dividend=0)
             # 修正:解析 '113年' → 民國 113 → 西元 2024;past 5y = [西元-5, 西元當年)
+            #
+            # v0.5.1 §14.7-BE「資料現實裁決」第 5 次跑通(事前事前驗證模式):
+            # 設計研究計畫加 Dividend 4 cols ≥ 30% 覆蓋,落地前 DB 驗證揭露:
+            # - Remu / EmpCash:民國 100 年(2011)起 schema sunset(0 stocks)
+            # - StockEarnings:2024 只 5%(8/150)
+            # - **只 ParticipateDistributionOfTotalShares 真實 86%(129/150)可用**
+            # 對策:SELECT-only animation(讀取 + 透明寫入 score_detail,但不加 sub-score)
+            # 治權成本最低;留待 walk-forward IC 證偽後決定是否升 sub-score
             roc_5y_ago = (self.as_of_date.year - 5) - 1911  # e.g., 2026-5=2021 → 民國 110
             roc_current = self.as_of_date.year - 1911       # e.g., 2026 → 民國 115
             dividend_data = {}
             cur.execute("""
-                SELECT stock_id, COUNT(DISTINCT year) as div_count_5y
+                SELECT stock_id,
+                    COUNT(DISTINCT year) FILTER (WHERE "CashEarningsDistribution" > 0) as div_count_5y,
+                    AVG("ParticipateDistributionOfTotalShares") FILTER (WHERE "ParticipateDistributionOfTotalShares" > 0) as part_dist_5y_avg
                 FROM "TaiwanStockDividend"
-                WHERE "CashEarningsDistribution" IS NOT NULL
-                  AND "CashEarningsDistribution" > 0
-                  AND year ~ '^[0-9]+年$'
+                WHERE year ~ '^[0-9]+年$'
                   AND CAST(REGEXP_REPLACE(year, '年$', '') AS INTEGER) >= %s
                   AND CAST(REGEXP_REPLACE(year, '年$', '') AS INTEGER) < %s
                 GROUP BY stock_id
             """, (roc_5y_ago, roc_current))
-            for sid, cnt in cur.fetchall():
-                dividend_data[sid] = {"div_count_5y": int(cnt or 0)}
+            for sid, cnt, part_avg in cur.fetchall():
+                dividend_data[sid] = {
+                    "div_count_5y": int(cnt or 0),
+                    # v0.5.1 §14.7-BE SELECT-only animation:讀取 + 透明寫入,但不加 sub-score
+                    "part_dist_5y_avg": float(part_avg) if part_avg is not None else None,
+                }
 
             # TaiwanStockInstitutionalInvestorsBuySell: net buy/sell by institution type
             # Names: Foreign_Investor, Investment_Trust, Dealer_self, Dealer_Hedging, Foreign_Dealer_Self
@@ -1218,6 +1230,8 @@ class CoreUniverseBuilder:
             "fg_pbr": p_data.get("pbr"),
             "fg_div_yield": p_data.get("div_yield"),
             "fg_div_count_5y": d_data.get("div_count_5y"),
+            # v0.5.1 §14.7-BE SELECT-only animation(透明寫入;不影響 score)
+            "fg_part_dist_5y_avg": d_data.get("part_dist_5y_avg"),
             "fg_op_margin": f_data.get("op_margin"),
             "fg_pretax_margin": f_data.get("pretax_margin"),
             "fg_continuing_op_ratio": f_data.get("continuing_op_ratio"),
