@@ -51,6 +51,17 @@
 - 工具呼叫失敗要明說。
 - 不假裝完成未完成的工作。
 
+### 9. 外部資源驗證 protocol(2026-05-25 §14.7-AX(E) / §14.7-BI/BJ 雙重實證入憲)
+
+任何認定**外部資源不可用**(API paywall / quota cap / tier insufficient)之前,**必須**:
+
+1. **直接調用 user_info / quota_info API**(例如 FinMind `/api/v4/user_info`),取得實際 tier + quota + subscription status;**不可從 sync error 直接推測 tier**(error 可能來自 hourly window timing)
+2. **若 API 無 user_info endpoint**:跑單股探測 + 等候 hourly window 重置(通常 1 hour)後重試,仍 fail 才認定資源不可用
+3. **明確區分「tier 不足(永久 blocked)」vs「quota 暫時耗盡(可重試)」**
+4. **入憲記述須區分上述兩類**(Path D vs Path A retry)
+
+**證據基礎**:§14.7-BJ ROE Path A 第 1 次嘗試誤將 sponsor 認為 free user → 入憲 Path D dropped;§14.7-BI 第 2 次 user_info verify 後確認 sponsor 仍 active → Path A' SUCCESS / V 動員度 64% → 73%。違反 #9 protocol 將導致治權誤判 + 重複入憲成本。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)
