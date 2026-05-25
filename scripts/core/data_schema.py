@@ -1,8 +1,8 @@
 """
-data_schema.py v2.16 (Quantum Finance API-First Schema Sovereignty Edition)
+data_schema.py v2.17 (Quantum Finance API-First Schema Sovereignty Edition)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: API CONTRACT FIRST (憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
+**最後更新日期**: 2026-05-25
+**主權狀態**: API CONTRACT FIRST (憲法 v6.1.0 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -16,14 +16,15 @@ data_schema.py v2.16 (Quantum Finance API-First Schema Sovereignty Edition)
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario)   | 權威指令 / 建議用法 (Exhaustive Examples)                             | 對齊模組 |
 | :----------------------- | :-------------------------------------------------------------------- | :--- |
-| **1. [重鑄：資料庫主權初始化]**       | `$ python scripts/core/data_schema.py --init --force`                              | data_schema v2.16 |
-| **2. [重鑄：單一表主權重鑄]**         | `$ python scripts/core/data_schema.py --init --table [Name]`                       | data_schema v2.16 |
-| **3. [離線/災難復原：略過 API 契約探測]** | `$ python scripts/core/data_schema.py --init --force --skip-api-contract` | data_schema v2.16 |
+| **1. [重鑄：資料庫主權初始化]**       | `$ python scripts/core/data_schema.py --init --force`                              | data_schema v2.17 |
+| **2. [重鑄：單一表主權重鑄]**         | `$ python scripts/core/data_schema.py --init --table [Name]`                       | data_schema v2.17 |
+| **3. [離線/災難復原：略過 API 契約探測]** | `$ python scripts/core/data_schema.py --init --force --skip-api-contract` | data_schema v2.17 |
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.16** | 2026-05-21 | Codex | **維運矩陣補入 Step 2A「離線/災難復原」場景（CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項首例實證；達 100% 合規）**：依昨日剛入憲之 CLAUDE.md §四 #4「完整度評估必須先檢驗標頭 docstring」治權原則第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v2.15 維運矩陣只列 2 場景（`--init --force` / `--init --table`），但 CLI 實際支援 4 個 flag（含 `--skip-api-contract` 之離線/災難復原 = 憲章 §二 Step 2A）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 3 場景「[離線/災難復原：略過 API 契約探測]」對應 CLI `--init --force --skip-api-contract`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.15 → v2.16；(IV) 維運矩陣 3 場景之 cosmetic v2.15 → v2.16；(V) report header v2.15 → v2.16。**API、DDL、CLI 介面（4 flag 不變）、`probe_api_contracts()` 邏輯、13 張 DATASET_REGISTRY、`init_tables(skip_api_contract=False)` 已有之 `--skip-api-contract` 處理邏輯 L309/L314（v2.10 既有）、verdict 動態計算、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項）。合規度：v2.15 ≈98%（缺 Step 2A 場景）→ v2.16 100%。 | **ACTIVE** |
+| **v2.17** | 2026-05-25 | Codex | **§3.2A.J `data_audit_log` 5-tuple UNIQUE constraint 落地（v6.1.0-patch §3.2A.J / §14.7-AY 程式預備升版 A）**：依憲章 v6.1.0-patch（commit `4da2450`，2026-05-25）新入憲之 §3.2A.J `db_utils.write_data_audit_log` Audit Log Write-Safe 治權契約（憲章 L2722-2745）+ §14.7-AY §7.4-A 姊妹缺陷補完入憲（憲章 L7480-7568），本版落地裁決第 1 條「`data_schema.py v2.16 → v2.17`：`data_audit_log.unique_constraints` 從 `[]` 改為 5-tuple」。**Root cause（2026-05-24 Audit 2 揭露）**：Step 4F 啟動 ~65 秒兩個 sync_engine worker 並發寫入 `data_audit_log` 撞同 microsecond + 同 5-tuple → race-induced duplicate row 1 個 → Audit 2 verdict=FAILED（業務 dataset 全 PASS，唯一 FAIL 在 infra 觀測表）。**補正內容**：(I) `DATASET_REGISTRY["data_audit_log"]["unique_constraints"]`: `[]` → `["table_name", "stock_id", "data_date", "action_type", "timestamp"]`（5-tuple，timestamp 為 microsecond 精度作 race boundary）；(II) TOOL_VER v2.16 → v2.17；(III) CONSTITUTION_VER v6.0.0 → v6.1.0（對齊現行憲章 v6.1.0-patch）；(IV) 主權狀態行加「§3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地」；(V) 維運矩陣 3 場景之 cosmetic v2.16 → v2.17；(VI) report header v2.16 → v2.17。**邏輯動量**：13 張 DATASET_REGISTRY 數量不變；其他 12 表 unique_constraints 不變；API contract probe 邏輯不變；--init / --force / --table / --skip-api-contract CLI 介面不變；verdict 動態計算邏輯不變；§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 DB 影響**：既存 `data_audit_log` 表若有 race-induced dup（如 2026-05-24 從零驗證留下之 1 個 dup），`--init --force` DROP + CREATE 會清空；非 force 模式需透過 `scripts/maintenance/migrate_data_audit_log_dedup_20260525.py v0.1`（同次入憲之 §14.7-AY 落地 C 項）執行 dedup + ALTER TABLE ADD CONSTRAINT。**db_utils.py 配套升版**：v2.47 → v2.48 之 `write_data_audit_log()` 加 ON CONFLICT DO NOTHING（落地裁決第 2 條，另一支同次升版）。**追溯適用**：v0.1-v0.6 之 `audit_api_schema_compliance` Layer F 對 `data_audit_log` 之 dup>0 記錄重新詮釋為 race-induced artifact；v2.17 / db_utils v2.48 + migration 落地後自動消解。本版**不**修改其他 12 張 dataset 之 unique_constraints、**不**改 `pipeline_execution_log` DDL（其 SERIAL id 自然 unique 不需新約束）、**不**擴張至業務 dataset（已有業務鍵 UNIQUE）。同步入憲：憲章 §3.2A.J（L2722-2745）/ §14.7-AY（L7480-7568）/ 修訂歷程 v6.1.0-patch entry（L66）。 | **ACTIVE** |
+| v2.16 | 2026-05-21 | Codex | **維運矩陣補入 Step 2A「離線/災難復原」場景（CLAUDE.md §四 #4「8 項標頭強制檢驗」第 5 項首例實證；達 100% 合規）**：依昨日剛入憲之 CLAUDE.md §四 #4「完整度評估必須先檢驗標頭 docstring」治權原則第 5 項「全量維運指令總矩陣場景齊全」之檢驗，揭露 v2.15 維運矩陣只列 2 場景（`--init --force` / `--init --table`），但 CLI 實際支援 4 個 flag（含 `--skip-api-contract` 之離線/災難復原 = 憲章 §二 Step 2A）— 矩陣未對齊治權現況。**補正內容**：(I) 維運矩陣新增第 3 場景「[離線/災難復原：略過 API 契約探測]」對應 CLI `--init --force --skip-api-contract`；(II) 主權狀態行升至「(憲法 v6.0.0 對齊 + 維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.15 → v2.16；(IV) 維運矩陣 3 場景之 cosmetic v2.15 → v2.16；(V) report header v2.15 → v2.16。**API、DDL、CLI 介面（4 flag 不變）、`probe_api_contracts()` 邏輯、13 張 DATASET_REGISTRY、`init_tables(skip_api_contract=False)` 已有之 `--skip-api-contract` 處理邏輯 L309/L314（v2.10 既有）、verdict 動態計算、所有公開行為皆無變更**；本補正純為標頭維運矩陣完整化（對齊 CLAUDE.md §四 #4 第 5 項）。合規度：v2.15 ≈98%（缺 Step 2A 場景）→ v2.16 100%。 | SUPERSEDED |
 | v2.15 | 2026-05-20 | Codex | **DDL hotfix：TaiwanStockMonthRevenue.create_time TIMESTAMP → DATE（對齊 API 物理本質；對應憲章 §14.7-AK 補登）**：依 `audit_api_schema_compliance v0.1` 首次實測揭露之 Layer B FAIL（commit `608c5e8` / §14.7-AJ Step 3 實證）：DDL 宣告 `create_time TIMESTAMP`，但 FinMind API 實際回傳 10 字元 DATE 字串（如 `'2026-04-21'`），不符 19 字元 `YYYY-MM-DD HH:MM:SS` 格式。實質上 `TaiwanStockMonthRevenue` 為月度資料，`create_time` 物理本質即為「資料發佈日」，DATE 比 TIMESTAMP 更精確。**裁決**：依使用者「audit 工具須嚴格、不得包容違規」之治權原則，採甲案修 DDL 對齊 API 物理本質，保留 audit 嚴格性。**補正內容**：(I) `DATASET_REGISTRY["TaiwanStockMonthRevenue"]["columns"]["create_time"]`: `"TIMESTAMP"` → `"DATE"`；(II) TOOL_VER v2.14 → v2.15；(III) 標頭主權狀態加「v2.15 hotfix：TaiwanStockMonthRevenue.create_time TIMESTAMP → DATE 對齊 API 物理本質」；(IV) 維運矩陣 / report header v2.14 → v2.15。**邏輯動量**：API contract probe 邏輯不變（仍比對 column name set，DATE 之 API 回傳值原本即合法）；對既有 DB 影響——既存 rows（被 PostgreSQL 自動補 `00:00:00` 之 TIMESTAMP）需透過 `--init --force` 重建（DROP + CREATE）或 `ALTER TABLE ALTER COLUMN create_time TYPE DATE USING create_time::DATE` 截為 DATE（資訊無損失，原本時分秒即虛值）。13 張 DATASET_REGISTRY 數量不變；__init/--force/--table/--skip-api-contract CLI 介面不變；§5.6.3 verdict 動態計算邏輯不變；§1.4 + §5.6 + §0.4 + §0.0-G + §0.0-I 全部不違反。同步入憲：憲章 §二 L2408 / §3.1 L2440 / §3.2 L2483 模組登錄版本升至 v2.15；§14.7-AK 新增 hotfix 紀錄。 | SUPERSEDED |
 | v2.14 | 2026-05-20 | Codex | **[Sovereignty Declaration] 核心定義第 6 條補入（8 項檢查面 100% 合規補強；對應憲章 §14.7-AH 補登）**：依 v2.13 後 8 項檢查面審計（per_program_audit §7.5 模板）揭露之 4 項標頭治權自我宣告缺口（第 1/5/6/7 項：治權位階 Type 未明示 / 5 套禁令未明示 / T1-T3 分層未明示 / §8.5 anti-leakage 未明示），補入核心定義第 6 條 [Sovereignty Declaration] 一次性涵蓋。**補正內容**：(I) 核心定義新增第 6 條 [Sovereignty Declaration]：§3.1 序列模組 / Raw API Schema Authority（憲章 L2440 / L2709）；不涉及 §0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §0.0-F.3 五套禁令；不在 §0.1.1 T1/T2/T3 分層內；不處理 §8.5 anti-leakage；不得承擔核心股 derived governance schema（憲章 L2440 / L2710 邊界）；(II) 主權狀態行升至「API CONTRACT FIRST (憲法 v6.0.0 對齊 + [Sovereignty Declaration] 核心定義第 6 條補入；8 項檢查面 100% 合規)」；(III) TOOL_VER v2.13 → v2.14；(IV) 維運矩陣 / report header v2.13 → v2.14；(V) 修訂歷程補入標準 markdown 表格 header。**API、DDL、CLI 介面、13 張 DATASET_REGISTRY、`probe_api_contracts()` 邏輯、verdict 動態計算（L393-396）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 `core/__init__.py v1.15` 標頭治權對齊風格一致）。同步入憲：憲章 §二 L2408 / §3.1 L2440 / §3.2 L2483 模組登錄版本升至 v2.14；§14.7-AH 新增逐元件審計修訂紀錄。 | SUPERSEDED |
 | v2.13 | 2026-05-20 | Codex | **[Zero Hardcoded Verdict] 核心定義第 5 條補入（逐元件審計 Step 1.1.2 100% 合規補強）**：依逐元件治權合規審計 Step 1.1.2 修補後再審 minor 補強建議，補入核心定義第 5 條 [Zero Hardcoded Verdict] 顯式對齊憲章 §5.6.3。**補正內容**：(I) 核心定義新增第 5 條「[Zero Hardcoded Verdict]: 主權判定（PERFECT / WARNING / FAILED）必須依執行結果動態計算，嚴禁硬編碼。對齊憲章 §5.6.3 與 §3.2 Step 2 接受標準」；(II) 主權狀態行更新為「(憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] 核心定義補入；100% 合規)」；(III) TOOL_VER v2.12 → v2.13；(IV) 維運矩陣 / report header v2.12 → v2.13。**程式邏輯（L391-393 之 verdict 計算）原已 §5.6.3 合規**，本次純為核心定義條之顯式宣告（與 `finmind_client.py v4.46` 之第 5 條 [Zero Hardcoded Verdict] 治權慣例對齊）。API、DDL、CLI 介面、13 張 DATASET_REGISTRY、所有公開行為皆無變更。 | SUPERSEDED |
@@ -47,8 +48,8 @@ import argparse
 # ──────────────────────────────────────────────────────────────────────────────
 # 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
 # ──────────────────────────────────────────────────────────────────────────────
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v2.16"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v2.17"
 
 # ── 系統級架構引導 ──
 _THIS_FILE = Path(__file__).resolve()
@@ -77,12 +78,15 @@ DATASET_REGISTRY = {
     },
     "data_audit_log": {
         "columns": {
-            "id": "SERIAL PRIMARY KEY", "table_name": "VARCHAR(255)", 
+            "id": "SERIAL PRIMARY KEY", "table_name": "VARCHAR(255)",
             "stock_id": "VARCHAR(255)", "data_date": "DATE",
-            "action_type": "VARCHAR(255)", "rows_affected": "INTEGER", 
+            "action_type": "VARCHAR(255)", "rows_affected": "INTEGER",
             "timestamp": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
         },
-        "unique_constraints": []
+        # §3.2A.J data_audit_log Write-Safe (v2.17 / 2026-05-25): 5-tuple UNIQUE constraint 阻擋
+        # multi-worker race-induced dup; timestamp microsecond 精度作 race boundary;
+        # 配套 db_utils.write_data_audit_log() v2.48 之 ON CONFLICT DO NOTHING (憲章 §3.2A.J / §14.7-AY)
+        "unique_constraints": ["table_name", "stock_id", "data_date", "action_type", "timestamp"]
     },
 
     # --- Technical (技術面) ---

@@ -1,8 +1,8 @@
 """
-db_utils.py v2.47 (Quantum Finance Infrastructure Sovereign Edition)
+db_utils.py v2.48 (Quantum Finance Infrastructure Sovereign Edition)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: GOVERNANCE SYNC (憲法 v6.0.0 對齊 + 維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)
+**最後更新日期**: 2026-05-25
+**主權狀態**: GOVERNANCE SYNC (憲法 v6.1.0 對齊 + §3.2A.J `write_data_audit_log` race-safe ON CONFLICT DO NOTHING 落地；維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -91,7 +91,8 @@ db_utils.py v2.47 (Quantum Finance Infrastructure Sovereign Edition)
 ## 📜 三、全修訂歷程 (Full Revision History - 舊詳細參考)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.47** | 2026-05-21 | Codex | **維運矩陣重組為 6 大功能群視角（功能可讀性提升；採選項丙重寫；對齊 §3.2 橫切 library 治權特性）**：依 v2.46 後再審「db_utils 為橫切 library，舊維運矩陣 8 場景半數借用其他程式之指令，未真正代表 db_utils 自身功能」之問題，採選項丙重組維運矩陣。**補正內容**：(I) 維運矩陣標題「全量維運指令總矩陣」→「全量功能群矩陣」；(II) 由 8 場景視角重組為 6 大功能群分類：Group A DB 連線管理（7 子項）/ Group B Hybrid Observability 雙日誌（5 子項）/ Group C §6.7 SQL SSOT 核心股查詢（5 子項）/ Group D 批次 Upsert + 安全 Commit（5 子項）/ Group E 錯誤處理 + Failure Logging（7 子項）/ Group F Step 2C 前置依賴檢查（4 子項）= 33 子項；(III) 每子項明示 API / 指令 / 治權對應；(IV) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + 維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)」；(V) TOOL_VER v2.46 → v2.47；(VI) 標頭版本 + cosmetic v2.46 → v2.47。**所有 public API、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code、6 條核心定義皆無變更**；本補正純為標頭維運矩陣之視角重組（functional 視角優於 scenario 視角；對齊 db_utils 為橫切 library 之治權特性）。 | **ACTIVE** |
+| **v2.48** | 2026-05-25 | Codex | **§3.2A.J `write_data_audit_log` race-safe ON CONFLICT DO NOTHING 落地（v6.1.0-patch §3.2A.J / §14.7-AY 程式預備升版 B）**：依憲章 v6.1.0-patch（commit `4da2450`，2026-05-25）新入憲之 §3.2A.J `db_utils.write_data_audit_log` Audit Log Write-Safe 治權契約（憲章 L2722-2745）+ §14.7-AY §7.4-A 姊妹缺陷補完入憲（憲章 L7480-7568），本版落地裁決第 2 條「`db_utils.py v2.47 → v2.48`：`write_data_audit_log()` INSERT 改為 `INSERT ... ON CONFLICT (...) DO NOTHING`，保證多 worker 並發冪等」。**Root cause（2026-05-24 Audit 2 揭露）**：Step 4F 啟動 ~65 秒兩個 sync_engine worker 並發呼叫本函式撞同 microsecond + 同 5-tuple → 純 INSERT 無 ON CONFLICT 保護 → race-induced duplicate row 1 個 → Audit 2 verdict=FAILED。**補正內容**：(I) `write_data_audit_log()` SQL 加 `ON CONFLICT (table_name, stock_id, data_date, action_type, timestamp) DO NOTHING` 子句（保證冪等寫入，不阻斷 caller）；(II) function docstring 從 "v2.43 unchanged in v2.44" 升為 "v2.48: §3.2A.J race-safe upgrade"；(III) CONSTITUTION_VER v6.0.0 → v6.1.0（對齊現行憲章 v6.1.0-patch）；(IV) TOOL_VER v2.47 → v2.48；(V) 主權狀態行加「§3.2A.J `write_data_audit_log` race-safe ON CONFLICT DO NOTHING 落地」；(VI) 標頭版本 + cosmetic v2.47 → v2.48。**對應 §7.4-A 對稱性**：§7.4-A multi-worker 讀側（sync_engine v1.22 cascade mitigation）已治權閉環；本版補完寫側（audit log 並發寫入）治權閉環 → 共同完成「multi-worker 讀寫雙側治權閉環」（憲章 §14.7-AY §7.4-A 治權對稱性表）。**邏輯動量**：函式簽名不變（`write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affected)`）；caller 端零修改（30+ 個 caller 在 sovereign_sync_engine / fetchers / pipeline 中無感升級）；`record_lifecycle()` / `_LifecycleContext` / `get_db_connection()` / `get_core_stocks_from_db()` 等 20+ public API 全部不動；`run_diagnostics()` 五軸內容（含 `data_audit_log` 寫入測試）行為不變；§5.6.3 + §0.4 + §3.2 接受標準 + §6.7 SQL 契約 + §一 0~6 條核心定義 + 6 大功能群矩陣（Group A-F）皆無變更。**對既有 DB 影響**：升版前必須執行 `scripts/maintenance/migrate_data_audit_log_dedup_20260525.py v0.1` 一次性 dedup + ALTER TABLE ADD CONSTRAINT（同次入憲之 §14.7-AY 落地 C 項）；否則本版之 ON CONFLICT 子句因目標 UNIQUE constraint 不存在而 SQL error（PostgreSQL 要求 ON CONFLICT 必須指定既有 UNIQUE / EXCLUDE constraint）。**data_schema.py 配套升版**：v2.16 → v2.17 之 `data_audit_log.unique_constraints` 從 `[]` 改為 5-tuple（落地裁決第 1 條，另一支同次升版）。**追溯適用**：v0.1-v0.6 之 `audit_api_schema_compliance` Layer F 對 `data_audit_log` 之 dup>0 記錄重新詮釋為 race-induced artifact；本版 + data_schema v2.17 + migration 落地後自動消解。本版**不**修改其他 `write_*_log()` 函式（pipeline_execution_log SERIAL id 自然 unique 不需 ON CONFLICT）、**不**擴張至業務 dataset 之 `bulk_upsert()`（已有 ON CONFLICT DO UPDATE 業務鍵語意）。同步入憲：憲章 §3.2A.J（L2722-2745）/ §14.7-AY（L7480-7568）/ 修訂歷程 v6.1.0-patch entry（L66）。 | **ACTIVE** |
+| v2.47 | 2026-05-21 | Codex | **維運矩陣重組為 6 大功能群視角（功能可讀性提升；採選項丙重寫；對齊 §3.2 橫切 library 治權特性）**：依 v2.46 後再審「db_utils 為橫切 library，舊維運矩陣 8 場景半數借用其他程式之指令，未真正代表 db_utils 自身功能」之問題，採選項丙重組維運矩陣。**補正內容**：(I) 維運矩陣標題「全量維運指令總矩陣」→「全量功能群矩陣」；(II) 由 8 場景視角重組為 6 大功能群分類：Group A DB 連線管理（7 子項）/ Group B Hybrid Observability 雙日誌（5 子項）/ Group C §6.7 SQL SSOT 核心股查詢（5 子項）/ Group D 批次 Upsert + 安全 Commit（5 子項）/ Group E 錯誤處理 + Failure Logging（7 子項）/ Group F Step 2C 前置依賴檢查（4 子項）= 33 子項；(III) 每子項明示 API / 指令 / 治權對應；(IV) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + 維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)」；(V) TOOL_VER v2.46 → v2.47；(VI) 標頭版本 + cosmetic v2.46 → v2.47。**所有 public API、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code、6 條核心定義皆無變更**；本補正純為標頭維運矩陣之視角重組（functional 視角優於 scenario 視角；對齊 db_utils 為橫切 library 之治權特性）。 | SUPERSEDED |
 | v2.46 | 2026-05-21 | Codex | **2 條核心定義補入 + 2 模組常數 + cross-ref 行號（CLAUDE.md §四 #4 100% 合規補強；逐元件審計 Step 1.1.4 跟進）**：依昨日剛入憲之 CLAUDE.md §四 #4「8 項標頭強制檢驗」治權原則檢驗，揭露 v2.45 之 5 項缺口：(1) 主權狀態行未明示「憲法 v6.0.0 對齊」；(2) 核心定義缺 [Zero Hardcoded Verdict]（程式邏輯 L976-1019 動態但未顯式宣告）；(3) 核心定義缺 [Sovereignty Declaration]（治權位階 / 5 套禁令 / T1-T3 / §8.5 未明示）；(4) 缺 module-level `CONSTITUTION_VER` + `TOOL_VER` 模組常數（治權慣例對齊 path_setup v4.45+ / data_schema v2.12+）；(5) cross-ref 缺精確行號（與 data_schema 之「L2440 / L2709」/ __init__ 之「L2457 / L2488 / L5589」/ core_universe_schema v0.3 之「L2455 / L2722 / L2348-L2353」/ audit_api_schema_compliance v0.2+ 之「L2483」之治權慣例不對齊）。**補正內容**：(I) 標頭版本 v2.45 → v2.46；(II) 最後更新日期 2026-05-16 → 2026-05-21；(III) 主權狀態行升至「GOVERNANCE SYNC (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入；8 項檢查面 100% 合規)」；(IV) 核心定義新增第 5 條 [Zero Hardcoded Verdict] 顯式宣告動態 `run_diagnostics()` 對齊 §5.6.3；(V) 核心定義新增第 6 條 [Sovereignty Declaration] 明示 §3.2 橫切 library + Infrastructure Sovereign Authority（cross-ref 憲章 L2282 §3.2 子表）+ Step 2C 前置依賴檢查授權 + 5 套禁令不涉 + T1-T3 不分層 + §8.5 anti-leakage 不處理 + 不選股不評分（Builder Authority 邊界）+ 不持有 Raw API Schema（data_schema Authority 邊界）；(VI) 新增 module-level `CONSTITUTION_VER = "v6.0.0"` + `TOOL_VER = "v2.46"` 常數；(VII) 維運矩陣 8 場景 + report header 之 cosmetic v2.45 → v2.46。**所有 public API（`get_db_connection()`, `record_lifecycle()`, `write_data_audit_log()`, `get_core_stocks_from_db()`, `bulk_upsert()`, `FailureLogger`, `DDL_FETCH_LOG` 等 20+ 函式）、`run_diagnostics()` 邏輯、verdict 動態計算（L976-1019）、§6.7 SQL 契約、`__main__` exit code 對 §3.2 Step 2C 接受標準分流、record_lifecycle 之 _LifecycleContext（v2.44 既有）、所有公開行為皆無變更**；本補正純為標頭治權自我宣告（與 data_schema v2.14 / __init__ v1.16 / core_universe_schema v0.3 / audit_api_schema_compliance v0.2 同模式）。合規度：v2.45 ≈60% → v2.46 100%。 | SUPERSEDED |
 | v2.45 | 2026-05-14 | Codex (No-touch Zone 授權) | **§6.7 SQL + Public API Restoration + 2026-05-16 Connection Diagnostics + 2026-05-16 exit code 補正**：(1) `get_core_stocks_from_db()` 改查 `core_universe_membership` JOIN `core_universe_snapshot WHERE status='committed'`，封閉 Pending Bug #4；(2) 補回 `get_db_conn`、`ensure_ddl`、`bulk_upsert`、`safe_commit_rows`、`FailureLogger`、`DDL_FETCH_LOG`、`log_fetch_result`、`db_transaction`、`db_session`、`write_pipeline_log`、`write_evaluation_log`、`get_db_stock_ids` 等跨模組 public API；(3) `psycopg2` / `dotenv` 改為延遲失敗，允許常數與 API 匯入測試先行；(4) `get_db_connection()` 補強必要 DB env 檢查、`connect_timeout=10` 與 host/user/dbname 錯誤脈絡，避免 sandbox 或秘密缺失被誤判為 schema drift；(5) **2026-05-16 exit code 補正**：`run_diagnostics()` 補上 `return diag_status`；`__main__` 改依回傳值呼叫 `sys.exit(0 if status in ("PERFECT", "WARNING") else 1)`，對齊憲章 §3.2 Step 2C 接受標準（FAILED 必須 exit 1 阻斷進入 Step 3）。 | SUPERSEDED |
 | v2.44 | 2026-05-14 | Antigravity (Auto-patch, No-touch Zone 授權) | **Bug #2 + Bug #3 雙修補**：(1) `record_lifecycle` 改為 yield 一個可由 caller 標記失敗/警告的 `_LifecycleContext`，封堵「Python 無例外即記 success」之 status 謊報；(2) INSERT 由 5 欄擴張為 8 欄，補寫 start_time / end_time / error_msg，封堵 NULL 漏洞；(3) DB 連線改為僅在 finally 開啟，不再霸佔整個 task 期間；(4) logger 失敗時不再 propagate 例外給 caller。100% backward compatible —— 舊 `with record_lifecycle(...):` 呼叫端零修改。 | SUPERSEDED |
@@ -110,8 +111,8 @@ from datetime import date, datetime, timedelta
 # ──────────────────────────────────────────────────────────────────────────────
 # 治權常數 (Constitution Constants) — v2.46 新增（CLAUDE.md §四 #4 / Step 1.1.4 補正）
 # ──────────────────────────────────────────────────────────────────────────────
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v2.47"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v2.48"
 
 try:
     import psycopg2
@@ -292,13 +293,21 @@ def record_lifecycle(task_name, category="general", stock_id=None):
 
 
 def write_data_audit_log(table_name, stock_id, data_date, action_type, rows_affected):
-    """專項審計日誌 (v2.43 unchanged in v2.44) - 混合模式 B: data_audit_log"""
+    """專項審計日誌 (v2.48: §3.2A.J race-safe upgrade) - 混合模式 B: data_audit_log
+
+    §3.2A.J Audit Log Write-Safe 治權契約 (憲章 v6.1.0-patch L2722-2745 / §14.7-AY L7480-7568):
+    multi-worker 並發呼叫本函式撞同 microsecond + 同 5-tuple 時,ON CONFLICT DO NOTHING
+    保證冪等寫入(不產生 dup,不阻斷 caller);與 data_schema.py v2.17 之 5-tuple UNIQUE
+    constraint 配套(若 DB 端 constraint 不存在,本 SQL 會 error — 需先跑
+    scripts/maintenance/migrate_data_audit_log_dedup_20260525.py v0.1 一次性 migration)。
+    """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute("""
             INSERT INTO data_audit_log (table_name, stock_id, data_date, action_type, rows_affected)
             VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (table_name, stock_id, data_date, action_type, timestamp) DO NOTHING
         """, (table_name, stock_id, data_date, action_type, rows_affected))
         conn.commit()
     finally:
