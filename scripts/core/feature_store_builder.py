@@ -1,8 +1,8 @@
 """
-feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
+feature_store_builder.py v0.4 (Quantum Finance Feature Store Build Authority)
 ================================================================================
-最後更新日期: 2026-05-19
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.2 + §9.9 P1 v0.1 upside/downside decomposition)
+最後更新日期: 2026-05-25
+主權狀態: IMPLEMENTED (憲法 v6.1.0-patch §8.2 + §9.9 v0.3 upside/downside + §8.5 第 9 條 Publication-date Discipline Phase 2 落地;讀 PUBLICATION_DATE_STRATEGY_REGISTRY + SQL gate per-table 分派)
 最高原則: Feature Store Build Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -16,9 +16,18 @@ feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
    `TaiwanStockMarginPurchaseShortSale` / `FredData` / `TaiwanStockInfo`）
    與 `core_universe_*` 治理表；不呼叫 FinMind/FRED API（已由 §2 Step 4
    完成資料灌溉）。
-3. [As-Of Strict Anti-Leakage]: 對齊憲章 §8.5「Data Leakage 防禦規則」，
-   所有特徵以 `WHERE date <= as_of_date` 嚴格 as-of-strict 過濾派生；
-   label_date 由 `as_of_date + label_horizon` 推導，與 feature 嚴格分離。
+3. [As-Of Strict Anti-Leakage + Publication-date Discipline]: 對齊憲章 §8.5
+   「Data Leakage 防禦規則」8 條 + 第 9 條 Publication-date Discipline(v0.4 落地);
+   v0.3 以前用 `WHERE date <= as_of_date` 統一過濾;**v0.4 起依
+   `PUBLICATION_DATE_STRATEGY_REGISTRY` per-table 分派 SQL gate**:
+   - native_aligned (Price/PriceAdj/PER/Institutional/Margin/Info): `date <= as_of_date`
+   - strict (Dividend): `AnnouncementDate <= as_of_date`
+   - hardcoded_conservative (MonthRevenue): `(date + INTERVAL '10 days') <= as_of_date`
+   - hardcoded_conservative (FinStmt): quarter-aware (Q1-Q3 +45 / Q4 +90 天)
+   - transitional (Shareholding, FRED v2.19 追溯): 暫維持 `date <= as_of_date`
+     (FRED 因 DB realtime_start 為 ingest 日期非真實 vintage,§14.7-BB Phase 2 dry-run 揭露;
+      待 D2.4 ALFRED API 整合後升 strict)
+   label_date 由 `as_of_date + label_horizon` 推導,與 feature 嚴格分離。
 4. [Governance Write Order]: 寫入順序為 `feature_definition` →
    `feature_values` → `feature_store_snapshot (status='committed')`；
    feature_set_id 命名格式 `fs_{yyyymmdd}_{feature_set_version}`，
@@ -58,8 +67,9 @@ feature_store_builder.py v0.2 (Quantum Finance Feature Store Build Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-19 | Codex | §0.0-D.6 升版條件 #1 落地：新增 interaction 群 4 features（feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q / feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d）；feature_set_version v0.1 → v0.2；總特徵數 27 → 31；新增 `_compute_interaction_features()` 方法；不引入新 raw 資料源、不違反 §0.1-A 禁令、保留 cross-sectional variance > 0；既有 v0.1 committed feature sets 不受影響（only future runs build v0.2）。後續需重訓 model 才能實際使用新特徵。 | **SUPERSEDED (ablation IC = +0.0131 HARMFUL, §0.0-D.6 #1 已實證否決)** |
-| **v0.3** | 2026-05-20 | Codex | §9.9 P1 v0.1 落地：新增 4 個 upside/downside 分離特徵（upside_volatility_60d / downside_volatility_60d / upside_capture_60d / downside_capture_60d）至 price 群；feature_set_version v0.2 → v0.3；總特徵數 31 → 31（27 base + 4 upside/downside；v0.2 interaction 不繼承）；新增 4 個 static method `_upside_volatility / _downside_volatility / _upside_capture / _downside_capture`；採 version-aware 邏輯，v0.3 不寫入 interaction features。對齊 §0.0-C.3 上行凸性壓制 + §0.0-E.6 P1 升版優先級。後續需 v0.4 重訓 model 並驗證 ablation IC。 | **ACTIVE** |
+| **v0.4** | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 2 落地(配套 data_schema v2.18→v2.19;憲章 §8.5-9 + §14.7-BA + §14.7-BB)**:依憲章 §8.5-9.7 升版觸發表之 Phase 2,加 `_publication_date_gate()` helper 從 `PUBLICATION_DATE_STRATEGY_REGISTRY` 構造 SQL gate clause;**7 個 `_load_*` 函式 SQL 升版**(對齊 5 種 enforcement):(I) `_load_price_series` (PriceAdj): native_aligned `date <= as_of_date` 維持;(II) `_load_revenue` (MonthRevenue): **hardcoded_conservative `(date + INTERVAL '10 days') <= as_of_date`** 新增 +10 天保守上限;(III) `_load_financial` (FinStmt): **hardcoded_conservative quarter-aware** Q1-Q3 +45 / Q4 +90 天;(IV) `_load_institutional` (Institutional): native_aligned 維持;(V) `_load_margin` (Margin): native_aligned 維持;(VI) `_load_theme` (Info): native_aligned 維持;(VII) `_load_macro` (FRED): **transitional 維持 `date <= as_of_date`**(因 §14.7-BB DB realtime_start 為 ingest 日期非真實 vintage,本次走 transitional path,實際 v0.3 behavior 不變)。**FEATURE_DEFINITIONS 補 `publication_date_source`**(對齊 §8.5-9.3):每個 feature 標註其 publication-date 來源(由 `PUBLICATION_DATE_STRATEGY_REGISTRY[source_table]['source']` 自動分派)。**DEFAULT_FEATURE_SET_VERSION**: `feature_set_v0.3` → **`feature_set_v0.4`**;CONSTITUTION_VER v6.0.0 → v6.1.0(對齊現行憲章 v6.1.0-patch);TOOL_VER v0.3 → v0.4;標頭核心定義第 3 條 [As-Of Strict Anti-Leakage] 升版為 [+ Publication-date Discipline]。**邏輯動量**:31 個 features 數量不變(v0.3 active set 27 base + 4 upside/downside);features 計算邏輯不變(僅 SQL gate 變);windows 不變(20d/60d/252d/4q/8q/24m);imputation 策略不變(drop/zero_fill);CLI 介面不變(`--dry-run / --commit / --as-of-date / --feature-set-version / --label-horizon`);verdict 動態計算邏輯不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 feature_set_v0.1~v0.3 影響**:**零**(既有 snapshot 不重 build;標記 `publication_date_strategy='legacy_statistical_date'`;新 snapshot v0.4+ 起適用)。**預期 feature_values 差異(v0.3 vs v0.4 新 snapshot)**:fundamental 群(eps_sum_4q / net_income_positive_ratio_8q / revenue_yoy_*)在 historical as_of_date 接近 quarter-end 時可能少 1 個 quarter 之資料(因為 Q1=YYYY-03-31 + 45 天 = YYYY-05-15,若 as_of_date < YYYY-05-15 則該 Q 不入);其他群預期差異 0。**對 Phase 4 audit_leakage v0.3 rule 19 publication_date_check 之預備**:audit 將比對 feature_values 之原 SQL 是否使用此 strategy 之 gate(builder 透過 _publication_date_gate helper 確保一致)。同步入憲:憲章 §8.5-9.7 Phase 2 落地 + 配套 data_schema v2.19 修訂歷程 + 修訂歷程 v6.1.0-patch 2026-05-25 第五輪 entry。 | **ACTIVE** |
+| v0.2 | 2026-05-19 | Codex | §0.0-D.6 升版條件 #1 落地：新增 interaction 群 4 features（feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q / feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d）；feature_set_version v0.1 → v0.2；總特徵數 27 → 31；新增 `_compute_interaction_features()` 方法；不引入新 raw 資料源、不違反 §0.1-A 禁令、保留 cross-sectional variance > 0；既有 v0.1 committed feature sets 不受影響（only future runs build v0.2）。後續需重訓 model 才能實際使用新特徵。 | **SUPERSEDED (ablation IC = +0.0131 HARMFUL, §0.0-D.6 #1 已實證否決)** |
+| v0.3 | 2026-05-20 | Codex | §9.9 P1 v0.1 落地：新增 4 個 upside/downside 分離特徵（upside_volatility_60d / downside_volatility_60d / upside_capture_60d / downside_capture_60d）至 price 群；feature_set_version v0.2 → v0.3；總特徵數 31 → 31（27 base + 4 upside/downside；v0.2 interaction 不繼承）；新增 4 個 static method `_upside_volatility / _downside_volatility / _upside_capture / _downside_capture`；採 version-aware 邏輯，v0.3 不寫入 interaction features。對齊 §0.0-C.3 上行凸性壓制 + §0.0-E.6 P1 升版優先級。後續需 v0.4 重訓 model 並驗證 ablation IC。 | SUPERSEDED |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.2 Feature Store 草案落地；27 features × 6 groups（price/liquidity/fundamental/institutional/macro/theme）；as-of-strict 過濾與 zero_fill/drop 雙 imputation 策略；2026-05-17 walk-forward h20 panel 8 點全 PERFECT；2026-05-18 v6.0.0-patch 落地 strict-source build（`fs_20260515_..._strict_source_20260518`）與 §14.7-L 對齊。 | SUPERSEDED |
 ================================================================================
 """
@@ -85,10 +95,73 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.3"
-DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.3"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.4"
+DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.4"
 DEFAULT_LABEL_HORIZON = 20
+
+try:
+    from core.data_schema import PUBLICATION_DATE_STRATEGY_REGISTRY
+except ImportError as exc:
+    print(f"❌ data_schema PUBLICATION_DATE_STRATEGY_REGISTRY 載入失敗(需 data_schema v2.18+): {exc}")
+    sys.exit(1)
+
+
+def _publication_date_gate(table: str, as_of_param_placeholder: str = "%s") -> tuple[str, int]:
+    """
+    依憲章 §8.5 第 9 條 Publication-date Discipline 為 table 構造 SQL gate clause + extra parameter count.
+
+    讀 `PUBLICATION_DATE_STRATEGY_REGISTRY[table]` 依 enforcement 分派:
+      - native_aligned / transitional: `WHERE date <= %s`(1 個 as_of_date 參數)
+      - strict: `WHERE "AnnouncementDate" <= %s`(1 個 as_of_date 參數)
+      - hardcoded_conservative (offset_days = int): `WHERE (date + INTERVAL 'N days') <= %s`(1 個)
+      - hardcoded_conservative (offset_days = quarter dict): quarter-aware
+            `WHERE ((EXTRACT(QUARTER FROM date) IN (1,2,3) AND (date + INTERVAL '45 days') <= %s)
+                     OR (EXTRACT(QUARTER FROM date) = 4 AND (date + INTERVAL '90 days') <= %s))`
+            (2 個 as_of_date 參數)
+      - infrastructure: raise (infra 表不參與 feature 流)
+
+    Returns:
+        (where_clause, extra_param_count)
+        e.g. ("\"AnnouncementDate\" <= %s", 1)
+
+    對齊憲章 §8.5-9.2 分派表;§8.5-9.3 透明性要求;v0.4 Phase 2 落地。
+    """
+    strategy = PUBLICATION_DATE_STRATEGY_REGISTRY.get(table)
+    if strategy is None:
+        raise ValueError(f"table {table!r} 不在 PUBLICATION_DATE_STRATEGY_REGISTRY 內")
+
+    enforcement = strategy["enforcement"]
+    column = strategy["column"]
+    offset = strategy["offset_days"]
+    ap = as_of_param_placeholder
+
+    if enforcement == "infrastructure":
+        raise ValueError(f"table {table!r} 屬 infrastructure(不參與 feature 流);不得在 builder 內使用")
+
+    if enforcement in ("native_aligned", "transitional", "strict"):
+        # 直接用 column;column 為 date 或 publication-date column
+        # strict 之 column 可能含大寫(如 AnnouncementDate),需雙引號
+        col_quoted = f'"{column}"' if any(c.isupper() for c in column) else column
+        return f"{col_quoted} <= {ap}", 1
+
+    if enforcement == "hardcoded_conservative":
+        if isinstance(offset, int):
+            return f"(date + INTERVAL '{offset} days') <= {ap}", 1
+        if isinstance(offset, dict):
+            # quarter-aware: Q1-Q3 一致;Q4 不同
+            # 假設 dict 含 Q1/Q2/Q3/Q4 鍵
+            q123_offset = offset.get("Q1", offset.get("Q2", offset.get("Q3", 45)))
+            q4_offset = offset.get("Q4", 90)
+            clause = (
+                f"((EXTRACT(QUARTER FROM date) IN (1,2,3) "
+                f"AND (date + INTERVAL '{q123_offset} days') <= {ap}) "
+                f"OR (EXTRACT(QUARTER FROM date) = 4 "
+                f"AND (date + INTERVAL '{q4_offset} days') <= {ap}))"
+            )
+            return clause, 2
+
+    raise ValueError(f"unknown enforcement {enforcement!r} for table {table!r}")
 
 # § 8.2.2 v0.3 特徵字典：27 base + 4 v0.2 interaction (audit trail) + 4 v0.3 upside/downside = 35 total
 # v0.3 active set = 31 features (27 base + 4 upside/downside；v0.2 interaction 不繼承，§9.9-E policy)
@@ -273,15 +346,17 @@ class FeatureStoreBuilder:
     def _load_price_series(self, cur):
         """Return {stock_id: [(date, close, volume, money, turnover), ...]} sorted by date."""
         start = self.as_of_date - timedelta(days=400)
+        # §8.5-9 Phase 2: PriceAdj = native_aligned (date <= as_of_date)
+        gate, n_ap = _publication_date_gate("TaiwanStockPriceAdj")
         cur.execute(
-            """
+            f"""
             SELECT stock_id, date, "close"::numeric, "Trading_Volume"::numeric,
                    "Trading_money"::numeric, "Trading_turnover"::numeric
             FROM "TaiwanStockPriceAdj"
-            WHERE stock_id = ANY(%s) AND date >= %s AND date <= %s
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
             ORDER BY stock_id, date
             """,
-            (self.core_stocks, start, self.as_of_date),
+            (self.core_stocks, start, *([self.as_of_date] * n_ap)),
         )
         out = {}
         for sid, d, c, v, m, t in cur.fetchall():
@@ -291,14 +366,16 @@ class FeatureStoreBuilder:
     def _load_revenue(self, cur):
         """Return {stock_id: [(date, revenue), ...]} for last 24+ months."""
         start = self.as_of_date - timedelta(days=800)
+        # §8.5-9 Phase 2: MonthRevenue = hardcoded_conservative ((date + INTERVAL '10 days') <= as_of_date)
+        gate, n_ap = _publication_date_gate("TaiwanStockMonthRevenue")
         cur.execute(
-            """
+            f"""
             SELECT stock_id, date, revenue::numeric
             FROM "TaiwanStockMonthRevenue"
-            WHERE stock_id = ANY(%s) AND date >= %s AND date <= %s
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
             ORDER BY stock_id, date
             """,
-            (self.core_stocks, start, self.as_of_date),
+            (self.core_stocks, start, *([self.as_of_date] * n_ap)),
         )
         out = {}
         for sid, d, r in cur.fetchall():
@@ -309,8 +386,11 @@ class FeatureStoreBuilder:
         """Aggregate {stock_id: {'eps_sum_4q': x, 'net_income_positive_ratio_8q': y}}."""
         start_4q = self.as_of_date - timedelta(days=400)
         start_8q = self.as_of_date - timedelta(days=800)
+        # §8.5-9 Phase 2: FinStmt = hardcoded_conservative quarter-aware (Q1-Q3 +45 / Q4 +90 天)
+        # n_ap = 2 (quarter-aware gate 含 2 個 as_of_date placeholder)
+        gate, n_ap = _publication_date_gate("TaiwanStockFinancialStatements")
         cur.execute(
-            """
+            f"""
             SELECT stock_id,
                 SUM(CASE WHEN type='EPS' AND date >= %s THEN value::numeric ELSE 0 END) as eps_sum_4q,
                 COUNT(DISTINCT CASE WHEN (origin_name LIKE '%%稅後%%' OR origin_name LIKE '%%淨利%%')
@@ -318,10 +398,10 @@ class FeatureStoreBuilder:
                 COUNT(DISTINCT CASE WHEN (origin_name LIKE '%%稅後%%' OR origin_name LIKE '%%淨利%%')
                                      AND date >= %s THEN date END) as net_total_q
             FROM "TaiwanStockFinancialStatements"
-            WHERE stock_id = ANY(%s) AND date >= %s AND date <= %s
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
             GROUP BY stock_id
             """,
-            (start_4q, start_8q, start_8q, self.core_stocks, start_8q, self.as_of_date),
+            (start_4q, start_8q, start_8q, self.core_stocks, start_8q, *([self.as_of_date] * n_ap)),
         )
         out = {}
         for sid, eps_sum, net_pos, net_total in cur.fetchall():
@@ -333,8 +413,10 @@ class FeatureStoreBuilder:
         """Net buy/sell aggregates for 20d/60d windows by institution type."""
         start_60 = self.as_of_date - timedelta(days=90)
         start_20 = self.as_of_date - timedelta(days=30)
+        # §8.5-9 Phase 2: Institutional = native_aligned (T 日 17:30 後可得;§6.8.7-A 對齊)
+        gate, n_ap = _publication_date_gate("TaiwanStockInstitutionalInvestorsBuySell")
         cur.execute(
-            """
+            f"""
             SELECT stock_id,
                 SUM(CASE WHEN name IN ('Foreign_Investor','Foreign_Dealer_Self') AND date >= %s
                          THEN (buy::numeric - sell::numeric) ELSE 0 END) as foreign_net_20d,
@@ -345,10 +427,10 @@ class FeatureStoreBuilder:
                 SUM(CASE WHEN name = 'Investment_Trust' AND date >= %s
                          THEN (buy::numeric - sell::numeric) ELSE 0 END) as trust_net_60d
             FROM "TaiwanStockInstitutionalInvestorsBuySell"
-            WHERE stock_id = ANY(%s) AND date >= %s AND date <= %s
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
             GROUP BY stock_id
             """,
-            (start_20, start_60, start_20, start_60, self.core_stocks, start_60, self.as_of_date),
+            (start_20, start_60, start_20, start_60, self.core_stocks, start_60, *([self.as_of_date] * n_ap)),
         )
         out = {}
         for sid, f20, f60, t20, t60 in cur.fetchall():
@@ -361,43 +443,50 @@ class FeatureStoreBuilder:
     def _load_margin(self, cur):
         """avg margin_ratio over 60d = MarginPurchaseTodayBalance / max(ShortSaleTodayBalance, 1)."""
         start_60 = self.as_of_date - timedelta(days=90)
+        # §8.5-9 Phase 2: Margin = native_aligned (date = trading day)
+        gate, n_ap = _publication_date_gate("TaiwanStockMarginPurchaseShortSale")
         cur.execute(
-            """
+            f"""
             SELECT stock_id,
                 AVG("MarginPurchaseTodayBalance"::numeric
                     / NULLIF("ShortSaleTodayBalance"::numeric, 0)) as margin_ratio_60d
             FROM "TaiwanStockMarginPurchaseShortSale"
-            WHERE stock_id = ANY(%s) AND date >= %s AND date <= %s
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
               AND "ShortSaleTodayBalance"::numeric > 0
             GROUP BY stock_id
             """,
-            (self.core_stocks, start_60, self.as_of_date),
+            (self.core_stocks, start_60, *([self.as_of_date] * n_ap)),
         )
         return {sid: float(ratio or 0) for sid, ratio in cur.fetchall()}
 
     def _load_theme(self, cur):
+        # §8.5-9 Phase 2: Info = native_aligned (registry snapshot date)
+        gate, n_ap = _publication_date_gate("TaiwanStockInfo")
         cur.execute(
-            """
+            f"""
             SELECT DISTINCT ON (stock_id) stock_id, industry_category
             FROM "TaiwanStockInfo"
-            WHERE stock_id = ANY(%s) AND date <= %s
+            WHERE stock_id = ANY(%s) AND {gate}
             ORDER BY stock_id, date DESC
             """,
-            (self.core_stocks, self.as_of_date),
+            (self.core_stocks, *([self.as_of_date] * n_ap)),
         )
         return {sid: (industry or "") for sid, industry in cur.fetchall()}
 
     def _load_macro(self, cur):
         """Latest FRED values as-of date + UNRATE 12m prior."""
+        # §8.5-9 Phase 2 + §14.7-BB 追溯: FRED = transitional
+        # (DB realtime_start = ingest 日期非真實 vintage;暫維持 date <= as_of_date;待 D2.4 ALFRED 升 strict)
+        gate, n_ap = _publication_date_gate("FredData")
         cur.execute(
-            """
+            f"""
             SELECT series_id, date, value::numeric FROM "FredData"
-            WHERE date <= %s
+            WHERE {gate}
               AND series_id IN ('DFF','VIXCLS','T10Y2Y','UNRATE')
               AND value IS NOT NULL
             ORDER BY series_id, date DESC
             """,
-            (self.as_of_date,),
+            (*([self.as_of_date] * n_ap),),
         )
         latest = {}
         unrate_history = []
