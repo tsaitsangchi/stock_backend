@@ -66,6 +66,7 @@ reports/*
 !reports/core_universe_v02_execution_*.md
 !reports/model_trainer_*.md
 !reports/prediction_engine_*.md
+!reports/prediction_engine_*.md
 !reports/portfolio_sizer_*.md
 !reports/feature_store_*_dryrun_*.md
 !reports/feature_store_completeness_*.md
