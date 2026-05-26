@@ -166,7 +166,7 @@ def fetch_fred_series(
     ensure_ddl(conn, DDL_FRED)
     conn.commit()
     
-    latest = get_all_safe_starts(conn, "fred_series", key_col="series_id")
+    latest = get_all_safe_starts(conn, "fred_series", id_col="series_id")
     flog = FailureLogger("fred_series", db_conn=conn)
     total_rows = 0
     fetch_mode = fetch_mode_override or "per_stock"
@@ -192,8 +192,8 @@ def fetch_fred_series(
                 if rows:
                     rows = dedup_rows(rows, (0, 1))
                     res = commit_per_stock_per_day(
-                        conn, UPSERT_FRED, rows, "(%s, %s, %s)", 
-                        stock_index=0, date_index=1, label_prefix=sid, failure_logger=flog
+                        conn, UPSERT_FRED, rows, "(%s, %s, %s)",
+                        stock_index=0, date_index=1, label=sid
                     )
                     n = sum(res.values())
                     total_rows += n
