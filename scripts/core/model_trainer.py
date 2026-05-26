@@ -1,8 +1,8 @@
 """
-model_trainer.py v0.2 (Quantum Finance Model Training Authority)
+model_trainer.py v0.2.1 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #2)
 ================================================================================
 最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework skeleton + ConstitutionalViolationError + 4 audit hooks + DEFAULT_TRAINING_POLICY;sector-balanced loss training logic 待 Phase C continuation)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs;sector-balanced loss training logic 待 milestone #3)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ model_trainer.py v0.2 (Quantum Finance Model Training Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | **ACTIVE** |
+| **v0.2.1** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #2 — wire 4/4 audit hooks + sector-aware load_inputs(對映 §14.7-BQ Phase C 進度)**:milestone #1(commit `47838d1`)wire 了 2/4 hooks(audit_training_quality + audit_artifact_consistency);本 milestone #2 補完剩 2 hooks 並提供 sector data foundation:(I) `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 industry_category(每股 latest as-of as_of_date)→ `self.rows[i]["industry"]`;(II) `_audit_self()` 加呼 `audit_model_input(G1-G4 input 合法性)+ `audit_sector_balance`(G7/G12 計算 top-20 prediction 之 sector weights → Shannon entropy gate);(III) train() 加 `self.preds` 暫存(供 _audit_self 計算 top-20);(IV) TOOL_VER v0.2 → v0.2.1;(V) 標頭副標補「§10 Phase C continuation milestone #2」+ 主權狀態行加「4 audit hooks 全 wired + sector-aware load_inputs」。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.1 為 audit hook activation + input data 擴充,不改 model 訓練本質。**對既有 model 影響**:零(既有 `_v0_1` 命名之 model_id 不重訓;新 audit calls 為 WARN-only backward-compat)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 計算並 log entropy,但若 < 0.5 仍只 WARN(不 raise);strict raise 留 milestone #3。**v0.2.1 為 milestone #3 之 input foundation**:milestone #3(sector-balanced loss training)需 industry-aware 訓練資料,本 milestone 已 wired in self.rows。**對既有 snapshot 影響**:零(load_inputs SQL 純擴 SELECT + LATERAL JOIN,不改 row 數 / filter / order)。同步配套:憲章 §14.7-BQ Phase C(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)+ milestone #1 `47838d1`(_audit_self 整合 2/4 hooks)。 | **ACTIVE** |
+| v0.2 | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | SUPERSEDED |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | SUPERSEDED |
 ================================================================================
 """
@@ -84,7 +85,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"
+TOOL_VER = "v0.2.1"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.2"
 DEFAULT_LABEL_HORIZON = 20  # v0.2 留 20 為 backward-compat;Phase C continuation 升 30(per §9.1)
 DEFAULT_SEED = 5422
@@ -413,7 +414,8 @@ class ModelTrainer:
                 )
                 SELECT fv.stock_id, fv.feature_name, COALESCE(fv.feature_value, 0)::float8,
                        ((lp.future_close / lp.base_close) - 1.0)::float8 AS forward_return,
-                       lp.label_date
+                       lp.label_date,
+                       ind.industry_category
                 FROM "feature_values" fv
                 JOIN "core_universe_membership" m
                   ON m.stock_id = fv.stock_id
@@ -421,6 +423,14 @@ class ModelTrainer:
                  AND m.core_tier IN ('core_universe', 'convex_universe')
                 JOIN label_prices lp
                   ON lp.stock_id = fv.stock_id
+                LEFT JOIN LATERAL (
+                    SELECT industry_category
+                    FROM "TaiwanStockInfo" ti
+                    WHERE ti.stock_id = fv.stock_id
+                      AND ti.date <= %s
+                    ORDER BY ti.date DESC
+                    LIMIT 1
+                ) ind ON TRUE
                 WHERE fv.feature_set_id = %s
                   AND fv.as_of_date = %s
                 ORDER BY fv.stock_id, fv.feature_name
@@ -429,6 +439,7 @@ class ModelTrainer:
                     self.snapshot["as_of_date"],
                     label_min_date,
                     self.snapshot["universe_snapshot_id"],
+                    self.snapshot["as_of_date"],
                     self.feature_set_id,
                     self.snapshot["as_of_date"],
                 ),
@@ -436,16 +447,19 @@ class ModelTrainer:
             by_stock = {}
             labels = {}
             label_dates = {}
-            for stock_id, feature_name, feature_value, label, label_date in cur.fetchall():
+            industries = {}
+            for stock_id, feature_name, feature_value, label, label_date, industry in cur.fetchall():
                 by_stock.setdefault(stock_id, {})[feature_name] = float(feature_value or 0.0)
                 labels[stock_id] = float(label or 0.0)
                 label_dates[stock_id] = label_date
+                industries[stock_id] = industry or "UNKNOWN"
             self.rows = [
                 {
                     "stock_id": sid,
                     "x": {f: by_stock[sid].get(f, 0.0) for f in self.features},
                     "y": labels[sid],
                     "label_date": label_dates[sid],
+                    "industry": industries.get(sid, "UNKNOWN"),
                 }
                 for sid in sorted(by_stock)
             ]
@@ -561,6 +575,7 @@ class ModelTrainer:
             sum(transformed[f][idx] * self.weights[f] for f in self.features)
             for idx, _ in enumerate(self.rows)
         ]
+        self.preds = preds  # v0.2.1 milestone #2: 暫存供 _audit_self() 計算 top-N sector entropy
         pred_scores = self._rank_scores(preds)
         errors = [p - y for p, y in zip(preds, labels)]
         rmse = math.sqrt(sum(e * e for e in errors) / len(errors))
@@ -598,12 +613,27 @@ class ModelTrainer:
         self._audit_self()
 
     def _audit_self(self):
-        """v0.2 §10-F audit hooks self-invocation(對映 §10-D G5/G6/G8 + G10/G11)。
+        """v0.2.1 §10-F audit hooks self-invocation(對映 §10-D G1-G4 + G5/G6/G8 + G7/G12 + G10/G11)。
 
-        backward-compat 模式:預設 log warning;strict mode 之 raise 留 Phase C continuation。
+        milestone #2(v0.2.1):wire 4/4 hooks(milestone #1 之 2/4 → 4/4)。
+        backward-compat 模式:預設 log warning;strict mode 之 raise 留 milestone #3。
         類比 portfolio_sizer v0.2 之 audit_constraint_satisfaction self-invoke 模式。
         對映 §14.7-BQ 之 §10-F audit hooks 整合 audit_doctrine_compliance.py。
         """
+        # G1-G4 input audit(audit_model_input)— v0.2.1 milestone #2 新加
+        # 防禦性 invocation:即便 load_inputs 已成功,defensive 再驗 input identity
+        if self.snapshot:
+            ok, msg = audit_model_input(
+                feature_store_snapshot_id=self.snapshot.get("feature_set_id"),
+                universe_snapshot_id=self.snapshot.get("universe_snapshot_id"),
+                as_of_date=self.snapshot.get("as_of_date"),
+                label_horizon=self.label_horizon,
+            )
+            if ok:
+                self._detail("pass", f"§10-F audit_model_input: {msg}")
+            else:
+                self._detail("warn", f"§10-F audit_model_input: {msg}(WARN-only;backward-compat)")
+
         # G5/G6/G8 training quality(audit_training_quality)
         ic_mean = self.metrics.get("ic_mean", 0.0)
         ic_std = self.metrics.get("ic_std", 0.0)
@@ -613,8 +643,31 @@ class ModelTrainer:
         if ok:
             self._detail("pass", f"§10-F audit_training_quality: {msg}")
         else:
-            # backward-compat: WARN 不 raise(v0.1 baseline 容許;Phase C continuation 升 strict raise)
+            # backward-compat: WARN 不 raise(v0.1 baseline 容許;milestone #3 升 strict raise)
             self._detail("warn", f"§10-F audit_training_quality: {msg}(WARN-only;backward-compat)")
+
+        # G7/G12 sector entropy(audit_sector_balance)— v0.2.1 milestone #2 新加
+        # 計算 top-20 prediction 之 sector weights(對齊 §0.2-A #3 + §14.7-AA Part C 治本核心)
+        if self.preds and self.rows:
+            top_n = min(20, len(self.preds))
+            indexed = list(enumerate(self.preds))
+            indexed.sort(key=lambda t: t[1], reverse=True)
+            top_indices = [i for i, _ in indexed[:top_n]]
+            sector_counts = {}
+            for idx in top_indices:
+                ind = self.rows[idx].get("industry", "UNKNOWN")
+                sector_counts[ind] = sector_counts.get(ind, 0) + 1
+            sector_weights = {k: v / top_n for k, v in sector_counts.items()}
+            ok, msg = audit_sector_balance(sector_weights, policy=DEFAULT_TRAINING_POLICY)
+            if ok:
+                self._detail("pass", f"§10-F audit_sector_balance: {msg} (top-{top_n}, {len(sector_weights)} sectors)")
+            else:
+                self._detail("warn", f"§10-F audit_sector_balance: {msg} (top-{top_n}, {len(sector_weights)} sectors;WARN-only;backward-compat)")
+            # 留 telemetry:top-N sector distribution 寫入 metrics(供下游 audit_doctrine_compliance 查)
+            self.metrics["top_n_audit"] = top_n
+            self.metrics["top_n_sector_weights"] = sector_weights
+        else:
+            self._detail("warn", "§10-F audit_sector_balance: skipped (no preds/rows)")
 
         # G10/G11 artifact consistency(audit_artifact_consistency)
         # v0.1 baseline 之 artifact 在 commit_outputs() 才寫;此處檢查 in-memory preprocessing
