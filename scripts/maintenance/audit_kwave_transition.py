@@ -1,8 +1,8 @@
 """
-audit_kwave_transition.py v0.1 (§14.7-BR Phase C-3 — K-wave Transition Audit;讀 4 indicators 輸出 spring signal score INFO-only)
+audit_kwave_transition.py v0.2 (§14.7-BR Phase C-4 — K-wave Transition Audit upgraded to 5-of-5;加 I3 BDI proxy)
 ================================================================================
 最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §0.3.8 5 leading indicators 之 §11C 治權檢驗延伸 / §0.3.8.4 INFO-only / §14.7-BR Phase C-3 落地)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §0.3.8 5 leading indicators 之 §11C 治權檢驗延伸 / §0.3.8.4 INFO-only / §14.7-BR Phase C-3 + C-4 落地 / **5-of-5 完整**)
 最高原則: Audit-Only Authority (讀;不寫;不作 FAIL gate;對齊 §0.3-A 禁令 #1 / #6)
 
 ## 📜 一、核心定義說明 (Core Definitions)
@@ -13,12 +13,13 @@ audit_kwave_transition.py v0.1 (§14.7-BR Phase C-3 — K-wave Transition Audit;
    ≥ 4/5(或 ≥ 3/4 if BDI 缺)spring 訊號 → "spring_transition"(可考慮攻擊端窗口)
    ≤ 2/5(or ≤ 1/4)spring → "winter_continuing"(防護端維持 ≥ 90%)
    其他 → "transition_period"(維持現狀)
-3. [4-of-5 vs 5-of-5]: §14.7-BR Phase C-2 為止支持 I1+I2+I4+I5 之 4 indicators;
-   I3 BDI 待 Phase C-4 之 TW shipping proxy(複用 framework);
-   本 audit v0.1 報 4-of-4 邏輯;Phase C-4 後可升 5-of-5。
+3. [5-of-5 完整]: §14.7-BR Phase C-4 完整支持全 5 indicators(I1+I2+I3+I4+I5);
+   I3 為 TW_SHIPPING_VWAP_YOY proxy(per §14.7-BR Phase C-4 charter 第十七輪);
+   v0.2 起報 5-of-5 邏輯(取代 v0.1 之 4-of-4);BDI 真值仍留 v7.0.0+。
 4. [Spring Signal Definitions per §0.3.8.1]:
    I1 M2SL: 月度 YoY > 0(M2 由負/低 → 持續正成長)
    I2 T10Y2Y: latest >= 0(由倒掛 → 解除)
+   I3 TW_SHIPPING_VWAP_YOY: latest 2 month avg > 0(航運由谷底回升 / BDI proxy)
    I4 VIXCLS: latest < 15(由高波動 → 低波動穩定)
    I5 TW_SEMI_VWAP_YOY: latest 2 month avg > 0(由谷底 → 連續 2 季回升)
 5. [Annual Review Hook]: 對齊 §0.3.8.4 「每年 12 月年度重選前須由治權者
@@ -46,7 +47,8 @@ audit_kwave_transition.py v0.1 (§14.7-BR Phase C-3 — K-wave Transition Audit;
 ## 📜 三、全修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-26 | Codex | **§14.7-BR Phase C-3 落地首版:audit_kwave_transition.py**:依憲章 v6.1.0-patch 第十六輪 §14.7-BR Phase B(commit `95fda16`)入憲 + Phase A 設計研究(commit `f07ba16` §3.3.3 之 design pattern)+ §0.3.8.4 charter 預定(charter L2431 "v6.1.28 §14.7-BR Phase C-3 落地")落地。**功能**:(I) 讀 4 indicators(I1 M2SL via YoY% / I2 T10Y2Y latest / I4 VIXCLS latest / I5 TW_SEMI_VWAP_YOY latest 2-month avg);(II) per indicator 計算 spring signal (0 or 1);(III) composite verdict per §0.3.8.2 多訊號共振裁決;(IV) console + JSON output formats;(V) CLI flags(--as-of-date / --output-format / --annual-review);(VI) INFO-only per §0.3.8.4(不作 FAIL gate)。**對既有 DB 影響**:零(read-only;不寫任何表)。**為 §11C 治權檢驗延伸**:可加入 §11 audit chain 作為 INFO-only audit。**§0.3.8 完成度貢獻**:I5 半導體 proxy + audit tool 落地 → §0.3.8 4/5 + audit infrastructure ready;Phase C-4 後升 5/5(BDI proxy)。同步配套:§14.7-BR Phase A(`f07ba16`)+ Phase B(`95fda16`)+ Phase C-1 M2SL sync(`615e324`)+ Phase C-2 半導體 proxy(`f9a4ecc`)。 | **ACTIVE** |
+| **v0.2** | 2026-05-26 | Codex | **§14.7-BR Phase C-4 落地配套:audit_kwave_transition.py 升 5-of-5(加 I3 BDI proxy)**:依 Phase C-4 commit(TW_SHIPPING_VWAP_YOY 之 DB 落地;401 rows;1993-2026)+ charter §0.3.8.3 L2422 已升「✅ TW_SHIPPING_VWAP_YOY proxy」(第十七輪 commit 6a607fd),本版加 `check_i3_tw_shipping_recovery()` 新 indicator function(類比 I5 之 latest 2-month avg pattern);N_TOTAL 從 4 升 5;verdict thresholds 對齊 §0.3.8.2 之 5-indicator 設計(>= 4/5 spring → spring_transition;<= 2/5 → winter_continuing);TOOL_VER v0.1 → v0.2;標頭副標 + 主權狀態 + 核心定義第 3 條 4-of-5 → 5-of-5 同步升版。**對既有 DB 影響**:零(read-only;不寫任何表)。**§14.7-BR Phase C-4 完整 closure**(post 本 commit):§0.3.8 完成度 4/5 → 5/5 = 100%;§0.3 「具有對應」95% → 100%(charter Phase C-4 already 第十七輪 inscribed);§0.3 「已落地」+ 2pp(audit infrastructure complete)。同步配套:Phase C-2(`f9a4ecc`)+ Phase C-3(`341ea17`)+ Phase C-4 之 C-2 script reuse(本 commit 同次 DB populate). | **ACTIVE** |
+| v0.1 | 2026-05-26 | Codex | **§14.7-BR Phase C-3 落地首版:audit_kwave_transition.py**:依憲章 v6.1.0-patch 第十六輪 §14.7-BR Phase B(commit `95fda16`)入憲 + Phase A 設計研究(commit `f07ba16` §3.3.3 之 design pattern)+ §0.3.8.4 charter 預定(charter L2431 "v6.1.28 §14.7-BR Phase C-3 落地")落地。**功能**:(I) 讀 4 indicators(I1 M2SL via YoY% / I2 T10Y2Y latest / I4 VIXCLS latest / I5 TW_SEMI_VWAP_YOY latest 2-month avg);(II) per indicator 計算 spring signal (0 or 1);(III) composite verdict per §0.3.8.2 多訊號共振裁決;(IV) console + JSON output formats;(V) CLI flags(--as-of-date / --output-format / --annual-review);(VI) INFO-only per §0.3.8.4(不作 FAIL gate)。**對既有 DB 影響**:零(read-only;不寫任何表)。**為 §11C 治權檢驗延伸**:可加入 §11 audit chain 作為 INFO-only audit。**§0.3.8 完成度貢獻**:I5 半導體 proxy + audit tool 落地 → §0.3.8 4/5 + audit infrastructure ready;Phase C-4 後升 5/5(BDI proxy)。同步配套:§14.7-BR Phase A(`f07ba16`)+ Phase B(`95fda16`)+ Phase C-1 M2SL sync(`615e324`)+ Phase C-2 半導體 proxy(`f9a4ecc`)。 | **ACTIVE** |
 ================================================================================
 """
 import argparse
@@ -68,13 +70,14 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 
 # §0.3.8.1 spring signal thresholds(charter explicit values)
-THRESHOLD_VIXCLS_LOW = 15.0     # I4 VIXCLS < 15 → low volatility / spring
-THRESHOLD_T10Y2Y_NORMAL = 0.0   # I2 T10Y2Y >= 0 → curve not inverted / spring
-THRESHOLD_M2SL_POSITIVE = 0.0   # I1 M2SL YoY > 0 → spring
-THRESHOLD_SEMI_RECOVERY = 0.0   # I5 TW_SEMI_VWAP_YOY 2-month avg > 0 → spring
+THRESHOLD_VIXCLS_LOW = 15.0       # I4 VIXCLS < 15 → low volatility / spring
+THRESHOLD_T10Y2Y_NORMAL = 0.0     # I2 T10Y2Y >= 0 → curve not inverted / spring
+THRESHOLD_M2SL_POSITIVE = 0.0     # I1 M2SL YoY > 0 → spring
+THRESHOLD_SEMI_RECOVERY = 0.0     # I5 TW_SEMI_VWAP_YOY 2-month avg > 0 → spring
+THRESHOLD_SHIPPING_RECOVERY = 0.0 # I3 TW_SHIPPING_VWAP_YOY 2-month avg > 0 → spring(v0.2 新)
 
 
 def check_i1_m2sl(conn, as_of_date):
@@ -177,6 +180,40 @@ def check_i4_vixcls(conn, as_of_date):
         cur.close()
 
 
+def check_i3_tw_shipping_recovery(conn, as_of_date):
+    """I3 TW_SHIPPING_VWAP_YOY 最近 2 月 avg > 0 → spring(BDI proxy 由谷底回升;1)。
+
+    v0.2 新加(§14.7-BR Phase C-4 落地);類比 I5 之 2-month avg pattern。
+    對映 §0.3.8.1 I3 「全球航運指數:由歷史低位 → 持續回升」之 TW proxy 落地。
+    """
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT date, value FROM "kwave_supply_cycle_proxy"
+            WHERE proxy_id = 'TW_SHIPPING_VWAP_YOY' AND date <= %s
+            ORDER BY date DESC LIMIT 2
+        """, (as_of_date,))
+        rows = cur.fetchall()
+        if not rows or len(rows) < 2:
+            return {'name': 'I3 TW_SHIPPING_VWAP_YOY', 'spring_signal': None,
+                    'value': None, 'threshold': THRESHOLD_SHIPPING_RECOVERY,
+                    'context': f'TW_SHIPPING_VWAP_YOY data insufficient (need 2 months; got {len(rows)})'}
+        latest, prev = rows
+        latest_v = float(latest[1])
+        prev_v = float(prev[1])
+        avg_2m = (latest_v + prev_v) / 2.0
+        spring = 1 if avg_2m > THRESHOLD_SHIPPING_RECOVERY else 0
+        return {
+            'name': 'I3 TW_SHIPPING_VWAP_YOY',
+            'spring_signal': spring,
+            'value': round(avg_2m, 2),
+            'threshold': THRESHOLD_SHIPPING_RECOVERY,
+            'context': f'TW_SHIPPING_VWAP_YOY 2-month avg {avg_2m:+.2f}% (latest {latest[0]} {latest_v:+.2f}% / prev {prev[0]} {prev_v:+.2f}%) [BDI proxy]',
+        }
+    finally:
+        cur.close()
+
+
 def check_i5_tw_semi_recovery(conn, as_of_date):
     """I5 TW_SEMI_VWAP_YOY 最近 2 月 avg > 0 → spring(由谷底回升;1)."""
     cur = conn.cursor()
@@ -231,6 +268,7 @@ class AuditKwaveTransition:
             self.indicator_results = [
                 check_i1_m2sl(conn, self.as_of_date),
                 check_i2_t10y2y(conn, self.as_of_date),
+                check_i3_tw_shipping_recovery(conn, self.as_of_date),  # v0.2 新(§14.7-BR Phase C-4)
                 check_i4_vixcls(conn, self.as_of_date),
                 check_i5_tw_semi_recovery(conn, self.as_of_date),
             ]
@@ -238,9 +276,9 @@ class AuditKwaveTransition:
             conn.close()
 
         # Composite spring score(per §0.3.8.2)
-        # 治權設計:fixed denominator(N_TOTAL=4),missing 計 0 而非縮減 denominator
+        # 治權設計:fixed denominator(N_TOTAL=5 post v0.2),missing 計 0 而非縮減 denominator
         # (避免 partial data 之 inflated verdict;per §一 #8 報告誠實)
-        N_TOTAL = 4  # I1 + I2 + I4 + I5(BDI 之 I3 留 Phase C-4)
+        N_TOTAL = 5  # v0.2:I1 + I2 + I3 + I4 + I5 完整 5-of-5(Phase C-4 後)
         signals = [r['spring_signal'] for r in self.indicator_results if r['spring_signal'] is not None]
         n_valid = len(signals)
         n_missing = N_TOTAL - n_valid
@@ -253,17 +291,17 @@ class AuditKwaveTransition:
             f'治權者須補 sync missing series 後重審)' if n_missing >= 1 else ''
         )
 
-        # Verdict per §0.3.8.2(strict / honest):
-        # spring_transition 要求 ≥ 3/N_TOTAL(non-missing)spring(missing 視為 0 / 非 spring)
-        # winter_continuing 要求 ≤ 2/N_TOTAL spring(missing 視為 0)
-        # 其他 = transition_period(含 partial data 之過渡狀態)
+        # Verdict per §0.3.8.2(strict / honest;v0.2 之 5-of-5 thresholds):
+        # spring_transition 要求 ≥ 4/5 spring(missing 視為 0;對齊 charter §0.3.8.2 "≥ 4/5 春初")
+        # winter_continuing 要求 ≤ 2/5 spring(missing 視為 0;對齊 "≤ 2/5 仍冬季")
+        # 其他 = transition_period(含 partial data 之過渡狀態 / 3/5)
         if n_valid == 0:
             self.verdict = 'no_data'
             self._detail('fail', 'no indicators with valid data')
-        elif n_spring >= 3:
+        elif n_spring >= 4:
             self.verdict = 'spring_transition'
             self._detail('pass', f'§0.3.8 spring signal: {self.composite_score}(spring_transition;可考慮攻擊端窗口 / 治權者人工裁決)')
-        elif n_spring <= 1:
+        elif n_spring <= 2:
             self.verdict = 'winter_continuing'
             self._detail('warn', f'§0.3.8 spring signal: {self.composite_score}(winter_continuing;防護端維持 ≥ 90%)')
         else:
