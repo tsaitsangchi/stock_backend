@@ -97,6 +97,7 @@ reports/*
 !reports/portfolio_sizer_v0*_implementation_audit_*.md
 !reports/dynamic_universe_selection_*.md
 !reports/dynamic_universe_phase_*.md
+!reports/universe_completeness_*.md
 !reports/v6_*_p1_*.md
 !reports/feature_store_v0*_implementation_audit_*.md
 !reports/p1_v02_execution_runbook_*.md
