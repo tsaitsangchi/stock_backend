@@ -1,8 +1,8 @@
 """
-model_trainer.py v0.2.2 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment)
+model_trainer.py v0.2.3 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #4 — walk-forward 8 panel framework)
 ================================================================================
 最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + **sector-balanced post-processing Lagrangian adjustment (approach D / opt-in flag / 治本 §14.7-AA Part C)**;walk-forward 8 panel framework 待 milestone #4)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + sector-balanced post-processing Lagrangian adjustment + **WalkForwardRunner class (multi-panel orchestration / G13 panel size enforcement / IC stability aggregation / JSON evidence output)**;G strict raise 待 milestone #5)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ model_trainer.py v0.2.2 (Quantum Finance Model Training Authority · §10 Phase 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2.2** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment(approach D;治本 §14.7-AA Part C 100% 半導體 prediction candidates root cause)**:milestone #2(commit `42d4872`)wire 完 4/4 audit hooks 並能偵測 sector concentration;本 milestone #3 補入 **algorithm 層調整**:**(I)** DEFAULT_TRAINING_POLICY 加 4 新 keys:`sector_balance_enabled` (default False / opt-in flag) + `sector_balance_top_n` (default 20 / §9.2 attack tier) + `sector_balance_lambda` (default 0.3 / Lagrangian λ) + `sector_balance_min_floor_pred` (default -10.0 / cap on negative penalty);**(II)** 新方法 `_apply_sector_balanced_adjustment(preds)`:對 top-N 之 over-concentrated sectors 之 stocks 加 negative penalty(demote),under-represented sectors 加 positive boost;`penalty[sec] = -λ × log(current_weight / target_weight)`;target_weight = 1.0 / n_sectors_in_top_N(uniform);**(III)** `train()` 在 `sector_balance_enabled=True` 時:套用 adjustment → adjusted_preds → 重算 pred_scores → 重算 ic_mean(adjusted IC 記為 `ic_mean_adjusted`,原始 ic_mean 保留);metrics 加 `sector_balance_applied` + `sector_penalty_factor` + `target_weight_per_sector`;**(IV)** `commit_outputs()` model.json 之 preprocessing 加 `sector_balance` 段(存 sector_penalty_factor / lambda / top_n / target_weight)— 為 downstream prediction_engine 套用之 SSOT(milestone #3.5 待);**(V)** TOOL_VER v0.2.1 → v0.2.2;標頭副標補「milestone #3 sector-balanced post-processing Lagrangian adjustment」+ 主權狀態行同步。**Approach 選擇理由**:4 候選 evaluation(A LGBM custom_obj / B iterative re-weighting / C sector-bucketed rank-IC / D post-processing Lagrangian)→ D 為 scope-fit + backward-compat + 與既有 pure rank-IC trainer 完全相容(無 LGBM dep / 無多輪訓練 / 無 per-sector 統計力衰減)。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.2 為 post-processing layer + opt-in flag。**對既有 model 影響**:零(opt-in flag default False;flag OFF 時行為 = v0.2.1 完全相同;既有 `_v0_1` model_id 不重訓)。**對既有 snapshot 影響**:零(model.json 之 preprocessing schema 加 optional `sector_balance` 段;backward-compat reader 可忽略)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 當 flag 為 ON 時主動消除 root cause(治本);flag OFF 時 milestone #2 之 audit_sector_balance 仍會 WARN(偵測但不治本)。**v0.2.2 為 milestone #4 (walk-forward 8 panel)之 algorithm 預備**:milestone #4 將每 panel 跑一次 sector_balance_enabled=True 之訓練 + 驗證 IC > 0 strict。**Train/inference consistency 注意**:本 milestone 為 training-side 完整實作;downstream `prediction_engine.py` 套用 sector_penalty_factor 為 milestone #3.5(下 session 配套;commit metadata 已 ready)。同步配套:milestone #2 commit `42d4872`(4/4 hooks wired)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 §10-E sector-balanced loss 公式)。 | **ACTIVE** |
+| **v0.2.3** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #4 — WalkForwardRunner class (multi-panel orchestration + IC stability aggregation + G13 panel size enforcement;對映 §10-D / §10-E 8 panel walk-forward IC validation 為 v6.2.0 軌道 gate)**:milestone #3(commit `1be102e`)完 algorithm 層 sector-balanced adjustment;本 milestone #4 補 multi-panel orchestration layer 之 walk-forward framework:**(I)** 新 class `WalkForwardRunner(panel_feature_set_ids, model_family, label_horizon, commit=False)`,loops 1..N panels,每 panel 內部創 ModelTrainer + run() + 收集 per-panel metrics(ic_mean / ic_std / rmse / rows_trained / sector entropy);**(II)** aggregate() 方法:跨 panels 計算 cross_panel_ic_mean / cross_panel_ic_std / ic_stability_ratio (mean/std) / consistency_score (proportion of positive-IC panels);**(III)** invoke `audit_training_quality(cross_panel_ic_mean, cross_panel_ic_std, sharpe=None, policy)` 作 G5/G6 gate on aggregated metrics(walk-forward IC > 0 strict 之治本實證);**(IV)** invoke `audit_sector_balance` per-panel + 跨-panel sector stability check(extra G7 check);**(V)** output:console summary table + JSON evidence file `data/walk_forward_runs/wf_<timestamp>.json` 含 per-panel + aggregated metrics;**(VI)** G13 panel_size enforcement:若 panels < `walk_forward_panel_size` (default 8) → WARN;**(VII)** CLI 加 `--walk-forward` flag(orthogonal to `--dry-run` / `--commit`)+ `--panel-feature-sets <fs1,fs2,...,fs8>`;**(VIII)** `--feature-set-id` 變 optional 當 `--walk-forward` 啟用;**(IX)** TOOL_VER v0.2.2 → v0.2.3;標頭副標 + 主權狀態行同步。**邏輯動量**:既有 ModelTrainer class 完全不改(WalkForwardRunner wraps it externally);v0.2.3 為 orchestration layer 補入。**對既有 model 影響**:零(WalkForwardRunner 用 dry-run mode 為預設;不寫 model_registry;不重訓 既有 _v0_1 model_id)。**對既有 CLI 行為影響**:零(default workflow `--dry-run --feature-set-id X` 完全不變;新 `--walk-forward` 為 opt-in)。**G13 walk-forward IC validation 治本意義**:milestone #3 algorithm 層套用 sector-balanced adjustment 後 IC 降(0.957 → 0.285 之 trade-off);milestone #4 walk-forward 8 panel 為 **alpha vs diversity trade-off 之 multi-period validation**;若 cross_panel_ic_mean 仍 > 0 → 證明 algorithm 之 IC 雖低但 stable / 治本可接受;若 < 0 → 算法 over-adjustment,需 lambda 調降。**v0.2.3 為 milestone #5 (G strict raise) 之 panel validation foundation**:milestone #5 將升 audit_training_quality G5 為 strict raise,前提為 walk-forward 證明 IC > 0;本 milestone 提供 framework。**Local stranded mode 注意**:本機 v0.2 DB 無 feature_set_snapshot 表,real walk-forward 需 production sync;本 commit 完整實作 framework + mock smoke test;real validation 之 panel feature sets 來自 production v0.7 snapshot。**對既有 snapshot 影響**:零(JSON output 為新 file path;不改 model_registry / model_training_run schema)。同步配套:憲章 §10-E `walk_forward_panel_size: 8`(DEFAULT_TRAINING_POLICY)+ §14.7-BQ Phase B Phase C continuation(commit `27c1abf`)+ Phase A 設計研究 §10-D / §10-E sections(commit `644e2eb` tag v6.1.24)+ milestones #1/#2/#3(commits 47838d1 / 42d4872 / 1be102e)。 | **ACTIVE** |
+| v0.2.2 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment(approach D;治本 §14.7-AA Part C 100% 半導體 prediction candidates root cause)**:milestone #2(commit `42d4872`)wire 完 4/4 audit hooks 並能偵測 sector concentration;本 milestone #3 補入 **algorithm 層調整**:**(I)** DEFAULT_TRAINING_POLICY 加 4 新 keys:`sector_balance_enabled` (default False / opt-in flag) + `sector_balance_top_n` (default 20 / §9.2 attack tier) + `sector_balance_lambda` (default 0.3 / Lagrangian λ) + `sector_balance_min_floor_pred` (default -10.0 / cap on negative penalty);**(II)** 新方法 `_apply_sector_balanced_adjustment(preds)`:對 top-N 之 over-concentrated sectors 之 stocks 加 negative penalty(demote),under-represented sectors 加 positive boost;`penalty[sec] = -λ × log(current_weight / target_weight)`;target_weight = 1.0 / n_sectors_in_top_N(uniform);**(III)** `train()` 在 `sector_balance_enabled=True` 時:套用 adjustment → adjusted_preds → 重算 pred_scores → 重算 ic_mean(adjusted IC 記為 `ic_mean_adjusted`,原始 ic_mean 保留);metrics 加 `sector_balance_applied` + `sector_penalty_factor` + `target_weight_per_sector`;**(IV)** `commit_outputs()` model.json 之 preprocessing 加 `sector_balance` 段(存 sector_penalty_factor / lambda / top_n / target_weight)— 為 downstream prediction_engine 套用之 SSOT(milestone #3.5 待);**(V)** TOOL_VER v0.2.1 → v0.2.2;標頭副標補「milestone #3 sector-balanced post-processing Lagrangian adjustment」+ 主權狀態行同步。**Approach 選擇理由**:4 候選 evaluation(A LGBM custom_obj / B iterative re-weighting / C sector-bucketed rank-IC / D post-processing Lagrangian)→ D 為 scope-fit + backward-compat + 與既有 pure rank-IC trainer 完全相容(無 LGBM dep / 無多輪訓練 / 無 per-sector 統計力衰減)。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.2 為 post-processing layer + opt-in flag。**對既有 model 影響**:零(opt-in flag default False;flag OFF 時行為 = v0.2.1 完全相同;既有 `_v0_1` model_id 不重訓)。**對既有 snapshot 影響**:零(model.json 之 preprocessing schema 加 optional `sector_balance` 段;backward-compat reader 可忽略)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 當 flag 為 ON 時主動消除 root cause(治本);flag OFF 時 milestone #2 之 audit_sector_balance 仍會 WARN(偵測但不治本)。**v0.2.2 為 milestone #4 (walk-forward 8 panel)之 algorithm 預備**:milestone #4 將每 panel 跑一次 sector_balance_enabled=True 之訓練 + 驗證 IC > 0 strict。**Train/inference consistency 注意**:本 milestone 為 training-side 完整實作;downstream `prediction_engine.py` 套用 sector_penalty_factor 為 milestone #3.5(下 session 配套;commit metadata 已 ready)。同步配套:milestone #2 commit `42d4872`(4/4 hooks wired)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 §10-E sector-balanced loss 公式)。 | SUPERSEDED |
 | v0.2.1 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #2 — wire 4/4 audit hooks + sector-aware load_inputs(對映 §14.7-BQ Phase C 進度)**:milestone #1(commit `47838d1`)wire 了 2/4 hooks(audit_training_quality + audit_artifact_consistency);本 milestone #2 補完剩 2 hooks 並提供 sector data foundation:(I) `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 industry_category(每股 latest as-of as_of_date)→ `self.rows[i]["industry"]`;(II) `_audit_self()` 加呼 `audit_model_input(G1-G4 input 合法性)+ `audit_sector_balance`(G7/G12 計算 top-20 prediction 之 sector weights → Shannon entropy gate);(III) train() 加 `self.preds` 暫存(供 _audit_self 計算 top-20);(IV) TOOL_VER v0.2 → v0.2.1;(V) 標頭副標補「§10 Phase C continuation milestone #2」+ 主權狀態行加「4 audit hooks 全 wired + sector-aware load_inputs」。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.1 為 audit hook activation + input data 擴充,不改 model 訓練本質。**對既有 model 影響**:零(既有 `_v0_1` 命名之 model_id 不重訓;新 audit calls 為 WARN-only backward-compat)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 計算並 log entropy,但若 < 0.5 仍只 WARN(不 raise);strict raise 留 milestone #3。**v0.2.1 為 milestone #3 之 input foundation**:milestone #3(sector-balanced loss training)需 industry-aware 訓練資料,本 milestone 已 wired in self.rows。**對既有 snapshot 影響**:零(load_inputs SQL 純擴 SELECT + LATERAL JOIN,不改 row 數 / filter / order)。同步配套:憲章 §14.7-BQ Phase C(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)+ milestone #1 `47838d1`(_audit_self 整合 2/4 hooks)。 | SUPERSEDED |
 | v0.2 | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | SUPERSEDED |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | SUPERSEDED |
@@ -86,7 +87,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2.2"
+TOOL_VER = "v0.2.3"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.2"
 DEFAULT_LABEL_HORIZON = 20  # v0.2 留 20 為 backward-compat;Phase C continuation 升 30(per §9.1)
 DEFAULT_SEED = 5422
@@ -915,26 +916,249 @@ class ModelTrainer:
         return self.stats["fail"] == 0
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# §10-D G13 / §10-E Walk-Forward 8 Panel Framework — v0.2.3 milestone #4
+# 為 v6.2.0 軌道之 walk-forward IC validation gate(三柱 ceiling 之 single critical)
+# ════════════════════════════════════════════════════════════════════════════
+class WalkForwardRunner:
+    """Multi-panel walk-forward orchestrator(對映 §10-D G13 / §10-E §8 panel runs)。
+
+    每 panel 對應一個 committed feature_set snapshot(typically 不同 as_of_date);
+    跨 panels 跑 ModelTrainer.run() + 聚合 cross-panel IC metrics;
+    audit_training_quality 之 G5/G6 gate 之 aggregated 評估。
+
+    為 v6.2.0 軌道之 walk-forward IC validation 之 framework foundation;
+    milestone #5 將升 G strict raise(post 證明 cross_panel_ic_mean > 0)。
+    """
+
+    def __init__(self, panel_feature_set_ids, model_family, label_horizon, commit=False):
+        """
+        Args:
+            panel_feature_set_ids: list of committed feature_set_id(typically 4-8 panels)
+            model_family: e.g. 'lgbm'
+            label_horizon: 20 or 30
+            commit: False = dry-run all panels(預設;不寫 model_registry)
+                    True = commit each panel(會寫 N rows to model_registry)
+        """
+        self.panel_feature_set_ids = list(panel_feature_set_ids)
+        self.model_family = model_family
+        self.label_horizon = label_horizon
+        self.commit = commit
+        self.panel_results = []
+        self.aggregated = {}
+        self.stats = {"pass": 0, "warn": 0, "fail": 0, "details": []}
+
+    def _detail(self, bucket, msg):
+        self.stats[bucket] += 1
+        icon = {"pass": "✅", "warn": "⚠️", "fail": "❌"}[bucket]
+        line = f"{icon} [{bucket.upper()}] {msg}"
+        self.stats["details"].append(line)
+        print(line)
+
+    def run(self):
+        """Loops panels + collect metrics + aggregate + audit."""
+        start = time.time()
+        n_panels = len(self.panel_feature_set_ids)
+        policy_min_panels = DEFAULT_TRAINING_POLICY.get("walk_forward_panel_size", 8)
+
+        print(f"\n🌀 WalkForwardRunner: {n_panels} panels(target {policy_min_panels} per §10-D G13)")
+
+        for i, fs_id in enumerate(self.panel_feature_set_ids, start=1):
+            print(f"\n  ── Panel {i}/{n_panels}: feature_set_id={fs_id} ──")
+            trainer = ModelTrainer(
+                feature_set_id=fs_id,
+                model_family=self.model_family,
+                label_horizon=self.label_horizon,
+                commit=self.commit,
+            )
+            try:
+                trainer.run()
+                panel_metric = {
+                    "panel_index": i,
+                    "feature_set_id": fs_id,
+                    "model_id": trainer.model_id,
+                    "rows_trained": len(trainer.rows),
+                    "ic_mean": trainer.metrics.get("ic_mean"),
+                    "ic_std": trainer.metrics.get("ic_std"),
+                    "rmse": trainer.metrics.get("rmse"),
+                    "top_n_sector_weights": trainer.metrics.get("top_n_sector_weights"),
+                    "sector_balance_applied": trainer.sector_balance_metadata is not None,
+                    "stats_pass": trainer.stats["pass"],
+                    "stats_warn": trainer.stats["warn"],
+                    "stats_fail": trainer.stats["fail"],
+                }
+                self.panel_results.append(panel_metric)
+                self._detail("pass", f"Panel {i} completed: ic_mean={panel_metric['ic_mean']}")
+            except Exception as exc:
+                self._detail("fail", f"Panel {i} failed: {type(exc).__name__}: {exc}")
+                self.panel_results.append({
+                    "panel_index": i,
+                    "feature_set_id": fs_id,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+
+        self.aggregate()
+        self.audit_aggregated()
+        self.emit_evidence()
+        return self.report(start)
+
+    def aggregate(self):
+        """Compute cross-panel IC mean / std / stability ratio / consistency score."""
+        ic_means = [p["ic_mean"] for p in self.panel_results if p.get("ic_mean") is not None]
+        n_success = len(ic_means)
+        if n_success == 0:
+            self.aggregated = {
+                "n_panels_total": len(self.panel_feature_set_ids),
+                "n_panels_success": 0,
+                "cross_panel_ic_mean": None,
+                "cross_panel_ic_std": None,
+                "ic_stability_ratio": None,
+                "consistency_score": None,
+                "panel_size_meets_target": False,
+            }
+            return
+        mean_ic = sum(ic_means) / n_success
+        if n_success > 1:
+            variance = sum((x - mean_ic) ** 2 for x in ic_means) / (n_success - 1)
+            std_ic = math.sqrt(variance)
+        else:
+            std_ic = 0.0
+        n_positive = sum(1 for ic in ic_means if ic > 0)
+        consistency = n_positive / n_success if n_success > 0 else 0.0
+        stability_ratio = (abs(mean_ic) / std_ic) if std_ic > 1e-12 else float("inf")
+        policy_min_panels = DEFAULT_TRAINING_POLICY.get("walk_forward_panel_size", 8)
+        self.aggregated = {
+            "n_panels_total": len(self.panel_feature_set_ids),
+            "n_panels_success": n_success,
+            "cross_panel_ic_mean": mean_ic,
+            "cross_panel_ic_std": std_ic,
+            "ic_stability_ratio": stability_ratio,
+            "consistency_score": consistency,
+            "panel_size_meets_target": n_success >= policy_min_panels,
+            "target_panel_size": policy_min_panels,
+        }
+
+    def audit_aggregated(self):
+        """Apply audit_training_quality on aggregated metrics(§10-D G5/G6)."""
+        if self.aggregated.get("cross_panel_ic_mean") is None:
+            self._detail("fail", "G13: no successful panels for aggregated audit")
+            return
+        # G5/G6 on cross-panel
+        ok, msg = audit_training_quality(
+            ic_mean=self.aggregated["cross_panel_ic_mean"],
+            ic_std=self.aggregated["cross_panel_ic_std"],
+            sharpe=None,
+            policy=DEFAULT_TRAINING_POLICY,
+        )
+        if ok:
+            self._detail("pass", f"§10-D G5/G6 cross-panel: {msg}")
+        else:
+            self._detail("warn", f"§10-D G5/G6 cross-panel: {msg}(WARN-only;milestone #5 升 strict)")
+        # G13 panel_size enforcement
+        if not self.aggregated.get("panel_size_meets_target"):
+            self._detail("warn",
+                         f"§10-D G13: n_panels_success={self.aggregated['n_panels_success']} "
+                         f"< target {self.aggregated['target_panel_size']} "
+                         f"(WARN-only;milestone #5 升 strict)")
+        else:
+            self._detail("pass", f"§10-D G13: panel_size meets target {self.aggregated['target_panel_size']}")
+        # Consistency check(對映 §10-E IC stability principle)
+        cs = self.aggregated.get("consistency_score", 0.0)
+        if cs < 0.5:
+            self._detail("warn", f"§10-E consistency: only {cs:.2%} panels positive-IC(WARN-only)")
+        else:
+            self._detail("pass", f"§10-E consistency: {cs:.2%} panels positive-IC")
+
+    def emit_evidence(self):
+        """Write JSON evidence to data/walk_forward_runs/wf_<timestamp>.json."""
+        out_dir = _PROJECT_ROOT / "data" / "walk_forward_runs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"wf_{ts}.json"
+        payload = {
+            "timestamp": datetime.now().isoformat(),
+            "constitution_ver": CONSTITUTION_VER,
+            "tool_ver": TOOL_VER,
+            "model_family": self.model_family,
+            "label_horizon": self.label_horizon,
+            "panel_feature_set_ids": self.panel_feature_set_ids,
+            "panel_results": self.panel_results,
+            "aggregated": self.aggregated,
+            "stats": self.stats,
+        }
+        with out_path.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, sort_keys=True, indent=2)
+        self._detail("pass", f"evidence written: {out_path.relative_to(_PROJECT_ROOT)}")
+
+    def report(self, start):
+        verdict = "PERFECT" if self.stats["fail"] == 0 else "FAILED"
+        if verdict == "PERFECT" and self.stats["warn"] > 0:
+            verdict = "WARNING"
+        agg = self.aggregated
+        print("\n" + "🌀" * 40)
+        print(f"🌀 WalkForwardRunner Summary ({TOOL_VER}) — §10-D / §10-E G13")
+        print("🌀" * 40)
+        print(f"治權基準     : §10-D G5/G6/G13 + §10-E walk-forward IC validation")
+        print(f"執行模式     : {'COMMIT' if self.commit else 'DRY-RUN'}")
+        print(f"Panels       : {agg.get('n_panels_success', 0)}/{agg.get('n_panels_total', 0)} success")
+        print("────────────────────────────────────────────────────────────────────────────────")
+        print(f"📊 cross-panel IC mean       : {agg.get('cross_panel_ic_mean')}")
+        print(f"📊 cross-panel IC std        : {agg.get('cross_panel_ic_std')}")
+        print(f"📊 IC stability ratio        : {agg.get('ic_stability_ratio')}")
+        print(f"📊 consistency (% positive)  : {agg.get('consistency_score')}")
+        print(f"🎯 panel_size meets target?  : {agg.get('panel_size_meets_target')} (target {agg.get('target_panel_size')})")
+        print(f"✅ pass / ⚠️ warn / ❌ fail   : {self.stats['pass']} / {self.stats['warn']} / {self.stats['fail']}")
+        print(f"🕒 總計耗時                  : {(time.time() - start)*1000:.2f} ms")
+        print(f"⚖️  主權判定                  : {verdict}")
+        print("🌀" * 40 + "\n")
+        return self.stats["fail"] == 0
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance Model Trainer (v0.1)")
+    parser = argparse.ArgumentParser(description=f"Quantum Finance Model Trainer ({TOOL_VER})")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--commit", action="store_true")
-    parser.add_argument("--feature-set-id", required=True)
+    parser.add_argument("--feature-set-id", required=False,
+                        help="Single panel feature_set_id(若 --walk-forward 可省略)")
     parser.add_argument("--model-family", default="lgbm")
     parser.add_argument("--label-horizon", type=int, default=DEFAULT_LABEL_HORIZON)
-    return parser.parse_args()
+    # v0.2.3 milestone #4 — walk-forward 8 panel framework
+    parser.add_argument("--walk-forward", action="store_true",
+                        help="Run WalkForwardRunner across N panels(對映 §10-D G13)")
+    parser.add_argument("--panel-feature-sets", default=None,
+                        help="Comma-separated feature_set_ids for walk-forward panels(required if --walk-forward)")
+    args = parser.parse_args()
+    if args.walk_forward:
+        if not args.panel_feature_sets:
+            parser.error("--walk-forward requires --panel-feature-sets <fs1,fs2,...>")
+    else:
+        if not args.feature_set_id:
+            parser.error("--feature-set-id required when --walk-forward not set")
+    return args
 
 
 def main():
     args = parse_args()
-    trainer = ModelTrainer(
-        feature_set_id=args.feature_set_id,
-        model_family=args.model_family,
-        label_horizon=args.label_horizon,
-        commit=args.commit,
-    )
-    ok = trainer.run()
+    if args.walk_forward:
+        # v0.2.3 milestone #4 — multi-panel walk-forward orchestration
+        panel_ids = [s.strip() for s in args.panel_feature_sets.split(",") if s.strip()]
+        runner = WalkForwardRunner(
+            panel_feature_set_ids=panel_ids,
+            model_family=args.model_family,
+            label_horizon=args.label_horizon,
+            commit=args.commit,
+        )
+        ok = runner.run()
+    else:
+        # 既有 v0.1 single-panel behavior(backward-compat)
+        trainer = ModelTrainer(
+            feature_set_id=args.feature_set_id,
+            model_family=args.model_family,
+            label_horizon=args.label_horizon,
+            commit=args.commit,
+        )
+        ok = trainer.run()
     sys.exit(0 if ok else 1)
 
 
