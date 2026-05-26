@@ -90,13 +90,24 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.9"  # 2026-05-26 evening §14.7-BP Phase C: THEME_KEYWORDS 字典升版 14 → 30 keywords(MBNRIC M+C 補完;16 新)
-# DEFAULT_POLICY_VERSION 升 v0.7(2026-05-26 切 production):§14.7-BI ROE 解鎖 SUCCESS
-# (sponsor confirmed active till 2026-06-24,2353 stocks BS sync 完成,150/150 core+convex 100% ROE coverage)
-# audit v0.7 snapshot:PASS=41 / WARN=1 / FAIL=0,V 動員度 64% → 73%。
-# v0.6 snapshot 保留為 audit trail(歷史記述);新 sync 預設用 v0.7 policy。
+TOOL_VER = "v0.10"  # 2026-05-26 §14.7-BT Phase C: 取消 150 hardcode + Dynamic Universe Selection(v6.3.0 軌道 / charter §6.7.1 annex)
+# DEFAULT_POLICY_VERSION 維持 v0.7(post §14.7-BT Phase C):legacy v0.7 為當前 production-current
+# v0.8_dynamic 為 opt-in via --policy-version core_universe_policy_v0.8_dynamic(Phase D-1 起 production-current)
+# v0.7 production state:§14.7-BI ROE 解鎖 SUCCESS / 2353 stocks BS sync / 150/150 core+convex 100% ROE coverage
+# v0.6 snapshot 保留為 audit trail(歷史記述)
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
+
+# §14.7-BT Phase C 新增:Legacy hardcode constants(顯式宣告 / 取代 inline 120 / 30 magic numbers)
+# 對齊憲章 §6.7.1 annex 之 historical hardcode mode reference
+LEGACY_CORE_LIMIT = 120          # v0.2-v0.7 hardcode mode
+LEGACY_CONVEX_LIMIT = 30         # v0.2-v0.7 hardcode mode
+# §14.7-BT Phase C 新增:Dynamic mode defaults(對齊 charter §6.7.1 annex / Phase A research §3.2 提案)
+DEFAULT_SELECTION_PCT = 5.0       # §0.2 八二法則 top 5%
+DEFAULT_SELECTION_N_MIN = 100     # avoid IC noise(§0.2-E minimal critical mass)
+DEFAULT_SELECTION_N_MAX = 200     # avoid signal dilution
+DEFAULT_CORE_PCT_WITHIN_SELECTED = 0.70  # core/convex split 70/30 (historical 120/30 ≈ 80/20 ratio 之 closest band)
+DYNAMIC_POLICY_PREFIX = "core_universe_policy_v0.8"  # policy_version dispatch trigger
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
 DEFAULT_LABEL_HORIZON = 20
@@ -246,16 +257,42 @@ class CoreUniverseBuilder:
         as_of_date,
         policy_version,
         commit=False,
-        core_limit=120,
-        convex_limit=30,
+        # §14.7-BT Phase C:移除 hardcode default(was 120/30);改 None 之 dispatch logic
+        core_limit=None,            # 若 None + legacy mode → LEGACY_CORE_LIMIT(120);dynamic mode 不使用
+        convex_limit=None,          # 若 None + legacy mode → LEGACY_CONVEX_LIMIT(30);dynamic mode 不使用
+        # §14.7-BT Phase C 新加:Dynamic mode parameters(per charter §6.7.1 annex)
+        selection_pct=None,         # 若 None + dynamic mode → DEFAULT_SELECTION_PCT(5.0)
+        selection_n_min=None,       # 若 None + dynamic mode → DEFAULT_SELECTION_N_MIN(100)
+        selection_n_max=None,       # 若 None + dynamic mode → DEFAULT_SELECTION_N_MAX(200)
+        core_pct_within_selected=None,  # 若 None + dynamic mode → DEFAULT_CORE_PCT_WITHIN_SELECTED(0.70)
         include_emerging=False,
         special_rebalance_reason=None,
     ):
         self.as_of_date = as_of_date
         self.policy_version = policy_version
         self.commit = commit
-        self.core_limit = core_limit
-        self.convex_limit = convex_limit
+        # §14.7-BT Phase C dispatch:判 mode by policy_version prefix
+        self.is_dynamic_mode = policy_version.startswith(DYNAMIC_POLICY_PREFIX)
+        if self.is_dynamic_mode:
+            # Dynamic mode:取 dynamic defaults;ignore legacy core/convex_limit
+            self.selection_pct = selection_pct if selection_pct is not None else DEFAULT_SELECTION_PCT
+            self.selection_n_min = selection_n_min if selection_n_min is not None else DEFAULT_SELECTION_N_MIN
+            self.selection_n_max = selection_n_max if selection_n_max is not None else DEFAULT_SELECTION_N_MAX
+            self.core_pct_within_selected = (
+                core_pct_within_selected if core_pct_within_selected is not None
+                else DEFAULT_CORE_PCT_WITHIN_SELECTED
+            )
+            # Legacy fields 留 None(consistency check;不該被使用)
+            self.core_limit = None
+            self.convex_limit = None
+        else:
+            # Legacy mode:用 explicit override 或 LEGACY_* constants(不再 inline 120/30)
+            self.core_limit = core_limit if core_limit is not None else LEGACY_CORE_LIMIT
+            self.convex_limit = convex_limit if convex_limit is not None else LEGACY_CONVEX_LIMIT
+            self.selection_pct = None
+            self.selection_n_min = None
+            self.selection_n_max = None
+            self.core_pct_within_selected = None
         self.include_emerging = include_emerging
         self.special_rebalance_reason = (special_rebalance_reason or "").strip()
         self.snapshot_id = self._build_snapshot_id()
@@ -1759,10 +1796,32 @@ class CoreUniverseBuilder:
         quarantined = [c for c in candidates if c.exclusion_reason is not None]
         eligible.sort(key=lambda c: (-c.core_score, -c.theme_score, c.stock_id or ""))
 
-        convex_pool = [c for c in eligible if c.theme_score >= 70.0][: self.convex_limit]
-        convex_ids = {c.stock_id for c in convex_pool}
-        core_pool = [c for c in eligible if c.stock_id not in convex_ids][: self.core_limit]
-        core_ids = {c.stock_id for c in core_pool}
+        # §14.7-BT Phase C dispatch:dynamic mode vs legacy mode
+        if self.is_dynamic_mode:
+            # Dynamic mode(v0.8+ per charter §6.7.1 annex)
+            n_eligible = len(eligible)
+            target_n_raw = int(round(n_eligible * self.selection_pct / 100.0))
+            target_n = max(self.selection_n_min, min(self.selection_n_max, target_n_raw))
+            actual_core_n = int(round(target_n * self.core_pct_within_selected))
+            actual_convex_n = target_n - actual_core_n
+            # Selection: convex_pool 先選 (theme >= 70) 取前 actual_convex_n;剩餘 top actual_core_n 為 core
+            convex_pool = [c for c in eligible if c.theme_score >= 70.0][:actual_convex_n]
+            convex_ids = {c.stock_id for c in convex_pool}
+            core_pool = [c for c in eligible if c.stock_id not in convex_ids][:actual_core_n]
+            core_ids = {c.stock_id for c in core_pool}
+            # 透明 telemetry:寫 dynamic mode 之 metadata 進 stats
+            self.stats["dynamic_target_n_raw"] = target_n_raw
+            self.stats["dynamic_target_n_capped"] = target_n
+            self.stats["dynamic_actual_core_n"] = actual_core_n
+            self.stats["dynamic_actual_convex_n"] = actual_convex_n
+            self.stats["dynamic_selection_pct"] = self.selection_pct
+            self.stats["dynamic_n_min_n_max"] = f"{self.selection_n_min}/{self.selection_n_max}"
+        else:
+            # Legacy mode(v0.2-v0.7 hardcode 150 default 或 explicit override)
+            convex_pool = [c for c in eligible if c.theme_score >= 70.0][: self.convex_limit]
+            convex_ids = {c.stock_id for c in convex_pool}
+            core_pool = [c for c in eligible if c.stock_id not in convex_ids][: self.core_limit]
+            core_ids = {c.stock_id for c in core_pool}
 
         for candidate in candidates:
             if candidate in quarantined:
@@ -1797,8 +1856,18 @@ class CoreUniverseBuilder:
             "eligibility_config": {
                 "source_table": "TaiwanStockInfo",
                 "include_emerging": self.include_emerging,
-                "core_limit": self.core_limit,
-                "convex_limit": self.convex_limit,
+                "core_limit": self.core_limit,             # legacy mode value;None for dynamic
+                "convex_limit": self.convex_limit,         # legacy mode value;None for dynamic
+                # §14.7-BT Phase C 新加:dynamic mode metadata(per charter §6.7.1 annex)
+                "is_dynamic_mode": self.is_dynamic_mode,
+                "selection_algorithm": "B_top_pct_composite_corescore" if self.is_dynamic_mode else "legacy_hardcode_120_30",
+                "selection_pct": self.selection_pct,
+                "selection_n_min": self.selection_n_min,
+                "selection_n_max": self.selection_n_max,
+                "core_pct_within_selected": self.core_pct_within_selected,
+                "actual_target_n": self.stats.get("dynamic_target_n_capped") if self.is_dynamic_mode else (
+                    (self.core_limit or 0) + (self.convex_limit or 0)
+                ),
                 "default_review_cycle": "annual",
                 "current_rebalance_mode": self._rebalance_mode(),
                 "current_review_cycle": self._review_cycle(),
@@ -2150,9 +2219,15 @@ def parse_args():
     mode.add_argument("--dry-run", action="store_true", help="只計算與輸出摘要，不寫入治理表")
     mode.add_argument("--commit", action="store_true", help="寫入 policy/snapshot/membership/scores/revision log")
     parser.add_argument("--as-of-date", type=str, help="Universe snapshot 基準日期，預設為今天")
-    parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本")
-    parser.add_argument("--core-limit", type=int, default=120, help="v0.2 core_universe 上限")
-    parser.add_argument("--convex-limit", type=int, default=30, help="v0.2 convex_universe 上限")
+    parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本(v0.7 為 legacy hardcode 150;v0.8_dynamic 為 §14.7-BT 動態 mode)")
+    # §14.7-BT Phase C:legacy flags 改 None default(不再 hardcode 120/30);per charter §6.7.1 annex
+    parser.add_argument("--core-limit", type=int, default=None, help="legacy mode core_universe 上限(None = LEGACY_CORE_LIMIT=120);dynamic mode 不適用")
+    parser.add_argument("--convex-limit", type=int, default=None, help="legacy mode convex_universe 上限(None = LEGACY_CONVEX_LIMIT=30);dynamic mode 不適用")
+    # §14.7-BT Phase C 新加:dynamic mode flags(per charter §6.7.1 annex / v6.3.0 軌道)
+    parser.add_argument("--selection-pct", type=float, default=None, help="dynamic mode top X%(預設 5.0 對映 §0.2 八二)")
+    parser.add_argument("--selection-n-min", type=int, default=None, help="dynamic mode N min guard(預設 100)")
+    parser.add_argument("--selection-n-max", type=int, default=None, help="dynamic mode N max guard(預設 200)")
+    parser.add_argument("--core-pct", type=float, default=None, help="dynamic mode core_pct_within_selected(預設 0.70 core/convex 70/30)")
     parser.add_argument("--include-emerging", action="store_true", help="允許 emerging 類型進入非 quarantine 分層")
     parser.add_argument(
         "--special-rebalance-reason",
@@ -2171,6 +2246,11 @@ def main():
         commit=args.commit,
         core_limit=args.core_limit,
         convex_limit=args.convex_limit,
+        # §14.7-BT Phase C 新加:dynamic mode params
+        selection_pct=args.selection_pct,
+        selection_n_min=args.selection_n_min,
+        selection_n_max=args.selection_n_max,
+        core_pct_within_selected=args.core_pct,
         include_emerging=args.include_emerging,
         special_rebalance_reason=args.special_rebalance_reason,
     )
