@@ -85,6 +85,7 @@ reports/*
 !reports/first_principles_evidence_chain_gap_*.md
 !reports/first_principles_field_inventory_research_*.md
 !reports/first_principles_4_dimensions_*.md
+!reports/first_principles_cumulative_state_*.md
 !reports/publication_date_discipline_design_research_*.md
 !reports/v_augmentation_phase_cd_design_research_*.md
 !reports/f_proxy_augmentation_phase_f_design_research_*.md
