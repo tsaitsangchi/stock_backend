@@ -23,7 +23,9 @@ build_doctrine_gate_universe.py v0.9 (§14.7-BV Phase C — Doctrine-Gate-First 
 ## 📜 三、修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.9** | 2026-05-26 | Codex | **§14.7-BV Phase C 落地首版 / minimal-viable doctrine-gate runner**:依憲章 v6.1.0-patch 第二十輪 §14.7-BV Phase B 入憲(charter L9462)+ Phase A 設計研究(`reports/doctrine_gate_selection_phase_a_research_20260526.md` 566 行 §14)落地。Path C 4-stage pipeline 完整;直接複用 core_universe_scores 之 sub-scores 計算 composite(避免重跑 builder ~4-6h)。同次完成 §14.7-BU Phase E data layer hook(per execution coupling 紀律)。對既有治權影響:零 schema 變動(complete reuse of v0.2 governance tables + universe_completeness_snapshot 由 §14.7-BU Phase C 已建);對 v0.2 deprecated snapshot 不動。本 v0.9 為 minimal-viable 落地;builder full rewrite(`core_universe_builder.py` v0.7.1 → v1.0)為跨 session 升版候選。 | **ACTIVE** |
+| **v0.10 + §14.7-BX support** | 2026-05-26 | Codex | **§14.7-BX Phase C-3 + C-4 同次升版**:加 `--weekly-mode` CLI flag(per §14.7-BX 第二十二輪 canonical spec)— atomic supersede 前週 committed + `_weekly` suffix snapshot_id;**§6.7 SSOT 任一時點 ≤ 1 committed 不變式維持**。docstring 對齊 §14.7-BW(第二十一輪 Path D pure doctrine)+ §14.7-BX(第二十二輪 weekly recommit T-axis 純化)雙治權層;CoreScore 為 INFO display only(§14.7-BW 第 5 條 治權位階降階);N 完全 doctrine-derived 無 cap/floor/tier %(§14.7-BW Path D)。對既有 builder 邏輯影響:零(只新增 `weekly_mode` 參數;default False = legacy one-shot mode 不動);對既有 snapshot 影響:零(weekly_mode=True 觸發時才動既有 committed snapshot)。 | **ACTIVE** |
+| **v0.10** | 2026-05-26 | Codex | **§14.7-BW Phase B → v0.9 doctrine_gate → v0.10 pure_doctrine 重構**:對映用戶 5 次明示之最強讀法「取消所有 200 支及 150 支」+「§14.7-BV Path C 內 4 hidden hardcode 揭露」。取消 N_MAX cap / N_MIN floor / 70-30 tier split / CoreScore as ranking gate(4 hidden hardcode 全 removed)。POLICY_VERSION → `core_universe_policy_v0.10_pure_doctrine`;Stage 3 + Stage 4 重寫:CoreScore INFO display / 全 doctrine-pass → core_universe(convex 棄用)。DB committed evidence:`core_universe_20260526_core_universe_policy_v0_10_pure_doctrine`(N=1862 / 0 convex / 941 research)。 | SUPERSEDED by v0.10+§14.7-BX |
+| **v0.9** | 2026-05-26 | Codex | **§14.7-BV Phase C 落地首版 / minimal-viable doctrine-gate runner**:依憲章 v6.1.0-patch 第二十輪 §14.7-BV Phase B 入憲(charter L9462)+ Phase A 設計研究(`reports/doctrine_gate_selection_phase_a_research_20260526.md` 566 行 §14)落地。Path C 4-stage pipeline 完整(含 N_MAX=200 cap / 70-30 tier split / CoreScore ranking gate;後 §14.7-BW 揭露皆為 hidden hardcode)。複用 core_universe_scores 之 sub-scores 計算 composite。同次完成 §14.7-BU Phase E data layer hook。 | SUPERSEDED by v0.10 |
 ================================================================================
 """
 import argparse
@@ -47,6 +49,7 @@ from core.db_utils import get_db_connection
 CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.10_pure_doctrine"
 POLICY_VERSION = "core_universe_policy_v0.10_pure_doctrine"
+POLICY_VERSION_WEEKLY = "core_universe_policy_v0.10_pure_doctrine_weekly"  # §14.7-BX Phase C: weekly mode 獨立 policy(避免 UNIQUE constraint on (as_of_date, policy_version)衝突)
 
 # CoreScore weights (per §6.4 / inherited from v0.7.1 builder) — kept for INFO display only, not for selection
 WEIGHTS = {'DQ': 0.25, 'LM': 0.25, 'FG': 0.20, 'TR': 0.15, 'IF': 0.10, 'VC': 0.05}
@@ -134,28 +137,57 @@ def compute_composite_score(cur, stock_id):
     return composite, {'DQ': dq, 'LM': lm, 'FG': fg, 'TR': tr, 'IF': if_, 'VC': vc, 'RP': rp}
 
 
-def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_convex, as_of, all_candidates):
-    """Stage Commit: write v0.9 snapshot + membership + universe_completeness_snapshot data layer."""
-    snapshot_id = f"core_universe_{as_of.replace('-', '')}_{POLICY_VERSION.replace('.', '_')}"
+def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_convex, as_of, all_candidates, weekly_mode=False):
+    """Stage Commit: write v0.10 snapshot + membership + universe_completeness_snapshot data layer.
 
-    # 1. Register policy
+    If weekly_mode=True(per §14.7-BX Phase C):
+      (a) Atomically supersede any current committed snapshot (status committed → superseded)
+      (b) 使用獨立 policy_version `POLICY_VERSION_WEEKLY`(避免與 legacy v0.10 同日衝突 UNIQUE constraint)
+      (c) Add `_weekly` suffix to snapshot_id
+      (d) Preserves §6.7 SSOT invariant(at most 1 committed at any time)
+    """
+    active_policy = POLICY_VERSION_WEEKLY if weekly_mode else POLICY_VERSION
+    suffix = "_weekly" if weekly_mode else ""
+    snapshot_id = f"core_universe_{as_of.replace('-', '')}_{active_policy.replace('.', '_')}"
+
+    # §14.7-BX Phase C atomic supersede: in weekly mode, mark any currently-committed snapshot as superseded
+    if weekly_mode:
+        cur.execute("""
+            UPDATE core_universe_snapshot
+            SET status='superseded',
+                notes = COALESCE(notes, '') || ' | SUPERSEDED ' || %s::date || ' by new weekly recommit per §14.7-BX'
+            WHERE status='committed'
+        """, (as_of,))
+        if cur.rowcount > 0:
+            print(f"  ⤴️  Superseded {cur.rowcount} prior committed snapshot(s) per §14.7-BX weekly mode")
+
+    # 1. Register policy(weekly_mode 用 POLICY_VERSION_WEEKLY)
+    policy_name = ('Core Universe Policy v0.10 Pure Doctrine WEEKLY(§14.7-BX)' if weekly_mode
+                   else 'Core Universe Policy v0.10 Pure Doctrine')
+    policy_desc = ('§14.7-BX Phase C weekly recommit: doctrine-gate-first selection + atomic supersede prior committed. '
+                   'Per-stock §0.1 5/5 raw source + §0.2 by-def + §0.3 K-wave market 5/5 prerequisite. '
+                   'N dynamic per doctrine; no cap/floor/tier %; weekly auto-recommit per §14.7-BX 第二十二輪.'
+                   if weekly_mode else
+                   '§14.7-BV/BW Phase C: doctrine-gate-first one-shot. Per-stock §0.1 5/5 + §0.2 by-def + §0.3 market 5/5. N dynamic.')
+    policy_notes = ('§14.7-BX Phase C-3 weekly mode 落地' if weekly_mode
+                    else '§14.7-BW Phase B v0.10 pure doctrine 落地')
     cur.execute("""
         INSERT INTO core_universe_policy (
             policy_version, policy_name, description,
             weight_config, eligibility_config, risk_config,
             effective_from, active, notes
         )
-        SELECT %s,
-            'Core Universe Policy v0.9 Doctrine-Gate-First',
-            '§14.7-BV Phase C: doctrine-gate-first selection (per-stock §0.1 5/5 raw source + §0.2 by-def + §0.3 K-wave market 5/5 prerequisite). N dynamic. CoreScore demoted to within-pass tier ranking via composite formula. v0.2-v0.7 algorithms deprecated.',
+        SELECT %s, %s, %s,
             weight_config, eligibility_config, risk_config,
-            %s::date, TRUE,
-            '§14.7-BV Phase C落地; reuses core_universe_scores sub-scores from prior runs for tier ranking; minimal-viable execution (full builder rewrite deferred to v1.0)'
+            %s::date, TRUE, %s
         FROM core_universe_policy WHERE policy_version='core_universe_policy_v0.2'
         ON CONFLICT (policy_version) DO UPDATE SET active=TRUE, updated_at=NOW()
-    """, (POLICY_VERSION, as_of))
+    """, (active_policy, policy_name, policy_desc, as_of, policy_notes))
 
     # 2. Snapshot
+    snap_note = (f'§14.7-BX Phase C weekly recommit:N={n_total} doctrine-pass(§0.1 5/5 + §0.2 + §0.3 market 5/5);atomic-supersede prior committed;policy={active_policy}'
+                 if weekly_mode else
+                 f'§14.7-BW Phase B v0.10 pure doctrine one-shot:N={n_total} doctrine-pass;{n_core} core + {n_convex} convex;policy={active_policy}')
     cur.execute("""
         INSERT INTO core_universe_snapshot (
             snapshot_id, as_of_date, source_data_cutoff, policy_version,
@@ -170,9 +202,9 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
             convex_count=EXCLUDED.convex_count,
             notes=EXCLUDED.notes
     """, (
-        snapshot_id, as_of, as_of, POLICY_VERSION,
+        snapshot_id, as_of, as_of, active_policy,
         len(all_candidates), len(all_candidates) - n_total, n_core, n_convex, 0,
-        f'§14.7-BV Phase C v0.9 doctrine-gate-first selection. Gate pass={n_total} from {len(all_candidates)} candidates (per §0.1 5/5 raw source check). Tier split 70/30: {n_core} core + {n_convex} convex. N dynamic per doctrine, NOT hardcoded.',
+        snap_note,
     ))
 
     # 3. Membership rows
@@ -201,7 +233,7 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
             snapshot_id, stock['stock_id'], stock['stock_name'], stock['type'], stock['industry_category'],
             tier, score, as_of,
             f"doctrine_gate pass (5/5 §0.1 + §0.2 by-def + §0.3 5/5 market context); composite_score={score:.2f}; rank={idx+1}/{n_total}",
-            POLICY_VERSION,
+            active_policy,
         ))
 
     # 4. Add non-gate-pass candidates as research_universe
@@ -227,11 +259,11 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
             snapshot_id, cand['stock_id'], cand['stock_name'], cand['type'], cand['industry_category'],
             as_of,
             "doctrine_gate not pass (<5/5 §0.1 raw source coverage per §14.7-BV Path C)",
-            POLICY_VERSION,
+            active_policy,
         ))
 
     # 5. §14.7-BU Phase E data-layer hook: write per-stock × per-pillar completeness records
-    completeness_snapshot_id = f"completeness_{as_of.replace('-', '')}_{POLICY_VERSION.replace('.', '_')}_data_layer"
+    completeness_snapshot_id = f"completeness_{as_of.replace('-', '')}_{active_policy.replace('.', '_')}_data_layer"
     for item in scored_results:
         stock_id = item['stock']['stock_id']
         # §0.1 first_principle data layer: 5/5 expected/actual
@@ -263,7 +295,7 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
     return snapshot_id, completeness_snapshot_id
 
 
-def build(commit=False):
+def build(commit=False, weekly_mode=False):
     conn = get_db_connection()
     cur = conn.cursor()
     as_of = datetime.now().strftime('%Y-%m-%d')
@@ -337,9 +369,11 @@ def build(commit=False):
         return True
 
     # Commit
-    print(f"\n[Commit] Writing v0.9 snapshot + membership + universe_completeness_snapshot data layer...")
+    mode_label = "WEEKLY(§14.7-BX atomic supersede + _weekly suffix)" if weekly_mode else "ONE-SHOT(legacy mode)"
+    print(f"\n[Commit] Mode: {mode_label}")
+    print(f"        Writing v0.10 snapshot + membership + universe_completeness_snapshot data layer...")
     snapshot_id, completeness_id = write_snapshot_and_membership(
-        conn, cur, scored, n_total, n_core, n_convex, as_of, all_candidates
+        conn, cur, scored, n_total, n_core, n_convex, as_of, all_candidates, weekly_mode=weekly_mode
     )
     print(f"  ✅ snapshot: {snapshot_id}")
     print(f"  ✅ membership: {len(all_candidates)} rows ({n_total} gate-pass + {len(all_candidates)-n_total} research)")
@@ -367,9 +401,11 @@ def main():
     parser = argparse.ArgumentParser(description=f"Doctrine-Gate Universe Builder ({TOOL_VER})")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Show gate-pass + tier split without writing DB")
-    mode.add_argument("--commit", action="store_true", help="Write new v0.9 snapshot + membership + completeness data layer")
+    mode.add_argument("--commit", action="store_true", help="Write new v0.10 snapshot + membership + completeness data layer")
+    parser.add_argument("--weekly-mode", action="store_true",
+                        help="§14.7-BX Phase C weekly mode:atomic-supersede prior committed + add _weekly suffix to snapshot_id")
     args = parser.parse_args()
-    ok = build(commit=args.commit)
+    ok = build(commit=args.commit, weekly_mode=args.weekly_mode)
     sys.exit(0 if ok else 1)
 
 

@@ -101,6 +101,7 @@ reports/*
 !reports/doctrine_gate_selection_*.md
 !reports/pure_doctrine_drift_*.md
 !reports/weekly_doctrine_recommit_*.md
+!reports/weekly_universe_recommit_*.md
 !reports/v6_*_p1_*.md
 !reports/feature_store_v0*_implementation_audit_*.md
 !reports/p1_v02_execution_runbook_*.md
