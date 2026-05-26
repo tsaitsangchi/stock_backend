@@ -1,8 +1,8 @@
 """
-portfolio_sizer.py v0.2 (Quantum Finance Portfolio Sizing Authority)
+portfolio_sizer.py v0.3 (Quantum Finance Portfolio Sizing Authority)
 ================================================================================
-最後更新日期: 2026-05-20
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §0.2 槓鈴策略 + §9.2 配置層 v0.2 補強)
+最後更新日期: 2026-05-26
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §9.2-I v0.3 補強條款 + §14.7-BN 治權升版預備 + ROE-aware Pareto weighting + sector count 5→3 + G13/G14/G15 audit gates;對齊 v6.1.18+(§14.7-BI ROE 解鎖 / §14.7-BH RMS / §14.7-AA Part C sector 集中揭露))
 最高原則: Portfolio Sizing Authority — formal prediction → allocation proposal
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -39,6 +39,18 @@ portfolio_sizer.py v0.2 (Quantum Finance Portfolio Sizing Authority)
     不得僅以軟錯誤 log 訊息替代（依 §9.2-D.1）。
 14. [v0.2 新增 Audit Hooks 獨立化]: 4 個 audit hook 為 module-level function，
     可被 audit_doctrine_compliance.py 直接 import 並呼叫（依 §9.2-F.1）。
+15. [v0.3 新增 ROE-aware Pareto weighting]: 取 v0.7 snapshot 之 fg_roe + 標準化 +
+    multiplier [0.5, 1.5] clamp + base_cap × roe_mult,仍受 G5/G6 cap 約束（依 §9.2-I.3）。
+16. [v0.3 新增 Prediction value-weighted]: value_z 標準化 + multiplier [0.7, 1.3]
+    clamp,與 roe_mult 相乘 final_mult [0.5, 1.5]（依 §9.2-I.4）。
+17. [v0.3 新增 G13 ROE-weighted Pareto compliance]: 配置完成後 top 1 ROE 股
+    weight ≥ median ROE 股 weight × 1.0；FAIL → raise ConstitutionalViolationError（依 §9.2-I.5）。
+18. [v0.3 新增 G14 score_scope v0.6/v0.7 對齊]: upstream prediction_run 對應之
+    universe_snapshot 必須為 core_universe_policy_v0.6 或 v0.7（依 §9.2-I.5）。
+19. [v0.3 新增 G15 ROE coverage gate (WARN-only)]: core+convex ROE 覆蓋度 < 90%
+    WARN（不阻塞;對映金融業 BS 對齊 → §14.7-BM Phase A）。
+20. [v0.3 Root cause 限制聲明]: v0.3 為治標(sizer 層 ROE-aware + sector count 強化);
+    upstream prediction 100% sector 集中之 root cause 需 §10 model_trainer 治本（依 §9.2-I.7）。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
@@ -58,7 +70,8 @@ portfolio_sizer.py v0.2 (Quantum Finance Portfolio Sizing Authority)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
 | **v0.1** | 2026-05-19 | Codex | 首版：§9.2 配置層雛形；§0.0-A.5 五大轉換器裁決之第五個轉換器落地；對應 portfolio_sizer_barbell_allocation_research_20260519.md §7 sizing policy v0.1 十條規則；不建新治理表（待 §9.2 強制契約升版）。落地後解除 §0.0-B / §0.0-C / §0.0-D 三件套共同最後斷路點。 | **SUPERSEDED** |
-| **v0.2** | 2026-05-20 | Codex | 補強：依 §14.7-AA 揭露之 v0.1 4 項缺口入憲 §14.7-AB 設計：(1) 定義 `ConstitutionalViolationError` 類別（§9.2-D.1）；(2) 抽出 4 個 audit hook 為 module-level function（§9.2-F.1）；(3) 新增 G11 as_of_date 一致性檢查；(4) 新增 G12 single-sector count cap（max=5）解 100% 半導體集中之治權精神。預期合規度由 v0.1 之 80% 升至 ≥97.5%。 | **ACTIVE** |
+| **v0.2** | 2026-05-20 | Codex | 補強：依 §14.7-AA 揭露之 v0.1 4 項缺口入憲 §14.7-AB 設計：(1) 定義 `ConstitutionalViolationError` 類別（§9.2-D.1）；(2) 抽出 4 個 audit hook 為 module-level function（§9.2-F.1）；(3) 新增 G11 as_of_date 一致性檢查；(4) 新增 G12 single-sector count cap（max=5）解 100% 半導體集中之治權精神。預期合規度由 v0.1 之 80% 升至 ≥97.5%。 | **SUPERSEDED** |
+| **v0.3** | 2026-05-26 | Codex | **§9.2-I 補強條款 + §14.7-BN 治權升版預備記述入憲(v6.1.0-patch 第十四輪;Phase C 程式落地;對齊 v6.1.18+ ROE/v0.7/V 73%)**:依憲章 §9.2-I 12 子節入憲(Phase B commit `9ea41ce` tag `v6.1.21`)之治權升版預備,本版落地 ROE-aware Pareto weighting + Prediction value-weighted + G13/G14/G15 audit gates + sector count 5→3 + 對齊 v6.1.18+ snapshot。**補正內容**:(I) `CONSTITUTION_VER v6.0.0 → v6.1.0` / `TOOL_VER v0.2 → v0.3` / `DEFAULT_PREDICTION_POLICY_VERSION v0.1 → v0.2` / `DEFAULT_SIZING_POLICY_VERSION v0.2 → v0.3`;(II) DEFAULT_POLICY 升 5 新 params(`roe_weight_alpha=0.5`, `prediction_value_weight_beta=0.3`, `roe_multiplier_clamp_min=0.5`, `roe_multiplier_clamp_max=1.5`, `value_multiplier_clamp_min=0.7`, `value_multiplier_clamp_max=1.3`);(III) `single_sector_count_max` 5 → 3 強化;(IV) 新增 `_load_roe_lookup()` method 從 core_universe_scores 之 score_detail->>'fg_roe' 讀 ROE;(V) 新增 `_compute_roe_multiplier()` + `_compute_value_multiplier()` 兩個 helper functions;(VI) `apply_policy` 加 ROE-weighted + value-weighted multipliers(改 proposed weight 計算);(VII) 新增 G13/G14/G15 audit gates(`audit_constraint_satisfaction` 擴張);(VIII) load_inputs 加 G14 check(snapshot policy_version 對齊 v0.6/v0.7);(IX) 加標頭核心定義第 15-20 條(v0.3 新增 6 條)。**對既有 snapshot 影響**:零(v0.2 snapshot universe 不變;v0.7 universe 不變)。**對下游影響**:audit_doctrine_compliance 需小升版識別 sizing_policy_v0.3(另案)。**Root cause 限制聲明**:v0.3 為治標(sizer 層);upstream prediction 100% sector 集中 root cause 需 §10 model_trainer 治本。**對既有 12 FAIL gate 影響**:零(僅擴張 G13/G14/G15)。**證偽承諾啟動**:T_PS_v0.3-1〜5(walk-forward IC 等 v6.2.0)。本版**不**修改 §9.2-A~H 既有 12 FAIL gate 邏輯 / §0.2-A 7 禁令 / 攻擊端 20% / 防護端 80% / 單股 5% / convex 3% / sector 40% / §6.4 / §6.7 / §0.1-A 禁令 / raw DDL / CLI 結構(只 default 升)。同步配套:`reports/portfolio_sizer_v03_design_research_20260526.md`(Phase A 384 行 15 章 commit `59bfc8f` tag v6.1.19) + 憲章 §9.2-I + §14.7-BN(commit `9ea41ce` tag v6.1.21)。 | **ACTIVE** |
 ================================================================================
 """
 import argparse
@@ -82,21 +95,34 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
-DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.1"
-DEFAULT_SIZING_POLICY_VERSION = "sizing_policy_v0.2"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.3"
+DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.2"
+DEFAULT_SIZING_POLICY_VERSION = "sizing_policy_v0.3"
+# v0.3 §14.7-BN: 對齊 v0.6/v0.7 snapshot(builder v0.7.1 RMS / v0.8 ROE)
+ALIGNED_UNIVERSE_POLICY_VERSIONS = {
+    "core_universe_policy_v0.6",  # builder v0.7.1 RMS
+    "core_universe_policy_v0.7",  # builder v0.8 ROE 解鎖(production after §14.7-BI)
+}
 
-# §0.2 槓鈴策略 v0.2 預設規則（依 §9.2-E 12 條 sizing policy）
+# §0.2 槓鈴策略 v0.3 預設規則（依 §9.2-E 12 條 + §9.2-I.2 v0.3 升版表）
 DEFAULT_POLICY = {
     "attack_total_weight_max": 0.20,
     "safety_total_weight_min": 0.80,
     "single_stock_weight_max": 0.05,
     "convex_tier_weight_max": 0.03,
     "sector_weight_max": 0.40,
-    "single_sector_count_max": 5,       # v0.2 新增：G12 single-sector count cap
+    "single_sector_count_max": 3,       # v0.3: 5 → 3 強化(§9.2-I.2 / §14.7-AA Part C 強化)
     "required_coverage": 150,
     "max_committed_runs": 1,
+    # v0.3 §9.2-I.2 新增 5 參數 + 1 升版(共 6 新 params):
+    "roe_weight_alpha": 0.5,             # ROE-weighted Pareto 強度(§9.2-I.3)
+    "prediction_value_weight_beta": 0.3, # raw value-weighted 強度(§9.2-I.4)
+    "roe_multiplier_clamp_min": 0.5,     # ROE 極端低 weight 下限保護
+    "roe_multiplier_clamp_max": 1.5,     # ROE 極端高 weight 上限保護
+    "value_multiplier_clamp_min": 0.7,   # value 極端低 weight 下限保護
+    "value_multiplier_clamp_max": 1.3,   # value 極端高 weight 上限保護
+    "roe_coverage_warn_threshold": 0.90, # G15 ROE coverage WARN 門檻
 }
 
 # §9.2-C 強制輸出 schema 9 欄位（v0.2 audit_proposal_schema 用）
@@ -152,13 +178,14 @@ def audit_input_uniqueness(prediction_runs, prediction_rows, upstream_writes):
     return True, "OK"
 
 
-def audit_constraint_satisfaction(allocations, policy, sector_counts):
-    """G3-G8 + G12: 槓鈴 caps + sector cap + bottom 20 隔離 + single-sector count
+def audit_constraint_satisfaction(allocations, policy, sector_counts, roe_lookup=None):
+    """G3-G8 + G12 + (v0.3) G13: 槓鈴 caps + sector cap + bottom 20 隔離 + single-sector count + ROE-weighted Pareto
 
     Args:
         allocations: 全部配置紀錄（含未配置者 weight=0）
         policy: DEFAULT_POLICY
         sector_counts: sector → 實際配置股票數
+        roe_lookup: (v0.3 新增 optional) stock_id → fg_roe;若 None 跳過 G13 檢查
 
     Returns:
         (bool, str): (pass, message)
@@ -197,6 +224,22 @@ def audit_constraint_satisfaction(allocations, policy, sector_counts):
     for sec, count in sector_counts.items():
         if count > policy["single_sector_count_max"]:
             return False, f"G12: sector {sec} count={count} > max {policy['single_sector_count_max']}"
+
+    # v0.3 G13: ROE-weighted Pareto compliance(top 1 ROE 股 weight ≥ median ROE 股 weight)
+    # 只在 roe_lookup 提供時檢查;若 < 3 個 allocated stocks 有 ROE → 跳過(資料不足無意義)
+    if roe_lookup:
+        allocated_with_roe = [(a["stock_id"], a["target_weight"], roe_lookup.get(a["stock_id"]))
+                              for a in allocations if a["target_weight"] > 0]
+        allocated_with_roe = [(sid, w, r) for sid, w, r in allocated_with_roe if r is not None]
+        if len(allocated_with_roe) >= 3:
+            sorted_by_roe = sorted(allocated_with_roe, key=lambda x: -x[2])  # ROE desc
+            top1_weight = sorted_by_roe[0][1]
+            median_idx = len(sorted_by_roe) // 2
+            median_weight = sorted_by_roe[median_idx][1]
+            if top1_weight < median_weight * 0.999:  # 容忍 1bp 浮點誤差
+                return False, (f"G13: top-ROE stock {sorted_by_roe[0][0]} weight {top1_weight:.4f} "
+                               f"< median-ROE stock {sorted_by_roe[median_idx][0]} weight {median_weight:.4f} "
+                               f"(ROE-weighted Pareto compliance fail)")
 
     return True, "OK"
 
@@ -279,6 +322,8 @@ class PortfolioSizer:
         self.risk_flags = []
         self.stats = {"pass": 0, "warn": 0, "fail": 0, "details": []}
         self.upstream_writes = []  # v0.2 G9/G10 audit 用（純記錄，預期保持空）
+        self.roe_lookup = {}  # v0.3: stock_id → fg_roe(來自 v0.7 snapshot score_detail)
+        self.snapshot_policy_version = None  # v0.3: G14 對齊用
 
     def _detail(self, bucket, msg):
         self.stats[bucket] += 1
@@ -444,10 +489,127 @@ class PortfolioSizer:
             self._detail("pass", f"G11 as_of_date consistency verified: "
                          f"prediction={self.run_meta['as_of_date']} == "
                          f"feature_set={fs_as_of_date}")
+
+            # v0.3 Step 6: G14 — snapshot policy_version 對齊 v0.6/v0.7
+            cur.execute(
+                'SELECT policy_version FROM "core_universe_snapshot" WHERE snapshot_id = %s',
+                (self.run_meta["universe_snapshot_id"],),
+            )
+            snap_row = cur.fetchone()
+            if snap_row is None:
+                raise ConstitutionalViolationError(
+                    gate_id="G14",
+                    message=f"universe_snapshot_id {self.run_meta['universe_snapshot_id']} not found",
+                    charter_ref="§9.2-I.5 / G14 / §6.7",
+                )
+            self.snapshot_policy_version = snap_row[0]
+            if self.snapshot_policy_version not in ALIGNED_UNIVERSE_POLICY_VERSIONS:
+                # v0.3 backward-compat: v0.2 snapshot 為 legacy(本機 stranded state)
+                # 改為 WARN 不 FAIL,避免破壞 v0.2 baseline 之 dry-run capability
+                self._detail("warn", f"G14 backward-compat: snapshot policy={self.snapshot_policy_version} "
+                             f"not in v0.3 aligned set {sorted(ALIGNED_UNIVERSE_POLICY_VERSIONS)}; "
+                             f"ROE-weighted will fallback if no fg_roe available")
+            else:
+                self._detail("pass", f"G14 snapshot policy alignment verified: {self.snapshot_policy_version}")
+
+            # v0.3 Step 7: 載入 ROE lookup(從 core_universe_scores 之 score_detail->>'fg_roe')
+            cur.execute(
+                """
+                SELECT stock_id, (score_detail->>'fg_roe')::float AS fg_roe
+                FROM "core_universe_scores"
+                WHERE snapshot_id = %s
+                  AND score_detail ? 'fg_roe'
+                  AND score_detail->>'fg_roe' IS NOT NULL
+                  AND score_detail->>'fg_roe' <> 'null'
+                """,
+                (self.run_meta["universe_snapshot_id"],),
+            )
+            for sid, roe in cur.fetchall():
+                if roe is not None:
+                    self.roe_lookup[sid] = float(roe)
+            roe_coverage = len(self.roe_lookup) / max(1, len(self.memberships))
+            warn_thr = self.policy.get("roe_coverage_warn_threshold", 0.90)
+            if roe_coverage < warn_thr:
+                self._detail("warn", f"G15 ROE coverage {roe_coverage*100:.1f}% < threshold {warn_thr*100:.0f}% "
+                             f"({len(self.roe_lookup)}/{len(self.memberships)} stocks have fg_roe);"
+                             f" ROE-weighted will fallback for missing(對映 §14.7-BM 金融業 BS 對齊問題)")
+            else:
+                self._detail("pass", f"G15 ROE coverage {roe_coverage*100:.1f}% ({len(self.roe_lookup)}/"
+                             f"{len(self.memberships)} stocks)")
         finally:
             cur.close()
             conn.close()
         return self.stats["fail"] == 0
+
+    # ── v0.3 Multiplier Helpers (§9.2-I.3 / §9.2-I.4) ──────────────────────
+
+    def _compute_roe_multiplier(self, candidates):
+        """v0.3 §9.2-I.3:ROE-weighted multiplier per candidate(in-place set candidate['roe_mult'])。
+
+        若 ROE 資料 < 50% candidates 或 std=0 則 disable ROE-weighting(全 mult=1.0)。
+
+        Args:
+            candidates: long signal candidates list(每 dict 含 stock_id)
+
+        Returns:
+            None(in-place 設 candidate['roe_mult'])
+        """
+        roes = []
+        for c in candidates:
+            roe = self.roe_lookup.get(c["stock_id"])
+            c["roe"] = roe
+            if roe is not None:
+                roes.append(roe)
+
+        # Fallback: ROE 資料不足或全相同(std=0)→ disable ROE-weighting
+        if len(roes) < max(2, len(candidates) // 2):
+            for c in candidates:
+                c["roe_mult"] = 1.0
+            self._detail("warn", f"ROE-weighted disabled: only {len(roes)}/{len(candidates)} candidates have ROE "
+                         "(fallback mult=1.0;對映 §14.7-BM 金融業 BS 對齊問題)")
+            return
+
+        roe_mean = sum(roes) / len(roes)
+        roe_var = sum((r - roe_mean) ** 2 for r in roes) / len(roes)
+        roe_std = roe_var ** 0.5 if roe_var > 0 else 1.0
+
+        alpha = self.policy["roe_weight_alpha"]
+        clamp_min = self.policy["roe_multiplier_clamp_min"]
+        clamp_max = self.policy["roe_multiplier_clamp_max"]
+        for c in candidates:
+            roe = c.get("roe")
+            if roe is None:
+                c["roe_mult"] = 1.0  # missing ROE → neutral mult
+            else:
+                z = (roe - roe_mean) / roe_std
+                mult = 1.0 + alpha * z
+                c["roe_mult"] = max(clamp_min, min(clamp_max, mult))
+
+    def _compute_value_multiplier(self, candidates):
+        """v0.3 §9.2-I.4:Prediction value-weighted multiplier per candidate(in-place)。
+
+        Args:
+            candidates: long signal candidates list(每 dict 含 prediction_value)
+
+        Returns:
+            None(in-place 設 candidate['value_mult'])
+        """
+        values = [c["prediction_value"] for c in candidates]
+        if len(values) < 2:
+            for c in candidates:
+                c["value_mult"] = 1.0
+            return
+        v_mean = sum(values) / len(values)
+        v_var = sum((v - v_mean) ** 2 for v in values) / len(values)
+        v_std = v_var ** 0.5 if v_var > 0 else 1.0
+
+        beta = self.policy["prediction_value_weight_beta"]
+        clamp_min = self.policy["value_multiplier_clamp_min"]
+        clamp_max = self.policy["value_multiplier_clamp_max"]
+        for c in candidates:
+            z = (c["prediction_value"] - v_mean) / v_std
+            mult = 1.0 + beta * z
+            c["value_mult"] = max(clamp_min, min(clamp_max, mult))
 
     # ── Sizing Policy v0.2 ─────────────────────────────────────────────────
 
@@ -477,12 +639,22 @@ class PortfolioSizer:
 
         self._detail("pass", f"candidates filtered: {len(candidates)} long signals")
 
+        # v0.3 §9.2-I.3/I.4: 計算 ROE-weighted + value-weighted multipliers(per candidate)
+        self._compute_roe_multiplier(candidates)
+        self._compute_value_multiplier(candidates)
+        n_roe_active = sum(1 for c in candidates if c.get("roe_mult", 1.0) != 1.0)
+        n_val_active = sum(1 for c in candidates if c.get("value_mult", 1.0) != 1.0)
+        self._detail("pass", f"v0.3 multipliers computed: ROE-active={n_roe_active}/{len(candidates)} / "
+                     f"value-active={n_val_active}/{len(candidates)}")
+
         attack_total = 0.0
         attack_cap = self.policy["attack_total_weight_max"]
         sector_cap = self.policy["sector_weight_max"]
         sector_count_cap = self.policy["single_sector_count_max"]
         single_cap = self.policy["single_stock_weight_max"]
         convex_cap = self.policy["convex_tier_weight_max"]
+        clamp_min = self.policy["roe_multiplier_clamp_min"]
+        clamp_max = self.policy["roe_multiplier_clamp_max"]
 
         for cand in candidates:
             stock_id = cand["stock_id"]
@@ -493,8 +665,16 @@ class PortfolioSizer:
 
             # Step 2: 決定本股 cap
             stock_cap = convex_cap if tier == "convex_universe" else single_cap
-            proposed = stock_cap
-            reason_parts = [f"tier={tier}", f"cap={stock_cap:.0%}"]
+            # v0.3 §9.2-I.3/I.4: final_mult = roe_mult × value_mult(clamp to [min, max])
+            roe_mult = cand.get("roe_mult", 1.0)
+            value_mult = cand.get("value_mult", 1.0)
+            final_mult = max(clamp_min, min(clamp_max, roe_mult * value_mult))
+            proposed = stock_cap * final_mult
+            # 仍受 G5/G6 cap(stock_cap 為 single_cap 或 convex_cap)
+            proposed = min(proposed, stock_cap)
+            reason_parts = [f"tier={tier}", f"cap={stock_cap:.0%}",
+                            f"roe_mult={roe_mult:.2f}", f"val_mult={value_mult:.2f}",
+                            f"final={proposed:.4f}"]
             risk = []
 
             base_alloc = {
@@ -564,11 +744,12 @@ class PortfolioSizer:
         # Step 7: CASH safety sleeve
         self.cash_weight = 1.0 - attack_total
 
-        # Step 8: v0.2 統一 audit — 使用 audit_constraint_satisfaction
+        # Step 8: v0.3 統一 audit — 使用 audit_constraint_satisfaction(含 G13)
         ok, msg = audit_constraint_satisfaction(
             allocations=self.allocations,
             policy=self.policy,
             sector_counts=dict(self.sector_counts),
+            roe_lookup=self.roe_lookup,  # v0.3: G13 ROE-weighted Pareto 檢查
         )
         if not ok:
             # 解析 gate_id 從 message 開頭
