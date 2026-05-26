@@ -119,6 +119,7 @@ reports/*
 !reports/pareto_4_dimensions_*.md
 !reports/pareto_cumulative_state_*.md
 !reports/k_wave_4_dimensions_*.md
+!reports/k_wave_cumulative_state_*.md
 !reports/kondratiev_validation_*.md
 !reports/source_availability_audit_*.md
 !reports/final_closure_*.md
