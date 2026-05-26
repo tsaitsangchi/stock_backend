@@ -106,6 +106,7 @@ reports/*
 !reports/p1_v01_*.json
 !reports/v06_dryrun_*.md
 !reports/financial_sector_*.md
+!reports/cashflow_sync_*.md
 !reports/系統核心完整度評估報告.md
 !reports/系統核心完整度評估報告_v*.md
 !reports/audit_doctrine_compliance_*.md
