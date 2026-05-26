@@ -90,7 +90,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.8"
+TOOL_VER = "v0.9"  # 2026-05-26 evening §14.7-BP Phase C: THEME_KEYWORDS 字典升版 14 → 30 keywords(MBNRIC M+C 補完;16 新)
 # DEFAULT_POLICY_VERSION 升 v0.7(2026-05-26 切 production):§14.7-BI ROE 解鎖 SUCCESS
 # (sponsor confirmed active till 2026-06-24,2353 stocks BS sync 完成,150/150 core+convex 100% ROE coverage)
 # audit v0.7 snapshot:PASS=41 / WARN=1 / FAIL=0,V 動員度 64% → 73%。
@@ -170,21 +170,49 @@ V02_INPUT_CONTRACT = [
 
 EQUITY_TYPES = {"twse", "tpex"}
 EXCLUDED_INDUSTRY_KEYWORDS = ("ETF", "ETN", "指數", "權證")
+# v0.9 §14.7-BP THEME_KEYWORDS 字典升版(2026-05-26 evening Phase C)
+# MBNRIC 6 支柱完整補完(原 14 keywords → 30 keywords;治本 §0.3 N 72.7% 主導 root cause)
+# 新加 16 keywords:M 支柱 9 + C 支柱 5 + B 1 (農科) + R 1 (油電) = 16
+# 對映 §0.3.9 MBNRIC 6 支柱完整 mapping;§0.3 evidence issue #1 治本
+# 對映 §14.7-BP Phase A 設計研究(reports/theme_keywords_dictionary_upgrade_phase_a_research_20260526.md)
 THEME_KEYWORDS = {
+    # === N Nanotech/Neural 支柱(原有 4 keywords;不改 — N 已主導) ===
     "半導體": 100,
-    "生技": 95,
-    "醫療": 95,
+    "電子": 80,
+    "機器": 80,
+    "光電": 70,           # I+N partial(光電業)
+    # === C Computing/Cloud 支柱(v0.9 新增 5 keywords;對齊 §0.3 第六波 priority) ===
+    "量子": 100,         # ✨ NEW v0.9 §14.7-BP(對映 §0.3 K-wave 第六波頂分)
+    "AI": 95,            # ✨ NEW v0.9 §14.7-BP(對映 其他電子類 / 資訊服務業 C 部分)
+    "雲端": 95,          # ✨ NEW v0.9 §14.7-BP(對映 數位雲端類 24+22 = 46 stocks)
+    "算力": 90,          # ✨ NEW v0.9 §14.7-BP(對映 GPU AI 算力新興)
+    "演算": 85,          # ✨ NEW v0.9 §14.7-BP(對映 algorithm-driven)
+    # === I Info 支柱(原有 3 keywords;不改) ===
     "資訊": 90,
     "電腦": 85,
     "通信": 85,
-    "電子": 80,
-    "機器": 80,
+    # === R Robotics/綠能 支柱(原有 3 + v0.9 新 1 = 4 keywords) ===
     "電機": 75,
     "綠能": 75,
-    "光電": 70,
-    "能源": 70,
-    "航太": 65,
     "汽車": 60,
+    "油電": 70,          # ✨ NEW v0.9 §14.7-BP(對映 油電燃氣業 13 stocks;取代「能源」之精確化)
+    # === B Biotech 支柱(原有 2 + v0.9 新 1 = 3 keywords) ===
+    "生技": 95,
+    "醫療": 95,
+    "農科": 80,          # ✨ NEW v0.9 §14.7-BP(對映 農業科技業 / 農業科技 7 stocks)
+    # === M Materials 支柱(原有 0 + v0.9 新 9 keywords;治本核心) ===
+    "化學": 65,          # ✨ NEW v0.9 §14.7-BP(化學工業 24 + 化學生技醫療 42 之 M 部分)
+    "建材": 55,          # ✨ NEW v0.9 §14.7-BP(建材營造 89 stocks)
+    "鋼鐵": 50,          # ✨ NEW v0.9 §14.7-BP(鋼鐵工業 54 stocks)
+    "紡織": 50,          # ✨ NEW v0.9 §14.7-BP(紡織纖維 54 stocks)
+    "塑膠": 55,          # ✨ NEW v0.9 §14.7-BP(塑膠工業 27 stocks)
+    "橡膠": 50,          # ✨ NEW v0.9 §14.7-BP(橡膠工業 11 stocks;EV 輪胎)
+    "水泥": 45,          # ✨ NEW v0.9 §14.7-BP(水泥工業 8 stocks)
+    "造紙": 45,          # ✨ NEW v0.9 §14.7-BP(造紙工業 8 stocks)
+    "玻璃": 50,          # ✨ NEW v0.9 §14.7-BP(玻璃陶瓷 5 stocks;先進陶瓷)
+    # === 其他既有(不對應 MBNRIC 直接;保留為 thematic cushion) ===
+    "能源": 70,          # 原 keyword;部分對映 R(已被「油電」精確化但保留 backward-compat)
+    "航太": 65,          # 原 keyword;I partial
 }
 
 
