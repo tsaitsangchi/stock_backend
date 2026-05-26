@@ -823,40 +823,49 @@ class CoreUniverseBuilder:
             # v0.8 §14.7-BI: ROE 解鎖 — 從 TaiwanStockBalanceSheet 取真權益 (Equity / EquityAttributableToOwnersOfParent)
             # 消解 §0.1.3-A.1 之 FinStmt mislabel(FinStmt 同名 column 為淨利,BS 同名 column 為真權益,~10x 差距)
             # ROE = SUM(IncomeAfterTaxes 最近 4Q) / latest Equity (annualized)
-            bs_gate, bs_n_ap = build_publication_date_gate("TaiwanStockBalanceSheet")
-            cur.execute(f"""
-                WITH ni_4q AS (
-                    SELECT stock_id, SUM(value::numeric) AS ni_sum, COUNT(*) AS qc
-                    FROM (
-                        SELECT stock_id, value,
-                               ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                        FROM "TaiwanStockFinancialStatements"
-                        WHERE type='IncomeAfterTaxes' AND date >= %s AND {fs_gate}
-                    ) ranked
-                    WHERE rn <= 4
-                    GROUP BY stock_id
-                ),
-                bs_equity AS (
-                    SELECT DISTINCT ON (stock_id) stock_id, value::numeric AS equity
-                    FROM "TaiwanStockBalanceSheet"
-                    WHERE type='EquityAttributableToOwnersOfParent' AND {bs_gate}
-                    ORDER BY stock_id, date DESC
-                )
-                SELECT n.stock_id, n.ni_sum, n.qc, b.equity
-                FROM ni_4q n
-                JOIN bs_equity b USING (stock_id)
-                WHERE n.qc = 4 AND b.equity > 0
-            """, (lookback_730, *([self.as_of_date] * fs_n_ap), *([self.as_of_date] * bs_n_ap)))
-            for sid, ni_sum, qc, equity in cur.fetchall():
-                if sid not in financial_data:
-                    continue
-                ni_f = float(ni_sum or 0)
-                eq_f = float(equity or 0)
-                if eq_f > 0:
-                    roe = ni_f / eq_f
-                    financial_data[sid]["roe"] = roe
-                    financial_data[sid]["equity"] = eq_f
-                    financial_data[sid]["ni_4q_sum"] = ni_f
+            # v0.9.1 graceful fallback:若本機 BS table 不存在(stranded state per handoff §二),
+            #                         skip ROE block;financial_data ROE 保持 None(對齊 v0.7.1 baseline)
+            cur.execute("SELECT to_regclass('public.\"TaiwanStockBalanceSheet\"')")
+            bs_exists = cur.fetchone()[0] is not None
+            if not bs_exists:
+                self._detail(f"⚠️ [BS-MISSING] TaiwanStockBalanceSheet table 不存在(本機 stranded state);"
+                             f"ROE 將 fallback to None(per handoff §二 / 對齊 v0.7.1 baseline)")
+                # 跳過 BS query;ROE 保持 None
+            else:
+                bs_gate, bs_n_ap = build_publication_date_gate("TaiwanStockBalanceSheet")
+                cur.execute(f"""
+                    WITH ni_4q AS (
+                        SELECT stock_id, SUM(value::numeric) AS ni_sum, COUNT(*) AS qc
+                        FROM (
+                            SELECT stock_id, value,
+                                   ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
+                            FROM "TaiwanStockFinancialStatements"
+                            WHERE type='IncomeAfterTaxes' AND date >= %s AND {fs_gate}
+                        ) ranked
+                        WHERE rn <= 4
+                        GROUP BY stock_id
+                    ),
+                    bs_equity AS (
+                        SELECT DISTINCT ON (stock_id) stock_id, value::numeric AS equity
+                        FROM "TaiwanStockBalanceSheet"
+                        WHERE type='EquityAttributableToOwnersOfParent' AND {bs_gate}
+                        ORDER BY stock_id, date DESC
+                    )
+                    SELECT n.stock_id, n.ni_sum, n.qc, b.equity
+                    FROM ni_4q n
+                    JOIN bs_equity b USING (stock_id)
+                    WHERE n.qc = 4 AND b.equity > 0
+                """, (lookback_730, *([self.as_of_date] * fs_n_ap), *([self.as_of_date] * bs_n_ap)))
+                for sid, ni_sum, qc, equity in cur.fetchall():
+                    if sid not in financial_data:
+                        continue
+                    ni_f = float(ni_sum or 0)
+                    eq_f = float(equity or 0)
+                    if eq_f > 0:
+                        roe = ni_f / eq_f
+                        financial_data[sid]["roe"] = roe
+                        financial_data[sid]["equity"] = eq_f
+                        financial_data[sid]["ni_4q_sum"] = ni_f
 
             # v0.5 §14.7-BC: TaiwanStockPER (PER/PBR/dividend_yield)— native_aligned;latest per stock
             per_data = {}
