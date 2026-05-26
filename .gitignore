@@ -108,6 +108,7 @@ reports/*
 !reports/financial_sector_*.md
 !reports/cashflow_sync_*.md
 !reports/theme_keywords_*.md
+!reports/l1_l3_cumulative_*.md
 !reports/系統核心完整度評估報告.md
 !reports/系統核心完整度評估報告_v*.md
 !reports/audit_doctrine_compliance_*.md
