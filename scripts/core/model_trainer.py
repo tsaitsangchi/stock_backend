@@ -1,8 +1,8 @@
 """
-model_trainer.py v0.2.3 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #4 — walk-forward 8 panel framework)
+model_trainer.py v0.2.4 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #5 — G strict raise staged tiers)
 ================================================================================
 最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + sector-balanced post-processing Lagrangian adjustment + **WalkForwardRunner class (multi-panel orchestration / G13 panel size enforcement / IC stability aggregation / JSON evidence output)**;G strict raise 待 milestone #5)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + sector-balanced Lagrangian adjustment + WalkForwardRunner class + **staged G strict raise (Tier 1 default raise safe / Tier 2-3 opt-in via flags;6 strict_* flags;_handle_audit_result helper)**;milestone #3.5 prediction sync 待)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ model_trainer.py v0.2.3 (Quantum Finance Model Training Authority · §10 Phase 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2.3** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #4 — WalkForwardRunner class (multi-panel orchestration + IC stability aggregation + G13 panel size enforcement;對映 §10-D / §10-E 8 panel walk-forward IC validation 為 v6.2.0 軌道 gate)**:milestone #3(commit `1be102e`)完 algorithm 層 sector-balanced adjustment;本 milestone #4 補 multi-panel orchestration layer 之 walk-forward framework:**(I)** 新 class `WalkForwardRunner(panel_feature_set_ids, model_family, label_horizon, commit=False)`,loops 1..N panels,每 panel 內部創 ModelTrainer + run() + 收集 per-panel metrics(ic_mean / ic_std / rmse / rows_trained / sector entropy);**(II)** aggregate() 方法:跨 panels 計算 cross_panel_ic_mean / cross_panel_ic_std / ic_stability_ratio (mean/std) / consistency_score (proportion of positive-IC panels);**(III)** invoke `audit_training_quality(cross_panel_ic_mean, cross_panel_ic_std, sharpe=None, policy)` 作 G5/G6 gate on aggregated metrics(walk-forward IC > 0 strict 之治本實證);**(IV)** invoke `audit_sector_balance` per-panel + 跨-panel sector stability check(extra G7 check);**(V)** output:console summary table + JSON evidence file `data/walk_forward_runs/wf_<timestamp>.json` 含 per-panel + aggregated metrics;**(VI)** G13 panel_size enforcement:若 panels < `walk_forward_panel_size` (default 8) → WARN;**(VII)** CLI 加 `--walk-forward` flag(orthogonal to `--dry-run` / `--commit`)+ `--panel-feature-sets <fs1,fs2,...,fs8>`;**(VIII)** `--feature-set-id` 變 optional 當 `--walk-forward` 啟用;**(IX)** TOOL_VER v0.2.2 → v0.2.3;標頭副標 + 主權狀態行同步。**邏輯動量**:既有 ModelTrainer class 完全不改(WalkForwardRunner wraps it externally);v0.2.3 為 orchestration layer 補入。**對既有 model 影響**:零(WalkForwardRunner 用 dry-run mode 為預設;不寫 model_registry;不重訓 既有 _v0_1 model_id)。**對既有 CLI 行為影響**:零(default workflow `--dry-run --feature-set-id X` 完全不變;新 `--walk-forward` 為 opt-in)。**G13 walk-forward IC validation 治本意義**:milestone #3 algorithm 層套用 sector-balanced adjustment 後 IC 降(0.957 → 0.285 之 trade-off);milestone #4 walk-forward 8 panel 為 **alpha vs diversity trade-off 之 multi-period validation**;若 cross_panel_ic_mean 仍 > 0 → 證明 algorithm 之 IC 雖低但 stable / 治本可接受;若 < 0 → 算法 over-adjustment,需 lambda 調降。**v0.2.3 為 milestone #5 (G strict raise) 之 panel validation foundation**:milestone #5 將升 audit_training_quality G5 為 strict raise,前提為 walk-forward 證明 IC > 0;本 milestone 提供 framework。**Local stranded mode 注意**:本機 v0.2 DB 無 feature_set_snapshot 表,real walk-forward 需 production sync;本 commit 完整實作 framework + mock smoke test;real validation 之 panel feature sets 來自 production v0.7 snapshot。**對既有 snapshot 影響**:零(JSON output 為新 file path;不改 model_registry / model_training_run schema)。同步配套:憲章 §10-E `walk_forward_panel_size: 8`(DEFAULT_TRAINING_POLICY)+ §14.7-BQ Phase B Phase C continuation(commit `27c1abf`)+ Phase A 設計研究 §10-D / §10-E sections(commit `644e2eb` tag v6.1.24)+ milestones #1/#2/#3(commits 47838d1 / 42d4872 / 1be102e)。 | **ACTIVE** |
+| **v0.2.4** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #5 — G strict raise staged tiers(對映 §10-D 15 FAIL gates 之 strict mode 漸進升版;治權層之最後 audit 強制 hardening)**:milestone #4(commit `88b9d29`)完 walk-forward orchestration 框架;本 milestone #5 補入 audit gates 之 strict raise 漸進升版(per CLAUDE.md §四 #4 之治權對齊):**(I)** DEFAULT_TRAINING_POLICY 加 6 新 strict_* flags:**Tier 1(default True / safe to raise)**:`strict_input_gates`(G1-G4 input audit;programmer error 偵測 / 既有正常流程不觸發)+ `strict_artifact_gates`(G10/G11 artifact consistency;artifact bug 偵測);**Tier 2(default False / opt-in)**:`strict_ic_gate`(G5 IC > 0)+ `strict_ic_std_gate`(G6 IC 穩定)+ `strict_sector_gate`(G7/G12 sector entropy / 對 §14.7-AA Part C);**Tier 3(default False / orchestration-only)**:`strict_panel_size_gate`(G13 walk-forward 8 panel)+ `strict_consistency_gate`(§10-E consistency_score)。**(II)** 新 helper method `ModelTrainer._handle_audit_result(gate_id, ok, msg, charter_ref, strict_flag_key)`:統一 PASS/WARN/RAISE 邏輯;若 ok → PASS log;若 not ok + strict flag True → raise ConstitutionalViolationError;若 not ok + strict flag False → WARN log(backward-compat).**(III)** `_audit_self()` refactored 用 helper(4 gates);**(IV)** `WalkForwardRunner.audit_aggregated()` refactored 用 ModelTrainer-style helper(3 gates:G5/G6 + G13 + consistency);**(V)** TOOL_VER v0.2.3 → v0.2.4;標頭副標 + 主權狀態行同步;**(VI)** 維運矩陣加 strict mode 之 opt-in pattern 說明。**Staged raise rationale**:T1 safe-to-raise(input 邏輯錯 / artifact 缺鍵 = programmer bug,不應 silently 通過);T2 opt-in(algorithm trade-off / IC < 0 可能為 valid 但 low-alpha 階段 / sector entropy 低可能為 valid 集中策略 — 需 deliberate flag decision raise);T3 orchestration-only(real-world walk-forward panels 常 < 8 / consistency 隨 lambda 調整 — raise 過 aggressive)。**邏輯動量**:既有 ModelTrainer.train() + WalkForwardRunner.run() algorithm 完全不改;v0.2.4 純為 audit response policy 之 helper-based DRY refactor + flag-controlled strict raise 升級。**對既有 model 影響**:零(既有正常流程 audit_model_input + audit_artifact_consistency 皆 PASS;Tier 1 strict 之 raise 為 safety net 對應 programmer error 才觸發)。**對既有 snapshot 影響**:零(audit logic 改不影響 train/commit_outputs 之 model.json schema)。**對既有 CLI 行為**:零(default workflow 完全不變)。**§10-D 治本完整 strict 進展**:milestone #5 為**最後 audit 強制 hardening**;post 本 milestone,§10-D 15 FAIL gates 從「設計妥(charter)+ wired in code(milestone #1-2)+ algorithm 治本能力(milestone #3)+ walk-forward orchestration(milestone #4)+ **staged strict raise**(本 milestone)」之完整治本鏈 closure。**Smoke test 完整(5 scenarios)**:(a) Tier 1 strict input raise(bad input → ConstitutionalViolationError);(b) Tier 2 default OFF(sector entropy < 0.5 → WARN;backward-compat);(c) Tier 2 opt-in ON(sector entropy < 0.5 → raise);(d) WalkForwardRunner G13 default OFF(panels < 8 → WARN);(e) WalkForwardRunner G13 opt-in ON(panels < 8 → raise)。**v0.2.4 為 milestone #3.5(prediction_engine sync)之 governance foundation**:milestone #3.5 將套用 sector_penalty_factor in inference;本 milestone 強制 ensure consistency via strict_artifact_gates。**Phase D ready**:post milestone #5,§10 Phase C 整體達 96% production-ready 程度;Phase D 為 production smoke + tag v6.2.0(milestone #3.5 / #6 為 optional enhancement)。同步配套:憲章 §10-D 15 FAIL gates + §14.7-BQ Phase B(commit `27c1abf`)+ milestones #1/#2/#3/#4(commits 47838d1 / 42d4872 / 1be102e / 88b9d29)。 | **ACTIVE** |
+| v0.2.3 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #4 — WalkForwardRunner class (multi-panel orchestration + IC stability aggregation + G13 panel size enforcement;對映 §10-D / §10-E 8 panel walk-forward IC validation 為 v6.2.0 軌道 gate)**:milestone #3(commit `1be102e`)完 algorithm 層 sector-balanced adjustment;本 milestone #4 補 multi-panel orchestration layer 之 walk-forward framework:**(I)** 新 class `WalkForwardRunner(panel_feature_set_ids, model_family, label_horizon, commit=False)`,loops 1..N panels,每 panel 內部創 ModelTrainer + run() + 收集 per-panel metrics(ic_mean / ic_std / rmse / rows_trained / sector entropy);**(II)** aggregate() 方法:跨 panels 計算 cross_panel_ic_mean / cross_panel_ic_std / ic_stability_ratio (mean/std) / consistency_score (proportion of positive-IC panels);**(III)** invoke `audit_training_quality(cross_panel_ic_mean, cross_panel_ic_std, sharpe=None, policy)` 作 G5/G6 gate on aggregated metrics(walk-forward IC > 0 strict 之治本實證);**(IV)** invoke `audit_sector_balance` per-panel + 跨-panel sector stability check(extra G7 check);**(V)** output:console summary table + JSON evidence file `data/walk_forward_runs/wf_<timestamp>.json` 含 per-panel + aggregated metrics;**(VI)** G13 panel_size enforcement:若 panels < `walk_forward_panel_size` (default 8) → WARN;**(VII)** CLI 加 `--walk-forward` flag(orthogonal to `--dry-run` / `--commit`)+ `--panel-feature-sets <fs1,fs2,...,fs8>`;**(VIII)** `--feature-set-id` 變 optional 當 `--walk-forward` 啟用;**(IX)** TOOL_VER v0.2.2 → v0.2.3;標頭副標 + 主權狀態行同步。**邏輯動量**:既有 ModelTrainer class 完全不改(WalkForwardRunner wraps it externally);v0.2.3 為 orchestration layer 補入。**對既有 model 影響**:零(WalkForwardRunner 用 dry-run mode 為預設;不寫 model_registry;不重訓 既有 _v0_1 model_id)。**對既有 CLI 行為影響**:零(default workflow `--dry-run --feature-set-id X` 完全不變;新 `--walk-forward` 為 opt-in)。**G13 walk-forward IC validation 治本意義**:milestone #3 algorithm 層套用 sector-balanced adjustment 後 IC 降(0.957 → 0.285 之 trade-off);milestone #4 walk-forward 8 panel 為 **alpha vs diversity trade-off 之 multi-period validation**;若 cross_panel_ic_mean 仍 > 0 → 證明 algorithm 之 IC 雖低但 stable / 治本可接受;若 < 0 → 算法 over-adjustment,需 lambda 調降。**v0.2.3 為 milestone #5 (G strict raise) 之 panel validation foundation**:milestone #5 將升 audit_training_quality G5 為 strict raise,前提為 walk-forward 證明 IC > 0;本 milestone 提供 framework。**Local stranded mode 注意**:本機 v0.2 DB 無 feature_set_snapshot 表,real walk-forward 需 production sync;本 commit 完整實作 framework + mock smoke test;real validation 之 panel feature sets 來自 production v0.7 snapshot。**對既有 snapshot 影響**:零(JSON output 為新 file path;不改 model_registry / model_training_run schema)。同步配套:憲章 §10-E `walk_forward_panel_size: 8`(DEFAULT_TRAINING_POLICY)+ §14.7-BQ Phase B Phase C continuation(commit `27c1abf`)+ Phase A 設計研究 §10-D / §10-E sections(commit `644e2eb` tag v6.1.24)+ milestones #1/#2/#3(commits 47838d1 / 42d4872 / 1be102e)。 | SUPERSEDED |
 | v0.2.2 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment(approach D;治本 §14.7-AA Part C 100% 半導體 prediction candidates root cause)**:milestone #2(commit `42d4872`)wire 完 4/4 audit hooks 並能偵測 sector concentration;本 milestone #3 補入 **algorithm 層調整**:**(I)** DEFAULT_TRAINING_POLICY 加 4 新 keys:`sector_balance_enabled` (default False / opt-in flag) + `sector_balance_top_n` (default 20 / §9.2 attack tier) + `sector_balance_lambda` (default 0.3 / Lagrangian λ) + `sector_balance_min_floor_pred` (default -10.0 / cap on negative penalty);**(II)** 新方法 `_apply_sector_balanced_adjustment(preds)`:對 top-N 之 over-concentrated sectors 之 stocks 加 negative penalty(demote),under-represented sectors 加 positive boost;`penalty[sec] = -λ × log(current_weight / target_weight)`;target_weight = 1.0 / n_sectors_in_top_N(uniform);**(III)** `train()` 在 `sector_balance_enabled=True` 時:套用 adjustment → adjusted_preds → 重算 pred_scores → 重算 ic_mean(adjusted IC 記為 `ic_mean_adjusted`,原始 ic_mean 保留);metrics 加 `sector_balance_applied` + `sector_penalty_factor` + `target_weight_per_sector`;**(IV)** `commit_outputs()` model.json 之 preprocessing 加 `sector_balance` 段(存 sector_penalty_factor / lambda / top_n / target_weight)— 為 downstream prediction_engine 套用之 SSOT(milestone #3.5 待);**(V)** TOOL_VER v0.2.1 → v0.2.2;標頭副標補「milestone #3 sector-balanced post-processing Lagrangian adjustment」+ 主權狀態行同步。**Approach 選擇理由**:4 候選 evaluation(A LGBM custom_obj / B iterative re-weighting / C sector-bucketed rank-IC / D post-processing Lagrangian)→ D 為 scope-fit + backward-compat + 與既有 pure rank-IC trainer 完全相容(無 LGBM dep / 無多輪訓練 / 無 per-sector 統計力衰減)。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.2 為 post-processing layer + opt-in flag。**對既有 model 影響**:零(opt-in flag default False;flag OFF 時行為 = v0.2.1 完全相同;既有 `_v0_1` model_id 不重訓)。**對既有 snapshot 影響**:零(model.json 之 preprocessing schema 加 optional `sector_balance` 段;backward-compat reader 可忽略)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 當 flag 為 ON 時主動消除 root cause(治本);flag OFF 時 milestone #2 之 audit_sector_balance 仍會 WARN(偵測但不治本)。**v0.2.2 為 milestone #4 (walk-forward 8 panel)之 algorithm 預備**:milestone #4 將每 panel 跑一次 sector_balance_enabled=True 之訓練 + 驗證 IC > 0 strict。**Train/inference consistency 注意**:本 milestone 為 training-side 完整實作;downstream `prediction_engine.py` 套用 sector_penalty_factor 為 milestone #3.5(下 session 配套;commit metadata 已 ready)。同步配套:milestone #2 commit `42d4872`(4/4 hooks wired)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 §10-E sector-balanced loss 公式)。 | SUPERSEDED |
 | v0.2.1 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #2 — wire 4/4 audit hooks + sector-aware load_inputs(對映 §14.7-BQ Phase C 進度)**:milestone #1(commit `47838d1`)wire 了 2/4 hooks(audit_training_quality + audit_artifact_consistency);本 milestone #2 補完剩 2 hooks 並提供 sector data foundation:(I) `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 industry_category(每股 latest as-of as_of_date)→ `self.rows[i]["industry"]`;(II) `_audit_self()` 加呼 `audit_model_input(G1-G4 input 合法性)+ `audit_sector_balance`(G7/G12 計算 top-20 prediction 之 sector weights → Shannon entropy gate);(III) train() 加 `self.preds` 暫存(供 _audit_self 計算 top-20);(IV) TOOL_VER v0.2 → v0.2.1;(V) 標頭副標補「§10 Phase C continuation milestone #2」+ 主權狀態行加「4 audit hooks 全 wired + sector-aware load_inputs」。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.1 為 audit hook activation + input data 擴充,不改 model 訓練本質。**對既有 model 影響**:零(既有 `_v0_1` 命名之 model_id 不重訓;新 audit calls 為 WARN-only backward-compat)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 計算並 log entropy,但若 < 0.5 仍只 WARN(不 raise);strict raise 留 milestone #3。**v0.2.1 為 milestone #3 之 input foundation**:milestone #3(sector-balanced loss training)需 industry-aware 訓練資料,本 milestone 已 wired in self.rows。**對既有 snapshot 影響**:零(load_inputs SQL 純擴 SELECT + LATERAL JOIN,不改 row 數 / filter / order)。同步配套:憲章 §14.7-BQ Phase C(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)+ milestone #1 `47838d1`(_audit_self 整合 2/4 hooks)。 | SUPERSEDED |
 | v0.2 | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | SUPERSEDED |
@@ -87,7 +88,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2.3"
+TOOL_VER = "v0.2.4"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.2"
 DEFAULT_LABEL_HORIZON = 20  # v0.2 留 20 為 backward-compat;Phase C continuation 升 30(per §9.1)
 DEFAULT_SEED = 5422
@@ -119,6 +120,17 @@ DEFAULT_TRAINING_POLICY = {
     "sector_balance_top_n": 20,             # §9.2 attack tier top-N
     "sector_balance_lambda": 0.3,           # Lagrangian λ(對齊 sector_penalty_weight)
     "sector_balance_min_floor_pred": -10.0, # cap on negative penalty(避免 extreme demote)
+    # === v0.2.4 milestone #5 G strict raise staged tiers(对映 §10-D 15 FAIL gates strict mode)===
+    # Tier 1(default True / safe to raise — programmer error / artifact bug 偵測)
+    "strict_input_gates": True,             # G1-G4 audit_model_input strict raise
+    "strict_artifact_gates": True,          # G10/G11 audit_artifact_consistency strict raise
+    # Tier 2(default False / opt-in — algorithm trade-off / deliberate decision)
+    "strict_ic_gate": False,                # G5 IC > 0 strict raise
+    "strict_ic_std_gate": False,            # G6 IC std multiplier strict raise
+    "strict_sector_gate": False,            # G7/G12 sector entropy strict raise(對 §14.7-AA Part C)
+    # Tier 3(default False / orchestration-only — real-world panels 常 < 8 / consistency 隨 lambda 調整)
+    "strict_panel_size_gate": False,        # G13 walk-forward 8 panel strict raise
+    "strict_consistency_gate": False,       # §10-E consistency_score strict raise
 }
 
 
@@ -720,16 +732,45 @@ class ModelTrainer:
         }
         return adjusted_preds, metadata
 
+    def _handle_audit_result(self, gate_id, ok, msg, charter_ref, strict_flag_key, default_strict=False):
+        """v0.2.4 milestone #5 helper: 統一 PASS/WARN/RAISE 邏輯(staged G strict raise)。
+
+        - If ok: PASS log
+        - If not ok + strict flag True: raise ConstitutionalViolationError
+        - If not ok + strict flag False: WARN log(backward-compat)
+
+        Args:
+            gate_id: G1-G15 編號(per §10-D);供 ConstitutionalViolationError 識別
+            ok: audit_*() 之 return (bool, msg) 之 bool
+            msg: audit_*() 之 return 之 msg(失敗時為 reason;成功時為 "OK")
+            charter_ref: 對應憲章 reference(如 "§10-F audit_model_input")
+            strict_flag_key: DEFAULT_TRAINING_POLICY 之 strict flag key
+                             (strict_input_gates / strict_artifact_gates /
+                              strict_ic_gate / strict_ic_std_gate /
+                              strict_sector_gate / strict_panel_size_gate /
+                              strict_consistency_gate)
+            default_strict: flag 未設時之 default(safety net)
+        """
+        if ok:
+            self._detail("pass", f"{charter_ref}: {msg}")
+            return
+        # not ok branch
+        is_strict = DEFAULT_TRAINING_POLICY.get(strict_flag_key, default_strict)
+        if is_strict:
+            self._detail("fail", f"{charter_ref}: {msg}(STRICT raise per {strict_flag_key}=True)")
+            raise ConstitutionalViolationError(gate_id, msg, charter_ref)
+        else:
+            self._detail("warn", f"{charter_ref}: {msg}(WARN-only;set {strict_flag_key}=True to raise)")
+
     def _audit_self(self):
-        """v0.2.1 §10-F audit hooks self-invocation(對映 §10-D G1-G4 + G5/G6/G8 + G7/G12 + G10/G11)。
+        """v0.2.4 §10-F audit hooks self-invocation(對映 §10-D G1-G4 + G5/G6/G8 + G7/G12 + G10/G11)。
 
         milestone #2(v0.2.1):wire 4/4 hooks(milestone #1 之 2/4 → 4/4)。
-        backward-compat 模式:預設 log warning;strict mode 之 raise 留 milestone #3。
+        milestone #5(v0.2.4):refactor 用 _handle_audit_result helper + staged G strict raise。
         類比 portfolio_sizer v0.2 之 audit_constraint_satisfaction self-invoke 模式。
         對映 §14.7-BQ 之 §10-F audit hooks 整合 audit_doctrine_compliance.py。
         """
-        # G1-G4 input audit(audit_model_input)— v0.2.1 milestone #2 新加
-        # 防禦性 invocation:即便 load_inputs 已成功,defensive 再驗 input identity
+        # G1-G4 input audit(audit_model_input)— Tier 1 strict raise default True
         if self.snapshot:
             ok, msg = audit_model_input(
                 feature_store_snapshot_id=self.snapshot.get("feature_set_id"),
@@ -737,24 +778,31 @@ class ModelTrainer:
                 as_of_date=self.snapshot.get("as_of_date"),
                 label_horizon=self.label_horizon,
             )
-            if ok:
-                self._detail("pass", f"§10-F audit_model_input: {msg}")
-            else:
-                self._detail("warn", f"§10-F audit_model_input: {msg}(WARN-only;backward-compat)")
+            self._handle_audit_result(
+                gate_id="G1-G4",
+                ok=ok,
+                msg=msg,
+                charter_ref="§10-F audit_model_input",
+                strict_flag_key="strict_input_gates",
+                default_strict=True,  # Tier 1
+            )
 
-        # G5/G6/G8 training quality(audit_training_quality)
+        # G5/G6/G8 training quality(audit_training_quality)— Tier 2 default False
         ic_mean = self.metrics.get("ic_mean", 0.0)
         ic_std = self.metrics.get("ic_std", 0.0)
         sharpe = self.metrics.get("sharpe", None)  # v0.1 baseline 未計算 Sharpe
         ok, msg = audit_training_quality(ic_mean=ic_mean, ic_std=ic_std, sharpe=sharpe,
                                          policy=DEFAULT_TRAINING_POLICY)
-        if ok:
-            self._detail("pass", f"§10-F audit_training_quality: {msg}")
-        else:
-            # backward-compat: WARN 不 raise(v0.1 baseline 容許;milestone #3 升 strict raise)
-            self._detail("warn", f"§10-F audit_training_quality: {msg}(WARN-only;backward-compat)")
+        self._handle_audit_result(
+            gate_id="G5/G6/G8",
+            ok=ok,
+            msg=msg,
+            charter_ref="§10-F audit_training_quality",
+            strict_flag_key="strict_ic_gate",
+            default_strict=False,  # Tier 2 opt-in
+        )
 
-        # G7/G12 sector entropy(audit_sector_balance)— v0.2.1 milestone #2 新加
+        # G7/G12 sector entropy(audit_sector_balance)— Tier 2 default False
         # 計算 top-20 prediction 之 sector weights(對齊 §0.2-A #3 + §14.7-AA Part C 治本核心)
         if self.preds and self.rows:
             top_n = min(20, len(self.preds))
@@ -767,17 +815,21 @@ class ModelTrainer:
                 sector_counts[ind] = sector_counts.get(ind, 0) + 1
             sector_weights = {k: v / top_n for k, v in sector_counts.items()}
             ok, msg = audit_sector_balance(sector_weights, policy=DEFAULT_TRAINING_POLICY)
-            if ok:
-                self._detail("pass", f"§10-F audit_sector_balance: {msg} (top-{top_n}, {len(sector_weights)} sectors)")
-            else:
-                self._detail("warn", f"§10-F audit_sector_balance: {msg} (top-{top_n}, {len(sector_weights)} sectors;WARN-only;backward-compat)")
+            self._handle_audit_result(
+                gate_id="G7/G12",
+                ok=ok,
+                msg=f"{msg} (top-{top_n}, {len(sector_weights)} sectors)",
+                charter_ref="§10-F audit_sector_balance",
+                strict_flag_key="strict_sector_gate",
+                default_strict=False,  # Tier 2 opt-in
+            )
             # 留 telemetry:top-N sector distribution 寫入 metrics(供下游 audit_doctrine_compliance 查)
             self.metrics["top_n_audit"] = top_n
             self.metrics["top_n_sector_weights"] = sector_weights
         else:
             self._detail("warn", "§10-F audit_sector_balance: skipped (no preds/rows)")
 
-        # G10/G11 artifact consistency(audit_artifact_consistency)
+        # G10/G11 artifact consistency(audit_artifact_consistency)— Tier 1 strict raise default True
         # v0.1 baseline 之 artifact 在 commit_outputs() 才寫;此處檢查 in-memory preprocessing
         mock_artifact = {
             "winsor_bounds": self.preprocessing.get("feature_bounds", {}),
@@ -785,10 +837,14 @@ class ModelTrainer:
             "feature_names": list(self.features),
         }
         ok, msg = audit_artifact_consistency(mock_artifact, expected_keys=["model_id", "feature_names"])
-        if ok:
-            self._detail("pass", f"§10-F audit_artifact_consistency: {msg}")
-        else:
-            self._detail("warn", f"§10-F audit_artifact_consistency: {msg}(WARN-only;backward-compat)")
+        self._handle_audit_result(
+            gate_id="G10/G11",
+            ok=ok,
+            msg=msg,
+            charter_ref="§10-F audit_artifact_consistency",
+            strict_flag_key="strict_artifact_gates",
+            default_strict=True,  # Tier 1
+        )
 
     def commit_outputs(self):
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -1038,36 +1094,63 @@ class WalkForwardRunner:
             "target_panel_size": policy_min_panels,
         }
 
+    def _handle_audit_result(self, gate_id, ok, msg, charter_ref, strict_flag_key, default_strict=False):
+        """v0.2.4 milestone #5 helper(WalkForwardRunner version;類比 ModelTrainer._handle_audit_result)。"""
+        if ok:
+            self._detail("pass", f"{charter_ref}: {msg}")
+            return
+        is_strict = DEFAULT_TRAINING_POLICY.get(strict_flag_key, default_strict)
+        if is_strict:
+            self._detail("fail", f"{charter_ref}: {msg}(STRICT raise per {strict_flag_key}=True)")
+            raise ConstitutionalViolationError(gate_id, msg, charter_ref)
+        else:
+            self._detail("warn", f"{charter_ref}: {msg}(WARN-only;set {strict_flag_key}=True to raise)")
+
     def audit_aggregated(self):
-        """Apply audit_training_quality on aggregated metrics(§10-D G5/G6)."""
+        """v0.2.4 milestone #5: apply audit_training_quality + G13 + consistency on aggregated metrics(staged G strict raise)。"""
         if self.aggregated.get("cross_panel_ic_mean") is None:
             self._detail("fail", "G13: no successful panels for aggregated audit")
             return
-        # G5/G6 on cross-panel
+        # G5/G6 cross-panel — Tier 2 default False(opt-in)
         ok, msg = audit_training_quality(
             ic_mean=self.aggregated["cross_panel_ic_mean"],
             ic_std=self.aggregated["cross_panel_ic_std"],
             sharpe=None,
             policy=DEFAULT_TRAINING_POLICY,
         )
-        if ok:
-            self._detail("pass", f"§10-D G5/G6 cross-panel: {msg}")
-        else:
-            self._detail("warn", f"§10-D G5/G6 cross-panel: {msg}(WARN-only;milestone #5 升 strict)")
-        # G13 panel_size enforcement
-        if not self.aggregated.get("panel_size_meets_target"):
-            self._detail("warn",
-                         f"§10-D G13: n_panels_success={self.aggregated['n_panels_success']} "
-                         f"< target {self.aggregated['target_panel_size']} "
-                         f"(WARN-only;milestone #5 升 strict)")
-        else:
-            self._detail("pass", f"§10-D G13: panel_size meets target {self.aggregated['target_panel_size']}")
-        # Consistency check(對映 §10-E IC stability principle)
+        self._handle_audit_result(
+            gate_id="G5/G6 cross-panel",
+            ok=ok,
+            msg=msg,
+            charter_ref="§10-D G5/G6 cross-panel",
+            strict_flag_key="strict_ic_gate",
+            default_strict=False,
+        )
+        # G13 panel_size enforcement — Tier 3 default False(orchestration-only)
+        size_ok = self.aggregated.get("panel_size_meets_target", False)
+        size_msg = (f"panel_size meets target {self.aggregated.get('target_panel_size')}"
+                    if size_ok
+                    else f"n_panels_success={self.aggregated.get('n_panels_success')} < target {self.aggregated.get('target_panel_size')}")
+        self._handle_audit_result(
+            gate_id="G13",
+            ok=size_ok,
+            msg=size_msg,
+            charter_ref="§10-D G13 walk-forward panel_size",
+            strict_flag_key="strict_panel_size_gate",
+            default_strict=False,
+        )
+        # Consistency check(對映 §10-E IC stability principle)— Tier 3 default False
         cs = self.aggregated.get("consistency_score", 0.0)
-        if cs < 0.5:
-            self._detail("warn", f"§10-E consistency: only {cs:.2%} panels positive-IC(WARN-only)")
-        else:
-            self._detail("pass", f"§10-E consistency: {cs:.2%} panels positive-IC")
+        cs_ok = cs >= 0.5
+        cs_msg = f"{cs:.2%} panels positive-IC"
+        self._handle_audit_result(
+            gate_id="consistency",
+            ok=cs_ok,
+            msg=cs_msg,
+            charter_ref="§10-E consistency",
+            strict_flag_key="strict_consistency_gate",
+            default_strict=False,
+        )
 
     def emit_evidence(self):
         """Write JSON evidence to data/walk_forward_runs/wf_<timestamp>.json."""
