@@ -78,8 +78,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"
-DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"
+TOOL_VER = "v0.3"  # §14.7-BT Phase D-2 配套:audit 工具加 v0.8_dynamic policy 識別
+DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"  # production-current default(legacy);v0.8_dynamic 為 opt-in
 REQUIRED_TABLES = [
     "pipeline_execution_log",
     "data_audit_log",
@@ -118,6 +118,7 @@ POLICY_SCORE_SCOPE_MAP = {
     "core_universe_policy_v0.5": "v0.6_F_proxy_augmented",
     "core_universe_policy_v0.6": "v0.7.1_VC_convexity_aligned_rms",
     "core_universe_policy_v0.7": "v0.8_roe_unlocked_via_balance_sheet",
+    "core_universe_policy_v0.8_dynamic": "v0.10_dynamic_universe_via_top_pct_composite_corescore",  # §14.7-BT Phase C+D
 }
 
 # v0.2: per policy_version → score_detail 期望鍵集合（驗收 builder 對應版本之 sub-score 透明寫入）。
@@ -169,6 +170,21 @@ EXPECTED_SCORE_DETAIL_KEYS = {
         "if_num_shares_issued", "if_foreign_ratio_60d_change",
         "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
         # v0.8 §14.7-BI ROE 解鎖 transparency keys
+        "fg_equity", "fg_ni_4q_sum",
+    },
+    # §14.7-BT Phase D-2:v0.8_dynamic policy(同 v0.7 score keys;只 selection 邏輯改 dynamic)
+    "core_universe_policy_v0.8_dynamic": {
+        # 同 v0.7 之 33 keys(score_detail keys 不變;dynamic 只改 selection;非 score 公式)
+        "fg_gross_margin", "fg_roe",
+        "fg_per", "fg_pbr", "fg_div_yield", "fg_div_count_5y",
+        "fg_op_margin", "fg_pretax_margin", "fg_continuing_op_ratio", "fg_attributable_ratio",
+        "fg_part_dist_5y_avg",
+        "if_dealer_self_net", "if_dealer_hedge_net",
+        "if_margin_bal_60d", "if_short_bal_60d", "if_short_margin_ratio",
+        "if_margin_trend_60d", "if_margin_repay_trend",
+        "if_foreign_ratio", "if_foreign_remain_ratio", "if_foreign_upper_limit",
+        "if_num_shares_issued", "if_foreign_ratio_60d_change",
+        "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
         "fg_equity", "fg_ni_4q_sum",
     },
 }
