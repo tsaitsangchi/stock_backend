@@ -643,7 +643,11 @@ class CoreUniverseBuilder:
                 )
                 as_of_total, as_of_max_date = cur.fetchone()
 
-                minimum_bootstrap_size = self.core_limit + self.convex_limit
+                # §14.7-BT Phase C dispatch:dynamic mode 用 N_min;legacy mode 用 core_limit + convex_limit
+                if self.is_dynamic_mode:
+                    minimum_bootstrap_size = self.selection_n_min
+                else:
+                    minimum_bootstrap_size = self.core_limit + self.convex_limit
                 if as_of_total >= minimum_bootstrap_size:
                     self.candidate_source_mode = "as_of_filtered"
                     self.source_data_cutoff = as_of_max_date or self.as_of_date
