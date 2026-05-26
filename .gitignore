@@ -111,6 +111,7 @@ reports/*
 !reports/portfolio_allocation_proposal_*.md
 !reports/v02_interaction_features_validation_*.md
 !reports/pareto_validation_*.md
+!reports/pareto_4_dimensions_*.md
 !reports/source_availability_audit_*.md
 !reports/final_closure_*.md
 !reports/production_current_runbook_*.md
