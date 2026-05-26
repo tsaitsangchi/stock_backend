@@ -594,6 +594,41 @@ class ModelTrainer:
         else:
             self._detail("pass", f"metrics finite: ic_mean={ic_mean:.6f}, rmse={rmse:.6f}")
 
+        # v0.2 §10-F audit hooks invocation(Phase C continuation;backward-compat WARN 不 raise)
+        self._audit_self()
+
+    def _audit_self(self):
+        """v0.2 §10-F audit hooks self-invocation(對映 §10-D G5/G6/G8 + G10/G11)。
+
+        backward-compat 模式:預設 log warning;strict mode 之 raise 留 Phase C continuation。
+        類比 portfolio_sizer v0.2 之 audit_constraint_satisfaction self-invoke 模式。
+        對映 §14.7-BQ 之 §10-F audit hooks 整合 audit_doctrine_compliance.py。
+        """
+        # G5/G6/G8 training quality(audit_training_quality)
+        ic_mean = self.metrics.get("ic_mean", 0.0)
+        ic_std = self.metrics.get("ic_std", 0.0)
+        sharpe = self.metrics.get("sharpe", None)  # v0.1 baseline 未計算 Sharpe
+        ok, msg = audit_training_quality(ic_mean=ic_mean, ic_std=ic_std, sharpe=sharpe,
+                                         policy=DEFAULT_TRAINING_POLICY)
+        if ok:
+            self._detail("pass", f"§10-F audit_training_quality: {msg}")
+        else:
+            # backward-compat: WARN 不 raise(v0.1 baseline 容許;Phase C continuation 升 strict raise)
+            self._detail("warn", f"§10-F audit_training_quality: {msg}(WARN-only;backward-compat)")
+
+        # G10/G11 artifact consistency(audit_artifact_consistency)
+        # v0.1 baseline 之 artifact 在 commit_outputs() 才寫;此處檢查 in-memory preprocessing
+        mock_artifact = {
+            "winsor_bounds": self.preprocessing.get("feature_bounds", {}),
+            "model_id": self.model_id,
+            "feature_names": list(self.features),
+        }
+        ok, msg = audit_artifact_consistency(mock_artifact, expected_keys=["model_id", "feature_names"])
+        if ok:
+            self._detail("pass", f"§10-F audit_artifact_consistency: {msg}")
+        else:
+            self._detail("warn", f"§10-F audit_artifact_consistency: {msg}(WARN-only;backward-compat)")
+
     def commit_outputs(self):
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         model_payload = {
