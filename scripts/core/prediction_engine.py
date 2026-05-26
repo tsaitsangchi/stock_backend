@@ -1,8 +1,8 @@
 """
-prediction_engine.py v0.2 (Quantum Finance Prediction Authority)
+prediction_engine.py v0.3 (Quantum Finance Prediction Authority · §10 Phase C milestone #3.5 — train/inference sector_balance consistency)
 ================================================================================
-最後更新日期: 2026-05-19
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.4 + §8.8.8 exactly-one prediction-backed 自動化)
+最後更新日期: 2026-05-26
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §8.4 + §8.8.8 exactly-one prediction-backed + **§10 milestone #3.5 sector_balance inference consistency (apply Lagrangian adjustment from model.json preprocessing.sector_balance if present)**)
 最高原則: Prediction Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -50,7 +50,8 @@ prediction_engine.py v0.2 (Quantum Finance Prediction Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2** | 2026-05-19 | Codex | §8.8.8 single-delivery 自動化：新增 `--deprecate-previous` 與 `--commit-as-evidence-only` 兩 CLI flag；commit_outputs() 支援新 status 路徑與 supersedes 標記；兩 flag 互斥且皆需 --commit。配合 prediction_engine_formal_prediction_research_20260519.md §9.1 / §9.2 建議落地。 | **ACTIVE** |
+| **v0.3** | 2026-05-26 | Codex | **§10 Phase C milestone #3.5 — train/inference sector_balance consistency(對映 §10-D G10/G11 transform consistency requirement;補修 milestone #3 之 inference-side gap)**:model_trainer milestone #3(commit `1be102e`)在 model.json `preprocessing.sector_balance` 寫入 sector_penalty_factor 之 SSOT;本 v0.3 prediction_engine 補 inference-side 套用,以確保 train/inference 之 prediction values 完全一致(若 train 套了 / inference 沒套 → 兩端 prediction divergence,違反 §10-D G10 transform consistency)。**4 處 edits**:**(I)** `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 `industry_category` per stock(同 model_trainer milestone #2 pattern;LATERAL 取 latest as-of as_of_date);self.rows 加 `"industry"` field;**(II)** `predict()` 在 raw 計算後,讀 `model.preprocessing.sector_balance` 之 metadata;若存在(model 為 milestone #3+ 訓練)則套 Lagrangian:`adjusted_pred[i] = max(raw_pred[i] + sector_penalty_factor[stock_industry], min_floor)`;用 adjusted values 重新 ordering(取代 raw values);若不存在(legacy v0.2 model 或 sector_balance_enabled=False 訓練)則完全 backward-compat(行為 = v0.2);**(III)** TOOL_VER v0.2 → v0.3;CONSTITUTION_VER v6.0.0 → v6.1.0(對齊 model_trainer / 其他 v6.1.0 模組);**(IV)** 標頭 8 docstring + 修訂歷程 v0.3 ACTIVE / v0.2 SUPERSEDED。**邏輯動量**:既有 v0.2 之 deprecate-previous / commit-as-evidence-only flags 完全不變;rank → label → confidence 邏輯不變;唯獨在 ordering 之前加 sector_balance adjustment(opt-in via model.json 之 metadata existence)。**對既有 model 影響**:零(legacy v0.2 model.json 無 sector_balance section;inference 行為 = v0.2 完全相同;新 v0.3 model.json with sector_balance section → inference 套 Lagrangian 確保 train/predict 一致)。**對既有 prediction_run 影響**:零(本次純為 inference logic 升級;不改 prediction_run / prediction_values DDL;不重跑既有 predictions)。**§10-D G10/G11 transform consistency 對齊**:milestone #3 之 trainer.preprocessing.sector_balance 為 SSOT;v0.3 prediction_engine 透過 model.json reading 套用同一 transform;確保 train/inference 之 prediction 完全 deterministic 對齊。**對既有 CLI 行為**:零(default workflow `--dry-run --model-id X --as-of-date X` 完全不變;sector_balance 套用為 model-driven 自動偵測)。**§10 Phase C continuation 進度 cumulative(post milestone #3.5)**:milestone #5 G strict raise 完成(commit `583f268`)+ 本 milestone #3.5 → §10 治本 96% → **98%**(train/inference consistency closure);Phase D production v6.2.0 tag 為剩餘 final step。**Smoke test**:mock model.json with sector_balance section(approach D_post_processing_lagrangian_v2);verify adjusted_pred = max(raw + penalty, min_floor)邏輯 + ordering 正確。同步配套:憲章 §10-D G10/G11 + §14.7-BQ Phase B + model_trainer milestone #3(commit `1be102e` v0.2.2)+ milestones #1/#2/#3/#4/#5(commits 47838d1 / 42d4872 / 1be102e / 88b9d29 / 583f268)。 | **ACTIVE** |
+| v0.2 | 2026-05-19 | Codex | §8.8.8 single-delivery 自動化：新增 `--deprecate-previous` 與 `--commit-as-evidence-only` 兩 CLI flag；commit_outputs() 支援新 status 路徑與 supersedes 標記；兩 flag 互斥且皆需 --commit。配合 prediction_engine_formal_prediction_research_20260519.md §9.1 / §9.2 建議落地。 | SUPERSEDED |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.4 Prediction Table 草案；2026-05-17 補入 winsor bounds + average-rank transform 一致性（與 trainer 對齊）；2026-05-18 v6.0.0-patch 落地 §8.8.8 exactly 1 prediction-backed 規則與 §8.8.10 Final Delivery Index；唯一 committed delivery 為 `pred_20260425_mdl_20260425_lgbm_h20_d969ffb1_v0_1`（IC=0.3716）。 | SUPERSEDED |
 ================================================================================
 """
@@ -76,8 +77,8 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.2"
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.3"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.1"
 
 DDL_PREDICTION_RUN = """
@@ -191,30 +192,49 @@ class PredictionEngine:
                 return False
             self._detail("pass", f"feature_set locked: {self.registry['feature_set_id']}")
 
+            # v0.3 milestone #3.5: 加 LATERAL JOIN TaiwanStockInfo 載 industry_category
+            #                       供 inference-side sector_balance adjustment
             cur.execute(
                 """
                 SELECT fv.stock_id, fv.feature_name, COALESCE(fv.feature_value, 0)::float8,
-                       fv.is_null_imputed
+                       fv.is_null_imputed, ind.industry_category
                 FROM "feature_values" fv
                 JOIN "core_universe_membership" m
                   ON m.stock_id = fv.stock_id
+                LEFT JOIN LATERAL (
+                    SELECT industry_category
+                    FROM "TaiwanStockInfo" ti
+                    WHERE ti.stock_id = fv.stock_id
+                      AND ti.date <= %s
+                    ORDER BY ti.date DESC
+                    LIMIT 1
+                ) ind ON TRUE
                 WHERE fv.feature_set_id = %s
                   AND fv.as_of_date = %s
                   AND m.snapshot_id = %s
                   AND m.core_tier IN ('core_universe', 'convex_universe')
                 ORDER BY fv.stock_id, fv.feature_name
                 """,
-                (self.registry["feature_set_id"], self.as_of_date, self.registry["universe_snapshot_id"]),
+                (self.as_of_date, self.registry["feature_set_id"], self.as_of_date, self.registry["universe_snapshot_id"]),
             )
             by_stock = {}
+            industries = {}
             imputed = 0
             total = 0
-            for stock_id, feature_name, feature_value, is_imputed in cur.fetchall():
+            for stock_id, feature_name, feature_value, is_imputed, industry in cur.fetchall():
                 by_stock.setdefault(stock_id, {})[feature_name] = float(feature_value or 0.0)
+                industries[stock_id] = industry or "UNKNOWN"
                 total += 1
                 imputed += 1 if is_imputed else 0
             features = self.model["features"]
-            self.rows = [{"stock_id": sid, "x": {f: by_stock[sid].get(f, 0.0) for f in features}} for sid in sorted(by_stock)]
+            self.rows = [
+                {
+                    "stock_id": sid,
+                    "x": {f: by_stock[sid].get(f, 0.0) for f in features},
+                    "industry": industries.get(sid, "UNKNOWN"),
+                }
+                for sid in sorted(by_stock)
+            ]
             if len(self.rows) != 150:
                 self._detail("fail", f"prediction universe rows={len(self.rows)}, expected 150")
                 return False
@@ -269,10 +289,33 @@ class PredictionEngine:
                     value = min(max(value, float(lo)), float(hi))
                 values.append(value)
             transformed[feature] = self._rank_scores(values)
-        raw = []
+        # v0.3 milestone #3.5: raw predictions(unadjusted)
+        raw_values_per_row = []
         for idx, row in enumerate(self.rows):
             value = sum(transformed[name][idx] * float(weight) for name, weight in weights.items())
-            raw.append((row["stock_id"], value))
+            raw_values_per_row.append((row["stock_id"], value, row.get("industry", "UNKNOWN")))
+
+        # v0.3 milestone #3.5: 套 sector_balance Lagrangian adjustment if model has it
+        # train/inference consistency:model.json 之 preprocessing.sector_balance 為 SSOT
+        sb = preprocessing.get("sector_balance")
+        if sb:
+            sector_penalty_factor = sb.get("sector_penalty_factor", {})
+            min_floor = float(sb.get("min_floor", -10.0))
+            adjusted = []
+            for stock_id, raw_val, industry in raw_values_per_row:
+                penalty = float(sector_penalty_factor.get(industry, 0.0))
+                adj_val = max(raw_val + penalty, min_floor)
+                adjusted.append((stock_id, adj_val))
+            self._detail("pass",
+                         f"§10 milestone #3.5 sector_balance adjustment applied "
+                         f"(λ={sb.get('lambda')}, n_sectors={len(sector_penalty_factor)}, "
+                         f"approach={sb.get('approach', 'unknown')})")
+            raw = adjusted
+        else:
+            # legacy v0.2 model or sector_balance_enabled=False training → no adjustment
+            raw = [(sid, val) for sid, val, _ in raw_values_per_row]
+            self._detail("pass", "§10 milestone #3.5: model has no sector_balance section(legacy / opt-out;backward-compat)")
+
         ordered = sorted(raw, key=lambda item: item[1], reverse=True)
         n = len(ordered)
         self.predictions = []
