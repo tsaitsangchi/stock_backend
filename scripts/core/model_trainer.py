@@ -1,34 +1,39 @@
 """
-model_trainer.py v0.1 (Quantum Finance Model Training Authority)
+model_trainer.py v0.2 (Quantum Finance Model Training Authority)
 ================================================================================
-最後更新日期: 2026-05-16
-主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.3 Model Registry v0.1 草案實作)
-最高原則: Model Training Authority
+最後更新日期: 2026-05-26
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework skeleton + ConstitutionalViolationError + 4 audit hooks + DEFAULT_TRAINING_POLICY;sector-balanced loss training logic 待 Phase C continuation)
+最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Model Training Authority]: 對齊憲章 §8.3 Model Registry v0.1 草案，
-   作為 §2 維運矩陣 Step 10 之執行載體（§8.7 矩陣延伸）；讀 feature_values +
-   labels 訓練模型並登錄 `model_registry` / `model_training_run`。
-2. [Read-Only Feature Store]: 只讀 `feature_store_*` 與 `core_universe_*`
-   治理表；**不**直接讀 raw API tables；source-of-truth 為 committed
-   `feature_store_snapshot`。
-3. [Robust Rank-IC Baseline]: v0.1 trainer 為 `robust_rank_ic_baseline_v0.1`：
-   每個 feature 先做 5%/95% winsorization，再以 cross-sectional average-rank
-   轉為 [-1,1] score，單因子 rank IC 作為 signed weight 並以 L1 norm 正規化；
-   metrics 補登 label 分布與 top rank-IC features；artifact 補登 preprocessing bounds。
-4. [Model ID Governance]: `model_id` 命名格式
-   `mdl_{yyyymmdd}_{family}_h{label_horizon}_{sha1(feature_set_version)[:8]}_v0_1`，
-   避免同日同 family 同 horizon 不同 feature set 互相覆寫；對齊 §8.8.4 / §8.8.8
-   per-run cardinality 規則。
-5. [Label/Feature Separation]: 使用 committed `feature_set` 與 `label_horizon`
-   forward return label；feature as-of_date 與 label_date 明確分離（label_date
-   ≥ as_of_date + label_horizon），不產生交易建議。
-6. [Reproducible Artifacts]: 輸出可重現 JSON artifact：`model.json` /
-   `metrics.json` / `feature_importance.json`；artifact 路徑由
+1. [Model Training Authority]: 對齊憲章 §10-A~H formal contract(§14.7-BQ Phase B 入憲;
+   commit `27c1abf`),為 §8.3 Model Registry v0.1 草案之 formal 升版;§2 維運矩陣 Step 10 之執行載體。
+2. [Zero Hardcoded Verdict] (§5.6.3 動態判定):主權狀態 PASS/WARN/FAIL 由
+   `compute_verdict()` 動態計算;任何 FAIL gate 觸發應 raise ConstitutionalViolationError。
+3. [Sovereignty Declaration] (§3.1/§3.2/§3.2A 治權位階):本工具為 §0.0-A.3 五大轉換器之第三個;
+   屬 §10 Type-2 治權契約層;**不**處理 §6.7 universe selection(那是 §6.4 builder);
+   **不**處理 §9.1 prediction inference(那是 §9.1 prediction_engine);
+   **不**處理 §9.2 sizing(那是 §9.2 portfolio_sizer);**不**涉 §0.1-A/§0.2-A/§0.3-A 五套禁令;
+   僅作 §8.3 model_registry SSOT 之寫入(下游 §9.1 query SSOT)。
+4. [Read-Only Feature Store]: 只讀 `feature_store_*` 與 `core_universe_*` 治理表;
+   **不**直接讀 raw API tables;source-of-truth 為 committed `feature_store_snapshot`。
+5. [Robust Rank-IC Baseline + v0.2 sector-balanced loss 預備]:v0.1 trainer 為
+   `robust_rank_ic_baseline_v0.1`(winsorization + average-rank + L1 norm);
+   v0.2 framework 已建 ConstitutionalViolationError + DEFAULT_TRAINING_POLICY +
+   4 audit hooks;sector-balanced loss training logic 待 Phase C continuation
+   (`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`)。
+6. [Model ID Governance]: `model_id` 命名格式
+   `mdl_{yyyymmdd}_{family}_h{label_horizon}_{sha1(feature_set_version)[:8]}_v{ver}`,
+   避免同日同 family 同 horizon 不同 feature set 互相覆寫;對齊 §8.8.4 / §8.8.8。
+7. [Label/Feature Separation]: 使用 committed `feature_set` 與 `label_horizon`
+   forward return label;feature as-of_date 與 label_date 明確分離(label_date
+   ≥ as_of_date + label_horizon),不產生交易建議。
+8. [Reproducible Artifacts]: 輸出可重現 JSON artifact;artifact 路徑由
    `feature_store_snapshot.feature_set_version` SHA1 短雜湊唯一定位。
-7. [Hybrid Observability]: 維運觸發 `record_lifecycle` 與 `write_data_audit_log`；
-   主權判定動態計算（§5.6.3）。
-8. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準。
+9. [Hybrid Observability + audit_doctrine_compliance integration]: 維運觸發 `record_lifecycle`
+   與 `write_data_audit_log`;v0.2 4 audit hooks 可被 audit_doctrine_compliance 直接 import(§10-F)。
+10. [Historical Reference Authority]: 保留完整修訂歷程作為判定系統正確性之基準;
+    v0.1 條目保留為歷史記述,不更動(§0.0-I.7)。
 
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
@@ -49,7 +54,8 @@ model_trainer.py v0.1 (Quantum Finance Model Training Authority)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.1** | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | **ACTIVE** |
+| **v0.2** | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | **ACTIVE** |
+| v0.1 | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | SUPERSEDED |
 ================================================================================
 """
 import argparse
@@ -77,11 +83,164 @@ except ImportError as exc:
     sys.exit(1)
 
 
-CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v0.1"
-DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.1"
-DEFAULT_LABEL_HORIZON = 20
+CONSTITUTION_VER = "v6.1.0"
+TOOL_VER = "v0.2"
+DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.2"
+DEFAULT_LABEL_HORIZON = 20  # v0.2 留 20 為 backward-compat;Phase C continuation 升 30(per §9.1)
 DEFAULT_SEED = 5422
+
+# v0.2 §10-E Training Policy(13 條 hardcoded 預設;對齊 §14.7-BQ)
+# sector-balanced loss training logic 待 Phase C continuation(本 framework 僅 skeleton)
+DEFAULT_TRAINING_POLICY = {
+    # === 既有 v0.1 baseline(不改) ===
+    "winsor_low": 0.05,                     # robust rank-IC baseline
+    "winsor_high": 0.95,
+    "random_seed": DEFAULT_SEED,            # G9 可重現
+    # === v0.2 新增 §10-D FAIL gate thresholds ===
+    "ic_min_threshold": 0.05,               # G5 walk-forward IC > 0
+    "ic_std_max_multiplier": 2.0,           # G6 IC std < 2 × IC mean
+    "sector_entropy_min": 0.5,              # G7 治本(治 §14.7-AA Part C)
+    "sharpe_min_threshold": 0.5,            # G8 risk-adjusted return gate
+    # === v0.2 新增 §10-E sector-balanced loss params(待 Phase C continuation 落地)===
+    "sector_penalty_weight": 0.3,           # G12 治本核心 λ
+    "sector_diff_weight": 0.5,              # G12 治本核心 γ
+    "target_sector_weight_uniform": True,   # target = 1/N_sectors
+    # === v0.2 walk-forward auto framework(待 Phase C continuation 落地)===
+    "walk_forward_panel_size": 8,           # G13
+    "training_max_time_seconds": 3600,      # 1 hour timeout
+    # === v0.2 multi-model ensemble(待 v0.3 落地)===
+    "ensemble_enabled": False,              # v0.2 主推 LGBM;v0.3 開啟
+    "model_family_default": "lgbm",
+}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# §10-D.1 違憲例外契約 (Constitutional Exception Contract) — v0.2 入憲
+# 對映 §9.2-D.1 之 §10 equivalent;類比 portfolio_sizer 之 ConstitutionalViolationError
+# ════════════════════════════════════════════════════════════════════════════
+class ConstitutionalViolationError(Exception):
+    """憲章 §0.0-G + §10-D 之違憲攔截例外。
+
+    依 §10-D 15 條 FAIL gates(G1-G15),所有 FAIL gate 觸發必須拋出此例外,
+    不得僅以軟錯誤 log 訊息替代。CLI 層應於 __main__ 統一捕獲。
+
+    Attributes:
+        gate_id: FAIL gate 編號(G1-G15 或未來新增)
+        message: 違憲具體訊息
+        charter_ref: 對應憲章節(如 "§10-D / G5 / 治本核心")
+    """
+
+    def __init__(self, gate_id: str, message: str, charter_ref: str):
+        self.gate_id = gate_id
+        self.message = message
+        self.charter_ref = charter_ref
+        super().__init__(f"[{gate_id}] {message} (依 {charter_ref})")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# §10-F 強制 Audit Hooks (4 個 module-level functions) — v0.2 入憲
+# 可被 audit_doctrine_compliance.py 直接 import 並呼叫(類比 §9.2-F.1 模式)
+# ════════════════════════════════════════════════════════════════════════════
+def audit_model_input(feature_store_snapshot_id, universe_snapshot_id, as_of_date, label_horizon):
+    """G1/G2/G3/G4 強制檢查:input 合法性(對映 §10-D)。
+
+    Args:
+        feature_store_snapshot_id: §8.2 committed snapshot id
+        universe_snapshot_id: §6.7 universe snapshot id
+        as_of_date: training as_of_date
+        label_horizon: §9.1 強制 30(本 v0.2 仍支援 20 為 backward-compat)
+
+    Returns:
+        (bool, str): (pass, message)
+    """
+    if not feature_store_snapshot_id:
+        return False, "G1: feature_store_snapshot_id missing"
+    if not universe_snapshot_id:
+        return False, "G2: universe_snapshot_id missing"
+    if not as_of_date:
+        return False, "G3: as_of_date missing"
+    if label_horizon not in (20, 30):
+        return False, f"G3: label_horizon={label_horizon} not in (20, 30)"
+    return True, "OK"
+
+
+def audit_training_quality(ic_mean, ic_std, sharpe, policy=None):
+    """G5/G6/G8 強制檢查:walk-forward IC + Sharpe 質量(對映 §10-D)。
+
+    Args:
+        ic_mean: walk-forward IC mean across panel runs
+        ic_std: walk-forward IC stdev
+        sharpe: annualized Sharpe ratio
+        policy: DEFAULT_TRAINING_POLICY 或 override
+
+    Returns:
+        (bool, str): (pass, message)
+    """
+    p = policy if policy is not None else DEFAULT_TRAINING_POLICY
+    if ic_mean is None or ic_mean <= 0:
+        return False, f"G5: IC mean {ic_mean} <= 0 (walk-forward IC > 0 strict)"
+    if ic_mean < p.get("ic_min_threshold", 0.05):
+        return False, f"G5: IC mean {ic_mean:.4f} < threshold {p['ic_min_threshold']}"
+    if ic_std is not None and ic_mean > 0:
+        max_std = ic_mean * p.get("ic_std_max_multiplier", 2.0)
+        if ic_std > max_std:
+            return False, f"G6: IC std {ic_std:.4f} > {p['ic_std_max_multiplier']} × IC mean {ic_mean:.4f}"
+    if sharpe is not None and sharpe < p.get("sharpe_min_threshold", 0.5):
+        return False, f"G8: Sharpe {sharpe:.4f} < threshold {p['sharpe_min_threshold']}"
+    return True, "OK"
+
+
+def audit_sector_balance(sector_weights_dict, policy=None):
+    """G7/G12 強制檢查:sector entropy(治本 §14.7-AA Part C)。
+
+    Args:
+        sector_weights_dict: {sector: weight_fraction} (sum to 1.0 over top-N predictions)
+        policy: DEFAULT_TRAINING_POLICY 或 override
+
+    Returns:
+        (bool, str): (pass, message)
+    """
+    p = policy if policy is not None else DEFAULT_TRAINING_POLICY
+    if not sector_weights_dict:
+        return False, "G7: empty sector_weights_dict"
+    # Shannon entropy(normalized to [0, 1] by log(N_sectors))
+    weights = [w for w in sector_weights_dict.values() if w > 0]
+    if not weights:
+        return False, "G7: all sector weights are zero"
+    total = sum(weights)
+    probs = [w / total for w in weights]
+    entropy = -sum(p_i * math.log(p_i) for p_i in probs)
+    max_entropy = math.log(len(probs)) if len(probs) > 1 else 1.0
+    normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+    threshold = p.get("sector_entropy_min", 0.5)
+    if normalized_entropy < threshold:
+        return False, (f"G7: sector entropy {normalized_entropy:.4f} < threshold {threshold} "
+                       f"(treats §14.7-AA Part C 100% sector concentration root cause)")
+    return True, "OK"
+
+
+def audit_artifact_consistency(model_artifact_dict, expected_keys):
+    """G10/G11 強制檢查:artifact 完整性 + transform consistency(對映 §10-D)。
+
+    Args:
+        model_artifact_dict: model artifact(JSON-serializable)
+        expected_keys: 必要 keys(如 winsor_bounds / feature_names / model_id)
+
+    Returns:
+        (bool, str): (pass, message)
+    """
+    if not isinstance(model_artifact_dict, dict):
+        return False, "G11: model_artifact 非 dict"
+    missing = [k for k in expected_keys if k not in model_artifact_dict]
+    if missing:
+        return False, f"G11: artifact 缺 keys {missing}"
+    # G10: transform consistency(winsor_bounds 必要;確保 train/inference 對齊)
+    if "winsor_bounds" not in model_artifact_dict:
+        return False, "G10: artifact 缺 winsor_bounds(train/inference transform 對齊 fail)"
+    bounds = model_artifact_dict.get("winsor_bounds", {})
+    if not isinstance(bounds, dict) or not bounds:
+        return False, "G10: winsor_bounds 為空(transform consistency 不可驗)"
+    return True, "OK"
 
 
 DDL_MODEL_REGISTRY = """
