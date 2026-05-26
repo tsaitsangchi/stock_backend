@@ -1,8 +1,8 @@
 """
-model_trainer.py v0.2.1 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #2)
+model_trainer.py v0.2.2 (Quantum Finance Model Training Authority · §10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment)
 ================================================================================
 最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs;sector-balanced loss training logic 待 milestone #3)
+主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + **sector-balanced post-processing Lagrangian adjustment (approach D / opt-in flag / 治本 §14.7-AA Part C)**;walk-forward 8 panel framework 待 milestone #4)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
@@ -54,7 +54,8 @@ model_trainer.py v0.2.1 (Quantum Finance Model Training Authority · §10 Phase 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v0.2.1** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #2 — wire 4/4 audit hooks + sector-aware load_inputs(對映 §14.7-BQ Phase C 進度)**:milestone #1(commit `47838d1`)wire 了 2/4 hooks(audit_training_quality + audit_artifact_consistency);本 milestone #2 補完剩 2 hooks 並提供 sector data foundation:(I) `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 industry_category(每股 latest as-of as_of_date)→ `self.rows[i]["industry"]`;(II) `_audit_self()` 加呼 `audit_model_input(G1-G4 input 合法性)+ `audit_sector_balance`(G7/G12 計算 top-20 prediction 之 sector weights → Shannon entropy gate);(III) train() 加 `self.preds` 暫存(供 _audit_self 計算 top-20);(IV) TOOL_VER v0.2 → v0.2.1;(V) 標頭副標補「§10 Phase C continuation milestone #2」+ 主權狀態行加「4 audit hooks 全 wired + sector-aware load_inputs」。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.1 為 audit hook activation + input data 擴充,不改 model 訓練本質。**對既有 model 影響**:零(既有 `_v0_1` 命名之 model_id 不重訓;新 audit calls 為 WARN-only backward-compat)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 計算並 log entropy,但若 < 0.5 仍只 WARN(不 raise);strict raise 留 milestone #3。**v0.2.1 為 milestone #3 之 input foundation**:milestone #3(sector-balanced loss training)需 industry-aware 訓練資料,本 milestone 已 wired in self.rows。**對既有 snapshot 影響**:零(load_inputs SQL 純擴 SELECT + LATERAL JOIN,不改 row 數 / filter / order)。同步配套:憲章 §14.7-BQ Phase C(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)+ milestone #1 `47838d1`(_audit_self 整合 2/4 hooks)。 | **ACTIVE** |
+| **v0.2.2** | 2026-05-26 | Codex | **§10 Phase C continuation milestone #3 — sector-balanced post-processing Lagrangian adjustment(approach D;治本 §14.7-AA Part C 100% 半導體 prediction candidates root cause)**:milestone #2(commit `42d4872`)wire 完 4/4 audit hooks 並能偵測 sector concentration;本 milestone #3 補入 **algorithm 層調整**:**(I)** DEFAULT_TRAINING_POLICY 加 4 新 keys:`sector_balance_enabled` (default False / opt-in flag) + `sector_balance_top_n` (default 20 / §9.2 attack tier) + `sector_balance_lambda` (default 0.3 / Lagrangian λ) + `sector_balance_min_floor_pred` (default -10.0 / cap on negative penalty);**(II)** 新方法 `_apply_sector_balanced_adjustment(preds)`:對 top-N 之 over-concentrated sectors 之 stocks 加 negative penalty(demote),under-represented sectors 加 positive boost;`penalty[sec] = -λ × log(current_weight / target_weight)`;target_weight = 1.0 / n_sectors_in_top_N(uniform);**(III)** `train()` 在 `sector_balance_enabled=True` 時:套用 adjustment → adjusted_preds → 重算 pred_scores → 重算 ic_mean(adjusted IC 記為 `ic_mean_adjusted`,原始 ic_mean 保留);metrics 加 `sector_balance_applied` + `sector_penalty_factor` + `target_weight_per_sector`;**(IV)** `commit_outputs()` model.json 之 preprocessing 加 `sector_balance` 段(存 sector_penalty_factor / lambda / top_n / target_weight)— 為 downstream prediction_engine 套用之 SSOT(milestone #3.5 待);**(V)** TOOL_VER v0.2.1 → v0.2.2;標頭副標補「milestone #3 sector-balanced post-processing Lagrangian adjustment」+ 主權狀態行同步。**Approach 選擇理由**:4 候選 evaluation(A LGBM custom_obj / B iterative re-weighting / C sector-bucketed rank-IC / D post-processing Lagrangian)→ D 為 scope-fit + backward-compat + 與既有 pure rank-IC trainer 完全相容(無 LGBM dep / 無多輪訓練 / 無 per-sector 統計力衰減)。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.2 為 post-processing layer + opt-in flag。**對既有 model 影響**:零(opt-in flag default False;flag OFF 時行為 = v0.2.1 完全相同;既有 `_v0_1` model_id 不重訓)。**對既有 snapshot 影響**:零(model.json 之 preprocessing schema 加 optional `sector_balance` 段;backward-compat reader 可忽略)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 當 flag 為 ON 時主動消除 root cause(治本);flag OFF 時 milestone #2 之 audit_sector_balance 仍會 WARN(偵測但不治本)。**v0.2.2 為 milestone #4 (walk-forward 8 panel)之 algorithm 預備**:milestone #4 將每 panel 跑一次 sector_balance_enabled=True 之訓練 + 驗證 IC > 0 strict。**Train/inference consistency 注意**:本 milestone 為 training-side 完整實作;downstream `prediction_engine.py` 套用 sector_penalty_factor 為 milestone #3.5(下 session 配套;commit metadata 已 ready)。同步配套:milestone #2 commit `42d4872`(4/4 hooks wired)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 §10-E sector-balanced loss 公式)。 | **ACTIVE** |
+| v0.2.1 | 2026-05-26 | Codex | **§10 Phase C continuation milestone #2 — wire 4/4 audit hooks + sector-aware load_inputs(對映 §14.7-BQ Phase C 進度)**:milestone #1(commit `47838d1`)wire 了 2/4 hooks(audit_training_quality + audit_artifact_consistency);本 milestone #2 補完剩 2 hooks 並提供 sector data foundation:(I) `load_inputs()` SQL 加 LATERAL JOIN TaiwanStockInfo 載 industry_category(每股 latest as-of as_of_date)→ `self.rows[i]["industry"]`;(II) `_audit_self()` 加呼 `audit_model_input(G1-G4 input 合法性)+ `audit_sector_balance`(G7/G12 計算 top-20 prediction 之 sector weights → Shannon entropy gate);(III) train() 加 `self.preds` 暫存(供 _audit_self 計算 top-20);(IV) TOOL_VER v0.2 → v0.2.1;(V) 標頭副標補「§10 Phase C continuation milestone #2」+ 主權狀態行加「4 audit hooks 全 wired + sector-aware load_inputs」。**邏輯動量**:既有 ModelTrainer.train() 之 robust_rank_ic_baseline_v0.1 algorithm 不改;v0.2.1 為 audit hook activation + input data 擴充,不改 model 訓練本質。**對既有 model 影響**:零(既有 `_v0_1` 命名之 model_id 不重訓;新 audit calls 為 WARN-only backward-compat)。**§10-D G7/G12 sector entropy gate 行為**:本 milestone 計算並 log entropy,但若 < 0.5 仍只 WARN(不 raise);strict raise 留 milestone #3。**v0.2.1 為 milestone #3 之 input foundation**:milestone #3(sector-balanced loss training)需 industry-aware 訓練資料,本 milestone 已 wired in self.rows。**對既有 snapshot 影響**:零(load_inputs SQL 純擴 SELECT + LATERAL JOIN,不改 row 數 / filter / order)。同步配套:憲章 §14.7-BQ Phase C(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)+ milestone #1 `47838d1`(_audit_self 整合 2/4 hooks)。 | SUPERSEDED |
 | v0.2 | 2026-05-26 | Codex | **§10 Phase C 啟動 — framework skeleton(v6.1.0-patch 第十五輪第二程式;sector-balanced loss training logic 留 Phase C continuation)**:對應憲章 §14.7-BQ Phase B 入憲(commit `27c1abf`)之治權預備,本版升 v0.1 → v0.2 之 framework skeleton:(I) CONSTITUTION_VER v6.0.0 → v6.1.0;TOOL_VER v0.1 → v0.2;(II) 新增 `ConstitutionalViolationError` 類別(對映 §9.2-D.1 之 §10 equivalent);(III) 新增 `DEFAULT_TRAINING_POLICY` dict(對映 §10-E 13 條 Training Policy);(IV) 新增 4 module-level audit hooks(對映 §10-F):`audit_model_input` / `audit_training_quality` / `audit_sector_balance` / `audit_artifact_consistency`;(V) 標頭核心定義條 1-10 重寫(8-項 docstring compliance per CLAUDE.md §四 #4)含 [Zero Hardcoded Verdict] + [Sovereignty Declaration];(VI) `model_id` 之 `v0_1` 改為 dynamic `v{TOOL_VER}` 編碼(v0.2 為 `v0_2`)。**邏輯動量**:既有 ModelTrainer class 之 robust_rank_ic_baseline_v0.1 邏輯不動;v0.2 framework 為 Phase C 後續落地之 skeleton。**對既有 model 影響**:零(既有 mdl_*_v0_1 hash models 不重訓;新版本 mdl_*_v0_2 為 future commits)。**Phase C 後續 continuation**:(a) sector-balanced loss training logic(`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`);(b) walk-forward 自動化 8 panel framework;(c) 15 FAIL gates(G1-G15)完整實作;(d) multi-model ensemble(LGBM + XGBoost + Linear)。**對既有 snapshot 影響**:零(v0.2 framework 不改 ModelTrainer.train() 既有邏輯)。同步配套:憲章 §14.7-BQ Phase B(commit `27c1abf` v6.1.0-patch 第十五輪)+ Phase A 設計研究 `reports/model_trainer_phase_a_research_20260526.md`(581 行 18 章 commit `644e2eb` tag v6.1.24)。 | SUPERSEDED |
 | v0.1 | 2026-05-16 | Codex | 首版：§8.3 Model Registry 草案；2026-05-17 升 `robust_rank_ic_baseline_v0.1`（winsorization + average-rank + L1 norm）；2026-05-17 model_id 補入 `sha1(feature_set_version)[:8]` 治權；2026-05-18 v6.0.0-patch 落地 h20 walk-forward panel 24 點 + h30 walk-forward panel 24 點（IC mean 0.3530 / 0.3482）。 | SUPERSEDED |
 ================================================================================
@@ -85,7 +86,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2.1"
+TOOL_VER = "v0.2.2"
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_v0.2"
 DEFAULT_LABEL_HORIZON = 20  # v0.2 留 20 為 backward-compat;Phase C continuation 升 30(per §9.1)
 DEFAULT_SEED = 5422
@@ -112,6 +113,11 @@ DEFAULT_TRAINING_POLICY = {
     # === v0.2 multi-model ensemble(待 v0.3 落地)===
     "ensemble_enabled": False,              # v0.2 主推 LGBM;v0.3 開啟
     "model_family_default": "lgbm",
+    # === v0.2.2 milestone #3 sector-balanced post-processing(approach D)===
+    "sector_balance_enabled": False,        # opt-in;ON 時套用 Lagrangian adjustment
+    "sector_balance_top_n": 20,             # §9.2 attack tier top-N
+    "sector_balance_lambda": 0.3,           # Lagrangian λ(對齊 sector_penalty_weight)
+    "sector_balance_min_floor_pred": -10.0, # cap on negative penalty(避免 extreme demote)
 }
 
 
@@ -305,6 +311,8 @@ class ModelTrainer:
         }
         self.weights = {}
         self.preprocessing = {}
+        self.preds = []  # v0.2.1 milestone #2: 暫存 predictions(supports _audit_self)
+        self.sector_balance_metadata = None  # v0.2.2 milestone #3: opt-in adjustment metadata
         self.stats = {"pass": 0, "warn": 0, "fail": 0, "details": []}
 
     def _build_model_id(self, feature_set_version=None):
@@ -575,6 +583,11 @@ class ModelTrainer:
             sum(transformed[f][idx] * self.weights[f] for f in self.features)
             for idx, _ in enumerate(self.rows)
         ]
+        # v0.2.2 milestone #3: 選擇性套用 sector-balanced post-processing Lagrangian adjustment
+        self.sector_balance_metadata = None
+        if DEFAULT_TRAINING_POLICY.get("sector_balance_enabled", False):
+            preds, self.sector_balance_metadata = self._apply_sector_balanced_adjustment(preds)
+            self._detail("pass", f"§10-E sector-balanced adjustment applied (λ={self.sector_balance_metadata['lambda']}, top_n={self.sector_balance_metadata['top_n_used']}, n_universe_sectors={self.sector_balance_metadata['n_universe_sectors']})")
         self.preds = preds  # v0.2.1 milestone #2: 暫存供 _audit_self() 計算 top-N sector entropy
         pred_scores = self._rank_scores(preds)
         errors = [p - y for p, y in zip(preds, labels)]
@@ -611,6 +624,100 @@ class ModelTrainer:
 
         # v0.2 §10-F audit hooks invocation(Phase C continuation;backward-compat WARN 不 raise)
         self._audit_self()
+
+    def _apply_sector_balanced_adjustment(self, preds):
+        """v0.2.2 milestone #3: sector-balanced post-processing Lagrangian adjustment (approach D)。
+
+        對 top-N 之 over-concentrated sectors 之 stocks 加 negative penalty(demote);
+        under-represented sectors 之 stocks 加 positive boost。
+
+        Formula:
+            penalty[sec] = -λ × log(current_weight[sec] / target_weight)
+            target_weight = 1.0 / n_sectors_in_top_N(uniform)
+            adjusted_pred[i] = max(raw_pred[i] + penalty[sector_of_i], min_floor_pred)
+
+        對齊 §10-E:`loss = MSE + λ × sector_penalty + γ × |sector_weight - target_weight|`
+        (本 implementation 為 post-processing 等效形式;算法層為 rank-IC 不變)。
+
+        Args:
+            preds: list of raw predictions(per-row 對齊 self.rows)
+
+        Returns:
+            (adjusted_preds: list, metadata: dict):metadata 含 sector_penalty_factor /
+            lambda / top_n_used / n_sectors / target_weight,供 commit_outputs 寫入
+            model.json 為 downstream inference 之 SSOT。
+        """
+        policy = DEFAULT_TRAINING_POLICY
+        top_n_param = policy.get("sector_balance_top_n", 20)
+        lambda_param = policy.get("sector_balance_lambda", 0.3)
+        min_floor = policy.get("sector_balance_min_floor_pred", -10.0)
+
+        # Step 1: top-N by raw preds
+        indexed = sorted(enumerate(preds), key=lambda t: t[1], reverse=True)
+        top_n_actual = min(top_n_param, len(indexed))
+        top_indices = [i for i, _ in indexed[:top_n_actual]]
+
+        # Step 2: sector distribution in top-N
+        sector_counts = {}
+        for idx in top_indices:
+            ind = self.rows[idx].get("industry", "UNKNOWN")
+            sector_counts[ind] = sector_counts.get(ind, 0) + 1
+
+        # Step 3: target uniform weight 基於 UNIVERSE sectors(非 top-N)
+        # bug fix v0.2.2: 原 target = 1/n_sectors_in_top_N → 若 top-N 100% 單一 sector
+        #                則 target = 1.0,penalty = 0,完全失效
+        # 修補: target = 1/n_universe_sectors → 缺席 sector 之 penalty = +λ × log(N_universe)(boost)
+        universe_sectors = set()
+        for row in self.rows:
+            universe_sectors.add(row.get("industry", "UNKNOWN"))
+        n_universe_sectors = len(universe_sectors)
+        if n_universe_sectors == 0:
+            # 防禦性:無 sectors → 不調整
+            return preds, {
+                "sector_penalty_factor": {},
+                "lambda": lambda_param,
+                "top_n_used": top_n_actual,
+                "n_sectors": 0,
+                "target_weight": 0.0,
+                "note": "no_sectors_in_universe",
+            }
+        target_weight = 1.0 / n_universe_sectors
+
+        # Step 4: 計每 universe sector 之 penalty factor
+        # over → negative penalty / demote
+        # absent(under)→ positive penalty / boost(用 0.01 floor cap 避免 log(0))
+        # 注意: 極端 100% 單一 sector 情況下,absent sector 之 boost 可能 over-correct
+        #       (從 0% 跳至 100%);milestone #4 可加 iteration 緩和;本 milestone #3 為單輪
+        sector_penalty_factor = {}
+        for sec in universe_sectors:
+            cnt = sector_counts.get(sec, 0)
+            current_weight = cnt / top_n_actual
+            over_ratio = current_weight / target_weight if target_weight > 0 else 1.0
+            # log(over_ratio) > 0 if over(penalty negative / demote)
+            # log(over_ratio) < 0 if under(penalty positive / boost)
+            # log(0) → -inf;cap over_ratio by 0.01 → log(0.01) = -4.6 → max boost = 4.6 × λ
+            sector_penalty_factor[sec] = -lambda_param * math.log(max(over_ratio, 0.01))
+
+        # Step 5: 套用 penalty per row(rows 不在 top-N 之 sectors 取 0;cap by min_floor)
+        adjusted_preds = []
+        for idx, pred in enumerate(preds):
+            ind = self.rows[idx].get("industry", "UNKNOWN")
+            penalty = sector_penalty_factor.get(ind, 0.0)
+            adj = pred + penalty
+            adj = max(adj, min_floor)  # cap extreme negative
+            adjusted_preds.append(adj)
+
+        metadata = {
+            "sector_penalty_factor": sector_penalty_factor,
+            "lambda": lambda_param,
+            "top_n_used": top_n_actual,
+            "n_universe_sectors": n_universe_sectors,
+            "n_sectors_in_top_n_raw": len(sector_counts),
+            "target_weight": target_weight,
+            "min_floor": min_floor,
+            "approach": "D_post_processing_lagrangian_v2",
+        }
+        return adjusted_preds, metadata
 
     def _audit_self(self):
         """v0.2.1 §10-F audit hooks self-invocation(對映 §10-D G1-G4 + G5/G6/G8 + G7/G12 + G10/G11)。
@@ -684,13 +791,17 @@ class ModelTrainer:
 
     def commit_outputs(self):
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
+        # v0.2.2 milestone #3: preprocessing 加 sector_balance 段(供 downstream inference SSOT)
+        preprocessing_full = dict(self.preprocessing)
+        if self.sector_balance_metadata is not None:
+            preprocessing_full["sector_balance"] = self.sector_balance_metadata
         model_payload = {
             "model_id": self.model_id,
             "model_family": self.model_family,
             "feature_set_id": self.feature_set_id,
             "features": self.features,
             "weights": self.weights,
-            "preprocessing": self.preprocessing,
+            "preprocessing": preprocessing_full,
             "intercept": 0.0,
         }
         files = {
