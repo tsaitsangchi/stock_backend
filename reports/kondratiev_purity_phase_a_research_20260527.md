@@ -224,8 +224,8 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 | Indicator | Data Source | Frequency | 對 K-wave 之對應度 |
 |---|---|---|---|
-| **US Patent grants per year(累積)** | USPTO via FRED `USPATENT` | annual | 🟢 **85%** — Schumpeter index proxy |
-| **R&D % of GDP(US/global)** | OECD MSTI / FRED `RDTOTALSAUSA` | annual | 🟢 **80%** |
+| **US Patent grants per year(累積)** | USPTO via FRED `PATENTUSALLTOTAL` | annual | 🟢 **85%** — Schumpeter index proxy |
+| **R&D % of GDP(US/global)** | OECD MSTI / FRED `B985RC1Q027SBEA` | annual | 🟢 **80%** |
 | **Total Factor Productivity (TFP)** | FRED `RTFPNAUSA666NRUG` | annual | 🟢 **75%** |
 | **Schumpeter innovation index(custom)** | 學術 paper(Mensch 1979 / Silverberg 2003)| 自編 | 🟢 **90%**(but 需要 data engineering)|
 
@@ -275,8 +275,8 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 | # | Indicator | Class | Data Source | API endpoint | Freq | K-wave 對應度 | Priority |
 |---|---|---|---|---|---|---|---|
-| 1 | US Patent grants | Tech | USPTO / FRED `USPATENT` | FRED API(已有 client)| annual | 85% | **P0** |
-| 2 | R&D % of GDP | Tech | OECD MSTI / FRED `RDTOTALSAUSA` | FRED API | annual | 80% | P0 |
+| 1 | US Patent grants | Tech | USPTO / FRED `PATENTUSALLTOTAL` | FRED API(已有 client)| annual | 85% | **P0** |
+| 2 | R&D % of GDP | Tech | OECD MSTI / FRED `B985RC1Q027SBEA` | FRED API | annual | 80% | P0 |
 | 3 | BIS Credit-to-GDP gap | Credit | BIS direct | BIS bulk CSV | quarterly | 80% | P1 |
 | 4 | US total credit market debt | Credit | FRED `TCMDO` | FRED API | quarterly | 75% | **P0** |
 | 5 | US working-age % | Demographics | FRED `LFWA64TTUSA647N` | FRED API | annual | 85% | **P0** |
@@ -300,8 +300,8 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 | # | Indicator | FRED Series ID | 既有 fetcher reusable? | 預估 sync 時間 | Effort(人天)|
 |---|---|---|---|---|---|
-| 1 | US Patent grants | USPATENT | ✅ fetch_fred_data.py 加 1 個 series | <1 min sync | 0.5 |
-| 2 | R&D % GDP | RDTOTALSAUSA | ✅ 同上 | <1 min | 0.5 |
+| 1 | US Patent grants | PATENTUSALLTOTAL | ✅ fetch_fred_data.py 加 1 個 series | <1 min sync | 0.5 |
+| 2 | R&D % GDP | B985RC1Q027SBEA | ✅ 同上 | <1 min | 0.5 |
 | 3 | BIS Credit-to-GDP gap | (BIS direct, no FRED)| ❌ 需新 fetcher | ~3-5 min(BIS CSV)| 2.0 |
 | 4 | US total credit | TCMDO | ✅ fetch_fred_data.py | <1 min | 0.5 |
 | 5 | US working-age % | LFWA64TTUSA647N | ✅ 同上 | <1 min | 0.5 |
@@ -332,7 +332,7 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 ### 8.1 Path A — 嚴格 K-wave 派(strict purity)
 
-**內容**:補 6 個 P0 K-wave indicators(USPATENT / RDTOTALSAUSA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ),將 §0.3 之 KW_INDICATORS 從 5 升為 **11**。
+**內容**:補 6 個 P0 K-wave indicators(PATENTUSALLTOTAL / B985RC1Q027SBEA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ),將 §0.3 之 KW_INDICATORS 從 5 升為 **11**。
 
 | Pros | Cons |
 |---|---|
@@ -390,7 +390,7 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 | Risk | Mitigation |
 |---|---|
-| FRED API 6 個新 series 之 historical depth 不足 | 預檢驗:USPATENT 1963-now / TCMDO 1945-now / LFWA64TTUSA647N 1960-now — 全部 ≥ 50 年深度 ✅ |
+| FRED API 6 個新 series 之 historical depth 不足 | 預檢驗:PATENTUSALLTOTAL 1963-now / TCMDO 1945-now / LFWA64TTUSA647N 1960-now — 全部 ≥ 50 年深度 ✅ |
 | Annual frequency 之 indicators 可能對 weekly recommit 衝突 | §14.7-BX weekly recommit 之 Stage 1 為 "indicator 存在 with rows > 0" 之 binary gate,無需 weekly fresh data |
 | builder Stage 1 升為 11/11 後,若 1 個 indicator sync fail 整個 Stage 1 fail | 預備 graceful degradation:6 P0 + 5 P1 之 11 indicators 中,需≥9/11 通過則 PASS(可選) |
 
@@ -468,7 +468,7 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 | File | 改動 |
 |---|---|
-| `scripts/fetchers/fetch_fred_data.py` | 加 6 新 series(USPATENT/RDTOTALSAUSA/TCMDO/LFWA64TTUSA647N/SPPOPDPNDOLUSA/PALLFNFINDEXQ)|
+| `scripts/fetchers/fetch_fred_data.py` | 加 6 新 series(PATENTUSALLTOTAL/B985RC1Q027SBEA/TCMDO/LFWA64TTUSA647N/SPPOPDPNDOLUSA/PALLFNFINDEXQ)|
 | `scripts/maintenance/build_doctrine_gate_universe.py` L73-80 | KW_INDICATORS 從 5 升 11 / Stage 1 升為 11/11 binary gate |
 | `scripts/maintenance/audit_universe_completeness.py` | C9 expected_items 從 5 升 11 |
 | `scripts/maintenance/audit_kwave_transition.py` | 升版識別 11 indicators |
@@ -493,7 +493,7 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 
 1. **K-wave indicators 從 5 升為 11(P0)**:
    - 保留:M2SL / T10Y2Y / VIXCLS / TW_SEMI_VWAP_YOY / TW_SHIPPING_VWAP_YOY(5)
-   - 新加 P0:USPATENT / RDTOTALSAUSA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ(6)
+   - 新加 P0:PATENTUSALLTOTAL / B985RC1Q027SBEA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ(6)
    - K-wave 平均對應度從 37% → ~80%
 
 2. **§0.3 Stage 1 binary gate 升為 11/11**(從 5/5)
@@ -501,7 +501,7 @@ Carlota Perez, "Technological Revolutions and Financial Capital: The Dynamics of
 3. **universe_completeness_snapshot 之 §0.3 expected_items 從 5 升 11**
 
 4. **5 大驅動因素之 indicator class 命名**:
-   - Technological(USPATENT/R&D)
+   - Technological(PATENTUSALLTOTAL/R&D)
    - Credit(TCMDO/BIS-credit)
    - Demographics(LFWA64/SPPOPDPND)
    - Energy(OIL/Renewable)
@@ -528,8 +528,8 @@ T_BY-1 ~ T_BY-5(per Phase A research §12)
 ```bash
 # fetch_fred_data.py 加 6 新 series
 KWAVE_SERIES_EXTENSION = [
-    'USPATENT',        # Tech: US Patent grants
-    'RDTOTALSAUSA',    # Tech: R&D % GDP
+    'PATENTUSALLTOTAL',        # Tech: US Patent grants
+    'B985RC1Q027SBEA',    # Tech: R&D % GDP
     'TCMDO',           # Credit: US total credit
     'LFWA64TTUSA647N', # Demographics: working-age %
     'SPPOPDPNDOLUSA',  # Demographics: old-age dependency
@@ -537,7 +537,7 @@ KWAVE_SERIES_EXTENSION = [
 ]
 
 # 跑全量 historical sync
-python scripts/fetchers/fetch_fred_data.py --series USPATENT,RDTOTALSAUSA,TCMDO,LFWA64TTUSA647N,SPPOPDPNDOLUSA,PALLFNFINDEXQ
+python scripts/fetchers/fetch_fred_data.py --series PATENTUSALLTOTAL,B985RC1Q027SBEA,TCMDO,LFWA64TTUSA647N,SPPOPDPNDOLUSA,PALLFNFINDEXQ
 ```
 
 ### 15.2 Phase C-2: builder 升版(1 人天)
@@ -552,8 +552,8 @@ KW_INDICATORS = [
     ('TW_SEMI_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
     ('TW_SHIPPING_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
     # §14.7-BY 新加 6 P0 indicators
-    ('USPATENT', 'fred_series', 'series_id'),
-    ('RDTOTALSAUSA', 'fred_series', 'series_id'),
+    ('PATENTUSALLTOTAL', 'fred_series', 'series_id'),
+    ('B985RC1Q027SBEA', 'fred_series', 'series_id'),
     ('TCMDO', 'fred_series', 'series_id'),
     ('LFWA64TTUSA647N', 'fred_series', 'series_id'),
     ('SPPOPDPNDOLUSA', 'fred_series', 'series_id'),
@@ -598,7 +598,7 @@ python scripts/maintenance/audit_universe_completeness.py
 1. 當前 §0.3 之 5 indicators **僅 ~37% 對應 K-wave 嚴格學術定義**,屬 mix(K-wave + Juglar + Kitchin + Microstructure)
 2. 用戶之「K-wave scale-down 到週/天循環」之數學推理**不成立**(經濟週期非 fractal)
 3. 真正 K-wave 之 measurable indicators 為 5 大類:Tech / Credit / Demographics / Energy / Commodity
-4. 學術 SSOT 推薦 6 P0 indicators(全 FRED API 可直取):USPATENT / RDTOTALSAUSA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ
+4. 學術 SSOT 推薦 6 P0 indicators(全 FRED API 可直取):PATENTUSALLTOTAL / B985RC1Q027SBEA / TCMDO / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ
 5. 升版後 K-wave purity 預期 37% → **~80%**,effort ~4 人天
 
 ### 16.2 推薦 Path A(P0 only)

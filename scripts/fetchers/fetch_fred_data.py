@@ -76,9 +76,17 @@ logger = logging.getLogger(__name__)
 
 FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
 DEFAULT_FRED_SERIES = [
-    "T10Y2Y", "T10Y3M", "T10YIE", "VIXCLS", "BAMLH0A0HYM2", 
-    "DTWEXBGS", "M2SL", "DGS10", "DGS2", "DGS3MO", 
-    "UMCSENT", "INDPRO", "UNRATE", "CPIAUCSL"
+    "T10Y2Y", "T10Y3M", "T10YIE", "VIXCLS", "BAMLH0A0HYM2",
+    "DTWEXBGS", "M2SL", "DGS10", "DGS2", "DGS3MO",
+    "UMCSENT", "INDPRO", "UNRATE", "CPIAUCSL",
+    # §14.7-BY Phase C-1(2026-05-27):6 P0 K-wave-aligned indicators
+    # Per Kondratiev/Schumpeter/Mensch/Perez 學派之 5 大驅動因素 SSOT
+    "PATENTUSALLTOTAL",  # Tech: US Granted Patents Total(Schumpeter index proxy / annual / 85% K-wave correspondence)
+    "B985RC1Q027SBEA",   # Tech: Private IP products investment(R&D + Software + Entertainment / quarterly / 80%)
+    "TCMDO",             # Credit: US total credit market debt(quarterly / 75%)
+    "LFWA64TTUSA647N",   # Demographics: US working-age population %(annual / 85%)
+    "SPPOPDPNDOLUSA",    # Demographics: US old-age dependency ratio(annual / 80%)
+    "PALLFNFINDEXQ",     # Commodity: CRB Global Price Index of All Commodities(quarterly / 75%)
 ]
 
 DDL_FRED = """CREATE TABLE IF NOT EXISTS fred_series (series_id VARCHAR(50), date DATE, value NUMERIC(20,6), PRIMARY KEY (series_id, date));"""
