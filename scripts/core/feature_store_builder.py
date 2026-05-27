@@ -129,6 +129,10 @@ FEATURE_DEFINITIONS = [
     {"name": "downside_volatility_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "RMS of negative daily log returns over 60d；下行風險暴露；§9.9 G1"},
     {"name": "upside_capture_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "mean of positive daily log returns over 60d；§0.1 上行爆發力；§9.9 C"},
     {"name": "downside_capture_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "mean abs of negative daily log returns over 60d；下行衝擊；§9.9 C"},
+    # ── price 群 v0.3 §14.7-CA Phase C-1c 新增(2026-05-27;doctrine-aligned per Phase A research §5.1)
+    {"name": "convexity_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "upside_volatility - downside_volatility(凸性 asymmetry;§14.7-BG / §9.10;§0.1)"},
+    # ── liquidity 群 v0.3 §14.7-CA Phase C-1c 新增(2026-05-27)
+    {"name": "amihud_illiquidity_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "Amihud 2002 illiquidity:AVG(|r|/dollar_vol) over 60d;TW IC ~+0.04-0.06 OOS;§0.1 §0.2"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -554,6 +558,26 @@ class FeatureStoreBuilder:
         return math.sqrt(sum(r * r for r in neg_rets) / len(neg_rets))
 
     @staticmethod
+    def _amihud_illiquidity(closes, moneys, n):
+        """Amihud 2002 illiquidity:mean(|return_i| / dollar_volume_i) over n days。
+
+        Per §14.7-CA Phase A research §5.1-C / Amihud 2002 JFE:
+        - Higher amihud illiquidity → 高 expected return premium(TW IC ~+0.04-0.06 OOS)
+        - Robust to outliers via daily mean
+        - 對映 §0.1 第一性原理 Liquidity 群
+        """
+        if len(closes) < n + 1 or len(moneys) < n + 1:
+            return None
+        amihud_vals = []
+        for i in range(len(closes) - n, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0 and moneys[i] > 0:
+                r = abs(math.log(closes[i] / closes[i - 1]))
+                amihud_vals.append(r / moneys[i])
+        if len(amihud_vals) < 5:  # min observations
+            return None
+        return sum(amihud_vals) / len(amihud_vals)
+
+    @staticmethod
     def _upside_capture(closes, n):
         """Mean of positive daily log returns over n days. §9.9-C / 上行爆發力"""
         if len(closes) < n + 1:
@@ -605,6 +629,15 @@ class FeatureStoreBuilder:
         f["downside_volatility_60d"] = self._downside_volatility(closes, 60)
         f["upside_capture_60d"] = self._upside_capture(closes, 60)
         f["downside_capture_60d"] = self._downside_capture(closes, 60)
+
+        # §14.7-CA Phase C-1c(2026-05-27)Phase A research §5.1 之 doctrine-aligned new features
+        # convexity_60d:upside - downside RMS asymmetry(per §14.7-BG / §9.10)
+        if f["upside_volatility_60d"] is not None and f["downside_volatility_60d"] is not None:
+            f["convexity_60d"] = f["upside_volatility_60d"] - f["downside_volatility_60d"]
+        else:
+            f["convexity_60d"] = None
+        # amihud_illiquidity_60d:Amihud 2002 illiquidity premium(highest-IC per literature)
+        f["amihud_illiquidity_60d"] = self._amihud_illiquidity(closes, moneys, 60)
 
         # liquidity
         if len(moneys) >= 60:
