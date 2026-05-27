@@ -70,35 +70,48 @@ FP_SOURCES = [
     'TaiwanStockMarginPurchaseShortSale',
 ]
 
-# §0.3 K-wave 11 indicators (per §14.7-BY Phase C-2 升 11-of-11)
-# 既有 5(§14.7-BR Phase C-4)+ 新加 6 P0 K-wave-aligned(§14.7-BY 2026-05-27)
-# 對映 Kondratiev/Schumpeter/Mensch/Perez 學派之 5 大驅動因素 SSOT:
-#   Technological / Credit / Demographics / Energy / Commodity
-KW_INDICATORS = [
-    # 既有 5(retained per §14.7-BY additive pattern)
-    ('M2SL', 'fred_series', 'series_id'),
-    ('T10Y2Y', 'fred_series', 'series_id'),
-    ('VIXCLS', 'fred_series', 'series_id'),
-    ('TW_SEMI_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
-    ('TW_SHIPPING_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
-    # §14.7-BY Phase C-1(2026-05-27)新加 6 P0 K-wave-aligned indicators
-    ('PATENTUSALLTOTAL', 'fred_series', 'series_id'),   # Tech: US Patent grants(85% K-wave correspondence)
+# §0.3 K-wave 13 indicators 之 Path C 分層(per §14.7-BZ Phase F 2026-05-27)
+# 拆 §0.3.1 K-wave / §0.3.2 Multi-cycle / §0.3.3 Microstructure 三 sub-pillars
+# 對映 Kondratiev/Schumpeter/Mensch/Perez 學派之多週期 hierarchy
+
+# §0.3.1 K-wave 純 macro structural(40-60 年 Kondratiev wave)— 7 indicators / avg 80%
+KW_INDICATORS_PURE = [
+    ('PATENTUSALLTOTAL', 'fred_series', 'series_id'),   # Tech: US Patents(85%)
     ('B985RC1Q027SBEA', 'fred_series', 'series_id'),    # Tech: IP Products Investment(80%)
-    ('TCMDO', 'fred_series', 'series_id'),              # Credit: US Total Credit Market Debt(75%)
-    ('LFWA64TTUSA647N', 'fred_series', 'series_id'),    # Demographics: Working-age population %(85%)
-    ('SPPOPDPNDOLUSA', 'fred_series', 'series_id'),     # Demographics: Old-age dependency ratio(80%)
-    ('PALLFNFINDEXQ', 'fred_series', 'series_id'),      # Commodity: CRB Global Price Index(75%)
-    # §14.7-BY Phase E(2026-05-27)新加 2 P1 K-wave-aligned indicators(補強 Credit + Energy class)
-    ('QUSPAM770A', 'fred_series', 'series_id'),         # Credit: BIS Total Credit to Private Non-Financial(% of GDP / Q / 80%)
-    ('WTISPLC', 'fred_series', 'series_id'),            # Energy: WTI Spot Crude Oil Price(M / 1946-2026 / 70%)
+    ('TCMDO', 'fred_series', 'series_id'),              # Credit: US Total Credit(75%)
+    ('QUSPAM770A', 'fred_series', 'series_id'),         # Credit: BIS Credit-to-GDP(80%)
+    ('LFWA64TTUSA647N', 'fred_series', 'series_id'),    # Demographics: Working-age %(85%)
+    ('SPPOPDPNDOLUSA', 'fred_series', 'series_id'),     # Demographics: Old-age dependency(80%)
+    ('PALLFNFINDEXQ', 'fred_series', 'series_id'),      # Commodity: CRB Index(75%)
 ]
-KW_INDICATOR_COUNT = len(KW_INDICATORS)  # = 13 per §14.7-BY Phase E
+
+# §0.3.2 Multi-cycle Context(7-25 年 Juglar + Kuznets + Kitchin K5 edge)— 5 indicators / avg 49%
+MC_INDICATORS = [
+    ('M2SL', 'fred_series', 'series_id'),               # Monetary regime(70%)
+    ('WTISPLC', 'fred_series', 'series_id'),            # Energy/Commodity Juglar(70%)
+    ('T10Y2Y', 'fred_series', 'series_id'),             # Yield curve Juglar(30%)
+    ('TW_SEMI_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),    # Sector Kitchin/K5(40%)
+    ('TW_SHIPPING_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),# Juglar trade(35%)
+]
+
+# §0.3.3 Microstructure(月 ~ 季 sentiment / regime)— 1 indicator / avg 10%
+MS_INDICATORS = [
+    ('VIXCLS', 'fred_series', 'series_id'),             # Volatility regime(10%)
+]
+
+# Backward compat:KW_INDICATORS = 全 13 indicators(per §14.7-BY 之 indicator-axis 純化)
+# 但 Stage 1 現在拆 3 sub-stages,KW_INDICATORS 主要供 documentation 與 audit reference
+KW_INDICATORS = KW_INDICATORS_PURE + MC_INDICATORS + MS_INDICATORS
+KW_INDICATOR_COUNT = len(KW_INDICATORS)  # = 13 per §14.7-BZ Phase F(7 + 5 + 1)
+KW_PURE_COUNT = len(KW_INDICATORS_PURE)  # = 7
+MC_COUNT = len(MC_INDICATORS)            # = 5
+MS_COUNT = len(MS_INDICATORS)            # = 1
 
 
-def check_kwave_market_context(cur):
-    """Stage 1: §0.3 K-wave market-level prerequisite."""
+def check_indicators(cur, indicator_list):
+    """Helper: check binary presence(rows > 0)of indicator list."""
     present = []
-    for name, table, col in KW_INDICATORS:
+    for name, table, col in indicator_list:
         cur.execute(f"SELECT to_regclass('public.\"{table}\"')")
         if cur.fetchone()[0] is None:
             continue
@@ -106,6 +119,23 @@ def check_kwave_market_context(cur):
         if cur.fetchone()[0] > 0:
             present.append(name)
     return present
+
+
+def check_kwave_market_context(cur):
+    """Stage 1: §0.3 K-wave market-level prerequisite(backward-compat / 全 13 indicators)."""
+    return check_indicators(cur, KW_INDICATORS)
+
+
+def check_macro_pillars(cur):
+    """Stage 1A/1B/1C(§14.7-BZ Phase F):三 sub-pillar binary gate.
+
+    Returns:
+        (kw_pure_present, mc_present, ms_present) — 三 sub-pillar 各自之 present indicator list
+    """
+    kw_pure = check_indicators(cur, KW_INDICATORS_PURE)
+    mc = check_indicators(cur, MC_INDICATORS)
+    ms = check_indicators(cur, MS_INDICATORS)
+    return kw_pure, mc, ms
 
 
 def get_doctrine_gate_pass(cur):
@@ -305,18 +335,43 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
                 completeness_pct=EXCLUDED.completeness_pct,
                 evidence_source_table=EXCLUDED.evidence_source_table
         """, (completeness_snapshot_id, snapshot_id, as_of, stock_id))
-        # §0.3 kondratiev data layer: 11/11 market-level broadcast(§14.7-BY Phase C-2 升 11)
+        # §0.3 拆 3 sub-pillars(§14.7-BZ Phase F Path C):market-level broadcast
+        # §0.3.1 kondratiev_kwave: 7/7
         cur.execute("""
             INSERT INTO universe_completeness_snapshot
                 (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
                  expected_items, actual_items, completeness_pct, evidence_source_table)
-            VALUES (%s, %s, %s::date, %s, 'kondratiev', 'data', %s, %s, 100.00, 'fred_series,kwave_supply_cycle_proxy')
+            VALUES (%s, %s, %s::date, %s, 'kondratiev_kwave', 'data', %s, %s, 100.00, 'fred_series')
             ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
                 expected_items=EXCLUDED.expected_items,
                 actual_items=EXCLUDED.actual_items,
                 completeness_pct=EXCLUDED.completeness_pct,
                 evidence_source_table=EXCLUDED.evidence_source_table
-        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, KW_INDICATOR_COUNT, KW_INDICATOR_COUNT))
+        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, KW_PURE_COUNT, KW_PURE_COUNT))
+        # §0.3.2 kondratiev_multicycle: 5/5
+        cur.execute("""
+            INSERT INTO universe_completeness_snapshot
+                (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
+                 expected_items, actual_items, completeness_pct, evidence_source_table)
+            VALUES (%s, %s, %s::date, %s, 'kondratiev_multicycle', 'data', %s, %s, 100.00, 'fred_series,kwave_supply_cycle_proxy')
+            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                expected_items=EXCLUDED.expected_items,
+                actual_items=EXCLUDED.actual_items,
+                completeness_pct=EXCLUDED.completeness_pct,
+                evidence_source_table=EXCLUDED.evidence_source_table
+        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, MC_COUNT, MC_COUNT))
+        # §0.3.3 kondratiev_microstructure: 1/1
+        cur.execute("""
+            INSERT INTO universe_completeness_snapshot
+                (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
+                 expected_items, actual_items, completeness_pct, evidence_source_table)
+            VALUES (%s, %s, %s::date, %s, 'kondratiev_microstructure', 'data', %s, %s, 100.00, 'fred_series')
+            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                expected_items=EXCLUDED.expected_items,
+                actual_items=EXCLUDED.actual_items,
+                completeness_pct=EXCLUDED.completeness_pct,
+                evidence_source_table=EXCLUDED.evidence_source_table
+        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, MS_COUNT, MS_COUNT))
 
     conn.commit()
     return snapshot_id, completeness_snapshot_id
@@ -331,19 +386,38 @@ def build(commit=False, weekly_mode=False):
     print(f"§14.7-BV Phase C — Doctrine-Gate Universe Builder ({TOOL_VER})")
     print("=" * 72)
 
-    # Stage 1: §0.3 K-wave market prerequisite(§14.7-BY Phase C-2 升 11/11 binary gate)
-    kw_present = check_kwave_market_context(cur)
-    print(f"\n[Stage 1] §0.3 K-wave market prerequisite: {len(kw_present)}/{KW_INDICATOR_COUNT} indicators")
-    for n in kw_present:
-        print(f"    ✅ {n}")
-    if len(kw_present) < KW_INDICATOR_COUNT:
-        missing = [n for n, _, _ in KW_INDICATORS if n not in kw_present]
-        print(f"\n❌ Stage 1 FAIL: K-wave market context insufficient ({len(kw_present)}/{KW_INDICATOR_COUNT})")
-        print(f"   Missing indicators: {missing}")
-        print(f"   Run §14.7-BR Phase C-1/C-2/C-4 sync + §14.7-BY Phase C-1 sync first.")
+    # Stage 1 三 sub-stages(§14.7-BZ Phase F Path C 分層):1A K-wave / 1B Multi-cycle / 1C Microstructure
+    kw_pure_present, mc_present, ms_present = check_macro_pillars(cur)
+
+    print(f"\n[Stage 1A] §0.3.1 K-wave pure(40-60 年): {len(kw_pure_present)}/{KW_PURE_COUNT}")
+    for n in kw_pure_present: print(f"    ✅ {n}")
+    if len(kw_pure_present) < KW_PURE_COUNT:
+        missing = [n for n, _, _ in KW_INDICATORS_PURE if n not in kw_pure_present]
+        print(f"\n❌ Stage 1A FAIL: §0.3.1 K-wave({len(kw_pure_present)}/{KW_PURE_COUNT});missing: {missing}")
         conn.close()
         return False
-    print(f"  ✅ Stage 1 PASS")
+    print(f"  ✅ Stage 1A PASS")
+
+    print(f"\n[Stage 1B] §0.3.2 Multi-cycle(7-25 年): {len(mc_present)}/{MC_COUNT}")
+    for n in mc_present: print(f"    ✅ {n}")
+    if len(mc_present) < MC_COUNT:
+        missing = [n for n, _, _ in MC_INDICATORS if n not in mc_present]
+        print(f"\n❌ Stage 1B FAIL: §0.3.2 Multi-cycle({len(mc_present)}/{MC_COUNT});missing: {missing}")
+        conn.close()
+        return False
+    print(f"  ✅ Stage 1B PASS")
+
+    print(f"\n[Stage 1C] §0.3.3 Microstructure(月 ~ 季): {len(ms_present)}/{MS_COUNT}")
+    for n in ms_present: print(f"    ✅ {n}")
+    if len(ms_present) < MS_COUNT:
+        missing = [n for n, _, _ in MS_INDICATORS if n not in ms_present]
+        print(f"\n❌ Stage 1C FAIL: §0.3.3 Microstructure({len(ms_present)}/{MS_COUNT});missing: {missing}")
+        conn.close()
+        return False
+    print(f"  ✅ Stage 1C PASS")
+
+    # Backward-compat alias:kw_present = 全 13 indicators
+    kw_present = kw_pure_present + mc_present + ms_present
 
     # Stage 2: per-stock §0.1 + §0.2 gate
     gate_pass_rows = get_doctrine_gate_pass(cur)

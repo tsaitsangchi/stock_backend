@@ -54,9 +54,19 @@ TOOL_VER = "v0.1"
 
 EXPECTED_TABLES = ["prediction_run", "predictions", "universe_completeness_snapshot"]
 EXPECTED_VIEW = "universe_completeness_matrix_current"
-EXPECTED_PILLARS = {"first_principle", "pareto", "kondratiev"}
+EXPECTED_PILLARS = {
+    "first_principle",
+    "pareto",
+    "kondratiev",  # backward-compat / historical(per §14.7-BZ Phase F:超前 §0.3 mix pillar)
+    # §14.7-BZ Phase F(2026-05-27)新加 3 sub-pillars(對映 §0.3.1/§0.3.2/§0.3.3)
+    "kondratiev_kwave",         # §0.3.1 K-wave pure(40-60 年)
+    "kondratiev_multicycle",    # §0.3.2 Multi-cycle(7-25 年)
+    "kondratiev_microstructure", # §0.3.3 Microstructure(月 ~ 季)
+}
 EXPECTED_LAYERS = {"data", "feature", "model", "prediction"}
-EXPECTED_CELLS_PER_STOCK = len(EXPECTED_PILLARS) * len(EXPECTED_LAYERS)  # 12
+EXPECTED_CELLS_PER_STOCK = len(EXPECTED_PILLARS) * len(EXPECTED_LAYERS)  # 24 per §14.7-BZ Phase F
+# Note: per-stock 實際只寫 5 pillars × 4 layers = 20 cells(`kondratiev` enum 為 backward-compat
+# 不再新 insert;只在歷史 records 出現),audit 仍接受 6 enum 為合法值
 
 
 def _row_exists(cur, query, params=None):
