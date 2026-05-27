@@ -70,14 +70,26 @@ FP_SOURCES = [
     'TaiwanStockMarginPurchaseShortSale',
 ]
 
-# §0.3 K-wave 5 leading indicators (per §14.7-BR Phase C-4 5-of-5)
+# §0.3 K-wave 11 indicators (per §14.7-BY Phase C-2 升 11-of-11)
+# 既有 5(§14.7-BR Phase C-4)+ 新加 6 P0 K-wave-aligned(§14.7-BY 2026-05-27)
+# 對映 Kondratiev/Schumpeter/Mensch/Perez 學派之 5 大驅動因素 SSOT:
+#   Technological / Credit / Demographics / Energy / Commodity
 KW_INDICATORS = [
+    # 既有 5(retained per §14.7-BY additive pattern)
     ('M2SL', 'fred_series', 'series_id'),
     ('T10Y2Y', 'fred_series', 'series_id'),
     ('VIXCLS', 'fred_series', 'series_id'),
     ('TW_SEMI_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
     ('TW_SHIPPING_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
+    # §14.7-BY 新加 6 P0 K-wave-aligned indicators(2026-05-27)
+    ('PATENTUSALLTOTAL', 'fred_series', 'series_id'),   # Tech: US Patent grants(85% K-wave correspondence)
+    ('B985RC1Q027SBEA', 'fred_series', 'series_id'),    # Tech: IP Products Investment(80%)
+    ('TCMDO', 'fred_series', 'series_id'),              # Credit: US Total Credit Market Debt(75%)
+    ('LFWA64TTUSA647N', 'fred_series', 'series_id'),    # Demographics: Working-age population %(85%)
+    ('SPPOPDPNDOLUSA', 'fred_series', 'series_id'),     # Demographics: Old-age dependency ratio(80%)
+    ('PALLFNFINDEXQ', 'fred_series', 'series_id'),      # Commodity: CRB Global Price Index(75%)
 ]
+KW_INDICATOR_COUNT = len(KW_INDICATORS)  # = 11 per §14.7-BY
 
 
 def check_kwave_market_context(cur):
@@ -272,7 +284,11 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
                 (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
                  expected_items, actual_items, completeness_pct, evidence_source_table)
             VALUES (%s, %s, %s::date, %s, 'first_principle', 'data', 5, 5, 100.00, %s)
-            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO NOTHING
+            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                expected_items=EXCLUDED.expected_items,
+                actual_items=EXCLUDED.actual_items,
+                completeness_pct=EXCLUDED.completeness_pct,
+                evidence_source_table=EXCLUDED.evidence_source_table
         """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, ','.join(FP_SOURCES)))
         # §0.2 pareto data layer: 1/1 (in core/convex tier by definition)
         cur.execute("""
@@ -280,16 +296,24 @@ def write_snapshot_and_membership(conn, cur, scored_results, n_total, n_core, n_
                 (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
                  expected_items, actual_items, completeness_pct, evidence_source_table)
             VALUES (%s, %s, %s::date, %s, 'pareto', 'data', 1, 1, 100.00, 'core_universe_membership')
-            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO NOTHING
+            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                expected_items=EXCLUDED.expected_items,
+                actual_items=EXCLUDED.actual_items,
+                completeness_pct=EXCLUDED.completeness_pct,
+                evidence_source_table=EXCLUDED.evidence_source_table
         """, (completeness_snapshot_id, snapshot_id, as_of, stock_id))
-        # §0.3 kondratiev data layer: 5/5 market-level broadcast
+        # §0.3 kondratiev data layer: 11/11 market-level broadcast(§14.7-BY Phase C-2 升 11)
         cur.execute("""
             INSERT INTO universe_completeness_snapshot
                 (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
                  expected_items, actual_items, completeness_pct, evidence_source_table)
-            VALUES (%s, %s, %s::date, %s, 'kondratiev', 'data', 5, 5, 100.00, 'fred_series,kwave_supply_cycle_proxy')
-            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO NOTHING
-        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id))
+            VALUES (%s, %s, %s::date, %s, 'kondratiev', 'data', %s, %s, 100.00, 'fred_series,kwave_supply_cycle_proxy')
+            ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                expected_items=EXCLUDED.expected_items,
+                actual_items=EXCLUDED.actual_items,
+                completeness_pct=EXCLUDED.completeness_pct,
+                evidence_source_table=EXCLUDED.evidence_source_table
+        """, (completeness_snapshot_id, snapshot_id, as_of, stock_id, KW_INDICATOR_COUNT, KW_INDICATOR_COUNT))
 
     conn.commit()
     return snapshot_id, completeness_snapshot_id
@@ -304,14 +328,16 @@ def build(commit=False, weekly_mode=False):
     print(f"§14.7-BV Phase C — Doctrine-Gate Universe Builder ({TOOL_VER})")
     print("=" * 72)
 
-    # Stage 1: §0.3 K-wave market prerequisite
+    # Stage 1: §0.3 K-wave market prerequisite(§14.7-BY Phase C-2 升 11/11 binary gate)
     kw_present = check_kwave_market_context(cur)
-    print(f"\n[Stage 1] §0.3 K-wave market prerequisite: {len(kw_present)}/5 indicators")
+    print(f"\n[Stage 1] §0.3 K-wave market prerequisite: {len(kw_present)}/{KW_INDICATOR_COUNT} indicators")
     for n in kw_present:
         print(f"    ✅ {n}")
-    if len(kw_present) < 5:
-        print(f"\n❌ Stage 1 FAIL: K-wave market context insufficient ({len(kw_present)}/5)")
-        print("   Run §14.7-BR Phase C-1/C-2/C-4 sync first.")
+    if len(kw_present) < KW_INDICATOR_COUNT:
+        missing = [n for n, _, _ in KW_INDICATORS if n not in kw_present]
+        print(f"\n❌ Stage 1 FAIL: K-wave market context insufficient ({len(kw_present)}/{KW_INDICATOR_COUNT})")
+        print(f"   Missing indicators: {missing}")
+        print(f"   Run §14.7-BR Phase C-1/C-2/C-4 sync + §14.7-BY Phase C-1 sync first.")
         conn.close()
         return False
     print(f"  ✅ Stage 1 PASS")
