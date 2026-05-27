@@ -102,6 +102,8 @@ reports/*
 !reports/v_augmentation_phase_cd_design_research_*.md
 !reports/f_proxy_augmentation_phase_f_design_research_*.md
 !reports/vc_convexity_alignment_design_research_*.md
+!reports/v6_5_0_native_gate_design_research_*.md
+!reports/section_cb_vs_cd_cf_relationship_design_*.md
 !reports/v6_*_p0_completion_*.md
 !reports/v6_*_honest_amendment_*.md
 !reports/v6_*_p0_v02_*.md

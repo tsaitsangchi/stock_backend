@@ -66,6 +66,7 @@ v0.2 六層 CoreScore 評分公式:
 ================================================================================
 """
 import argparse
+import json
 import math
 import sys
 import time
@@ -2220,12 +2221,312 @@ class CoreUniverseBuilder:
         print("🛡️" * 40 + "\n")
 
 
+class DoctrineNativeGateBuilder:
+    """§14.7-CG v6.5.0 Native Gate Builder — 原生實現 charter §14.7-CF 三 invariant。
+
+    Stages(整合舊 3-step pipeline 為單一 program):
+      Stage 1: §0.3 K-wave 13 FRED series 存在性 macro gate(broadcast)
+      Stage 2: §0.1 第一性原理 per-stock 8 raw sources × thresholds
+      Stage 3: §0.2 八二法則 per-stock 3 raw sources × thresholds
+      Stage 4: doctrine-pass union → core_universe(無 tier split / 無 cap / 無 floor)
+      Stage 5: atomic supersede write(policy + snapshot + membership + revision_log)
+
+    對應 charter §14.7-CG inscribed at v6.1.0-patch 第三十一輪;依 §14.7-CF
+    為唯一設計基礎;依 §14.7-CD 11 source thresholds 邏輯等價移植自
+    apply_raw_data_completeness_gate.py v6.4.2。
+    """
+
+    KWAVE_SERIES = [
+        # §0.3.1 K-wave pure(7;§14.7-BY Phase B/E)
+        "PATENTUSALLTOTAL", "B985RC1Q027SBEA", "TCMDO", "QUSPAM770A",
+        "LFWA64TTUSA647N", "SPPOPDPNDOLUSA", "PALLFNFINDEXQ",
+        # §0.3.2 Multi-cycle(5;§14.7-CC FRED-native)
+        "M2SL", "T10Y2Y", "WTISPLC", "IPG3344S", "PCU4831114831115",
+        # §0.3.3 Microstructure(1)
+        "VIXCLS",
+    ]
+
+    P1_THRESHOLDS = {
+        "price_252d": 200,
+        "per_recent": 1,
+        "monthrev_12m": 12,
+        "finstmt_rev_4q": 4,
+        "finstmt_op_4q": 4,
+        "finstmt_iat_4q": 4,
+        "bs_ta_2q": 2,
+        "bs_eq_1q": 1,
+    }
+
+    P2_THRESHOLDS = {
+        "inst_60d": 40,
+        "margin_60d": 40,
+        "info_1": 1,
+    }
+
+    POLICY_VERSION = "core_universe_policy_v0.13_doctrine_native_gate"
+
+    def __init__(self, as_of_date, commit=False):
+        self.as_of_date = as_of_date
+        self.commit_mode = commit
+        self.stage_results = {}
+
+    def _check_kwave_market(self, cur):
+        cur.execute(
+            "SELECT DISTINCT series_id FROM fred_series WHERE series_id = ANY(%s)",
+            (self.KWAVE_SERIES,),
+        )
+        present = sorted([r[0] for r in cur.fetchall()])
+        missing = [s for s in self.KWAVE_SERIES if s not in present]
+        self.stage_results['stage1'] = {
+            'expected': len(self.KWAVE_SERIES),
+            'present_count': len(present),
+            'missing': missing,
+        }
+        return len(missing) == 0
+
+    def _get_candidate_set(self, cur):
+        cur.execute(
+            'SELECT DISTINCT stock_id FROM "TaiwanStockInfo" WHERE industry_category IS NOT NULL'
+        )
+        return sorted([r[0] for r in cur.fetchall()])
+
+    def _run_per_stock_audit(self, cur):
+        today = self.as_of_date
+        d_365 = today - timedelta(days=365)
+        d_18m = today - timedelta(days=18 * 30)
+        d_24m = today - timedelta(days=24 * 30)
+        d_90d = today - timedelta(days=90)
+        d_year = today.replace(month=1, day=1)
+
+        cur.execute(
+            'SELECT stock_id, COUNT(*) FROM "TaiwanStockPriceAdj" WHERE date >= %s GROUP BY stock_id',
+            (d_365,),
+        )
+        price_count = dict(cur.fetchall())
+
+        cur.execute(
+            '''SELECT stock_id, COUNT(*) FROM "TaiwanStockPER"
+               WHERE date >= %s AND "PER" IS NOT NULL AND "PBR" IS NOT NULL AND "dividend_yield" IS NOT NULL
+               GROUP BY stock_id''',
+            (d_year,),
+        )
+        per_count = dict(cur.fetchall())
+
+        cur.execute(
+            'SELECT stock_id, COUNT(*) FROM "TaiwanStockMonthRevenue" WHERE date >= %s GROUP BY stock_id',
+            (d_18m,),
+        )
+        monthrev_count = dict(cur.fetchall())
+
+        cur.execute(
+            '''SELECT stock_id, type, COUNT(DISTINCT date) FROM "TaiwanStockFinancialStatements"
+               WHERE date >= %s AND type IN ('Revenue','OperatingIncome','IncomeAfterTaxes')
+               GROUP BY stock_id, type''',
+            (d_24m,),
+        )
+        finstmt_rev, finstmt_op, finstmt_iat = {}, {}, {}
+        for sid, ttype, n in cur.fetchall():
+            if ttype == 'Revenue':
+                finstmt_rev[sid] = n
+            elif ttype == 'OperatingIncome':
+                finstmt_op[sid] = n
+            elif ttype == 'IncomeAfterTaxes':
+                finstmt_iat[sid] = n
+
+        cur.execute(
+            '''SELECT stock_id, type, COUNT(DISTINCT date) FROM "TaiwanStockBalanceSheet"
+               WHERE date >= %s AND type IN ('TotalAssets','EquityAttributableToOwnersOfParent')
+               GROUP BY stock_id, type''',
+            (d_24m,),
+        )
+        bs_ta, bs_eq = {}, {}
+        for sid, ttype, n in cur.fetchall():
+            if ttype == 'TotalAssets':
+                bs_ta[sid] = n
+            elif ttype == 'EquityAttributableToOwnersOfParent':
+                bs_eq[sid] = n
+
+        cur.execute(
+            'SELECT stock_id, COUNT(DISTINCT date) FROM "TaiwanStockInstitutionalInvestorsBuySell" WHERE date >= %s GROUP BY stock_id',
+            (d_90d,),
+        )
+        inst_count = dict(cur.fetchall())
+
+        cur.execute(
+            'SELECT stock_id, COUNT(DISTINCT date) FROM "TaiwanStockMarginPurchaseShortSale" WHERE date >= %s GROUP BY stock_id',
+            (d_90d,),
+        )
+        margin_count = dict(cur.fetchall())
+
+        cur.execute(
+            'SELECT stock_id, COUNT(*) FROM "TaiwanStockInfo" WHERE industry_category IS NOT NULL GROUP BY stock_id'
+        )
+        info_count = dict(cur.fetchall())
+
+        return {
+            "price_252d": price_count,
+            "per_recent": per_count,
+            "monthrev_12m": monthrev_count,
+            "finstmt_rev_4q": finstmt_rev,
+            "finstmt_op_4q": finstmt_op,
+            "finstmt_iat_4q": finstmt_iat,
+            "bs_ta_2q": bs_ta,
+            "bs_eq_1q": bs_eq,
+            "inst_60d": inst_count,
+            "margin_60d": margin_count,
+            "info_1": info_count,
+        }
+
+    def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist):
+        today_str = self.as_of_date.strftime("%Y%m%d")
+        new_snap = f"core_universe_{today_str}_{self.POLICY_VERSION.replace('.', '_')}"
+
+        cur.execute(
+            """SELECT snapshot_id FROM core_universe_snapshot
+               WHERE status='committed' ORDER BY as_of_date DESC LIMIT 1"""
+        )
+        row = cur.fetchone()
+        old_snap = row[0] if row else None
+
+        print(f"\n📝 §14.7-CG Stage 5: Atomic Supersede Commit")
+        print(f"   Old snapshot: {old_snap}")
+        print(f"   New snapshot: {new_snap}")
+
+        cur.execute(
+            """INSERT INTO core_universe_policy (policy_version, policy_name, description, active, effective_from)
+               VALUES (%s, %s, %s, TRUE, CURRENT_DATE)
+               ON CONFLICT (policy_version) DO NOTHING""",
+            (self.POLICY_VERSION,
+             "§14.7-CG Doctrine Native Gate v0.13",
+             "§14.7-CF 三 invariant 原生實現(Stage 1 K-wave + Stage 2/3 11 raw sources + Stage 4 union)"),
+        )
+
+        cur.execute(
+            """INSERT INTO core_universe_snapshot
+                (snapshot_id, as_of_date, source_data_cutoff, policy_version,
+                 total_candidates, core_count, status, notes, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, 'committed', %s, NOW())""",
+            (new_snap, self.as_of_date, self.as_of_date, self.POLICY_VERSION,
+             n_candidates, len(qualified),
+             f"§14.7-CG Doctrine Native Gate v0.13; superseded {old_snap}"),
+        )
+
+        cur.executemany(
+            """INSERT INTO core_universe_membership
+                (snapshot_id, stock_id, core_tier, active, selected_at, selection_reason)
+               VALUES (%s, %s, 'core_universe', TRUE, NOW(), %s)""",
+            [(new_snap, sid, "§14.7-CG doctrine native gate verified") for sid in qualified],
+        )
+
+        if old_snap:
+            cur.execute(
+                "UPDATE core_universe_snapshot SET status='superseded' WHERE snapshot_id=%s",
+                (old_snap,),
+            )
+
+        detail = json.dumps({
+            "step": "§14.7-CG",
+            "n_candidates": n_candidates,
+            "n_qualified": len(qualified),
+            "n_rejected": n_candidates - len(qualified),
+            "reason_hist": reason_hist,
+            "stage1_kwave": self.stage_results['stage1'],
+        })
+        cur.execute(
+            """INSERT INTO universe_revision_log
+                (revision_time, actor, action_type, object_type, object_id,
+                 policy_version, snapshot_id, detail, note)
+               VALUES (NOW(), 'core_universe_builder_doctrine_native',
+                       'doctrine_native_gate', 'snapshot',
+                       %s, %s, %s, %s::jsonb,
+                       '§14.7-CG v0.13: native gate 3 step → 1 program 整合')""",
+            (new_snap, self.POLICY_VERSION, new_snap, detail),
+        )
+
+        conn.commit()
+        print(f"   ✅ COMMIT done")
+        print(f"   Snapshot: {new_snap} (N={len(qualified)})")
+        return True
+
+    def build(self):
+        mode_label = "COMMIT" if self.commit_mode else "DRY-RUN"
+        print("\n" + "🛡️" * 40)
+        print(f"§14.7-CG Doctrine Native Gate Builder v0.13 / mode={mode_label}")
+        print(f"As-of-date: {self.as_of_date}")
+        print(f"Policy:     {self.POLICY_VERSION}")
+        print("🛡️" * 40)
+
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+
+            print(f"\n[Stage 1] §0.3 K-wave macro prerequisite "
+                  f"({len(self.KWAVE_SERIES)} FRED series 存在性 binary gate)")
+            if not self._check_kwave_market(cur):
+                miss = self.stage_results['stage1']['missing']
+                print(f"  ❌ Stage 1 FAIL: missing {len(miss)}/{len(self.KWAVE_SERIES)}: {miss}")
+                return False
+            print(f"  ✅ Stage 1 PASS: "
+                  f"{self.stage_results['stage1']['present_count']}/{len(self.KWAVE_SERIES)} present")
+
+            candidates = self._get_candidate_set(cur)
+            print(f"\n[Stage 2+3] per-stock §0.1 + §0.2 raw source × thresholds "
+                  f"(N_candidates={len(candidates)})")
+            counts = self._run_per_stock_audit(cur)
+
+            qualified = []
+            rejected = {}
+            all_thresholds = {**self.P1_THRESHOLDS, **self.P2_THRESHOLDS}
+            for sid in candidates:
+                reasons = []
+                for source, threshold in all_thresholds.items():
+                    n = counts[source].get(sid, 0)
+                    if n < threshold:
+                        reasons.append(f"{source}={n}<{threshold}")
+                if reasons:
+                    rejected[sid] = reasons
+                else:
+                    qualified.append(sid)
+
+            reason_hist = {}
+            for sid, reasons in rejected.items():
+                for r in reasons:
+                    src = r.split('=')[0]
+                    reason_hist[src] = reason_hist.get(src, 0) + 1
+
+            print(f"\n📊 [Stage 4] Doctrine-Pass Universe")
+            print(f"  Candidates : {len(candidates):4d}")
+            print(f"  ✅ QUALIFIED: {len(qualified):4d} "
+                  f"({100.0 * len(qualified) / len(candidates):.1f}%)")
+            print(f"  ❌ REJECTED : {len(rejected):4d}")
+            if reason_hist:
+                print(f"\n  Top rejection reasons (per-source histogram):")
+                for src, n in sorted(reason_hist.items(), key=lambda x: -x[1]):
+                    print(f"    {src:20s}: {n:3d} stocks fail")
+
+            if not self.commit_mode:
+                print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)}")
+                return True
+
+            return self._commit_snapshot(cur, conn, qualified, len(candidates), reason_hist)
+        finally:
+            conn.close()
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Quantum Finance 核心股選拔引擎 (v0.2 六層 CoreScore)")
+    parser = argparse.ArgumentParser(description="Quantum Finance 核心股選拔引擎(v0.7.1 CoreScore / v0.13 §14.7-CG Doctrine Native Gate)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="只計算與輸出摘要，不寫入治理表")
     mode.add_argument("--commit", action="store_true", help="寫入 policy/snapshot/membership/scores/revision log")
     parser.add_argument("--as-of-date", type=str, help="Universe snapshot 基準日期，預設為今天")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["legacy-corescore", "doctrine-native"],
+        default="legacy-corescore",
+        help="挑選 mode:legacy-corescore (v0.7.1 CoreScore / INFO display per §14.7-BW) "
+             "| doctrine-native (v0.13 §14.7-CG 原生實現 §14.7-CF 三 invariant;預計 v6.6.0 起預設)",
+    )
     parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本(v0.7/v0.8 模式 DEPRECATED per §14.7-BW pure doctrine;新路徑為 build_doctrine_gate_universe.py)")
     # §14.7-BW pure doctrine + 2026-05-27 directive:legacy / dynamic mode 之 N flags 全 DEPRECATED
     parser.add_argument("--core-limit", type=int, default=None, help="DEPRECATED per §14.7-BW (was legacy core 上限 120)")
@@ -2246,6 +2547,14 @@ def parse_args():
 def main():
     args = parse_args()
     as_of_date = datetime.strptime(args.as_of_date, "%Y-%m-%d").date() if args.as_of_date else date.today()
+
+    if args.mode == "doctrine-native":
+        # §14.7-CG v0.13 native gate path
+        builder = DoctrineNativeGateBuilder(as_of_date=as_of_date, commit=args.commit)
+        ok = builder.build()
+        sys.exit(0 if ok else 1)
+
+    # Legacy CoreScore path(per §14.7-BW INFO display only;v0.7.1)
     builder = CoreUniverseBuilder(
         as_of_date=as_of_date,
         policy_version=args.policy_version,
