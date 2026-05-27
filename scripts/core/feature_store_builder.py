@@ -142,6 +142,8 @@ FEATURE_DEFINITIONS = [
     {"name": "operating_margin_ttm", "group": "quality", "source": "TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "drop", "desc": "TTM OperatingIncome / TTM Revenue(non-cumulative aware);QMJ profitability;TW IC +0.05 OOS;§0.1.D"},
     # ── investment 群 v0.3 §14.7-CA Phase C-1c-2 新增(2026-05-27)
     {"name": "revenue_yoy_3m_log", "group": "investment", "source": "TaiwanStockMonthRevenue", "window": "15m", "vtype": "numeric", "null": "drop", "desc": "log(1+revenue_yoy_3m);recent 3m revenue YoY growth log-transformed;TW IC +0.04 OOS;§0.1.D"},
+    # ── investment 群 §14.7-CA Phase F-1 新增(2026-05-27;§0.1 100% closure)
+    {"name": "asset_growth_yoy", "group": "investment", "source": "TaiwanStockBalanceSheet", "window": "24m", "vtype": "numeric", "null": "drop", "desc": "TotalAssets YoY growth;Cooper-Gulen-Schill 2008 asset growth anomaly;TW IC -0.05 OOS;§0.1.D Investment"},
     # ── §0.3.1 K-wave pure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;6 features broadcast)
     {"name": "kwave_tech_paradigm_strength", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "(PATENTUSALLTOTAL_yoy + B985RC1Q027SBEA_yoy)/2;Schumpeter/Perez tech paradigm intensity;§0.3.1"},
     {"name": "kwave_credit_cycle_phase", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "TCMDO log_yoy;US credit cycle phase indicator;Reinhart-Rogoff 2009;§0.3.1"},
@@ -521,6 +523,54 @@ class FeatureStoreBuilder:
             else:
                 op_margin = None
             out[sid] = {"operating_margin_ttm": op_margin}
+        return out
+
+    def _load_balance_sheet(self, cur):
+        """§14.7-CA Phase F-1(2026-05-27)— 取每股 TotalAssets latest + 1-year prior 計算 asset_growth_yoy。
+
+        TaiwanStockBalanceSheet 為 long-format(date / stock_id / type=TotalAssets / value)。
+        雖為 cumulative balance(每期報表)但 TotalAssets 為 stock-of-value(不需轉非累積)。
+        對映 v0.3 doctrine-aligned Investment feature(asset_growth_yoy;Cooper-Gulen-Schill 2008)。
+        Hardcoded-conservative publication-date(quarter-aware:Q1-Q3 +45 / Q4 +90 天)。
+        Graceful-degraded:若 TaiwanStockBalanceSheet table 不存在(stranded state),返回空 dict。
+        """
+        # 先檢查 table 存在(per §14.7-BI graceful-degraded)
+        cur.execute("SELECT to_regclass('public.\"TaiwanStockBalanceSheet\"')")
+        if cur.fetchone()[0] is None:
+            return {}
+
+        start = self.as_of_date - timedelta(days=800)  # 涵蓋 24 個月
+        gate, n_ap = build_publication_date_gate("TaiwanStockBalanceSheet")
+        cur.execute(
+            f"""
+            SELECT stock_id, date, value::numeric
+            FROM "TaiwanStockBalanceSheet"
+            WHERE stock_id = ANY(%s) AND date >= %s AND type = 'TotalAssets' AND {gate}
+            ORDER BY stock_id, date
+            """,
+            (self.core_stocks, start, *([self.as_of_date] * n_ap)),
+        )
+        per_stock = {}
+        for sid, d, v in cur.fetchall():
+            per_stock.setdefault(sid, []).append((d, float(v) if v is not None else None))
+
+        out = {}
+        for sid, series in per_stock.items():
+            if len(series) < 2:
+                out[sid] = {"asset_growth_yoy": None}
+                continue
+            series.sort()  # asc by date
+            latest_d, latest_v = series[-1]
+            target_d = latest_d - timedelta(days=365)
+            prior_v = None
+            for d, v in reversed(series[:-1]):
+                if d <= target_d:
+                    prior_v = v
+                    break
+            if prior_v is None or prior_v <= 0 or latest_v is None or latest_v <= 0:
+                out[sid] = {"asset_growth_yoy": None}
+            else:
+                out[sid] = {"asset_growth_yoy": (latest_v - prior_v) / prior_v}
         return out
 
     def _load_theme(self, cur):
@@ -1153,6 +1203,9 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase C-1c-2(2026-05-27)— §0.1 Quality features 之 raw load
             self._detail("📥 [LOAD] quality (Quality group v0.3) ...")
             quality_data = self._load_quality(cur)
+            # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy raw load
+            self._detail("📥 [LOAD] balance_sheet (Investment group §0.1 100% closure) ...")
+            balance_data = self._load_balance_sheet(cur)
             # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast
             self._detail("📥 [LOAD] macro extended (§0.3.1/.2/.3 K-wave/Multi-cycle/Microstructure 14 features) ...")
             macro_extended = self._load_macro_extended(cur)
@@ -1205,6 +1258,9 @@ class FeatureStoreBuilder:
                 stock_features["revenue_yoy_3m_log"] = math.log(1.0 + rev_yoy_3m)
             else:
                 stock_features["revenue_yoy_3m_log"] = None
+            # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy(§0.1 100% closure)
+            balance_for_sid = balance_data.get(sid, {})
+            stock_features["asset_growth_yoy"] = balance_for_sid.get("asset_growth_yoy")
             # v0.2 §0.0-D.6 交互特徵：v0.3 起不繼承（§9.9-E policy.7 + §14.7-AD）
             # v0.2 ablation 實證 IC = +0.0131 (HARMFUL)，僅 v0.2 feature_set 寫入
             if self.feature_set_version == "feature_set_v0.2":
