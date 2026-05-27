@@ -87,6 +87,9 @@ DEFAULT_FRED_SERIES = [
     "LFWA64TTUSA647N",   # Demographics: US working-age population %(annual / 85%)
     "SPPOPDPNDOLUSA",    # Demographics: US old-age dependency ratio(annual / 80%)
     "PALLFNFINDEXQ",     # Commodity: CRB Global Price Index of All Commodities(quarterly / 75%)
+    # §14.7-BY Phase E(2026-05-27):2 P1 K-wave-aligned indicators(補強 Credit + Energy class)
+    "QUSPAM770A",        # Credit: BIS Total Credit to Private Non-Financial Sector(% of GDP / Q / 1947-2025 / 80%;真正 BIS Credit-to-GDP gap proxy)
+    "WTISPLC",           # Energy: WTI Spot Crude Oil Price(M / 1946-2026 / 80 年深度 / 70%;補齊 §0.3 5 大驅動因素之 Energy class)
 ]
 
 DDL_FRED = """CREATE TABLE IF NOT EXISTS fred_series (series_id VARCHAR(50), date DATE, value NUMERIC(20,6), PRIMARY KEY (series_id, date));"""

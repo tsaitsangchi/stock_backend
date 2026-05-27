@@ -81,15 +81,18 @@ KW_INDICATORS = [
     ('VIXCLS', 'fred_series', 'series_id'),
     ('TW_SEMI_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
     ('TW_SHIPPING_VWAP_YOY', 'kwave_supply_cycle_proxy', 'proxy_id'),
-    # §14.7-BY 新加 6 P0 K-wave-aligned indicators(2026-05-27)
+    # §14.7-BY Phase C-1(2026-05-27)新加 6 P0 K-wave-aligned indicators
     ('PATENTUSALLTOTAL', 'fred_series', 'series_id'),   # Tech: US Patent grants(85% K-wave correspondence)
     ('B985RC1Q027SBEA', 'fred_series', 'series_id'),    # Tech: IP Products Investment(80%)
     ('TCMDO', 'fred_series', 'series_id'),              # Credit: US Total Credit Market Debt(75%)
     ('LFWA64TTUSA647N', 'fred_series', 'series_id'),    # Demographics: Working-age population %(85%)
     ('SPPOPDPNDOLUSA', 'fred_series', 'series_id'),     # Demographics: Old-age dependency ratio(80%)
     ('PALLFNFINDEXQ', 'fred_series', 'series_id'),      # Commodity: CRB Global Price Index(75%)
+    # §14.7-BY Phase E(2026-05-27)新加 2 P1 K-wave-aligned indicators(補強 Credit + Energy class)
+    ('QUSPAM770A', 'fred_series', 'series_id'),         # Credit: BIS Total Credit to Private Non-Financial(% of GDP / Q / 80%)
+    ('WTISPLC', 'fred_series', 'series_id'),            # Energy: WTI Spot Crude Oil Price(M / 1946-2026 / 70%)
 ]
-KW_INDICATOR_COUNT = len(KW_INDICATORS)  # = 11 per §14.7-BY
+KW_INDICATOR_COUNT = len(KW_INDICATORS)  # = 13 per §14.7-BY Phase E
 
 
 def check_kwave_market_context(cur):
