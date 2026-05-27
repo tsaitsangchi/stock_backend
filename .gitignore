@@ -57,6 +57,9 @@ reports/*
 # Phase A 設計研究(per §14.7-Bxx Phase A 入憲流程之 audit trail)
 !reports/*_phase_a_research_*.md
 !reports/*_purity_phase_a_research_*.md
+!reports/macro_pillar_split_phase_a_research_*.md
+# Milestone reports(per Phase G milestone closure)
+!reports/milestone_v*.md
 !reports/逐項修改報告.md
 # 重大實證報告（憲章 §14 / §8.8.x 引用之 audit trail）
 !reports/rebuild_execution_log_*.md
