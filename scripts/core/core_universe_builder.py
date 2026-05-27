@@ -2263,11 +2263,32 @@ class DoctrineNativeGateBuilder:
         "info_1": 1,
     }
 
+    # §14.7-CB Stage 4 feature completeness gate(optional;per Reading B convergence verification)
+    # 37 spec features list inherited from apply_feature_completeness_gate.py
+    SPEC_37_FEATURES = [
+        "log_return_20d", "log_return_60d", "log_return_252d",
+        "upside_volatility_60d", "downside_volatility_60d", "convexity_60d",
+        "avg_daily_value_log_60d", "amihud_illiquidity_60d", "zero_volume_ratio_252d",
+        "pe_ratio", "pb_ratio", "dividend_yield",
+        "roe_ttm", "operating_margin_ttm",
+        "revenue_yoy_3m_log", "asset_growth_yoy",
+        "right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
+        "fitness_signal_60d", "right_tail_returns_skew_252d", "liquidity_rank_pct_sector_60d",
+        "size_log_zscore_sector",
+        "kwave_tech_paradigm_strength", "kwave_credit_cycle_phase", "kwave_credit_to_gdp_gap",
+        "kwave_demographics_trend", "kwave_commodity_supercycle", "kwave_phase_indicator",
+        "mc_monetary_regime", "mc_yield_curve_inversion", "mc_oil_juglar_phase",
+        "mc_semi_kitchin", "mc_shipping_juglar",
+        "ms_volatility_regime", "ms_vix_term_structure", "ms_market_stress",
+    ]
+
     POLICY_VERSION = "core_universe_policy_v0.13_doctrine_native_gate"
 
-    def __init__(self, as_of_date, commit=False):
+    def __init__(self, as_of_date, commit=False, with_feature_gate=False, feature_set_id=None):
         self.as_of_date = as_of_date
         self.commit_mode = commit
+        self.with_feature_gate = with_feature_gate
+        self.feature_set_id = feature_set_id
         self.stage_results = {}
 
     def _check_kwave_market(self, cur):
@@ -2375,6 +2396,48 @@ class DoctrineNativeGateBuilder:
             "inst_60d": inst_count,
             "margin_60d": margin_count,
             "info_1": info_count,
+        }
+
+    def _apply_feature_gate(self, cur, qualified):
+        """§14.7-CB Stage 4 feature completeness gate(optional;per Reading B convergence verification).
+
+        Filter `qualified` to stocks 同時 pass 37/37 features in feature_values (per feature_set_id).
+        Returns (filtered_qualified, feature_rejected_reasons).
+        """
+        if not self.feature_set_id:
+            cur.execute(
+                """SELECT feature_set_id FROM feature_store_snapshot
+                   WHERE status='committed' ORDER BY as_of_date DESC LIMIT 1"""
+            )
+            row = cur.fetchone()
+            if not row:
+                return qualified, {"_meta": "no committed feature_store_snapshot — skip feature gate"}
+            self.feature_set_id = row[0]
+
+        ids_tuple = tuple(qualified) if qualified else ('',)
+        cur.execute(
+            """SELECT stock_id, COUNT(DISTINCT feature_name) AS n
+               FROM feature_values
+               WHERE feature_set_id = %s AND feature_name = ANY(%s) AND stock_id = ANY(%s)
+               GROUP BY stock_id""",
+            (self.feature_set_id, self.SPEC_37_FEATURES, list(qualified)),
+        )
+        feature_count = dict(cur.fetchall())
+
+        filtered = []
+        rejected_reasons = {}
+        for sid in qualified:
+            n = feature_count.get(sid, 0)
+            if n >= 37:
+                filtered.append(sid)
+            else:
+                rejected_reasons[sid] = f"feature_count={n}<37"
+        return filtered, {
+            "feature_set_id": self.feature_set_id,
+            "n_input": len(qualified),
+            "n_output": len(filtered),
+            "n_rejected": len(qualified) - len(filtered),
+            "sample_rejected": list(rejected_reasons.items())[:5],
         }
 
     def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist):
@@ -2504,6 +2567,29 @@ class DoctrineNativeGateBuilder:
                 for src, n in sorted(reason_hist.items(), key=lambda x: -x[1]):
                     print(f"    {src:20s}: {n:3d} stocks fail")
 
+            # Stage 4 (optional): feature completeness gate per §14.7-CB
+            # — Reading B convergence verification mode
+            if self.with_feature_gate:
+                print(f"\n[Stage 4-feature] §14.7-CB Feature Completeness Gate (37/37 spec features)")
+                pre_n = len(qualified)
+                qualified, feature_audit = self._apply_feature_gate(cur, qualified)
+                self.stage_results['stage4_feature'] = feature_audit
+                if 'feature_set_id' in feature_audit:
+                    print(f"  feature_set_id: {feature_audit['feature_set_id']}")
+                    print(f"  Input  : {feature_audit['n_input']}")
+                    print(f"  Output : {feature_audit['n_output']}")
+                    print(f"  Reject : {feature_audit['n_rejected']}")
+                    if feature_audit['sample_rejected']:
+                        print(f"  Sample rejected: {feature_audit['sample_rejected'][:3]}")
+                else:
+                    print(f"  (skip) {feature_audit.get('_meta', '')}")
+                if pre_n != len(qualified):
+                    print(f"\n📊 [Stage 4 result] Post-feature-gate universe N={len(qualified)} "
+                          f"(removed {pre_n - len(qualified)} stocks lacking 37/37 features)")
+                else:
+                    print(f"\n📊 [Stage 4 result] Reading A+C ↔ Reading B 收斂 ✅ "
+                          f"(all {len(qualified)} stocks 37/37 features present)")
+
             if not self.commit_mode:
                 print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)}")
                 return True
@@ -2526,6 +2612,18 @@ def parse_args():
         default="legacy-corescore",
         help="挑選 mode:legacy-corescore (v0.7.1 CoreScore / INFO display per §14.7-BW) "
              "| doctrine-native (v0.13 §14.7-CG 原生實現 §14.7-CF 三 invariant;預計 v6.6.0 起預設)",
+    )
+    parser.add_argument(
+        "--with-feature-gate",
+        action="store_true",
+        help="(§14.7-CG Stage 4 optional)apply §14.7-CB feature completeness gate(37/37 features)"
+             "after raw layer pass;用於 Reading B convergence verification(default OFF = Reading A+C pure)",
+    )
+    parser.add_argument(
+        "--feature-set-id",
+        type=str,
+        default=None,
+        help="(§14.7-CG Stage 4 optional)feature_set_id to use for feature gate;default = latest committed",
     )
     parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本(v0.7/v0.8 模式 DEPRECATED per §14.7-BW pure doctrine;新路徑為 build_doctrine_gate_universe.py)")
     # §14.7-BW pure doctrine + 2026-05-27 directive:legacy / dynamic mode 之 N flags 全 DEPRECATED
@@ -2550,7 +2648,12 @@ def main():
 
     if args.mode == "doctrine-native":
         # §14.7-CG v0.13 native gate path
-        builder = DoctrineNativeGateBuilder(as_of_date=as_of_date, commit=args.commit)
+        builder = DoctrineNativeGateBuilder(
+            as_of_date=as_of_date,
+            commit=args.commit,
+            with_feature_gate=args.with_feature_gate,
+            feature_set_id=args.feature_set_id,
+        )
         ok = builder.build()
         sys.exit(0 if ok else 1)
 

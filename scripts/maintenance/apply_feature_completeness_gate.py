@@ -2,8 +2,15 @@
 apply_feature_completeness_gate.py — §14.7-CB Feature Completeness Gate(Steps 2+3)
 ================================================================================
 最後更新日期: 2026-05-27
-主權狀態: IMPLEMENTED (§14.7-CB / Feature Completeness Gate / Core Universe doctrinal enforcement)
+主權狀態: DEPRECATED (§14.7-CG v6.5.0 native gate 整合;邏輯已併入 scripts/core/core_universe_builder.py `DoctrineNativeGateBuilder` Stage 4 optional;本 script 保留為歷史 audit trail)
 最高原則: Core Universe Doctrinal Feature Completeness Gate
+
+## ⚠️ §14.7-CG 取代備註 (2026-05-27)
+
+- **新 SSOT**: `scripts/core/core_universe_builder.py --mode doctrine-native --with-feature-gate`(§14.7-CG Stage 4 optional feature gate;integrated with §14.7-CD raw gate)
+- **本 script 狀態**: 邏輯保留但 calling site 已移除(run_weekly_doctrine_recommit.py Step 4 切換至 native builder)
+- **歷史用途**: v0.11 N=1,640 snapshot 為本 script 之 historical evidence
+- **下架時點**: 預計 v6.5.x 後完全移除(per §14.7-CG Phase E migration)
 
 ## 一、核心定義說明
 - [Feature Completeness Gate]: 依用戶治權原則「特徵值不全到位之股票不應列入核心股」,

@@ -119,6 +119,11 @@ POLICY_SCORE_SCOPE_MAP = {
     "core_universe_policy_v0.6": "v0.7.1_VC_convexity_aligned_rms",
     "core_universe_policy_v0.7": "v0.8_roe_unlocked_via_balance_sheet",
     "core_universe_policy_v0.8_dynamic": "v0.10_dynamic_universe_via_top_pct_composite_corescore",  # §14.7-BT Phase C+D
+    "core_universe_policy_v0.10_pure_doctrine": "v0.10_pure_doctrine_no_hardcode",  # §14.7-BW
+    "core_universe_policy_v0.10_pure_doctrine_weekly": "v0.10_pure_doctrine_weekly",  # §14.7-BX
+    "core_universe_policy_v0.11_feature_completeness_gate": "v0.11_feature_completeness_gate",  # §14.7-CB
+    "core_universe_policy_v0.12_raw_data_completeness_gate": "v0.12_raw_data_completeness_gate",  # §14.7-CD
+    "core_universe_policy_v0.13_doctrine_native_gate": "v0.13_doctrine_native_gate_§CG",  # §14.7-CG native integration
 }
 
 # v0.2: per policy_version → score_detail 期望鍵集合（驗收 builder 對應版本之 sub-score 透明寫入）。
@@ -187,6 +192,15 @@ EXPECTED_SCORE_DETAIL_KEYS = {
         "vc_convexity_60d", "vc_upside_rms_60d", "vc_downside_rms_60d", "vc_cc_sigma_60d",
         "fg_equity", "fg_ni_4q_sum",
     },
+    # §14.7-BW v0.10 pure doctrine(廢棄 CoreScore;只 doctrine gate;無 score_detail keys 強制需求)
+    "core_universe_policy_v0.10_pure_doctrine": set(),
+    "core_universe_policy_v0.10_pure_doctrine_weekly": set(),
+    # §14.7-CB v0.11 feature completeness gate(post-process layer;不寫 scores)
+    "core_universe_policy_v0.11_feature_completeness_gate": set(),
+    # §14.7-CD v0.12 raw data completeness gate(post-process layer;不寫 scores)
+    "core_universe_policy_v0.12_raw_data_completeness_gate": set(),
+    # §14.7-CG v0.13 native gate integration(integrated builder;§14.7-CF Invariant 1 pure;不寫 scores per §14.7-BW)
+    "core_universe_policy_v0.13_doctrine_native_gate": set(),
 }
 
 

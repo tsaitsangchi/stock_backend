@@ -2,8 +2,15 @@
 apply_raw_data_completeness_gate.py — §14.7-CD Raw Data Completeness Gate
 ================================================================================
 最後更新日期: 2026-05-27
-主權狀態: IMPLEMENTED (§14.7-CD Raw Data Completeness Doctrine)
+主權狀態: DEPRECATED (§14.7-CG v6.5.0 native gate 整合;邏輯已併入 scripts/core/core_universe_builder.py `DoctrineNativeGateBuilder` Stage 2+3;本 script 保留為歷史 audit trail)
 最高原則: 「全資料來源須從 FinMind / FRED API 直接抓取且每股 source 完整到位」
+
+## ⚠️ §14.7-CG 取代備註 (2026-05-27)
+
+- **新 SSOT**: `scripts/core/core_universe_builder.py --mode doctrine-native --commit`(§14.7-CG native integration;包含 §14.7-CD raw gate + §14.7-CC source authority + §0.3 K-wave macro)
+- **本 script 狀態**: 邏輯 100% 移植到 `DoctrineNativeGateBuilder.P1_THRESHOLDS + P2_THRESHOLDS`;calling site 已移除
+- **歷史用途**: v0.12 N=1,543 snapshot 為本 script 之 historical evidence(已 superseded by v0.13)
+- **下架時點**: 預計 v6.5.x 後完全移除(per §14.7-CG Phase E migration)
 
 ## 一、核心定義說明
 - [Raw Data Completeness Gate]: 個股 raw API 資料任何 source 缺漏 → 排除核心股

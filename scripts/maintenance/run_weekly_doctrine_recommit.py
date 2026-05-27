@@ -199,21 +199,18 @@ def main():
     else:
         print("\n──── [Step 1: FRED sync] SKIPPED(--skip-fred-sync)────")
 
-    # ---- Step 2: TW_SEMI proxy ----
-    run_step("Step 2: TW_SEMI_VWAP_YOY proxy",
-             [sys.executable, "scripts/maintenance/compute_semi_supply_cycle_proxy.py", "--commit"],
-             args.dry_run)
+    # ---- Step 2/3 DEPRECATED per §14.7-CC FRED-native(IPG3344S + PCU4831114831115 取代 system-computed proxies)
+    # 保留為註解 audit trail;v0.13 native gate 不需此 step
+    # run_step("Step 2: TW_SEMI_VWAP_YOY proxy", ...)
+    # run_step("Step 3: TW_SHIPPING_VWAP_YOY proxy", ...)
 
-    # ---- Step 3: TW_SHIPPING proxy ----
-    run_step("Step 3: TW_SHIPPING_VWAP_YOY proxy",
-             [sys.executable, "scripts/maintenance/compute_semi_supply_cycle_proxy.py",
-              "--commit", "--industry-filter", "航運業", "--proxy-id", "TW_SHIPPING_VWAP_YOY"],
-             args.dry_run)
-
-    # ---- Step 4: Builder weekly-mode commit ----
-    run_step("Step 4: build_doctrine_gate_universe.py --commit --weekly-mode",
-             [sys.executable, "scripts/maintenance/build_doctrine_gate_universe.py",
-              "--commit", "--weekly-mode"],
+    # ---- Step 4: Native gate v0.13(§14.7-CG;整合 3 step 為 1 program)----
+    # OLD:scripts/maintenance/build_doctrine_gate_universe.py(SUPERSEDED-IN-TRANSITION;標 DEPRECATED)
+    # OLD:scripts/maintenance/apply_feature_completeness_gate.py + apply_raw_data_completeness_gate.py
+    # NEW:scripts/core/core_universe_builder.py --mode doctrine-native --commit
+    run_step("Step 4: §14.7-CG native gate builder v0.13 (3 step → 1 program)",
+             [sys.executable, "scripts/core/core_universe_builder.py",
+              "--mode", "doctrine-native", "--commit"],
              args.dry_run)
 
     # ---- Step 5: Audit ----
