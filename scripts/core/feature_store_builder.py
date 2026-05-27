@@ -155,8 +155,8 @@ FEATURE_DEFINITIONS = [
     {"name": "mc_monetary_regime", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "M2SL log_yoy;Friedman monetary stance;§0.3.2"},
     {"name": "mc_yield_curve_inversion", "group": "multi_cycle", "source": "fred_series", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "T10Y2Y latest;<0 = Juglar leading inversion;Estrella-Hardouvelis 1991 IC ~-0.04 OOS;§0.3.2"},
     {"name": "mc_oil_juglar_phase", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "WTISPLC log_yoy;Stopford 2009 Juglar oil phase;§0.3.2"},
-    {"name": "mc_semi_kitchin", "group": "multi_cycle", "source": "kwave_supply_cycle_proxy", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "TW_SEMI_VWAP_YOY latest(industry Kitchin 4-y cycle);Aizcorbe-Kortum 2005;§0.3.2"},
-    {"name": "mc_shipping_juglar", "group": "multi_cycle", "source": "kwave_supply_cycle_proxy", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "TW_SHIPPING_VWAP_YOY latest(Juglar 7-11y cycle);Stopford 2009;§0.3.2"},
+    {"name": "mc_semi_kitchin", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "IPG3344S log_yoy(US Semi Industrial Production;Kitchin 4-y cycle);§14.7-CC FRED-native;§0.3.2"},
+    {"name": "mc_shipping_juglar", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "PCU4831114831115 log_yoy(US Deep Sea Freight PPI;Juglar 7-11y cycle);Stopford 2009;§14.7-CC FRED-native;§0.3.2"},
     # ── §0.3.3 Microstructure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;3 features broadcast)
     {"name": "ms_volatility_regime", "group": "microstructure", "source": "fred_series", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "VIXCLS rolling 60d mean;Whaley 1993 IC ~-0.025;§0.3.3"},
     {"name": "ms_vix_term_structure", "group": "microstructure", "source": "fred_series", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "(VIXCLS/252d_mean)-1;VIX premium;§0.3.3"},
@@ -664,11 +664,15 @@ class FeatureStoreBuilder:
         """
         as_of = self.as_of_date
 
-        # 載入 fred_series 全部所需 indicators 之 history
+        # §14.7-CC Source Authority Doctrine(2026-05-27):
+        # 全 macro indicators 須從 FRED API 直接抓取(per 用戶治權「不可系統自行產生」原則)
+        # IPG3344S 取代 system-computed TW_SEMI_VWAP_YOY;PCU4831114831115 取代 TW_SHIPPING_VWAP_YOY
         series_needed = [
             "PATENTUSALLTOTAL", "B985RC1Q027SBEA", "TCMDO", "QUSPAM770A",
             "LFWA64TTUSA647N", "SPPOPDPNDOLUSA", "PALLFNFINDEXQ",
             "M2SL", "T10Y2Y", "WTISPLC", "VIXCLS",
+            "IPG3344S",          # Semi Kitchin(US Industrial Production:Semiconductor)
+            "PCU4831114831115",  # Shipping Juglar(US Deep Sea Freight Transportation PPI)
         ]
         cur.execute(
             """
@@ -682,20 +686,6 @@ class FeatureStoreBuilder:
         history = {}
         for sid, d, v in cur.fetchall():
             history.setdefault(sid, []).append((d, float(v)))
-
-        # 載入 kwave_supply_cycle_proxy 之 TW_SEMI / TW_SHIPPING
-        cur.execute(
-            """
-            SELECT proxy_id, date, value::numeric
-            FROM kwave_supply_cycle_proxy
-            WHERE date <= %s AND proxy_id IN ('TW_SEMI_VWAP_YOY', 'TW_SHIPPING_VWAP_YOY') AND value IS NOT NULL
-            ORDER BY proxy_id, date
-            """,
-            (as_of,),
-        )
-        proxy_history = {}
-        for pid, d, v in cur.fetchall():
-            proxy_history.setdefault(pid, []).append((d, float(v)))
 
         def _latest(series_id, src=history):
             data = src.get(series_id, [])
@@ -767,12 +757,12 @@ class FeatureStoreBuilder:
         valid_components = [v for v in kwave_components if v is not None]
         kwave_phase_indicator = sum(valid_components) / len(valid_components) if valid_components else None
 
-        # §0.3.2 Multi-cycle(5)
+        # §0.3.2 Multi-cycle(5)— §14.7-CC:全 FRED API 原生(取代 system-computed proxies)
         monetary_regime = _log_yoy("M2SL")
         yield_curve_inversion = _latest("T10Y2Y")
         oil_juglar_phase = _log_yoy("WTISPLC")
-        semi_kitchin = _latest("TW_SEMI_VWAP_YOY", src=proxy_history)
-        shipping_juglar = _latest("TW_SHIPPING_VWAP_YOY", src=proxy_history)
+        semi_kitchin = _log_yoy("IPG3344S")        # US Semi Industrial Production YoY(replaces TW_SEMI_VWAP_YOY)
+        shipping_juglar = _log_yoy("PCU4831114831115")  # US Deep Sea Freight PPI YoY(replaces TW_SHIPPING_VWAP_YOY)
 
         # §0.3.3 Microstructure(3)— VIXCLS rolling
         vix_data = history.get("VIXCLS", [])

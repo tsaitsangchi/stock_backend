@@ -90,6 +90,10 @@ DEFAULT_FRED_SERIES = [
     # §14.7-BY Phase E(2026-05-27):2 P1 K-wave-aligned indicators(補強 Credit + Energy class)
     "QUSPAM770A",        # Credit: BIS Total Credit to Private Non-Financial Sector(% of GDP / Q / 1947-2025 / 80%;真正 BIS Credit-to-GDP gap proxy)
     "WTISPLC",           # Energy: WTI Spot Crude Oil Price(M / 1946-2026 / 80 年深度 / 70%;補齊 §0.3 5 大驅動因素之 Energy class)
+    # §14.7-CC(2026-05-27):Source Authority Doctrine — 2 §0.3.2 Multi-cycle indicators
+    # 取代 system-computed kwave_supply_cycle_proxy(per「全資料來源須 FinMind / FRED API 直接抓取」原則)
+    "IPG3344S",          # Semi Kitchin: US Industrial Production: Semiconductor (M / 1972~ / index 2017=100;取代 TW_SEMI_VWAP_YOY)
+    "PCU4831114831115",  # Shipping Juglar: US Deep Sea Freight Transportation PPI (M / 1988~ / index Jun1988=100;取代 TW_SHIPPING_VWAP_YOY)
 ]
 
 DDL_FRED = """CREATE TABLE IF NOT EXISTS fred_series (series_id VARCHAR(50), date DATE, value NUMERIC(20,6), PRIMARY KEY (series_id, date));"""
