@@ -469,60 +469,90 @@ class FeatureStoreBuilder:
         }
 
     def _load_quality(self, cur):
-        """§14.7-CA Phase C-1c-2(2026-05-27)— 取 TTM OperatingIncome / Revenue 計算 operating margin。
+        """§14.7-CA Phase C-1c-2 + §14.7-CB Step 1(2026-05-27)— TTM operating margin + 真 ROE。
 
-        TaiwanStockFinancialStatements 為 cumulative YTD 報告(Q1=Q1 only, Q2=H1, Q3=9M, Q4=full year)。
-        TTM 計算:取最近 ~5 個 quarter 之 cumulative,轉非累積後 sum 最後 4 個 quarter。
-        對映 v0.3 doctrine-aligned Quality features(operating_margin_ttm;§0.1.D Quality / Asness QMJ)。
-        Hardcoded-conservative publication-date(Q1-Q3 +45 / Q4 +90 天)。
+        - operating_margin_ttm:TTM OperatingIncome / TTM Revenue(per Asness QMJ 2019)
+        - roe_ttm(REAL):TTM IncomeAfterTaxes / latest EquityAttributableToOwnersOfParent
+          per §14.7-BI ROE 解鎖契約(替代 PBR/PER identity 之代理)
+
+        FinStmt 為 cumulative YTD;TTM 計算:轉非累積後 sum 最後 4 quarter。
+        BS Equity 為 stock-of-value;直接取 latest。
+        Publication-date(per §8.5-9 hardcoded_conservative quarter-aware)。
+        Graceful-degraded:若 BalanceSheet missing,roe_ttm fallback None(by stage 2 redo via PBR/PER)。
         """
-        # 取近 ~500 天 quarterly 資料(夠涵蓋 5 個 quarter)
+        # ── Stage A: Load FinStmt 3 types(Revenue / OperatingIncome / IncomeAfterTaxes)──
         start = self.as_of_date - timedelta(days=500)
-        gate, n_ap = build_publication_date_gate("TaiwanStockFinancialStatements")
+        gate_fs, n_ap_fs = build_publication_date_gate("TaiwanStockFinancialStatements")
         cur.execute(
             f"""
             SELECT stock_id, date, type, value::numeric
             FROM "TaiwanStockFinancialStatements"
-            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
-              AND type IN ('Revenue', 'OperatingIncome')
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate_fs}
+              AND type IN ('Revenue', 'OperatingIncome', 'IncomeAfterTaxes')
             ORDER BY stock_id, date, type
             """,
-            (self.core_stocks, start, *([self.as_of_date] * n_ap)),
+            (self.core_stocks, start, *([self.as_of_date] * n_ap_fs)),
         )
-        # build {stock_id: {date: {Revenue: x, OperatingIncome: y}}}
-        raw = {}
+        raw_fs = {}
         for sid, d, ttype, v in cur.fetchall():
-            raw.setdefault(sid, {}).setdefault(d, {})[ttype] = float(v or 0)
+            raw_fs.setdefault(sid, {}).setdefault(d, {})[ttype] = float(v or 0)
 
+        # ── Stage B: Load BalanceSheet latest Equity(per §14.7-BI)──
+        bs_equity = {}
+        cur.execute("SELECT to_regclass('public.\"TaiwanStockBalanceSheet\"')")
+        if cur.fetchone()[0] is not None:
+            gate_bs, n_ap_bs = build_publication_date_gate("TaiwanStockBalanceSheet")
+            cur.execute(
+                f"""
+                SELECT DISTINCT ON (stock_id) stock_id, value::numeric
+                FROM "TaiwanStockBalanceSheet"
+                WHERE stock_id = ANY(%s) AND type = 'EquityAttributableToOwnersOfParent'
+                  AND {gate_bs} AND value::numeric > 0
+                ORDER BY stock_id, date DESC
+                """,
+                (self.core_stocks, *([self.as_of_date] * n_ap_bs)),
+            )
+            for sid, equity in cur.fetchall():
+                bs_equity[sid] = float(equity)
+
+        # ── Stage C: per-stock TTM compute ──
         out = {}
-        for sid, by_date in raw.items():
-            # 依 quarter end date 排序 (asc)
+        for sid, by_date in raw_fs.items():
             dates = sorted(by_date.keys())
-            # 轉 cumulative → quarterly: 每年單獨處理,Q1 為 base
-            quarterly_rev, quarterly_op = [], []
+            # Cumulative → quarterly(per year)
+            quarterly_rev, quarterly_op, quarterly_iat = [], [], []
             by_year = {}
             for d in dates:
                 by_year.setdefault(d.year, []).append(d)
             for year, ds in by_year.items():
                 ds.sort()
-                prev_rev = 0.0
-                prev_op = 0.0
+                prev_rev = prev_op = prev_iat = 0.0
                 for d in ds:
                     rev = by_date[d].get("Revenue", 0.0)
                     op = by_date[d].get("OperatingIncome", 0.0)
+                    iat = by_date[d].get("IncomeAfterTaxes", 0.0)
                     quarterly_rev.append((d, rev - prev_rev))
                     quarterly_op.append((d, op - prev_op))
-                    prev_rev, prev_op = rev, op
-            # 取最後 4 個 quarter sum
-            quarterly_rev.sort()
-            quarterly_op.sort()
+                    quarterly_iat.append((d, iat - prev_iat))
+                    prev_rev, prev_op, prev_iat = rev, op, iat
+            quarterly_rev.sort(); quarterly_op.sort(); quarterly_iat.sort()
+
+            # operating_margin_ttm
             if len(quarterly_rev) >= 4 and len(quarterly_op) >= 4:
                 ttm_rev = sum(v for _, v in quarterly_rev[-4:])
                 ttm_op = sum(v for _, v in quarterly_op[-4:])
                 op_margin = (ttm_op / ttm_rev) if ttm_rev > 0 else None
             else:
                 op_margin = None
-            out[sid] = {"operating_margin_ttm": op_margin}
+
+            # roe_ttm(REAL):TTM IncomeAfterTaxes / latest Equity
+            roe_real = None
+            equity = bs_equity.get(sid)
+            if equity is not None and equity > 0 and len(quarterly_iat) >= 4:
+                ttm_iat = sum(v for _, v in quarterly_iat[-4:])
+                roe_real = ttm_iat / equity
+
+            out[sid] = {"operating_margin_ttm": op_margin, "roe_ttm_real": roe_real}
         return out
 
     def _load_balance_sheet(self, cur):
@@ -1241,16 +1271,21 @@ class FeatureStoreBuilder:
             stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
             stock_features["pb_ratio"] = per_for_sid.get("pb_ratio")
             stock_features["dividend_yield"] = per_for_sid.get("dividend_yield")
-            # §14.7-CA Phase C-1c-2(2026-05-27)— §0.1 Quality+Investment features 3
-            # roe_ttm:PBR/PER 數學恆等(=EPS/BPS=trailing ROE);Quality+Investment 群(無 BalanceSheet table)
-            per_val = per_for_sid.get("pe_ratio")
-            pbr_val = per_for_sid.get("pb_ratio")
-            if per_val is not None and pbr_val is not None and per_val > 0:
-                stock_features["roe_ttm"] = pbr_val / per_val
-            else:
-                stock_features["roe_ttm"] = None
-            # operating_margin_ttm
+            # §14.7-CB Step 1(2026-05-27)— roe_ttm 升真 ROE(BS Equity / IAT 4Q;per §14.7-BI 解鎖)
+            # 優先用 BS-derived real ROE;若無 BS data → fallback to PBR/PER identity proxy
             qual_for_sid = quality_data.get(sid, {})
+            roe_real = qual_for_sid.get("roe_ttm_real")
+            if roe_real is not None:
+                stock_features["roe_ttm"] = roe_real
+            else:
+                # Fallback:PBR/PER identity(needs PER × PBR 雙正)
+                per_val = per_for_sid.get("pe_ratio")
+                pbr_val = per_for_sid.get("pb_ratio")
+                if per_val is not None and pbr_val is not None and per_val > 0:
+                    stock_features["roe_ttm"] = pbr_val / per_val
+                else:
+                    stock_features["roe_ttm"] = None
+            # operating_margin_ttm
             stock_features["operating_margin_ttm"] = qual_for_sid.get("operating_margin_ttm")
             # revenue_yoy_3m_log:既有 revenue_yoy_3m 之 log-transformed(reduce skewness)
             rev_yoy_3m = stock_features.get("revenue_yoy_3m")
