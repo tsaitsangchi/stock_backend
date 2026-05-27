@@ -142,6 +142,23 @@ FEATURE_DEFINITIONS = [
     {"name": "operating_margin_ttm", "group": "quality", "source": "TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "drop", "desc": "TTM OperatingIncome / TTM Revenue(non-cumulative aware);QMJ profitability;TW IC +0.05 OOS;§0.1.D"},
     # ── investment 群 v0.3 §14.7-CA Phase C-1c-2 新增(2026-05-27)
     {"name": "revenue_yoy_3m_log", "group": "investment", "source": "TaiwanStockMonthRevenue", "window": "15m", "vtype": "numeric", "null": "drop", "desc": "log(1+revenue_yoy_3m);recent 3m revenue YoY growth log-transformed;TW IC +0.04 OOS;§0.1.D"},
+    # ── §0.3.1 K-wave pure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;6 features broadcast)
+    {"name": "kwave_tech_paradigm_strength", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "(PATENTUSALLTOTAL_yoy + B985RC1Q027SBEA_yoy)/2;Schumpeter/Perez tech paradigm intensity;§0.3.1"},
+    {"name": "kwave_credit_cycle_phase", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "TCMDO log_yoy;US credit cycle phase indicator;Reinhart-Rogoff 2009;§0.3.1"},
+    {"name": "kwave_credit_to_gdp_gap", "group": "kwave", "source": "fred_series", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "QUSPAM770A latest(BIS Credit-to-GDP gap);Drehmann 2014;TW IC -0.02 OOS;§0.3.1"},
+    {"name": "kwave_demographics_trend", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "(LFWA64_yoy+(1-SPPOPDPND_yoy))/2;Goodhart-Pradhan 2020;§0.3.1"},
+    {"name": "kwave_commodity_supercycle", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "PALLFNFINDEXQ log_yoy;Erten-Ocampo 2013;§0.3.1"},
+    {"name": "kwave_phase_indicator", "group": "kwave", "source": "fred_series", "window": "composite", "vtype": "numeric", "null": "zero_fill", "desc": "composite z-score(5 K-wave features mean);Mensch 1979;§0.3.1"},
+    # ── §0.3.2 Multi-cycle 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;5 features broadcast)
+    {"name": "mc_monetary_regime", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "M2SL log_yoy;Friedman monetary stance;§0.3.2"},
+    {"name": "mc_yield_curve_inversion", "group": "multi_cycle", "source": "fred_series", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "T10Y2Y latest;<0 = Juglar leading inversion;Estrella-Hardouvelis 1991 IC ~-0.04 OOS;§0.3.2"},
+    {"name": "mc_oil_juglar_phase", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "WTISPLC log_yoy;Stopford 2009 Juglar oil phase;§0.3.2"},
+    {"name": "mc_semi_kitchin", "group": "multi_cycle", "source": "kwave_supply_cycle_proxy", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "TW_SEMI_VWAP_YOY latest(industry Kitchin 4-y cycle);Aizcorbe-Kortum 2005;§0.3.2"},
+    {"name": "mc_shipping_juglar", "group": "multi_cycle", "source": "kwave_supply_cycle_proxy", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "TW_SHIPPING_VWAP_YOY latest(Juglar 7-11y cycle);Stopford 2009;§0.3.2"},
+    # ── §0.3.3 Microstructure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;3 features broadcast)
+    {"name": "ms_volatility_regime", "group": "microstructure", "source": "fred_series", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "VIXCLS rolling 60d mean;Whaley 1993 IC ~-0.025;§0.3.3"},
+    {"name": "ms_vix_term_structure", "group": "microstructure", "source": "fred_series", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "(VIXCLS/252d_mean)-1;VIX premium;§0.3.3"},
+    {"name": "ms_market_stress", "group": "microstructure", "source": "fred_series", "window": "30d", "vtype": "boolean", "null": "zero_fill", "desc": "1 if max VIXCLS > 30 in last 30 days;crisis警示 binary;§0.3.3"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -549,6 +566,171 @@ class FeatureStoreBuilder:
             "macro_unrate_yoy": unrate_yoy,
         }
 
+    def _load_macro_extended(self, cur):
+        """§14.7-CA Phase C-1c-3(2026-05-27)— §0.3.1/.2/.3 14 features broadcast。
+
+        資料來源:
+        - fred_series(22 indicators / 含 PATENTUSALLTOTAL / B985 / TCMDO / QUSPAM770A / LFWA64 / SPPOPDPND / PALLFN / M2SL / WTISPLC / VIXCLS 等)
+        - kwave_supply_cycle_proxy(TW_SEMI_VWAP_YOY / TW_SHIPPING_VWAP_YOY)
+        Returns 14 macro features 之 dict(broadcast 至每股,per existing macro group pattern)。
+        """
+        as_of = self.as_of_date
+
+        # 載入 fred_series 全部所需 indicators 之 history
+        series_needed = [
+            "PATENTUSALLTOTAL", "B985RC1Q027SBEA", "TCMDO", "QUSPAM770A",
+            "LFWA64TTUSA647N", "SPPOPDPNDOLUSA", "PALLFNFINDEXQ",
+            "M2SL", "T10Y2Y", "WTISPLC", "VIXCLS",
+        ]
+        cur.execute(
+            """
+            SELECT series_id, date, value::numeric
+            FROM fred_series
+            WHERE date <= %s AND series_id = ANY(%s) AND value IS NOT NULL
+            ORDER BY series_id, date
+            """,
+            (as_of, series_needed),
+        )
+        history = {}
+        for sid, d, v in cur.fetchall():
+            history.setdefault(sid, []).append((d, float(v)))
+
+        # 載入 kwave_supply_cycle_proxy 之 TW_SEMI / TW_SHIPPING
+        cur.execute(
+            """
+            SELECT proxy_id, date, value::numeric
+            FROM kwave_supply_cycle_proxy
+            WHERE date <= %s AND proxy_id IN ('TW_SEMI_VWAP_YOY', 'TW_SHIPPING_VWAP_YOY') AND value IS NOT NULL
+            ORDER BY proxy_id, date
+            """,
+            (as_of,),
+        )
+        proxy_history = {}
+        for pid, d, v in cur.fetchall():
+            proxy_history.setdefault(pid, []).append((d, float(v)))
+
+        def _latest(series_id, src=history):
+            data = src.get(series_id, [])
+            return data[-1][1] if data else None
+
+        def _log_yoy(series_id, lookback_days=365):
+            data = history.get(series_id, [])
+            if len(data) < 2:
+                return None
+            latest_d, latest_v = data[-1]
+            target_d = latest_d - timedelta(days=lookback_days)
+            # find closest entry to target date(asof)
+            prior = None
+            for d, v in reversed(data[:-1]):
+                if d <= target_d:
+                    prior = v
+                    break
+            if prior is None or prior <= 0 or latest_v <= 0:
+                return None
+            return math.log(latest_v / prior)
+
+        def _yoy(series_id, lookback_days=365):
+            """Plain YoY for non-positive friendly series(e.g. demographics ratio)。"""
+            data = history.get(series_id, [])
+            if len(data) < 2:
+                return None
+            latest_d, latest_v = data[-1]
+            target_d = latest_d - timedelta(days=lookback_days)
+            prior = None
+            for d, v in reversed(data[:-1]):
+                if d <= target_d:
+                    prior = v
+                    break
+            if prior is None or prior == 0:
+                return None
+            return (latest_v - prior) / abs(prior)
+
+        # §0.3.1 K-wave pure(6)
+        patent_yoy = _yoy("PATENTUSALLTOTAL")
+        b985_yoy = _yoy("B985RC1Q027SBEA")
+        tech_paradigm = None
+        if patent_yoy is not None and b985_yoy is not None:
+            tech_paradigm = (patent_yoy + b985_yoy) / 2.0
+        elif patent_yoy is not None:
+            tech_paradigm = patent_yoy
+        elif b985_yoy is not None:
+            tech_paradigm = b985_yoy
+
+        credit_cycle_phase = _log_yoy("TCMDO")
+        credit_to_gdp_gap = _latest("QUSPAM770A")
+
+        lfwa_yoy = _yoy("LFWA64TTUSA647N")
+        sppop_yoy = _yoy("SPPOPDPNDOLUSA")
+        demographics_trend = None
+        if lfwa_yoy is not None and sppop_yoy is not None:
+            demographics_trend = (lfwa_yoy + (1.0 - sppop_yoy)) / 2.0
+        elif lfwa_yoy is not None:
+            demographics_trend = lfwa_yoy
+        elif sppop_yoy is not None:
+            demographics_trend = 1.0 - sppop_yoy
+
+        commodity_supercycle = _log_yoy("PALLFNFINDEXQ")
+
+        # composite z-score(5 K-wave features mean);採等權平均(無 var normalization,因樣本太少 z-score 不穩)
+        kwave_components = [
+            tech_paradigm, credit_cycle_phase, credit_to_gdp_gap,
+            demographics_trend, commodity_supercycle,
+        ]
+        valid_components = [v for v in kwave_components if v is not None]
+        kwave_phase_indicator = sum(valid_components) / len(valid_components) if valid_components else None
+
+        # §0.3.2 Multi-cycle(5)
+        monetary_regime = _log_yoy("M2SL")
+        yield_curve_inversion = _latest("T10Y2Y")
+        oil_juglar_phase = _log_yoy("WTISPLC")
+        semi_kitchin = _latest("TW_SEMI_VWAP_YOY", src=proxy_history)
+        shipping_juglar = _latest("TW_SHIPPING_VWAP_YOY", src=proxy_history)
+
+        # §0.3.3 Microstructure(3)— VIXCLS rolling
+        vix_data = history.get("VIXCLS", [])
+        ms_vol_regime = None
+        ms_term_struct = None
+        ms_stress = None
+        if vix_data:
+            # rolling 60d mean
+            cutoff_60d = as_of - timedelta(days=90)  # ~60 trading days
+            recent_60d = [v for d, v in vix_data if d >= cutoff_60d]
+            if recent_60d:
+                ms_vol_regime = sum(recent_60d) / len(recent_60d)
+            # rolling 252d mean for VIX term structure
+            cutoff_252d = as_of - timedelta(days=370)
+            recent_252d = [v for d, v in vix_data if d >= cutoff_252d]
+            latest_vix = vix_data[-1][1]
+            if recent_252d:
+                mean_252d = sum(recent_252d) / len(recent_252d)
+                if mean_252d > 0:
+                    ms_term_struct = (latest_vix / mean_252d) - 1.0
+            # market_stress(binary):VIX > 30 in last 30 days
+            cutoff_30d = as_of - timedelta(days=45)
+            recent_30d = [v for d, v in vix_data if d >= cutoff_30d]
+            if recent_30d:
+                ms_stress = 1.0 if max(recent_30d) > 30.0 else 0.0
+
+        return {
+            # §0.3.1 K-wave pure(6)
+            "kwave_tech_paradigm_strength": tech_paradigm,
+            "kwave_credit_cycle_phase": credit_cycle_phase,
+            "kwave_credit_to_gdp_gap": credit_to_gdp_gap,
+            "kwave_demographics_trend": demographics_trend,
+            "kwave_commodity_supercycle": commodity_supercycle,
+            "kwave_phase_indicator": kwave_phase_indicator,
+            # §0.3.2 Multi-cycle(5)
+            "mc_monetary_regime": monetary_regime,
+            "mc_yield_curve_inversion": yield_curve_inversion,
+            "mc_oil_juglar_phase": oil_juglar_phase,
+            "mc_semi_kitchin": semi_kitchin,
+            "mc_shipping_juglar": shipping_juglar,
+            # §0.3.3 Microstructure(3)
+            "ms_volatility_regime": ms_vol_regime,
+            "ms_vix_term_structure": ms_term_struct,
+            "ms_market_stress": ms_stress,
+        }
+
     # ── FEATURE COMPUTATION (pure functions) ──────────────────────────────────
 
     @staticmethod
@@ -839,6 +1021,9 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase C-1c-2(2026-05-27)— §0.1 Quality features 之 raw load
             self._detail("📥 [LOAD] quality (Quality group v0.3) ...")
             quality_data = self._load_quality(cur)
+            # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast
+            self._detail("📥 [LOAD] macro extended (§0.3.1/.2/.3 K-wave/Multi-cycle/Microstructure 14 features) ...")
+            macro_extended = self._load_macro_extended(cur)
         finally:
             cur.close()
             conn.close()
@@ -858,6 +1043,8 @@ class FeatureStoreBuilder:
             stock_features["margin_ratio_60d"] = margin.get(sid)
             stock_features.update(self._theme_features(theme.get(sid, "")))
             stock_features.update(macro)
+            # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast(same value 對每股)
+            stock_features.update(macro_extended)
             # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 3(pe_ratio / pb_ratio / dividend_yield)
             per_for_sid = per_data.get(sid, {})
             stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
