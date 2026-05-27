@@ -6,7 +6,7 @@ audit_source_availability.py v0.7 (Strict Source Availability Audit · §6.8.8-C
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. [Strict Source Authority]: 驗證 core+convex 150 個股資料是否符合憲章 §14.7-L 之嚴格定義
+1. [Strict Source Authority]: 驗證 core+convex 全集(N dynamic per §14.7-BW pure doctrine,無 hardcoded 150)資料是否符合憲章 §14.7-L 之嚴格定義
    — 每一個 FinMind `stock_id + dataset` 必須從 API 最早可得日期完整對齊 DB；
    `start_date=1990-01-01` 為來源端可得下界。
 2. [Dual-Source Verification]: 對每個 `stock_id + dataset` 比對 API 與 DB 的
@@ -57,7 +57,7 @@ audit_source_availability.py v0.7 (Strict Source Availability Audit · §6.8.8-C
 ## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 維運需求場景 (Scenario) | 權威指令 / 建議用法 | 對齊模組 |
 | :--- | :--- | :--- |
-| **1. [標準執行：core+convex 150 嚴格驗證]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.6 |
+| **1. [標準執行：core+convex 全集嚴格驗證(N dynamic per §14.7-BW)]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --include-fred --strict` | audit_source_availability v0.6 |
 | **2. [單一個股全表驗證]** | `$ python scripts/maintenance/audit_source_availability.py --id 2330 --all --strict` | audit_source_availability v0.6 |
 | **3. [來源端 snapshot 寫出]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-out /tmp/api_start_dates_core150.json` | audit_source_availability v0.6 |
 | **4. [離線重跑：用既有 snapshot]** | `$ python scripts/maintenance/audit_source_availability.py --universe core --all --strict --snapshot-in /tmp/api_start_dates_core150.json` | audit_source_availability v0.6 |
@@ -799,7 +799,7 @@ def main():
     parser = argparse.ArgumentParser(description="Strict source availability audit (FinMind + FRED)")
     parser.add_argument("--id", type=str, help="single stock_id")
     parser.add_argument("--universe", choices=["core", "full"], default="core",
-                        help="authorized universe scope (core ≈ 150；full ≈ 2,798 須附 reason 對齊 §6.8.7 第 (4) 條 / §6.8.8-D)")
+                        help="authorized universe scope (core = committed snapshot N dynamic per §14.7-BW;full ≈ 2,798 須附 reason 對齊 §6.8.7 第 (4) 條 / §6.8.8-D)")
     parser.add_argument("--dataset", type=str, help="single FinMind stock-level dataset")
     parser.add_argument("--all", action="store_true", help="audit all FinMind stock-level datasets")
     parser.add_argument("--start-date", default=STRICT_SOURCE_START_DATE,

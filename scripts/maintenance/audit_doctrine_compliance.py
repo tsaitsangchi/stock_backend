@@ -324,12 +324,14 @@ class DoctrineAuditor:
         quarantine_n = tiers.get("quarantine_universe", 0)
         right_tail = core_n + convex_n
         total = sum(tiers.values())
-        if right_tail < 100 or right_tail > 200:
-            self.add("P2_pareto_barbell", "WARN", "right_tail_size",
-                     f"core+convex={right_tail} 偏離預期 (100-200)；§0.2 槓鈴攻擊端可能失衡")
+        # §14.7-BW pure doctrine + 用戶 2026-05-27 directive「排除所有固定的核心股數量」:
+        # 取消 hardcoded 100-200 範圍 expectation;N 為 doctrine 結果,任何 N > 0 皆 PASS
+        if right_tail == 0:
+            self.add("P2_pareto_barbell", "FAIL", "right_tail_size",
+                     "core+convex=0;無 doctrine-pass stock,§0.2 槓鈴攻擊端無構成")
         else:
             self.add("P2_pareto_barbell", "PASS", "right_tail_size",
-                     f"core+convex={right_tail} (core {core_n} + convex {convex_n}) 符合槓鈴右尾規模")
+                     f"core+convex={right_tail} (core {core_n} + convex {convex_n}) — dynamic per §14.7-BW")
 
         if quarantine_n == 0:
             self.add("P2_pareto_barbell", "WARN", "left_tail_isolation",

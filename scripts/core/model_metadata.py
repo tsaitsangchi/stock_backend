@@ -87,7 +87,7 @@ def run_model_diagnostic(reset=False):
         
         print("\n💡 模型維運建議 (Reference Information):")
         print("1. [註冊提示]: 新模型上線前必須執行 model_metadata.py 進行元數據註冊。")
-        print("2. [效能提示]: 核心標的 128 支模型狀態良好，版本對齊 100%。")
+        print("2. [效能提示]: 核心標的全集(dynamic per §14.7-BW)模型狀態良好,版本對齊 100%。")
         print("3. [範例提示]: 請參閱 Header 矩陣以執行「所有核心股」全量模型同步。")
         print("─" * 80 + "\n")
 

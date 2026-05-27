@@ -13,8 +13,9 @@ portfolio_sizer.py v0.3 (Quantum Finance Portfolio Sizing Authority)
    及其 `prediction_values`；source-of-truth 為 §8.4 prediction layer。
 3. [Single Delivery Gate] (§8.8.8): 同 `prediction_policy_version` 下若
    committed prediction-backed run != 1，直接 FAIL；強制 exactly-one delivery。
-4. [Universe Coverage Lock]: prediction_values rows 必須 = 150（即 core+convex
-   全集）；否則 FAIL。
+4. [Universe Coverage Lock]: prediction_values rows 必須 = 當前 committed
+   snapshot 之 N（即 core+convex 全集；dynamic per §14.7-BW pure doctrine,
+   無 hardcoded 150/200 cap/floor）；否則 FAIL。
 5. [Barbell Bucket Caps] (§0.2 槓鈴策略 v0.2):
      attack_total_weight_max  = 0.20  # 攻擊端總權重上限
      safety_total_weight_min  = 0.80  # 防禦端（cash sleeve）下限
@@ -113,7 +114,7 @@ DEFAULT_POLICY = {
     "convex_tier_weight_max": 0.03,
     "sector_weight_max": 0.40,
     "single_sector_count_max": 3,       # v0.3: 5 → 3 強化(§9.2-I.2 / §14.7-AA Part C 強化)
-    "required_coverage": 150,
+    "required_coverage": None,          # §14.7-BW pure doctrine: dynamic per committed snapshot N (was 150)
     "max_committed_runs": 1,
     # v0.3 §9.2-I.2 新增 5 參數 + 1 升版(共 6 新 params):
     "roe_weight_alpha": 0.5,             # ROE-weighted Pareto 強度(§9.2-I.3)
@@ -158,21 +159,23 @@ class ConstitutionalViolationError(Exception):
 # ════════════════════════════════════════════════════════════════════════════
 # §9.2-F.1 Audit Hooks 強制獨立函式 (Mandatory Standalone Functions) — v0.2
 # ════════════════════════════════════════════════════════════════════════════
-def audit_input_uniqueness(prediction_runs, prediction_rows, upstream_writes):
+def audit_input_uniqueness(prediction_runs, prediction_rows, upstream_writes, expected_coverage=None):
     """G1/G2/G9/G10: 唯一 delivery + coverage + read-only 邊界
 
     Args:
         prediction_runs: committed prediction-backed run 清單
         prediction_rows: 該 run 之 prediction_values rows 數
         upstream_writes: sizer 是否曾呼叫上游 write 操作之記錄
+        expected_coverage: §14.7-BW pure doctrine — 當前 committed snapshot 之
+            動態 N(由 caller 從 snapshot 查得);None 時跳過 G2 coverage 檢查
 
     Returns:
         (bool, str): (pass, message)
     """
     if len(prediction_runs) != 1:
         return False, f"G1: committed run count = {len(prediction_runs)}, expected 1"
-    if prediction_rows != 150:
-        return False, f"G2: prediction rows = {prediction_rows}, expected 150"
+    if expected_coverage is not None and prediction_rows != expected_coverage:
+        return False, f"G2: prediction rows = {prediction_rows}, expected {expected_coverage} (dynamic per §14.7-BW)"
     if upstream_writes:
         return False, f"G9/G10: sizer attempted upstream writes: {upstream_writes}"
     return True, "OK"
@@ -418,10 +421,21 @@ class PortfolioSizer:
                 })
 
             # v0.2: 使用 audit_input_uniqueness 統一稽核 G1/G2/G9/G10
+            # §14.7-BW pure doctrine: 從 snapshot 動態取 N(取代 hardcoded 150)
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM "core_universe_membership"
+                WHERE snapshot_id = %s
+                  AND core_tier IN ('core_universe', 'convex_universe')
+                """,
+                (self.run_meta["universe_snapshot_id"],),
+            )
+            expected_coverage = cur.fetchone()[0]
             ok, msg = audit_input_uniqueness(
                 prediction_runs=[self.run_meta],
                 prediction_rows=len(self.predictions),
                 upstream_writes=self.upstream_writes,
+                expected_coverage=expected_coverage,
             )
             if not ok:
                 raise ConstitutionalViolationError(
@@ -447,9 +461,13 @@ class PortfolioSizer:
                     "industry_category": sector or "UNKNOWN",
                     "stock_name": name or "",
                 }
-            if len(self.memberships) != self.policy["required_coverage"]:
+            # §14.7-BW pure doctrine: required_coverage 為 None 時 fallback 至 expected_coverage(snapshot N)
+            req_cov = self.policy.get("required_coverage")
+            if req_cov is None:
+                req_cov = expected_coverage  # dynamic from snapshot (§14.7-BW)
+            if len(self.memberships) != req_cov:
                 self._detail("warn", f"membership coverage = {len(self.memberships)}, "
-                             f"expected {self.policy['required_coverage']}")
+                             f"expected {req_cov}")
             else:
                 self._detail("pass", f"membership loaded: rows={len(self.memberships)} "
                              f"(snapshot={self.run_meta['universe_snapshot_id']})")
@@ -464,7 +482,7 @@ class PortfolioSizer:
                             f"membership; e.g. {missing[:3]}",
                     charter_ref="§9.2-D / G2 / §6.7",
                 )
-            self._detail("pass", "G2 prediction × membership join complete (150/150)")
+            self._detail("pass", f"G2 prediction × membership join complete ({len(self.predictions)}/{len(self.memberships)})")
 
             # Step 5: v0.2 新增 G11 as_of_date 跨層一致性
             cur.execute(
@@ -874,7 +892,7 @@ class PortfolioSizer:
             f"- convex_tier_weight_max: {self.policy['convex_tier_weight_max']}",
             f"- sector_weight_max: {self.policy['sector_weight_max']}",
             f"- **single_sector_count_max: {self.policy['single_sector_count_max']}** (v0.2 G12)",
-            f"- required_coverage: {self.policy['required_coverage']}",
+            f"- required_coverage: {self.policy['required_coverage'] if self.policy['required_coverage'] is not None else f'dynamic={len(self.memberships)} (§14.7-BW)'}",
             f"- max_committed_runs: {self.policy['max_committed_runs']}",
             "",
             "## 4. 治權邊界宣告",

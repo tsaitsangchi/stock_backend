@@ -509,14 +509,14 @@ class CoreUniverseAuditor:
                 self.pass_("tier_count", f"{tier_name}={actual} matches snapshot.{snapshot_column}")
             else:
                 self.fail("tier_count", f"{tier_name}={actual}, expected snapshot.{snapshot_column}={expected}")
-        if self.snapshot["core_count"] <= 120 and self.snapshot["core_count"] > 0:
-            self.pass_("core_size", f"core_count={self.snapshot['core_count']} within v0.1 limit")
+        # §14.7-BW pure doctrine + 2026-05-27 directive:取消 hardcoded 120/30 之 v0.1 limit
+        # N 為 doctrine 結果,任何 N > 0 皆 PASS(was: core <= 120, convex <= 30)
+        if self.snapshot["core_count"] > 0:
+            self.pass_("core_size", f"core_count={self.snapshot['core_count']} — dynamic per §14.7-BW")
         else:
-            self.fail("core_size", f"core_count={self.snapshot['core_count']} outside v0.1 limit")
-        if self.snapshot["convex_count"] <= 30:
-            self.pass_("convex_size", f"convex_count={self.snapshot['convex_count']} within v0.1 limit")
-        else:
-            self.fail("convex_size", f"convex_count={self.snapshot['convex_count']} outside v0.1 limit")
+            self.fail("core_size", f"core_count=0;無 doctrine-pass stock")
+        # convex_count = 0 為 v0.10 pure doctrine 之正常情境(tier 概念 v0.10 不適用)
+        self.pass_("convex_size", f"convex_count={self.snapshot['convex_count']} — dynamic per §14.7-BW (0=v0.10 normal)")
 
     def _rows(self, cur, sql, params=()):
         cur.execute(sql, params)

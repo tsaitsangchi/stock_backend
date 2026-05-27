@@ -2,7 +2,7 @@
 tune_hyperparameters.py v5.5.26 (Trinity Core Final)
 ================================================================================
 超參數調優引擎 — 混合模式日誌實作版
-負責使用 Optuna 或 GridSearch 尋找 150 檔標的的最佳 AI 參數。
+負責使用 Optuna 或 GridSearch 尋找核心標的全集(dynamic per §14.7-BW,無 hardcoded 150)之最佳 AI 參數。
 
 修訂歷程：
   v5.5.26 (2026-05-10):

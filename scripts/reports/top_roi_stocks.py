@@ -128,7 +128,7 @@ def generate_top_sharpe_report():
 <body>
     <div class="header">
         <h1>Trinity Elite</h1>
-        <p style="opacity:0.6; letter-spacing: 2px;">140 核心標的 — 高夏普值 Top 3 戰報</p>
+        <p style="opacity:0.6; letter-spacing: 2px;">核心標的全集(dynamic per §14.7-BW)— 高夏普值 Top 3 戰報</p>
     </div>
 
     <div class="podium">

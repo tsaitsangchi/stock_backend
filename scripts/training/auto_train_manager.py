@@ -2,7 +2,7 @@
 auto_train_manager.py v5.5.26 (Trinity Core Final)
 ================================================================================
 訓練自動化總管 — 混合模式日誌實作版
-負責排程與監控 150 檔核心標的的模型迭代週期。
+負責排程與監控核心標的全集(dynamic per §14.7-BW,無 hardcoded 150)之模型迭代週期。
 
 修訂歷程：
   v5.5.26 (2026-05-10):
@@ -13,7 +13,7 @@ auto_train_manager.py v5.5.26 (Trinity Core Final)
 
 【執行範例說明】
 
-1. 直接從命令行執行（啟動 150 檔全自動訓練）：
+1. 直接從命令行執行(啟動核心標的全集自動訓練;dynamic per §14.7-BW):
    $ python scripts/training/auto_train_manager.py
 
 2. 在其他系統中作為定時任務 (Crontab) 呼叫：

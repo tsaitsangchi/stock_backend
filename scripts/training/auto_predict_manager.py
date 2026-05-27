@@ -2,7 +2,7 @@
 auto_predict_manager.py v5.5.26 (Trinity Core Final)
 ================================================================================
 推論自動化總管 — 混合模式日誌實作版
-負責排程每日 150 檔標的的預測訊號生成與結果驗證。
+負責排程每日核心標的全集(dynamic per §14.7-BW,無 hardcoded 150)之預測訊號生成與結果驗證。
 
 修訂歷程：
   v5.5.26 (2026-05-10):
@@ -12,7 +12,7 @@ auto_predict_manager.py v5.5.26 (Trinity Core Final)
 
 【執行範例說明】
 
-1. 直接從命令行執行（產出明日 150 檔預測訊號）：
+1. 直接從命令行執行(產出明日核心標的全集預測訊號;dynamic per §14.7-BW):
    $ python scripts/training/auto_predict_manager.py
 
 2. 日誌查閱 (追蹤推論成功率)：

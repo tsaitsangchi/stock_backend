@@ -235,8 +235,18 @@ class PredictionEngine:
                 }
                 for sid in sorted(by_stock)
             ]
-            if len(self.rows) != 150:
-                self._detail("fail", f"prediction universe rows={len(self.rows)}, expected 150")
+            # §14.7-BW pure doctrine: 從 snapshot 動態取 N(取代 hardcoded 150)
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM "core_universe_membership"
+                WHERE snapshot_id = %s
+                  AND core_tier IN ('core_universe', 'convex_universe')
+                """,
+                (self.registry["universe_snapshot_id"],),
+            )
+            expected_n = cur.fetchone()[0]
+            if len(self.rows) != expected_n:
+                self._detail("fail", f"prediction universe rows={len(self.rows)}, expected {expected_n} (dynamic per §14.7-BW)")
                 return False
             null_ratio = imputed / total if total else 0
             if null_ratio > 0.05:

@@ -2,7 +2,7 @@
 feature_analysis.py v5.5.26 (Trinity Core Final)
 ================================================================================
 特徵分析工具 — 混合模式日誌實作版
-負責計算 150 檔標的的特徵重要性 (SHAP) 與特徵工程效能分析。
+負責計算核心標的全集(dynamic per §14.7-BW,無 hardcoded 150)之特徵重要性 (SHAP) 與特徵工程效能分析。
 
 修訂歷程：
   v5.5.26 (2026-05-10):
@@ -12,7 +12,7 @@ feature_analysis.py v5.5.26 (Trinity Core Final)
 
 【執行範例說明】
 
-1. 直接從命令行執行（執行 150 檔特徵分析）：
+1. 直接從命令行執行(執行核心標的全集特徵分析;dynamic per §14.7-BW):
    $ python scripts/training/feature_analysis.py
 
 2. 日誌查閱 (驗證特徵分析執行結果)：

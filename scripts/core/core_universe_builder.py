@@ -49,7 +49,7 @@ v0.2 六層 CoreScore 評分公式:
 | **dry-run** | `--dry-run` | 不寫 DB；輸出六層分數 + coverage 報告，用於日常診斷 |
 | **special override** | `--special-rebalance-reason "<≥12 字理由>"` | 跳過 annual guard；§6.8.3 五類合法情境（DB rebuild / 政策升版 / 資料源變更 / schema 重構 / 合規事件） |
 | **policy override** | `--policy-version <name>` | 指定 policy 版本（預設 `core_universe_policy_v0.2`） |
-| **candidate fallback** | bootstrap 期間自動進入 `latest_registry_fallback`；不需旗標 | as-of 候選 < 150 bootstrap minimum 時自動 fallback |
+| **candidate fallback** | bootstrap 期間自動進入 `latest_registry_fallback`；不需旗標 | bootstrap minimum 已 DEPRECATED per §14.7-BW pure doctrine（was 150 hardcode）|
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
@@ -98,15 +98,17 @@ TOOL_VER = "v0.10"  # 2026-05-26 §14.7-BT Phase C: 取消 150 hardcode + Dynami
 DEFAULT_POLICY_VERSION = "core_universe_policy_v0.7"
 DEFAULT_FEATURE_SET_VERSION = "feature_set_pending_v0.1"
 
-# §14.7-BT Phase C 新增:Legacy hardcode constants(顯式宣告 / 取代 inline 120 / 30 magic numbers)
-# 對齊憲章 §6.7.1 annex 之 historical hardcode mode reference
-LEGACY_CORE_LIMIT = 120          # v0.2-v0.7 hardcode mode
-LEGACY_CONVEX_LIMIT = 30         # v0.2-v0.7 hardcode mode
-# §14.7-BT Phase C 新增:Dynamic mode defaults(對齊 charter §6.7.1 annex / Phase A research §3.2 提案)
-DEFAULT_SELECTION_PCT = 5.0       # §0.2 八二法則 top 5%
-DEFAULT_SELECTION_N_MIN = 100     # avoid IC noise(§0.2-E minimal critical mass)
-DEFAULT_SELECTION_N_MAX = 200     # avoid signal dilution
-DEFAULT_CORE_PCT_WITHIN_SELECTED = 0.70  # core/convex split 70/30 (historical 120/30 ≈ 80/20 ratio 之 closest band)
+# §14.7-BW pure doctrine(2026-05-26 第二十一輪)+ 用戶 2026-05-27 directive
+# 「排除所有固定的核心股數量如 119/150/200」:以下 6 個 constants 全部 DEPRECATED
+# 任何 fixed N(cap / floor / tier % / hardcode 數量)皆違反 pure doctrine
+# 新 selection 路徑為 build_doctrine_gate_universe.py(v0.10 pure_doctrine)
+# 本 v0.7/v0.8 builder 之 dynamic mode 不再使用;constants 設 None 以避免被誤用
+LEGACY_CORE_LIMIT = None          # DEPRECATED per §14.7-BW (was 120 / v0.2-v0.7 hardcode mode)
+LEGACY_CONVEX_LIMIT = None        # DEPRECATED per §14.7-BW (was 30 / v0.2-v0.7 hardcode mode)
+DEFAULT_SELECTION_PCT = None      # DEPRECATED per §14.7-BW (was 5.0 / §0.2 八二法則 top 5%)
+DEFAULT_SELECTION_N_MIN = None    # DEPRECATED per §14.7-BW (was 100 / N_min floor)
+DEFAULT_SELECTION_N_MAX = None    # DEPRECATED per §14.7-BW (was 200 / N_max cap)
+DEFAULT_CORE_PCT_WITHIN_SELECTED = None  # DEPRECATED per §14.7-BW (was 0.70 / 70/30 tier split)
 DYNAMIC_POLICY_PREFIX = "core_universe_policy_v0.8"  # policy_version dispatch trigger
 DEFAULT_MODEL_POLICY_VERSION = "model_policy_pending_v0.1"
 DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_pending_v0.1"
@@ -257,14 +259,15 @@ class CoreUniverseBuilder:
         as_of_date,
         policy_version,
         commit=False,
-        # §14.7-BT Phase C:移除 hardcode default(was 120/30);改 None 之 dispatch logic
-        core_limit=None,            # 若 None + legacy mode → LEGACY_CORE_LIMIT(120);dynamic mode 不使用
-        convex_limit=None,          # 若 None + legacy mode → LEGACY_CONVEX_LIMIT(30);dynamic mode 不使用
-        # §14.7-BT Phase C 新加:Dynamic mode parameters(per charter §6.7.1 annex)
-        selection_pct=None,         # 若 None + dynamic mode → DEFAULT_SELECTION_PCT(5.0)
-        selection_n_min=None,       # 若 None + dynamic mode → DEFAULT_SELECTION_N_MIN(100)
-        selection_n_max=None,       # 若 None + dynamic mode → DEFAULT_SELECTION_N_MAX(200)
-        core_pct_within_selected=None,  # 若 None + dynamic mode → DEFAULT_CORE_PCT_WITHIN_SELECTED(0.70)
+        # §14.7-BW pure doctrine + 2026-05-27 directive:legacy / dynamic mode N constants 全 DEPRECATED
+        # 若 caller 仍嘗試使用,LEGACY_*/DEFAULT_* 已是 None,builder 之 selection logic 會 raise
+        # 新 selection 路徑為 build_doctrine_gate_universe.py(v0.10 pure_doctrine)
+        core_limit=None,            # DEPRECATED per §14.7-BW (was 120 / legacy mode)
+        convex_limit=None,          # DEPRECATED per §14.7-BW (was 30 / legacy mode)
+        selection_pct=None,         # DEPRECATED per §14.7-BW (was 5.0 / dynamic top X%)
+        selection_n_min=None,       # DEPRECATED per §14.7-BW (was 100 / N min floor)
+        selection_n_max=None,       # DEPRECATED per §14.7-BW (was 200 / N max cap)
+        core_pct_within_selected=None,  # DEPRECATED per §14.7-BW (was 0.70 / 70-30 tier split)
         include_emerging=False,
         special_rebalance_reason=None,
     ):
@@ -286,7 +289,7 @@ class CoreUniverseBuilder:
             self.core_limit = None
             self.convex_limit = None
         else:
-            # Legacy mode:用 explicit override 或 LEGACY_* constants(不再 inline 120/30)
+            # Legacy mode DEPRECATED per §14.7-BW (was: explicit override 或 LEGACY_* constants which were 120/30)
             self.core_limit = core_limit if core_limit is not None else LEGACY_CORE_LIMIT
             self.convex_limit = convex_limit if convex_limit is not None else LEGACY_CONVEX_LIMIT
             self.selection_pct = None
@@ -1821,7 +1824,7 @@ class CoreUniverseBuilder:
             self.stats["dynamic_selection_pct"] = self.selection_pct
             self.stats["dynamic_n_min_n_max"] = f"{self.selection_n_min}/{self.selection_n_max}"
         else:
-            # Legacy mode(v0.2-v0.7 hardcode 150 default 或 explicit override)
+            # Legacy mode DEPRECATED per §14.7-BW (was v0.2-v0.7 hardcode 150 default)
             convex_pool = [c for c in eligible if c.theme_score >= 70.0][: self.convex_limit]
             convex_ids = {c.stock_id for c in convex_pool}
             core_pool = [c for c in eligible if c.stock_id not in convex_ids][: self.core_limit]
@@ -2223,15 +2226,14 @@ def parse_args():
     mode.add_argument("--dry-run", action="store_true", help="只計算與輸出摘要，不寫入治理表")
     mode.add_argument("--commit", action="store_true", help="寫入 policy/snapshot/membership/scores/revision log")
     parser.add_argument("--as-of-date", type=str, help="Universe snapshot 基準日期，預設為今天")
-    parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本(v0.7 為 legacy hardcode 150;v0.8_dynamic 為 §14.7-BT 動態 mode)")
-    # §14.7-BT Phase C:legacy flags 改 None default(不再 hardcode 120/30);per charter §6.7.1 annex
-    parser.add_argument("--core-limit", type=int, default=None, help="legacy mode core_universe 上限(None = LEGACY_CORE_LIMIT=120);dynamic mode 不適用")
-    parser.add_argument("--convex-limit", type=int, default=None, help="legacy mode convex_universe 上限(None = LEGACY_CONVEX_LIMIT=30);dynamic mode 不適用")
-    # §14.7-BT Phase C 新加:dynamic mode flags(per charter §6.7.1 annex / v6.3.0 軌道)
-    parser.add_argument("--selection-pct", type=float, default=None, help="dynamic mode top X%(預設 5.0 對映 §0.2 八二)")
-    parser.add_argument("--selection-n-min", type=int, default=None, help="dynamic mode N min guard(預設 100)")
-    parser.add_argument("--selection-n-max", type=int, default=None, help="dynamic mode N max guard(預設 200)")
-    parser.add_argument("--core-pct", type=float, default=None, help="dynamic mode core_pct_within_selected(預設 0.70 core/convex 70/30)")
+    parser.add_argument("--policy-version", type=str, default=DEFAULT_POLICY_VERSION, help="核心股選拔政策版本(v0.7/v0.8 模式 DEPRECATED per §14.7-BW pure doctrine;新路徑為 build_doctrine_gate_universe.py)")
+    # §14.7-BW pure doctrine + 2026-05-27 directive:legacy / dynamic mode 之 N flags 全 DEPRECATED
+    parser.add_argument("--core-limit", type=int, default=None, help="DEPRECATED per §14.7-BW (was legacy core 上限 120)")
+    parser.add_argument("--convex-limit", type=int, default=None, help="DEPRECATED per §14.7-BW (was legacy convex 上限 30)")
+    parser.add_argument("--selection-pct", type=float, default=None, help="DEPRECATED per §14.7-BW (was dynamic top 5%)")
+    parser.add_argument("--selection-n-min", type=int, default=None, help="DEPRECATED per §14.7-BW (was N min floor 100)")
+    parser.add_argument("--selection-n-max", type=int, default=None, help="DEPRECATED per §14.7-BW (was N max cap 200)")
+    parser.add_argument("--core-pct", type=float, default=None, help="DEPRECATED per §14.7-BW (was 70/30 tier split)")
     parser.add_argument("--include-emerging", action="store_true", help="允許 emerging 類型進入非 quarantine 分層")
     parser.add_argument(
         "--special-rebalance-reason",

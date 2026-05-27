@@ -484,8 +484,11 @@ class ModelTrainer:
                 }
                 for sid in sorted(by_stock)
             ]
-            if len(self.rows) < 100:
-                self._detail("fail", f"rows_trained={len(self.rows)}, expected >= 100")
+            # §14.7-BW pure doctrine + 用戶 2026-05-27 directive「排除所有固定的核心股數量」:
+            # 取消 implicit floor `< 100`(was hardcoded N_min);訓練 rows = doctrine-pass set 大小
+            # 若 rows = 0 仍 fail(無資料無法訓練);否則 pass 任何 dynamic N
+            if len(self.rows) == 0:
+                self._detail("fail", f"rows_trained=0, no training data available")
                 return False
             min_label_date = min(row["label_date"] for row in self.rows)
             if min_label_date < label_min_date:

@@ -320,10 +320,21 @@ class DownstreamReadinessAuditor:
             self.pass_("feature_label_horizon", f"horizon={horizon}")
         else:
             self.fail("feature_label_horizon", f"horizon={horizon}, expected {FORMAL_LABEL_HORIZON}")
-        if total_stocks == 150 and feature_count >= 20:
+        # §14.7-BW pure doctrine: 從 feature_set 對應之 snapshot 動態取 expected N
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "core_universe_membership" m
+            JOIN "feature_store_snapshot" fs ON fs.universe_snapshot_id = m.snapshot_id
+            WHERE fs.feature_set_id = %s
+              AND m.core_tier IN ('core_universe', 'convex_universe')
+            """,
+            (feature_set_id,),
+        )
+        expected_n = cur.fetchone()[0]
+        if total_stocks == expected_n and feature_count >= 20:
             self.pass_("feature_coverage", f"stocks={total_stocks}, feature_count={feature_count}")
         else:
-            self.fail("feature_coverage", f"stocks={total_stocks}, feature_count={feature_count}")
+            self.fail("feature_coverage", f"stocks={total_stocks}, feature_count={feature_count}, expected stocks={expected_n} (dynamic per §14.7-BW)")
 
         cur.execute(
             """
@@ -373,10 +384,21 @@ class DownstreamReadinessAuditor:
             (run_id,),
         )
         prediction_rows = cur.fetchone()[0]
-        if rows_written == 150 and prediction_rows == 150:
+        # §14.7-BW pure doctrine: 從對應 universe_snapshot 動態取 expected N(取代 hardcoded 150)
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM "core_universe_membership" m
+            JOIN "prediction_run" pr ON pr.universe_snapshot_id = m.snapshot_id
+            WHERE pr.run_id = %s
+              AND m.core_tier IN ('core_universe', 'convex_universe')
+            """,
+            (run_id,),
+        )
+        expected_n = cur.fetchone()[0]
+        if rows_written == expected_n and prediction_rows == expected_n:
             self.pass_("prediction_coverage", f"rows_written={rows_written}, values={prediction_rows}")
         else:
-            self.fail("prediction_coverage", f"rows_written={rows_written}, values={prediction_rows}, expected 150")
+            self.fail("prediction_coverage", f"rows_written={rows_written}, values={prediction_rows}, expected {expected_n} (dynamic per §14.7-BW)")
 
     def check_historical_readiness(self):
         counts = self.counts()

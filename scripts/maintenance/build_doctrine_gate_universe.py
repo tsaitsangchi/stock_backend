@@ -7,11 +7,11 @@ build_doctrine_gate_universe.py v0.9 (§14.7-BV Phase C — Doctrine-Gate-First 
 
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Doctrine-Gate-First Authority]: 本工具落地 §14.7-BV Phase B 入憲之 Path C algorithm — 三基柱資料源依據為 selection 必要條件;N 完全動態;CoreScore 降為 gate-pass 內 tier ranking。
-2. [Stage Pipeline]: 4 stages — (1) §0.3 K-wave market prerequisite 5/5 / (2) per-stock §0.1 5-source check + §0.2 by-def / (3) within-pass CoreScore composite rank / (4) 70/30 tier split with [N_min=100, N_max=200] cap。
+2. [Stage Pipeline]: 4 stages — (1) §0.3 K-wave market prerequisite 5/5 / (2) per-stock §0.1 5-source check + §0.2 by-def / (3) CoreScore composite (INFO display only per §14.7-BW) / (4) all doctrine-pass → core_universe(無 cap/floor/tier % per §14.7-BW pure doctrine)。
 3. [Score Reuse]: 直接從既有 core_universe_scores 表讀 6 sub-scores(DQ/LM/FG/TR/IF/VC/RP)計算 composite,不重 compute(避免 v0.7 builder 完整跑 ~4-6h);此為 Path C 之 minimal-viable execution(builder full rewrite 為 v1.0 升版選項)。
 4. [§14.7-BU Phase E Data Layer Coupling]: per §14.7-BV charter 之 execution coupling 紀律,本 builder 同次完成 §14.7-BU Phase E 之 data layer hook — 為新 snapshot 之每支 gate-pass stock 寫 universe_completeness_snapshot 之 data layer 3 records(per pillar)。
 5. [Existing Scores Authority]: 複用 core_universe_scores 之 sub-scores 屬「v0.2-v0.7 score 仍為治權產物」之延續(per §14.7-BT precedent — algorithm 升版不撤銷 historical scoring data)。
-6. [Zero Hardcoded N]: N 完全 doctrine-derived;唯一 hardcode 為 §6.7.1 dynamic size annex 之 N_min=100 / N_max=200 cap(per §14.7-BT 第十八輪)+ 70/30 split。
+6. [Zero Hardcoded N]: N 完全 doctrine-derived(per §14.7-BW pure doctrine 第二十一輪 + 2026-05-27 用戶 directive「排除所有固定的核心股數量」);無 N_min / N_max / tier % / 任何 fixed bound。
 7. [Sovereignty Declaration]: 本工具屬 §14.7-BV Phase C 落地;不修改 §6.4 CoreScore 公式 / §6.7 SQL contract / §6.7.1 annex / §0.1-A / §0.2-A / §0.3-A 三套禁令 / §8.5 anti-leakage(由 builders 主管)。
 
 ## 📊 二、執行指令

@@ -32,8 +32,9 @@ feature_store_builder.py v0.5 (Quantum Finance Feature Store Build Authority)
    `feature_values` → `feature_store_snapshot (status='committed')`；
    feature_set_id 命名格式 `fs_{yyyymmdd}_{feature_set_version}`，
    確保可重現與 audit trail。
-5. [Universe Lock]: 範圍鎖定 `core_universe ∪ convex_universe` 150 支
-   （§6.7 SQL 契約之 `get_core_stocks_from_db(tiers=['core','convex'])`）；
+5. [Universe Lock]: 範圍鎖定 `core_universe ∪ convex_universe` (N dynamic
+   per §14.7-BW pure doctrine,無 hardcoded 150/200 cap;§6.7 SQL 契約之
+   `get_core_stocks_from_db(tiers=['core','convex'])`);
    universe_snapshot_id 必須為最新 committed snapshot。
 6. [Downstream Boundary]: 不保存 labels、不保存 model output、不保存
    預測訊號；§8 三層職責邊界（Feature Store / Model Registry / Prediction Table）
@@ -267,10 +268,8 @@ class FeatureStoreBuilder:
                 """
             )
             self.core_stocks = [r[0] for r in cur.fetchall()]
-            if len(self.core_stocks) < 100:
-                self._preflight("warning", f"only {len(self.core_stocks)} core+convex stocks; expected ~150")
-            else:
-                self._preflight("pass", f"core+convex universe loaded: {len(self.core_stocks)} stocks")
+            # §14.7-BW pure doctrine: N 為 doctrine 結果,無 implicit floor (was: < 100 warning)
+            self._preflight("pass", f"core+convex universe loaded: {len(self.core_stocks)} stocks (dynamic per §14.7-BW)")
 
             # 4. Idempotency check
             cur.execute(

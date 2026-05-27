@@ -12,7 +12,7 @@ parallel_ingestion.py v8.0 (Quantum Finance Edition)
   1. [單一標的全量入庫] 對台積電(2330)執行所有資料表同步:
      python scripts/ingestion/parallel_ingestion.py --stock_id 2330 --table ALL
 
-  2. [核心宇宙同步] 對 128 檔核心股票執行籌碼(Chip)與技術(Technical)同步:
+  2. [核心宇宙同步] 對核心宇宙全集(dynamic per §14.7-BW,無 hardcoded 128)執行籌碼(Chip)與技術(Technical)同步:
      python scripts/ingestion/parallel_ingestion.py --universe core --table Chip
      python scripts/ingestion/parallel_ingestion.py --universe core --table Technical
 

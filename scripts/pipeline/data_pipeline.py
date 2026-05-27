@@ -2,14 +2,14 @@
 data_pipeline.py v7.0 (Quantum Finance Edition)
 ================================================================================
 數據管線總指揮官 — 混合日誌標準版 (Quantum v5.1)
-負責協調整個 128 檔核心宇宙的數據同步、稽核與初步處理。
+負責協調整個核心宇宙全集(dynamic per §14.7-BW,無 hardcoded 128)之數據同步、稽核與初步處理。
 
 修訂歷程：
   v7.0 (2026-05-10): [核心] 導入 --table 參數，支援全量核心標的之特定資料表同步。
   v6.9 (2026-05-10): [核心] 升級 Quantum Finance 物理特徵相容性。
 
 【執行範例矩陣 — 數據同步方案】
-1. 增量同步 (全核心 128 檔 x 所有表)：
+1. 增量同步 (全核心宇宙 dynamic per §14.7-BW x 所有表):
    python scripts/pipeline/data_pipeline.py --all
 2. 全核心 x 指定表 (僅籌碼面)：
    python scripts/pipeline/data_pipeline.py --all --table chip

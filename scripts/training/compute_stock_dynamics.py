@@ -2,7 +2,7 @@
 compute_stock_dynamics.py v5.5.26 (Trinity Core Final)
 ================================================================================
 股票動態分析工具 — 混合模式日誌實作版
-負責計算 150 檔標的的動態變化特徵（如波動率、動量趨勢）。
+負責計算核心標的全集(dynamic per §14.7-BW pure doctrine,無 hardcoded 150)之動態變化特徵（如波動率、動量趨勢）。
 
 修訂歷程：
   v5.5.26 (2026-05-10):
@@ -12,7 +12,7 @@ compute_stock_dynamics.py v5.5.26 (Trinity Core Final)
 
 【執行範例說明】
 
-1. 直接從命令行執行（對 150 檔全核心標的進行動態分析）：
+1. 直接從命令行執行(對核心標的全集進行動態分析;N dynamic per §14.7-BW):
    $ python scripts/training/compute_stock_dynamics.py
 
 2. 日誌查閱 (驗證分析任務執行狀態與耗時)：
