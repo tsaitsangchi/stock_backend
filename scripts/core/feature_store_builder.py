@@ -1261,20 +1261,10 @@ class FeatureStoreBuilder:
             stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
             stock_features["pb_ratio"] = per_for_sid.get("pb_ratio")
             stock_features["dividend_yield"] = per_for_sid.get("dividend_yield")
-            # §14.7-CB Step 1(2026-05-27)— roe_ttm 升真 ROE(BS Equity / IAT 4Q;per §14.7-BI 解鎖)
-            # 優先用 BS-derived real ROE;若無 BS data → fallback to PBR/PER identity proxy
+            # §14.7-CB Step 1 + §14.7-CD(2026-05-27)— roe_ttm 嚴格用 BS-derived real ROE
+            # 廢棄 PBR/PER identity fallback(§14.7-CD source-purity:Raw source 不全則不應為核心股)
             qual_for_sid = quality_data.get(sid, {})
-            roe_real = qual_for_sid.get("roe_ttm_real")
-            if roe_real is not None:
-                stock_features["roe_ttm"] = roe_real
-            else:
-                # Fallback:PBR/PER identity(needs PER × PBR 雙正)
-                per_val = per_for_sid.get("pe_ratio")
-                pbr_val = per_for_sid.get("pb_ratio")
-                if per_val is not None and pbr_val is not None and per_val > 0:
-                    stock_features["roe_ttm"] = pbr_val / per_val
-                else:
-                    stock_features["roe_ttm"] = None
+            stock_features["roe_ttm"] = qual_for_sid.get("roe_ttm_real")
             # operating_margin_ttm
             stock_features["operating_margin_ttm"] = qual_for_sid.get("operating_margin_ttm")
             # revenue_yoy_3m_log:既有 revenue_yoy_3m 之 log-transformed(reduce skewness)
