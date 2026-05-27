@@ -1,9 +1,16 @@
 """
 build_doctrine_gate_universe.py v0.9 (§14.7-BV Phase C — Doctrine-Gate-First Universe Builder)
 ================================================================================
-最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §14.7-BV Phase C 落地 / Path C: doctrine-gate first, score-rank for tier / 同次完成 §14.7-BU Phase E data layer hook coupling)
+最後更新日期: 2026-05-27
+主權狀態: SUPERSEDED-IN-TRANSITION (憲法 v6.4.3 §14.7-CC + §14.7-CD 之 Raw Data Completeness Doctrine 為新 SSOT;本 builder 仍由 run_weekly_doctrine_recommit.py Step 4 呼叫,實際 commit 邏輯維持 v0.10 pure_doctrine,待 weekly pipeline 遷移至 apply_raw_data_completeness_gate.py 後即可下架)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## ⚠️ §14.7-CC / §14.7-CD 取代備註 (2026-05-27)
+
+- **新 SSOT**: `scripts/maintenance/apply_raw_data_completeness_gate.py` (§14.7-CD Raw Data Completeness Gate;9 sources × source-level enforcement;N=1,543 evidence)。
+- **本 builder 狀態**: MC_INDICATORS 仍對 `kwave_supply_cycle_proxy` (proxy_id=TW_SEMI_VWAP_YOY / TW_SHIPPING_VWAP_YOY) 做 binary gate check;feature_store 已改讀 FRED-native IPG3344S + PCU4831114831115 但本 gate 尚未同步遷移。
+- **calling site**: `scripts/maintenance/run_weekly_doctrine_recommit.py` Step 4 仍 invoke 本 script `--commit --weekly-mode`;移除前須先將 weekly pipeline 切換至 `apply_raw_data_completeness_gate.py`。
+- **下架時點**: 待 weekly pipeline 遷移完成 + `kwave_supply_cycle_proxy` 表 DROP (charter §14.7-CD 預告 v6.4.5) 後一併移除本 script + Step 2/3 (compute_semi_supply_cycle_proxy.py)。
 
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Doctrine-Gate-First Authority]: 本工具落地 §14.7-BV Phase B 入憲之 Path C algorithm — 三基柱資料源依據為 selection 必要條件;N 完全動態;CoreScore 降為 gate-pass 內 tier ranking。

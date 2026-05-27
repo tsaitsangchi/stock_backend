@@ -1,9 +1,16 @@
 """
 compute_semi_supply_cycle_proxy.py v0.1 (§14.7-BR Phase C-2 — 半導體庫存 proxy 程式落地;B1 FinMind TaiwanStockPrice VWAP YoY pattern)
 ================================================================================
-最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §14.7-BR Phase C-2 + §0.3.8.3 I5 半導體庫存 proxy + B1 pattern;對齊 §14.7-BJ 反 scraping + §14.7-AX(E) 外部資源 protocol)
+最後更新日期: 2026-05-27
+主權狀態: SUPERSEDED-IN-TRANSITION (憲法 v6.4.3 §14.7-CC Source Authority Doctrine 取代 system-computed proxy 為 FRED-native;本 writer 仍由 run_weekly_doctrine_recommit.py Step 2/3 呼叫,待 weekly pipeline 遷移後下架)
 最高原則: Evidence-First Computation (用既有 TaiwanStockPrice 計算 proxy;0 外部 API / 0 paywall)
+
+## ⚠️ §14.7-CC 取代備註 (2026-05-27)
+
+- **§14.7-CC Source Authority Doctrine**: feature_store_builder 之 macro pillar 已不再 consume `kwave_supply_cycle_proxy`;改採 FRED-native `IPG3344S` (Semi Kitchin) + `PCU4831114831115` (Shipping Juglar) — 對應 charter v6.4.1 入憲。
+- **本 writer 狀態**: 仍寫入 `kwave_supply_cycle_proxy` 表,僅供 `build_doctrine_gate_universe.py` MC_INDICATORS 之 binary gate-presence check (TW_SEMI_VWAP_YOY / TW_SHIPPING_VWAP_YOY) 使用。
+- **calling site**: `scripts/maintenance/run_weekly_doctrine_recommit.py` Step 2 (半導體業 / TW_SEMI_VWAP_YOY) + Step 3 (航運業 / TW_SHIPPING_VWAP_YOY)。
+- **下架時點**: 待 (a) weekly pipeline 切換至 `apply_raw_data_completeness_gate.py` (§14.7-CD 新 SSOT) (b) `kwave_supply_cycle_proxy` 表 DROP (charter §14.7-CD 預告 v6.4.5) 後與 `build_doctrine_gate_universe.py` 一併下架。
 
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Proxy Computation Authority]: 對齊憲章 §14.7-BR Phase A 之 B1 方案

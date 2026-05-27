@@ -655,12 +655,15 @@ class FeatureStoreBuilder:
         }
 
     def _load_macro_extended(self, cur):
-        """§14.7-CA Phase C-1c-3(2026-05-27)— §0.3.1/.2/.3 14 features broadcast。
+        """§14.7-CA Phase C-1c-3(2026-05-27)— §0.3.1/.2/.3 macro features broadcast。
 
-        資料來源:
-        - fred_series(22 indicators / 含 PATENTUSALLTOTAL / B985 / TCMDO / QUSPAM770A / LFWA64 / SPPOPDPND / PALLFN / M2SL / WTISPLC / VIXCLS 等)
-        - kwave_supply_cycle_proxy(TW_SEMI_VWAP_YOY / TW_SHIPPING_VWAP_YOY)
-        Returns 14 macro features 之 dict(broadcast 至每股,per existing macro group pattern)。
+        資料來源(§14.7-CC Source Authority Doctrine 2026-05-27 修訂):
+        - fred_series 唯一來源,13 series:PATENTUSALLTOTAL / B985RC1Q027SBEA / TCMDO /
+          QUSPAM770A / LFWA64TTUSA647N / SPPOPDPNDOLUSA / PALLFNFINDEXQ / M2SL /
+          T10Y2Y / WTISPLC / VIXCLS / IPG3344S / PCU4831114831115。
+        - IPG3344S 取代 system-computed TW_SEMI_VWAP_YOY proxy。
+        - PCU4831114831115 取代 system-computed TW_SHIPPING_VWAP_YOY proxy。
+        Returns macro features 之 dict(broadcast 至每股,per existing macro group pattern)。
         """
         as_of = self.as_of_date
 
