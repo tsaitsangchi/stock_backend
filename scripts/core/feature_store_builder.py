@@ -133,6 +133,10 @@ FEATURE_DEFINITIONS = [
     {"name": "convexity_60d", "group": "price", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "upside_volatility - downside_volatility(凸性 asymmetry;§14.7-BG / §9.10;§0.1)"},
     # ── liquidity 群 v0.3 §14.7-CA Phase C-1c 新增(2026-05-27)
     {"name": "amihud_illiquidity_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "Amihud 2002 illiquidity:AVG(|r|/dollar_vol) over 60d;TW IC ~+0.04-0.06 OOS;§0.1 §0.2"},
+    # ── value 群 v0.3 §14.7-CA Phase C-1c-1 新增(2026-05-27;對映 Phase A research §5.1-D)
+    {"name": "pe_ratio", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "latest PER(price/earnings;Fama-French HML;TW IC -0.02 ~ -0.04 OOS;§0.1.D)"},
+    {"name": "pb_ratio", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "latest PBR(price/book;Fama-French HML;TW IC -0.02 ~ -0.04 OOS;§0.1.D)"},
+    {"name": "dividend_yield", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "dividend yield from TaiwanStockPER;Litzenberger 1979;TW IC +0.015 OOS;§0.1.D"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -406,6 +410,31 @@ class FeatureStoreBuilder:
             (self.core_stocks, start_60, *([self.as_of_date] * n_ap)),
         )
         return {sid: float(ratio or 0) for sid, ratio in cur.fetchall()}
+
+    def _load_per(self, cur):
+        """§14.7-CA Phase C-1c-1(2026-05-27)— 取每股之 latest PER/PBR/dividend_yield。
+
+        TaiwanStockPER 之 columns:date / stock_id / PER / PBR / dividend_yield
+        對映 v0.3 doctrine-aligned Value features(pe_ratio / pb_ratio / dividend_yield;§0.1.D)。
+        Native-aligned publication-date(per data_schema v2.18 PUBLICATION_DATE_STRATEGY_REGISTRY)。
+        """
+        # §8.5-9 Phase 2: PER = native_aligned (date = trading day)
+        gate, n_ap = build_publication_date_gate("TaiwanStockPER")
+        cur.execute(
+            f"""
+            SELECT DISTINCT ON (stock_id) stock_id, "PER", "PBR", "dividend_yield"
+            FROM "TaiwanStockPER"
+            WHERE stock_id = ANY(%s) AND {gate}
+            ORDER BY stock_id, date DESC
+            """,
+            (self.core_stocks, *([self.as_of_date] * n_ap)),
+        )
+        return {
+            sid: {"pe_ratio": float(per) if per is not None else None,
+                  "pb_ratio": float(pbr) if pbr is not None else None,
+                  "dividend_yield": float(dy) if dy is not None else None}
+            for sid, per, pbr, dy in cur.fetchall()
+        }
 
     def _load_theme(self, cur):
         # §8.5-9 Phase 2: Info = native_aligned (registry snapshot date)
@@ -742,6 +771,9 @@ class FeatureStoreBuilder:
             theme = self._load_theme(cur)
             self._detail("📥 [LOAD] macro ...")
             macro = self._load_macro(cur)
+            # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 之 raw load
+            self._detail("📥 [LOAD] per (Value group v0.3) ...")
+            per_data = self._load_per(cur)
         finally:
             cur.close()
             conn.close()
@@ -761,6 +793,11 @@ class FeatureStoreBuilder:
             stock_features["margin_ratio_60d"] = margin.get(sid)
             stock_features.update(self._theme_features(theme.get(sid, "")))
             stock_features.update(macro)
+            # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 3(pe_ratio / pb_ratio / dividend_yield)
+            per_for_sid = per_data.get(sid, {})
+            stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
+            stock_features["pb_ratio"] = per_for_sid.get("pb_ratio")
+            stock_features["dividend_yield"] = per_for_sid.get("dividend_yield")
             # v0.2 §0.0-D.6 交互特徵：v0.3 起不繼承（§9.9-E policy.7 + §14.7-AD）
             # v0.2 ablation 實證 IC = +0.0131 (HARMFUL)，僅 v0.2 feature_set 寫入
             if self.feature_set_version == "feature_set_v0.2":
