@@ -137,6 +137,11 @@ FEATURE_DEFINITIONS = [
     {"name": "pe_ratio", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "latest PER(price/earnings;Fama-French HML;TW IC -0.02 ~ -0.04 OOS;§0.1.D)"},
     {"name": "pb_ratio", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "latest PBR(price/book;Fama-French HML;TW IC -0.02 ~ -0.04 OOS;§0.1.D)"},
     {"name": "dividend_yield", "group": "value", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "dividend yield from TaiwanStockPER;Litzenberger 1979;TW IC +0.015 OOS;§0.1.D"},
+    # ── quality 群 v0.3 §14.7-CA Phase C-1c-2 新增(2026-05-27;對映 Phase A research §5.1-D Quality+Investment)
+    {"name": "roe_ttm", "group": "quality", "source": "TaiwanStockPER", "window": "TTM", "vtype": "numeric", "null": "drop", "desc": "implied TTM ROE = PBR/PER identity(EPS/BPS);Asness QMJ;TW IC +0.07 OOS;§0.1.D"},
+    {"name": "operating_margin_ttm", "group": "quality", "source": "TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "drop", "desc": "TTM OperatingIncome / TTM Revenue(non-cumulative aware);QMJ profitability;TW IC +0.05 OOS;§0.1.D"},
+    # ── investment 群 v0.3 §14.7-CA Phase C-1c-2 新增(2026-05-27)
+    {"name": "revenue_yoy_3m_log", "group": "investment", "source": "TaiwanStockMonthRevenue", "window": "15m", "vtype": "numeric", "null": "drop", "desc": "log(1+revenue_yoy_3m);recent 3m revenue YoY growth log-transformed;TW IC +0.04 OOS;§0.1.D"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -435,6 +440,63 @@ class FeatureStoreBuilder:
                   "dividend_yield": float(dy) if dy is not None else None}
             for sid, per, pbr, dy in cur.fetchall()
         }
+
+    def _load_quality(self, cur):
+        """§14.7-CA Phase C-1c-2(2026-05-27)— 取 TTM OperatingIncome / Revenue 計算 operating margin。
+
+        TaiwanStockFinancialStatements 為 cumulative YTD 報告(Q1=Q1 only, Q2=H1, Q3=9M, Q4=full year)。
+        TTM 計算:取最近 ~5 個 quarter 之 cumulative,轉非累積後 sum 最後 4 個 quarter。
+        對映 v0.3 doctrine-aligned Quality features(operating_margin_ttm;§0.1.D Quality / Asness QMJ)。
+        Hardcoded-conservative publication-date(Q1-Q3 +45 / Q4 +90 天)。
+        """
+        # 取近 ~500 天 quarterly 資料(夠涵蓋 5 個 quarter)
+        start = self.as_of_date - timedelta(days=500)
+        gate, n_ap = build_publication_date_gate("TaiwanStockFinancialStatements")
+        cur.execute(
+            f"""
+            SELECT stock_id, date, type, value::numeric
+            FROM "TaiwanStockFinancialStatements"
+            WHERE stock_id = ANY(%s) AND date >= %s AND {gate}
+              AND type IN ('Revenue', 'OperatingIncome')
+            ORDER BY stock_id, date, type
+            """,
+            (self.core_stocks, start, *([self.as_of_date] * n_ap)),
+        )
+        # build {stock_id: {date: {Revenue: x, OperatingIncome: y}}}
+        raw = {}
+        for sid, d, ttype, v in cur.fetchall():
+            raw.setdefault(sid, {}).setdefault(d, {})[ttype] = float(v or 0)
+
+        out = {}
+        for sid, by_date in raw.items():
+            # 依 quarter end date 排序 (asc)
+            dates = sorted(by_date.keys())
+            # 轉 cumulative → quarterly: 每年單獨處理,Q1 為 base
+            quarterly_rev, quarterly_op = [], []
+            by_year = {}
+            for d in dates:
+                by_year.setdefault(d.year, []).append(d)
+            for year, ds in by_year.items():
+                ds.sort()
+                prev_rev = 0.0
+                prev_op = 0.0
+                for d in ds:
+                    rev = by_date[d].get("Revenue", 0.0)
+                    op = by_date[d].get("OperatingIncome", 0.0)
+                    quarterly_rev.append((d, rev - prev_rev))
+                    quarterly_op.append((d, op - prev_op))
+                    prev_rev, prev_op = rev, op
+            # 取最後 4 個 quarter sum
+            quarterly_rev.sort()
+            quarterly_op.sort()
+            if len(quarterly_rev) >= 4 and len(quarterly_op) >= 4:
+                ttm_rev = sum(v for _, v in quarterly_rev[-4:])
+                ttm_op = sum(v for _, v in quarterly_op[-4:])
+                op_margin = (ttm_op / ttm_rev) if ttm_rev > 0 else None
+            else:
+                op_margin = None
+            out[sid] = {"operating_margin_ttm": op_margin}
+        return out
 
     def _load_theme(self, cur):
         # §8.5-9 Phase 2: Info = native_aligned (registry snapshot date)
@@ -774,6 +836,9 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 之 raw load
             self._detail("📥 [LOAD] per (Value group v0.3) ...")
             per_data = self._load_per(cur)
+            # §14.7-CA Phase C-1c-2(2026-05-27)— §0.1 Quality features 之 raw load
+            self._detail("📥 [LOAD] quality (Quality group v0.3) ...")
+            quality_data = self._load_quality(cur)
         finally:
             cur.close()
             conn.close()
@@ -798,6 +863,23 @@ class FeatureStoreBuilder:
             stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
             stock_features["pb_ratio"] = per_for_sid.get("pb_ratio")
             stock_features["dividend_yield"] = per_for_sid.get("dividend_yield")
+            # §14.7-CA Phase C-1c-2(2026-05-27)— §0.1 Quality+Investment features 3
+            # roe_ttm:PBR/PER 數學恆等(=EPS/BPS=trailing ROE);Quality+Investment 群(無 BalanceSheet table)
+            per_val = per_for_sid.get("pe_ratio")
+            pbr_val = per_for_sid.get("pb_ratio")
+            if per_val is not None and pbr_val is not None and per_val > 0:
+                stock_features["roe_ttm"] = pbr_val / per_val
+            else:
+                stock_features["roe_ttm"] = None
+            # operating_margin_ttm
+            qual_for_sid = quality_data.get(sid, {})
+            stock_features["operating_margin_ttm"] = qual_for_sid.get("operating_margin_ttm")
+            # revenue_yoy_3m_log:既有 revenue_yoy_3m 之 log-transformed(reduce skewness)
+            rev_yoy_3m = stock_features.get("revenue_yoy_3m")
+            if rev_yoy_3m is not None and rev_yoy_3m > -1.0:
+                stock_features["revenue_yoy_3m_log"] = math.log(1.0 + rev_yoy_3m)
+            else:
+                stock_features["revenue_yoy_3m_log"] = None
             # v0.2 §0.0-D.6 交互特徵：v0.3 起不繼承（§9.9-E policy.7 + §14.7-AD）
             # v0.2 ablation 實證 IC = +0.0131 (HARMFUL)，僅 v0.2 feature_set 寫入
             if self.feature_set_version == "feature_set_v0.2":
