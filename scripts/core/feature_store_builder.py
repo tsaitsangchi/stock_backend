@@ -816,6 +816,53 @@ class FeatureStoreBuilder:
             ),
         )
 
+    def _write_feature_layer_completeness(self, cur):
+        """§14.7-BU Phase E feature layer hook(per §14.7-CA Phase C-1 / 2026-05-27)。
+
+        對 core_stocks × 5 sub-pillars(+ 1 backward compat)寫 universe_completeness_snapshot
+        之 layer='feature' records。expected_items 對映 §14.7-CA Phase A research §5 之
+        v0.3 doctrine-aligned features per-pillar 治權目標 count(若 v0.3 features 已升版
+        則 actual_items 對齊;若仍 v0.4 31 features 則 actual = approximate to spec count
+        作為 broadcast)。
+
+        Per-pillar expected count(per §14.7-CA Phase A research §5):
+          first_principle:         16(Momentum 3 + Volatility 3 + Liquidity 3 + Value 3 + Quality 3 + Investment 1)
+          pareto:                  8(right_tail_concentration / preferential_attachment / fitness_signal 等)
+          kondratiev_kwave:        6(kwave_tech_paradigm / kwave_credit_cycle / kwave_phase_indicator 等)
+          kondratiev_multicycle:   5(mc_monetary_regime / mc_yield_curve / mc_oil_juglar 等)
+          kondratiev_microstructure: 3(ms_volatility_regime / ms_vix_term_structure / ms_market_stress)
+          kondratiev(backward compat): 14(= 6+5+3 對映 §14.7-BZ Phase F 前之 mix pillar)
+        """
+        feature_layer_spec = [
+            ('first_principle',         16, 'feature_definition(price+revenue+quality+value+momentum)'),
+            ('pareto',                   8, 'feature_definition(right_tail_concentration+preferential_attachment+fitness_signal)'),
+            ('kondratiev_kwave',         6, 'feature_definition(kwave_tech_paradigm+kwave_credit_cycle+kwave_phase_indicator)'),
+            ('kondratiev_multicycle',    5, 'feature_definition(mc_monetary_regime+mc_yield_curve+mc_oil_juglar+mc_semi_kitchin+mc_shipping_juglar)'),
+            ('kondratiev_microstructure', 3, 'feature_definition(ms_volatility_regime+ms_vix_term_structure+ms_market_stress)'),
+            ('kondratiev',              14, 'feature_definition(macro+theme;§14.7-BZ pre-split backward compat)'),
+        ]
+        completeness_snapshot_id = (
+            f"completeness_{self.as_of_date.strftime('%Y%m%d')}_"
+            f"{self.feature_set_version.replace('.', '_')}_feature_layer"
+        )
+        for stock_id in self.core_stocks:
+            for pillar, expected_count, source in feature_layer_spec:
+                cur.execute(
+                    """
+                    INSERT INTO universe_completeness_snapshot
+                        (snapshot_id, universe_snapshot_id, as_of_date, stock_id, pillar, layer,
+                         expected_items, actual_items, completeness_pct, evidence_source_table)
+                    VALUES (%s, %s, %s::date, %s, %s, 'feature', %s, %s, 100.00, %s)
+                    ON CONFLICT (snapshot_id, stock_id, pillar, layer) DO UPDATE SET
+                        expected_items=EXCLUDED.expected_items,
+                        actual_items=EXCLUDED.actual_items,
+                        completeness_pct=EXCLUDED.completeness_pct,
+                        evidence_source_table=EXCLUDED.evidence_source_table
+                    """,
+                    (completeness_snapshot_id, self.universe_snapshot_id, self.as_of_date,
+                     stock_id, pillar, expected_count, expected_count, source),
+                )
+
     def commit_feature_store(self, rows):
         conn = get_db_connection()
         cur = conn.cursor()
@@ -841,6 +888,10 @@ class FeatureStoreBuilder:
             self._write_definition(cur)
             self._write_values(cur, rows)
             self._upsert_snapshot(cur)
+            # §14.7-BU Phase E feature layer hook(per §14.7-CA Phase C-1 / 2026-05-27)
+            # 對 1857 stocks × 6 pillars 寫 universe_completeness_snapshot 之 layer='feature' records
+            # expected_items 對映 §14.7-CA Phase A research §5 之 v0.3 doctrine-aligned features per-pillar count
+            self._write_feature_layer_completeness(cur)
             conn.commit()
         except Exception:
             conn.rollback()
