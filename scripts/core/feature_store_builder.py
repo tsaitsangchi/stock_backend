@@ -159,6 +159,14 @@ FEATURE_DEFINITIONS = [
     {"name": "ms_volatility_regime", "group": "microstructure", "source": "fred_series", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "VIXCLS rolling 60d mean;Whaley 1993 IC ~-0.025;§0.3.3"},
     {"name": "ms_vix_term_structure", "group": "microstructure", "source": "fred_series", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "(VIXCLS/252d_mean)-1;VIX premium;§0.3.3"},
     {"name": "ms_market_stress", "group": "microstructure", "source": "fred_series", "window": "30d", "vtype": "boolean", "null": "zero_fill", "desc": "1 if max VIXCLS > 30 in last 30 days;crisis警示 binary;§0.3.3"},
+    # ── §0.2 八二法則 explicit 群 v0.3 §14.7-CA Phase C-1c-4 新增(2026-05-27;7 features per-sector aggregation)
+    {"name": "right_tail_concentration_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "top 10% sids volume share / total within sector;Pareto 分布實證;TW IC +0.015 OOS;§0.2"},
+    {"name": "barbell_balance_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "abs((top 20% vol share) - 0.80);Pareto deviation;§9.2 barbell theory;§0.2"},
+    {"name": "preferential_attachment_60d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_daily_value 60d)attachment proxy;Barabási-Albert 1999;TW IC +0.015 OOS;§0.2"},
+    {"name": "fitness_signal_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo × Institutional", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "(avg_value × (theme_strength+0.01) × (foreign_ratio+0.01))^(1/3);Bianconi-Barabási 2001;TW IC +0.02 OOS;§0.2"},
+    {"name": "right_tail_returns_skew_252d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "skew of positive daily log returns over 252d;right-tail asymmetry;TW IC ±0.02 regime-dep;§0.2"},
+    {"name": "liquidity_rank_pct_sector_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "sector 內 avg_value_60d 之 percentile rank ∈ [0,1];per-stock 相對集中度;TW IC +0.015 OOS;§0.2"},
+    {"name": "size_log_zscore_sector", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_value_60d) z-score within sector;Fama-French SMB proxy;TW IC ±0.01 emerging-market regime;§0.2"},
     # ── liquidity 群（4）
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
@@ -731,6 +739,118 @@ class FeatureStoreBuilder:
             "ms_market_stress": ms_stress,
         }
 
+    def _compute_sector_features(self, price_series, institutional, theme):
+        """§14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 explicit 7 features per-sector aggregation。
+
+        對每股 sid 返回 7 features:
+        - right_tail_concentration_60d(per-sector;top 10% volume share)
+        - barbell_balance_60d(per-sector;abs(top 20% share - 0.80))
+        - preferential_attachment_60d(per-stock;log10(avg_value_60d))
+        - fitness_signal_60d(per-stock;Bianconi-Barabási 1/3 power)
+        - right_tail_returns_skew_252d(per-stock;skew(r>0))
+        - liquidity_rank_pct_sector_60d(per-sector;sid's percentile within sector)
+        - size_log_zscore_sector(per-sector;sid's log size z-score)
+        """
+        # Pass 1:per-stock raw stats
+        per_stock = {}
+        for sid, series in price_series.items():
+            if len(series) < 60:
+                continue
+            closes = [r[1] for r in series]
+            moneys = [r[3] for r in series]
+            avg_value_60d = sum(moneys[-60:]) / 60.0
+
+            # right_tail_returns_skew_252d:positive log returns 之 skew(N≥3 + var>0)
+            returns_pos = []
+            start = max(1, len(closes) - 252)
+            for i in range(start, len(closes)):
+                if closes[i - 1] > 0 and closes[i] > 0:
+                    r = math.log(closes[i] / closes[i - 1])
+                    if r > 0:
+                        returns_pos.append(r)
+            skew_pos = self._skew(returns_pos) if len(returns_pos) >= 3 else None
+
+            inst = institutional.get(sid, {})
+            foreign_60d = float(inst.get("foreign_net_60d", 0) or 0)
+            foreign_ratio = (foreign_60d / avg_value_60d) if avg_value_60d > 0 else 0.0
+
+            industry = theme.get(sid, "")
+            theme_str = 0.0
+            for kw, score in THEME_KEYWORDS.items():
+                if kw in industry:
+                    theme_str = score / 100.0
+                    break
+
+            per_stock[sid] = {
+                "avg_value_60d": avg_value_60d,
+                "foreign_ratio": foreign_ratio,
+                "theme_strength": theme_str,
+                "returns_skew_pos_252d": skew_pos,
+                "industry": industry,
+            }
+
+        # Pass 2:group by sector
+        sectors = {}
+        for sid, stats in per_stock.items():
+            sectors.setdefault(stats["industry"] or "_unknown", []).append(sid)
+
+        # Pass 3:compute per-sector aggregates → assign back per stock
+        result = {}
+        for industry, sids in sectors.items():
+            if not sids:
+                continue
+            # per-sector liquidity rank
+            sids_by_vol = sorted(sids, key=lambda s: per_stock[s]["avg_value_60d"])
+            n_sector = len(sids_by_vol)
+
+            # right_tail_concentration:top 10% volume share / total
+            sorted_desc = sorted(sids, key=lambda s: -per_stock[s]["avg_value_60d"])
+            top_10_count = max(1, n_sector // 10)
+            top_10_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc[:top_10_count])
+            total_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc)
+            right_tail_conc = (top_10_sum / total_sum) if total_sum > 0 else 0.0
+
+            # barbell_balance:abs((top 20% share) - 0.80)
+            top_20_count = max(1, n_sector // 5)
+            top_20_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc[:top_20_count])
+            barbell = abs((top_20_sum / total_sum) - 0.80) if total_sum > 0 else 0.0
+
+            # size_log_zscore within sector
+            log_vals = [math.log10(max(per_stock[s]["avg_value_60d"], 1)) for s in sids]
+            mean_lv = sum(log_vals) / len(log_vals)
+            var_lv = sum((lv - mean_lv) ** 2 for lv in log_vals) / max(len(log_vals) - 1, 1)
+            std_lv = math.sqrt(var_lv) if var_lv > 0 else 1.0
+
+            for rank_idx, sid in enumerate(sids_by_vol):
+                result[sid] = {
+                    "right_tail_concentration_60d": right_tail_conc,
+                    "barbell_balance_60d": barbell,
+                    "liquidity_rank_pct_sector_60d": rank_idx / (n_sector - 1) if n_sector > 1 else 0.5,
+                }
+
+            for sid in sids:
+                log_v = math.log10(max(per_stock[sid]["avg_value_60d"], 1))
+                result.setdefault(sid, {})["size_log_zscore_sector"] = (log_v - mean_lv) / std_lv if std_lv > 0 else 0.0
+
+        # Per-stock features(not sector-dep)
+        for sid, stats in per_stock.items():
+            avg_v = stats["avg_value_60d"]
+            # preferential_attachment_60d
+            result.setdefault(sid, {})["preferential_attachment_60d"] = math.log10(avg_v) if avg_v > 0 else None
+            # fitness_signal_60d:(avg_value × (theme_strength+0.01) × (foreign_ratio+0.01))^(1/3)
+            ts_shift = stats["theme_strength"] + 0.01
+            fr_shift = stats["foreign_ratio"] + 0.01
+            product = avg_v * ts_shift * fr_shift
+            if product > 0:
+                result.setdefault(sid, {})["fitness_signal_60d"] = product ** (1.0 / 3.0)
+            else:
+                # 負 product → 取 negated cube root 之 signed cubic root
+                result.setdefault(sid, {})["fitness_signal_60d"] = -(abs(product) ** (1.0 / 3.0)) if product < 0 else None
+            # right_tail_returns_skew_252d
+            result.setdefault(sid, {})["right_tail_returns_skew_252d"] = stats["returns_skew_pos_252d"]
+
+        return result
+
     # ── FEATURE COMPUTATION (pure functions) ──────────────────────────────────
 
     @staticmethod
@@ -829,6 +949,18 @@ class FeatureStoreBuilder:
         if len(neg_rets) < 5:  # §9.9-E policy.4 min_observations_downside
             return None
         return math.sqrt(sum(r * r for r in neg_rets) / len(neg_rets))
+
+    @staticmethod
+    def _skew(values):
+        """sample skewness(third standardized moment);values 須 ≥ 3 且 var > 0。"""
+        if len(values) < 3:
+            return None
+        mean = sum(values) / len(values)
+        var = sum((v - mean) ** 2 for v in values) / len(values)
+        if var <= 0:
+            return None
+        std = math.sqrt(var)
+        return sum(((v - mean) / std) ** 3 for v in values) / len(values)
 
     @staticmethod
     def _amihud_illiquidity(closes, moneys, n):
@@ -1028,6 +1160,10 @@ class FeatureStoreBuilder:
             cur.close()
             conn.close()
 
+        # §14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 7 features per-sector aggregation
+        self._detail("🧮 [COMPUTE] sector features (§0.2 Pareto 7 features per-sector) ...")
+        sector_features = self._compute_sector_features(price_series, institutional, theme)
+
         null_strategy_map = {fd["name"]: fd["null"] for fd in self._active_feature_definitions()}
         rows = []
         null_imputed = 0
@@ -1045,6 +1181,8 @@ class FeatureStoreBuilder:
             stock_features.update(macro)
             # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast(same value 對每股)
             stock_features.update(macro_extended)
+            # §14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 7 features per-sector
+            stock_features.update(sector_features.get(sid, {}))
             # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 3(pe_ratio / pb_ratio / dividend_yield)
             per_for_sid = per_data.get(sid, {})
             stock_features["pe_ratio"] = per_for_sid.get("pe_ratio")
