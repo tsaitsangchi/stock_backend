@@ -23,7 +23,8 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 | 跳過 FRED sync(若獨立 cron 已 sync)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --skip-fred-sync` |
 
 ## 📜 三、修訂歷程
-| v0.1 | 2026-05-26 | Codex | §14.7-BX Phase C-3 落地首版:5 步 pipeline orchestrator + atomic supersede via builder --weekly-mode + drift report 生成。**Phase C-2 + Phase D-2 之 cron 啟動前置條件 為治權者責任,本工具不檢查**(若直接 cron 跑時下游 model 未升 weekly mode → IC degradation 風險自負)。 | ACTIVE |
+| v0.2 | 2026-05-28 | Codex | **§14.7-CE P1 整合**:Step 3.5 插入 `weekly_api_audit_and_resync.py`(live API audit + auto resync)。確保 weekly recommit 之 Step 4 native gate build 前 DB 已 ≡ FinMind/FRED API byte-level;mismatch 自動 re-sync(per §14.7-CE absolute byte-level closure)。`--skip-api-audit` flag 加入。 | ACTIVE |
+| v0.1 | 2026-05-26 | Codex | §14.7-BX Phase C-3 落地首版:5 步 pipeline orchestrator + atomic supersede via builder --weekly-mode + drift report 生成。**Phase C-2 + Phase D-2 之 cron 啟動前置條件 為治權者責任,本工具不檢查**(若直接 cron 跑時下游 model 未升 weekly mode → IC degradation 風險自負)。 | SUPERSEDED |
 ================================================================================
 """
 import argparse
@@ -43,7 +44,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"  # §14.7-CE P1 weekly automation 整合(audit + auto resync)
 
 
 def check_trading_day_close():
@@ -168,6 +169,7 @@ def main():
     mode.add_argument("--commit", action="store_true", help="Execute 5-step pipeline + commit new weekly snapshot")
     parser.add_argument("--force-now", action="store_true", help="Bypass trading-day-close check(allow non-Friday or pre-close)")
     parser.add_argument("--skip-fred-sync", action="store_true", help="Skip FRED sync(若獨立 cron 已 sync)")
+    parser.add_argument("--skip-api-audit", action="store_true", help="Skip §14.7-CE live API audit + auto resync")
     args = parser.parse_args()
 
     as_of = date.today().isoformat()
@@ -203,6 +205,16 @@ def main():
     # 保留為註解 audit trail;v0.13 native gate 不需此 step
     # run_step("Step 2: TW_SEMI_VWAP_YOY proxy", ...)
     # run_step("Step 3: TW_SHIPPING_VWAP_YOY proxy", ...)
+
+    # ---- Step 3.5(§14.7-CE P1): Live API audit + auto resync ----
+    # 確認 DB ≡ FinMind/FRED API byte-level;mismatch 自動 re-sync
+    # 必須在 Step 4 native gate build 前完成,確保 builder 讀的是最新 API 資料
+    if not args.skip_api_audit:
+        run_step("Step 3.5: §14.7-CE live API audit + auto resync",
+                 [sys.executable, "scripts/maintenance/weekly_api_audit_and_resync.py"],
+                 args.dry_run, allow_fail=True)
+    else:
+        print("\n──── [Step 3.5: API audit + resync] SKIPPED(--skip-api-audit)────")
 
     # ---- Step 4: Native gate v0.13(§14.7-CG;整合 3 step 為 1 program)----
     # OLD:scripts/maintenance/build_doctrine_gate_universe.py(SUPERSEDED-IN-TRANSITION;標 DEPRECATED)
