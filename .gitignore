@@ -65,6 +65,7 @@ reports/*
 !reports/cross_machine_handoff_*.md
 !reports/multi_cycle_validation_*.md
 !reports/multi_cycle_validation_*.json
+!reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
