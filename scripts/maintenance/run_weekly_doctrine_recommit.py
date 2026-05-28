@@ -23,7 +23,10 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 | 跳過 FRED sync(若獨立 cron 已 sync)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --skip-fred-sync` |
 
 ## 📜 三、修訂歷程
-| v0.2 | 2026-05-28 | Codex | **§14.7-CE P1 整合**:Step 3.5 插入 `weekly_api_audit_and_resync.py`(live API audit + auto resync)。確保 weekly recommit 之 Step 4 native gate build 前 DB 已 ≡ FinMind/FRED API byte-level;mismatch 自動 re-sync(per §14.7-CE absolute byte-level closure)。`--skip-api-audit` flag 加入。 | ACTIVE |
+| v0.5 | 2026-05-28 | Codex | **§14.7-CM 整合**:Step 7 插入 `audit_feature_ic_vs_future_return.py`(43 features × forward N-day return Spearman IC)。每週重算 IC 實證 model-training viability + treaty gate(Mean |IC|>0.03 + ≥30% sig);違反觸發 feature re-evaluation per T_CM-3。 | ACTIVE |
+| v0.4 | 2026-05-28 | Codex | §14.7-CJ Step 4 升 super-strict `--with-reasonableness-gate`(v0.15 policy);觸發 outlier features 之 stocks 排除。 | SUPERSEDED |
+| v0.3 | 2026-05-28 | Codex | §14.7-CI Step 4 升 `--with-feature-gate`(v0.14 strict)— 不符合 37/37 features 計算之 stocks 嚴格排除。 | SUPERSEDED |
+| v0.2 | 2026-05-28 | Codex | **§14.7-CE P1 整合**:Step 3.5 插入 `weekly_api_audit_and_resync.py`(live API audit + auto resync)。確保 weekly recommit 之 Step 4 native gate build 前 DB 已 ≡ FinMind/FRED API byte-level;mismatch 自動 re-sync(per §14.7-CE absolute byte-level closure)。`--skip-api-audit` flag 加入。 | SUPERSEDED |
 | v0.1 | 2026-05-26 | Codex | §14.7-BX Phase C-3 落地首版:5 步 pipeline orchestrator + atomic supersede via builder --weekly-mode + drift report 生成。**Phase C-2 + Phase D-2 之 cron 啟動前置條件 為治權者責任,本工具不檢查**(若直接 cron 跑時下游 model 未升 weekly mode → IC degradation 風險自負)。 | SUPERSEDED |
 ================================================================================
 """
@@ -44,7 +47,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.4"  # §14.7-CJ Step 4 升 super-strict --with-reasonableness-gate(2026-05-28)
+TOOL_VER = "v0.5"  # §14.7-CM Step 7 Empirical IC tracking added(2026-05-28)
 
 
 def check_trading_day_close():
@@ -250,6 +253,13 @@ def main():
         print(f"  ✅ Drift report:{fp.relative_to(_PROJECT_ROOT)}")
         print(f"     N: {drift['prior_n']} → {drift['current_n']} (churn {drift['churn_pct']}%)")
         print(f"     Added: {len(drift['added'])} / Removed: {len(drift['removed'])} / Stable: {len(drift['stable'])}")
+
+    # ---- Step 7(§14.7-CM): Empirical IC tracking ----
+    # 每週重算 43 SPEC features 之 forward-N-day Spearman IC,實證 model-training viability
+    # treaty gate:Mean |IC| > 0.03 + ≥30% features p<.05;違反觸發 feature re-evaluation
+    run_step("Step 7: §14.7-CM Empirical IC audit(43 features × forward return)",
+             [sys.executable, "scripts/audit/audit_feature_ic_vs_future_return.py"],
+             args.dry_run, allow_fail=True)
 
     print("\n" + "=" * 72)
     print(f"🎯 Weekly recommit pipeline {'DRY-RUN' if args.dry_run else 'COMMITTED'}")
