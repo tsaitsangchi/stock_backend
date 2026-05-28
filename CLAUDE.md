@@ -2,7 +2,7 @@
 
 **文件性質**：本檔為本專案 AI 協作工具規則之單一事實來源 (SSOT)。
 **位階聲明**：所有**治權禁令、工程契約、架構治權**以 `reports/系統架構大憲章_v6.0.0.md`（以下簡稱「憲章」）為準；本檔僅承載「**如何使用 AI 工具編輯本專案**」之短半衰期協作規則。
-**最後更新**：2026-05-21
+**最後更新**：2026-05-28(§一.10 資料真實性 / No Data Hallucination 入憲;對應 §14.7-CW v6.17.1 reproducibility patch precedent)
 
 依憲章 §0.0-F（AI 協作工具規則治權位階錨點），本檔受憲章 §0.0-E.4 統合層治權元規則間接約束，但不上升至憲章治權位階。
 
@@ -61,6 +61,63 @@
 4. **入憲記述須區分上述兩類**(Path D vs Path A retry)
 
 **證據基礎**:§14.7-BJ ROE Path A 第 1 次嘗試誤將 sponsor 認為 free user → 入憲 Path D dropped;§14.7-BI 第 2 次 user_info verify 後確認 sponsor 仍 active → Path A' SUCCESS / V 動員度 64% → 73%。違反 #9 protocol 將導致治權誤判 + 重複入憲成本。
+
+### 10. 資料真實性 / No Data Hallucination(2026-05-28 §14.7-CW v6.17.1 patch precedent 入憲)
+
+任何 AI 產出之數據(metrics / IC / Sharpe / Win rate / α / MDD / 統計量 / 表格 / 引用值 / 對比基準)**必須具備真實來源依據**,**不可 AI 自動生成數據幻像**(用戶 2026-05-28 explicit directive)。
+
+**1. 真實來源依據 — 三類唯一允許 source**
+
+全部產出數據必須出自以下三類來源之一,**不可從第四類產生**:
+
+- **(a) 程式輸出**:scripts 跑出之 stdout / JSON file / log file(如 `data/models/<model_id>/metrics.json` / dry-run terminal output)
+- **(b) DB query**:活 PostgreSQL query 結果(SELECT statement actual output rows)
+- **(c) API response**:FinMind(`api.finmindtrade.com`)/ FRED(`api.stlouisfed.org`)/ Anthropic API JSON response
+
+**禁止來源(第四類)**:從記憶 / 推測 / 估算 / "合理猜測" / 從相似 model 推估 / "為 charter 完整性" 補 placeholder 數字。
+
+**2. 數據來源 traceability — 每數字可 trace 回 (a)(b)(c)**
+
+Charter inscription / commit message / 報告 / 對話回覆 中之 **每個量化數字** 必須能 trace 回 (a)(b)(c) 三類其中之一;不可:
+
+- 從記憶 / 推測填數字(即使數字看起來合理)
+- "為了 charter 完整性" 補 placeholder 數字
+- 從相似 model 推估數字(必須 actual run)
+- 對比表中 baseline 與 new 兩邊任一邊缺真實來源
+
+**3. Stochastic metrics 多次跑取 statistics**(per §14.7-CW T_CW-6 / v6.17.1 patch 之直接 enforcement)
+
+任何含 stochasticity(LGBM bagging / sklearn random_state / dropout / multi-thread sub-sampling)之 production metric:
+
+- **必須 ≥ 3 runs** 取得 statistics(min / median / max / mean / spread)
+- **不得以 single-run anchor 寫入 charter 為 deterministic fact**
+- Charter inscription 須含 multi-run range + median + mean,**single anchor 須註明為 max / min outlier**
+
+**4. 違反入憲先例(2026-05-28)— §14.7-CW v6.17.0 → v6.17.1 patch**
+
+§14.7-CW v6.17.0 將 LGBM 單次 commit run Sharpe 4.74 / IR 5.86 / α +16.22% 寫入 charter 為 deterministic fact;**v6.17.1 patch honest audit 後揭露真實 6-run range Sharpe 3.71-4.74 / median 3.90**;committed anchor 為 distribution 之 max outlier(非 mean);charter inscription 修正為 reproducibility-aware + T_CW-6 補入(治權條 5 → 6)+ 入憲規則 4 → 5 條。
+
+**此為違反 #10 之公開治權先例**,future session 不得重蹈;違反者 charter inscription deemed misleading + 必須 reproducibility patch correction(同 v6.17.1 流程)。
+
+**5. Hallucination 警示信號(self-audit checklist)**
+
+寫任何量化數字前自問:
+
+- 「這個 `4.74` 是誰跑出來的?哪個 file 寫過?」
+- 若無 source file / DB row / API response → **STOP**,跑實證再寫
+- 若 source 為 single run 而 system 含 stochasticity → **補跑 ≥ 3 runs 再 inscribe**
+- 對比表中 "v0.1 vs v0.2" 數字必須兩邊都有真實來源(不可 v0.1 從記憶 / v0.2 從程式跑 — 此 asymmetry 為 hallucination 高風險區)
+
+**6. Inscription 執行檢查清單(每次量化數字寫入 charter / commit / 報告之強制清單)**
+
+- [ ] 數字 source file 已可讀(指向具體 file path 或 DB query / API endpoint)
+- [ ] 若 stochastic,已跑 ≥ 3 runs(min / median / max / mean 全有)
+- [ ] Charter inscription 含 range + median(**非** single anchor)
+- [ ] 對比基準(baseline)也有真實來源(非估算)
+- [ ] 異常值已揭露(commit anchor 為 max / min outlier 須註明)
+- [ ] 分母 / 評估方法 / 樣本大小 對等(不對等須揭露)
+
+**證據基礎(本條入憲)**:用戶 2026-05-28 explicit directive「Win rate 83.3% 是否真實?」之追問之後揭露 v6.17.0 charter Sharpe 4.74 為 single-run max anchor(實測 6-run range 3.71-4.74 / median 3.90),違反數據真實性;v6.17.1 reproducibility transparency patch 修正 charter + T_CW-6 入憲(commit `6da6110` / tag `v6.17.1-section14-7-CW-reproducibility-transparency-patch-20260528`)為直接 precedent;**用戶 explicit directive 「所有產出的數據都具備真實來源依據,不要 AI 自動產生數據幻像」即本條 #10 之入憲動因**。
 
 ---
 
