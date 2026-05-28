@@ -67,23 +67,28 @@ SPEC_43 = [
 
 # Literature sign:per builder FEATURE_DEFINITIONS + Phase A research (§14.7-CA)
 # "+" = positive predictive sign / "-" = negative / "±" = regime-dependent or ambiguous
+# 2026-05-28 v6.11.2 patch:5 features 改為 ±,基於 30d horizon empirical retest 揭露
+# TW 當前 regime growth/momentum-driven,Value/illiquidity 與 US literature 反向
+# (per reports/feature_sign_mismatch_30d_retest_20260528.md research report)
 LITERATURE_SIGN = {
     # Momentum: positive(Jegadeesh-Titman)
     "log_return_20d": "+", "log_return_60d": "+", "log_return_252d": "+",
     "ma_ratio_20": "+", "ma_ratio_60": "+",
-    "max_drawdown_252d": "-",  # bigger drawdown → lower forward return
+    "max_drawdown_252d": "±",  # v6.11.2: 30d empirical +0.089 mean reversion → ± regime-dep
     # Volatility: risk premium positive(literature mixed for short horizon)
     "upside_volatility_60d": "+", "downside_volatility_60d": "+", "convexity_60d": "±",
     "volatility_60d": "+", "volatility_252d": "+",
     "upside_capture_60d": "+", "downside_capture_60d": "+",
-    # Liquidity: amihud positive(illiquidity premium)/ size-related negative
+    # Liquidity: amihud positive in US lit / TW shows opposite(illiquid → underperform)
     "avg_daily_value_log_60d": "+", "avg_daily_value_log_252d": "+",
-    "amihud_illiquidity_60d": "+",  # illiquidity → premium
+    "amihud_illiquidity_60d": "±",  # v6.11.2: 30d empirical -0.066 → TW 反向 → ±
     "zero_volume_ratio_252d": "-",  # stale → lower return
     "turnover_mean_60d": "+",
-    # Value: Fama-French HML(low P/E → high return → "negative" sign for pe_ratio)
-    "pe_ratio": "-", "pb_ratio": "-", "dividend_yield": "+",  # Litzenberger
-    # Quality: Asness QMJ(high quality → high return)
+    # Value: Fama-French HML in US;TW 2026 Q1-Q2 growth regime 強烈反向(高 P/E 強勢領先)
+    "pe_ratio": "±",  # v6.11.2: 30d empirical +0.21 → growth regime → ±
+    "pb_ratio": "±",  # v6.11.2: 30d empirical +0.24 → growth regime → ±
+    "dividend_yield": "±",  # v6.11.2: 30d empirical -0.16 → defensive underperform → ±
+    # Quality: Asness QMJ(high quality → high return)— 30d empirical 確認 ✅
     "roe_ttm": "+", "operating_margin_ttm": "+",
     "eps_sum_4q": "+", "net_income_positive_ratio_8q": "+",
     # Investment: Cooper-Gulen-Schill(high asset growth → low return)
