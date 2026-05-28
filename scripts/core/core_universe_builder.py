@@ -2284,16 +2284,36 @@ class DoctrineNativeGateBuilder:
 
     POLICY_VERSION_STANDARD = "core_universe_policy_v0.13_doctrine_native_gate"
     POLICY_VERSION_STRICT = "core_universe_policy_v0.14_strict_feature_validity_gate"
+    POLICY_VERSION_SUPER_STRICT = "core_universe_policy_v0.15_feature_reasonableness_gate"
 
-    def __init__(self, as_of_date, commit=False, with_feature_gate=False, feature_set_id=None):
+    # §14.7-CJ(2026-05-28):Feature Reasonableness Gate 之 bounds
+    # 對映 audit 揭露之 5 outlier features;真實 API-derived 但 extreme outlier
+    # 嚴格 per 用戶 directive「特徵值不能用就不入核心股」延伸至 outlier exclusion
+    REASONABLE_BOUNDS = {
+        # (feature_name, lower_bound, upper_bound)
+        "pe_ratio": (0.001, 500.0),        # PE>0(EPS>0 之獲利公司)且 < 500(合理估值)
+        "pb_ratio": (0.001, 30.0),         # PB>0(BV>0)且 < 30(避免極高估值)
+        "roe_ttm": (-1.0, 1.0),            # ROE ∈ [-100%, +100%]
+        "operating_margin_ttm": (-1.0, 1.0),  # OM ∈ [-100%, +100%]
+        "dividend_yield": (0.0, 30.0),     # ≥ 0% 且 < 30%
+    }
+
+    def __init__(self, as_of_date, commit=False, with_feature_gate=False,
+                 with_reasonableness_gate=False, feature_set_id=None):
         self.as_of_date = as_of_date
         self.commit_mode = commit
         self.with_feature_gate = with_feature_gate
+        self.with_reasonableness_gate = with_reasonableness_gate
         self.feature_set_id = feature_set_id
         self.stage_results = {}
-        # §14.7-CI(2026-05-28):strict mode 用 v0.14 policy 區分(per 用戶 directive
-        # 「不符合條件就不入核心股」+ Stage 4 feature gate enforcement)
-        self.POLICY_VERSION = self.POLICY_VERSION_STRICT if with_feature_gate else self.POLICY_VERSION_STANDARD
+        # §14.7-CI v0.14 / §14.7-CJ v0.15 / standard v0.13
+        if with_reasonableness_gate:
+            assert with_feature_gate, "--with-reasonableness-gate requires --with-feature-gate"
+            self.POLICY_VERSION = self.POLICY_VERSION_SUPER_STRICT
+        elif with_feature_gate:
+            self.POLICY_VERSION = self.POLICY_VERSION_STRICT
+        else:
+            self.POLICY_VERSION = self.POLICY_VERSION_STANDARD
 
     def _check_kwave_market(self, cur):
         cur.execute(
@@ -2442,6 +2462,52 @@ class DoctrineNativeGateBuilder:
             "n_output": len(filtered),
             "n_rejected": len(qualified) - len(filtered),
             "sample_rejected": list(rejected_reasons.items())[:5],
+        }
+
+    def _apply_reasonableness_gate(self, cur, qualified):
+        """§14.7-CJ Stage 4-reasonable:Feature reasonableness bounds(per 用戶 directive
+        「outlier feature 之 stocks 不入核心股」)。
+
+        Filter `qualified` to stocks 同時 pass REASONABLE_BOUNDS for all 5 outlier-prone features.
+        Returns (filtered_qualified, audit_info)。
+        """
+        bounds_features = list(self.REASONABLE_BOUNDS.keys())
+        cur.execute(
+            """SELECT stock_id, feature_name, feature_value::numeric
+               FROM feature_values
+               WHERE feature_set_id = %s AND feature_name = ANY(%s) AND stock_id = ANY(%s)""",
+            (self.feature_set_id, bounds_features, list(qualified)),
+        )
+        stock_features = {}
+        for sid, fn, val in cur.fetchall():
+            stock_features.setdefault(sid, {})[fn] = float(val) if val is not None else None
+
+        filtered = []
+        rejected_reasons = {}
+        reject_hist = {}
+        for sid in qualified:
+            features = stock_features.get(sid, {})
+            issues = []
+            for fn, (lo, hi) in self.REASONABLE_BOUNDS.items():
+                val = features.get(fn)
+                if val is None:
+                    issues.append(f"{fn}=None")
+                    reject_hist[fn] = reject_hist.get(fn, 0) + 1
+                elif val < lo or val > hi:
+                    issues.append(f"{fn}={val:.4g}∉[{lo},{hi}]")
+                    reject_hist[fn] = reject_hist.get(fn, 0) + 1
+            if issues:
+                rejected_reasons[sid] = ", ".join(issues[:3])
+            else:
+                filtered.append(sid)
+
+        return filtered, {
+            "n_input": len(qualified),
+            "n_output": len(filtered),
+            "n_rejected": len(qualified) - len(filtered),
+            "reject_histogram": reject_hist,
+            "sample_rejected": list(rejected_reasons.items())[:5],
+            "bounds": self.REASONABLE_BOUNDS,
         }
 
     def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist):
@@ -2594,6 +2660,27 @@ class DoctrineNativeGateBuilder:
                     print(f"\n📊 [Stage 4 result] Reading A+C ↔ Reading B 收斂 ✅ "
                           f"(all {len(qualified)} stocks 37/37 features present)")
 
+            # Stage 4-reasonable (optional / §14.7-CJ):Feature reasonableness bounds
+            # — 排除 outlier 之 stocks(per 用戶「特徵值不能用就不入」延伸)
+            if self.with_reasonableness_gate:
+                print(f"\n[Stage 4-reasonable] §14.7-CJ Feature Reasonableness Gate")
+                print(f"  Bounds: {self.REASONABLE_BOUNDS}")
+                pre_n = len(qualified)
+                qualified, reason_audit = self._apply_reasonableness_gate(cur, qualified)
+                self.stage_results['stage4_reasonable'] = reason_audit
+                print(f"  Input  : {reason_audit['n_input']}")
+                print(f"  Output : {reason_audit['n_output']}")
+                print(f"  Reject : {reason_audit['n_rejected']}")
+                print(f"  Rejection histogram:")
+                for fn, n in sorted(reason_audit['reject_histogram'].items(), key=lambda x: -x[1]):
+                    print(f"    {fn:30s}: {n:4d} stocks out of bounds")
+                if reason_audit['sample_rejected']:
+                    print(f"  Sample rejected:")
+                    for sid, reason in reason_audit['sample_rejected'][:3]:
+                        print(f"    {sid}: {reason}")
+                print(f"\n📊 [Stage 4-reasonable result] Post-reasonableness-gate N={len(qualified)} "
+                      f"(removed {pre_n - len(qualified)} stocks with outlier features)")
+
             if not self.commit_mode:
                 print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)}")
                 return True
@@ -2620,8 +2707,15 @@ def parse_args():
     parser.add_argument(
         "--with-feature-gate",
         action="store_true",
-        help="(§14.7-CG Stage 4 optional)apply §14.7-CB feature completeness gate(37/37 features)"
-             "after raw layer pass;用於 Reading B convergence verification(default OFF = Reading A+C pure)",
+        help="(§14.7-CI v0.14 strict)apply §14.7-CB feature completeness gate(37/37 features)"
+             "after raw layer pass;production model training universe;若 with --with-reasonableness-gate 則升 v0.15",
+    )
+    parser.add_argument(
+        "--with-reasonableness-gate",
+        action="store_true",
+        help="(§14.7-CJ v0.15 super-strict)apply feature value reasonableness bounds"
+             "(pe/pb/roe/operating_margin/dividend_yield);必同時 --with-feature-gate;per 用戶 directive"
+             "「outlier features 之 stocks 不入核心股」",
     )
     parser.add_argument(
         "--feature-set-id",
@@ -2651,11 +2745,12 @@ def main():
     as_of_date = datetime.strptime(args.as_of_date, "%Y-%m-%d").date() if args.as_of_date else date.today()
 
     if args.mode == "doctrine-native":
-        # §14.7-CG v0.13 native gate path
+        # §14.7-CG v0.13 / §14.7-CI v0.14 / §14.7-CJ v0.15 native gate path
         builder = DoctrineNativeGateBuilder(
             as_of_date=as_of_date,
             commit=args.commit,
             with_feature_gate=args.with_feature_gate,
+            with_reasonableness_gate=args.with_reasonableness_gate,
             feature_set_id=args.feature_set_id,
         )
         ok = builder.build()

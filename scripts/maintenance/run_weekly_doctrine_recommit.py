@@ -44,7 +44,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.3"  # §14.7-CI Step 4 升 strict mode --with-feature-gate(2026-05-28)
+TOOL_VER = "v0.4"  # §14.7-CJ Step 4 升 super-strict --with-reasonableness-gate(2026-05-28)
 
 
 def check_trading_day_close():
@@ -222,9 +222,9 @@ def main():
     # OLD-v6.5.0:--mode doctrine-native(v0.13 standard / 寬鬆)
     # NEW-v6.5.1:--mode doctrine-native --with-feature-gate(v0.14 strict 嚴格)per §14.7-CI 用戶 directive
     #   「不符合條件就不入核心股」+ Stage 4-feature 37/37 enforcement
-    run_step("Step 4: §14.7-CI v0.14 strict native gate (Stage 1+2+3+4+4-feature)",
+    run_step("Step 4: §14.7-CJ v0.15 super-strict native gate (Stage 1+2+3+4+4-feature+4-reasonable)",
              [sys.executable, "scripts/core/core_universe_builder.py",
-              "--mode", "doctrine-native", "--with-feature-gate", "--commit"],
+              "--mode", "doctrine-native", "--with-feature-gate", "--with-reasonableness-gate", "--commit"],
              args.dry_run)
 
     # ---- Step 5: Audit ----
