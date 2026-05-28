@@ -221,7 +221,7 @@ def main():
         logger.info(f"Universe: {len(universe)} stocks(§14.7-CJ super-strict)")
         logger.info("Computing Window 1: fs_20260430 → 2026-05-20(14d)...")
         ic_w1 = compute_window_ic(cur, '2026-04-30', '2026-05-20',
-                                   'fs_20260430_feature_set_v0_4_ablation_20260430', universe)
+                                   'fs_20260430_feature_set_v0_4', universe)
         logger.info("Computing Window 2: fs_20260506 → 2026-05-20(10d)...")
         ic_w2 = compute_window_ic(cur, '2026-05-06', '2026-05-20',
                                    'fs_20260506_feature_set_v0_4', universe)

@@ -116,6 +116,7 @@ reports/*
 !reports/weekly_cron_activation_*.md
 !reports/pillar_source_selection_trace_*.md
 !reports/v0_13_upgrade_closure_*.md
+!reports/v0_16_local_evidence_*.md
 !reports/v6_*_p0_completion_*.md
 !reports/v6_*_honest_amendment_*.md
 !reports/v6_*_p0_v02_*.md

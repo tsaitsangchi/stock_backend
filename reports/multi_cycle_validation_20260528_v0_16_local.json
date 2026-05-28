@@ -1,0 +1,129 @@
+{
+  "report_metadata": {
+    "doctrine": "§14.7-DA + §14.7-CY",
+    "session_date": "2026-05-28",
+    "machine": "local non-AI environment",
+    "script": "scripts/evaluation/multi_cycle_validation.py",
+    "elapsed_seconds": 276.6,
+    "elapsed_min": 4.6,
+    "execution_time": "20:59:59 → 21:04:36 CST"
+  },
+  "universe": {
+    "policy_version": "core_universe_policy_v0.16_backtest_doctrine_compliant",
+    "snapshot_id": "core_universe_20260528_core_universe_policy_v0_16_backtest_doctrine_compliant",
+    "N": 1002,
+    "construction": "A=§14.7-CD raw complete(1583) ∩ B=history≥8y(1418) ∩ C=§14.7-CJ reasonable(1128) = 1,002"
+  },
+  "scope": {
+    "historical_panels": 95,
+    "panel_date_range": "2018-06-15 to 2026-04-15",
+    "horizons_evaluated": 4,
+    "total_lgbm_trains": 380
+  },
+  "horizons": {
+    "weekly_5d": {
+      "N": 65,
+      "n_effective": 65.0,
+      "sharpe_annualized": 0.97,
+      "win_rate": 0.738,
+      "mean_alpha_per_panel_pct": 0.42,
+      "raw_t_stat": 1.870,
+      "effective_t_stat": 1.870,
+      "significant_p05": false,
+      "panel_overlap_pct": 0.0,
+      "mdd_running_pct": 9.21,
+      "annualized_gross_pct": 44.23,
+      "cost_drag_pct": -30.24,
+      "annualized_net_pct": 18.50,
+      "rebalances_per_year": 50.4
+    },
+    "monthly_20d": {
+      "N": 65,
+      "n_effective": 65.0,
+      "sharpe_annualized": 1.15,
+      "win_rate": 0.585,
+      "mean_alpha_per_panel_pct": 0.86,
+      "raw_t_stat": 2.094,
+      "effective_t_stat": 2.094,
+      "significant_p05": true,
+      "panel_overlap_pct": 0.0,
+      "mdd_running_pct": 19.51,
+      "annualized_gross_pct": 25.10,
+      "cost_drag_pct": -7.56,
+      "annualized_net_pct": 25.04,
+      "rebalances_per_year": 12.6
+    },
+    "quarterly_60d_RECOMMENDED": {
+      "N": 64,
+      "n_effective": 32.0,
+      "sharpe_annualized": 2.22,
+      "win_rate": 0.812,
+      "mean_alpha_per_panel_pct": 3.93,
+      "raw_t_stat": 3.264,
+      "effective_t_stat": 3.264,
+      "significant_p05": true,
+      "panel_overlap_pct": 50.0,
+      "mdd_running_pct": 17.43,
+      "annualized_gross_pct": 20.34,
+      "cost_drag_pct": -2.52,
+      "annualized_net_pct": 17.35,
+      "rebalances_per_year": 4.2,
+      "production_recommended": true
+    },
+    "annual_252d": {
+      "N": 60,
+      "n_effective": 7.1,
+      "sharpe_annualized": 5.09,
+      "win_rate": 0.917,
+      "mean_alpha_per_panel_pct": 19.37,
+      "mean_oos_ic": 0.2431,
+      "raw_t_stat": 11.4661,
+      "effective_t_stat": 3.956,
+      "significant_p05": true,
+      "small_n_eff_caveat": true,
+      "panel_overlap_pct": 88.1,
+      "mdd_running_pct": 23.59,
+      "annualized_gross_pct": 31.88,
+      "cost_drag_pct": -0.60,
+      "annualized_net_pct": 31.09,
+      "rebalances_per_year": 1.0
+    }
+  },
+  "summary": {
+    "horizons_significant_p05": 3,
+    "horizons_total": 4,
+    "treaty_gates_pass": {
+      "T_CY-1_system_script_execution": true,
+      "T_CY-2_geq_3_horizons": true,
+      "T_CY-3_overlap_correction": true,
+      "T_CY-4_honest_annualization": true,
+      "T_CY-5_cost_drag_analysis": true,
+      "T_CY-6_quarterly_eff_t_gt_1.997_and_n_eff_geq_30_and_cost_lt_5pct": true
+    },
+    "production_recommended_strategy": "Quarterly rebalance (60d)",
+    "production_metrics": {
+      "net_annualized_return_pct": 17.35,
+      "sharpe_annualized": 2.22,
+      "win_rate": 0.812,
+      "effective_t_stat": 3.264,
+      "n_effective_independent_panels": 32.0
+    },
+    "alternative_high_alpha": "Annual rebalance (252d) Net +31.09%/yr (but small n_eff=7.1)"
+  },
+  "cross_machine_comparison_vs_charter_v0_13_1121": {
+    "mean_abs_ic": {"v0_16_local": 0.2195, "charter_v0_13_1121": 0.0852, "delta": "+158%"},
+    "sig_pct": {"v0_16_local": 0.872, "charter_v0_13_1121": 0.658, "delta": "+32%"},
+    "horizons_sig": {"v0_16_local": "3/4", "charter_v0_13_1121": "2/4"},
+    "quarterly_eff_t": {"v0_16_local": 3.264, "charter_v0_13_1121": 4.200, "delta": "-22%"},
+    "annual_eff_t": {"v0_16_local": 3.956, "charter_v0_13_1121": 3.583, "delta": "+10%"},
+    "indeterminate_signs": {"v0_16_local": 0, "charter_v0_13_1121": 0}
+  },
+  "no_hallucination_attestation": {
+    "data_source": "全 (b) DB query — feature_values + TaiwanStockPriceAdj forward returns",
+    "raw_table_writers": ["scripts/fetchers/fetch_balance_sheet_data.py", "scripts/fetchers/fetch_fred_data.py", "scripts/maintenance/resync_priceadj_mismatch.py"],
+    "synthetic_writers_in_active_path": 0,
+    "api_endpoints": ["https://api.finmindtrade.com/api/v4/data", "https://api.stlouisfed.org/fred/series/observations"],
+    "ai_environment_execution": false,
+    "venv_python": "Python 3.12.13 / venv/bin/python"
+  }
+}
