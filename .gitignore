@@ -104,6 +104,7 @@ reports/*
 !reports/vc_convexity_alignment_design_research_*.md
 !reports/v6_5_0_native_gate_design_research_*.md
 !reports/section_cb_vs_cd_cf_relationship_design_*.md
+!reports/section_ce_*.md
 !reports/v6_*_p0_completion_*.md
 !reports/v6_*_honest_amendment_*.md
 !reports/v6_*_p0_v02_*.md
