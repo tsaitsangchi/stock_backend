@@ -1,12 +1,14 @@
 """
-audit_feature_sign_stability.py — 43 features × sign stability + literature consistency
+audit_feature_sign_stability.py — 43 features × sign stability + literature consistency + TW commit
 ================================================================================
 最後更新日期: 2026-05-28
 治權: §14.7-CO Feature Sign Stability Doctrine — IC 正負相關性正式入治權
+治權: §14.7-CQ TW Empirical Sign Commitment Doctrine — 每 feature commit + 或 -(v6.13.0)
 
-對 43 SPEC features 跨雙窗口計算 sign stability + 文獻 sign 一致性:
+對 43 SPEC features 跨三窗口計算 sign stability + 文獻 sign 一致性 + TW commit:
   Window 1: fs_20260430 → 2026-05-20(14 trading days forward)
   Window 2: fs_20260506 → 2026-05-20(10 trading days forward)
+  Window 3: fs_20260316 → 2026-04-30(32 trading days, **30d horizon** primary)
 
 4-tier sign verdict(per §14.7-CO T_CO-1):
   🟢 ROBUST POSITIVE:IC₁ > 0 AND IC₂ > 0(雙窗口同為正,trustworthy long signal)
@@ -95,7 +97,7 @@ LITERATURE_SIGN = {
     "revenue_yoy_3m_log": "+", "asset_growth_yoy": "-",
     "revenue_yoy_3m": "+", "revenue_yoy_12m": "+",
     # Pareto:
-    "right_tail_concentration_60d": "+", "barbell_balance_60d": "±",
+    "right_tail_concentration_60d": "+", "barbell_balance_60d": "+",  # §14.7-CQ v6.13.0: TW small-market 集中效應持續 → 高 imbalance 持續 → "+"(theoretical default per §9.2)
     "preferential_attachment_60d": "+", "fitness_signal_60d": "+",
     "right_tail_returns_skew_252d": "±",  # regime-dependent
     "liquidity_rank_pct_sector_60d": "+", "size_log_zscore_sector": "±",  # SMB regime
@@ -161,6 +163,34 @@ def classify_sign(ic1, ic2, threshold=0.005):
     return "🟡 WEAK-SIGN"
 
 
+def commit_tw_sign(ic1, ic2, ic3, lit_sign, threshold=0.005):
+    """
+    §14.7-CQ TW Empirical Sign Commitment — every feature commit + or -.
+
+    Priority order:
+      1. IC₃ (30d horizon, longest)
+      2. IC₁ (14d, most recent)
+      3. IC₂ (10d, fallback)
+      4. Literature sign (last resort)
+
+    Returns: "+", "-", or "?" (genuinely indeterminate, only if all NA + lit is ±)
+    """
+    # Try W3 first (primary)
+    if ic3 is not None and abs(ic3) > threshold:
+        return "+" if ic3 > 0 else "-"
+    # Fallback W1 (most recent shorter horizon)
+    if ic1 is not None and abs(ic1) > threshold:
+        return "+" if ic1 > 0 else "-"
+    # Fallback W2
+    if ic2 is not None and abs(ic2) > threshold:
+        return "+" if ic2 > 0 else "-"
+    # Last resort: literature
+    if lit_sign in ("+", "-"):
+        return lit_sign
+    # Truly indeterminate
+    return "?"
+
+
 def check_literature_consistency(fname, ic1):
     """Sign vs literature(per §14.7-CO T_CO-2)."""
     lit = LITERATURE_SIGN.get(fname, "?")
@@ -192,28 +222,36 @@ def main():
         logger.info("Computing Window 2: fs_20260506 → 2026-05-20(10d)...")
         ic_w2 = compute_window_ic(cur, '2026-05-06', '2026-05-20',
                                    'fs_20260506_feature_set_v0_4', universe)
+        logger.info("Computing Window 3: fs_20260316 → 2026-04-30(30d)...")
+        ic_w3 = compute_window_ic(cur, '2026-03-16', '2026-04-30',
+                                   'fs_20260316_feature_set_v0_4', universe)
 
         # Per-feature analysis
-        logger.info("\n" + "=" * 130)
-        logger.info(f"{'Feature':38} {'IC₁':>9} {'IC₂':>9} {'Lit':>4} {'Sign Verdict':>26} {'Lit Check':>14}")
-        logger.info("=" * 130)
+        logger.info("\n" + "=" * 150)
+        logger.info(f"{'Feature':38} {'IC₁':>9} {'IC₂':>9} {'IC₃(30d)':>10} {'Lit':>4} {'Sign Verdict':>26} {'Lit Check':>11} {'TW Commit':>10}")
+        logger.info("=" * 150)
 
         verdicts = defaultdict(list)
         lit_checks = defaultdict(list)
+        tw_commits = defaultdict(list)
         for group, fnames in SPEC_43:
             logger.info(f"\n▼ {group}")
             for fname in fnames:
                 ic1 = ic_w1.get(fname)
                 ic2 = ic_w2.get(fname)
+                ic3 = ic_w3.get(fname)
                 sv = classify_sign(ic1, ic2)
                 lit_status, lit_sign = check_literature_consistency(fname, ic1)
+                tw_sign = commit_tw_sign(ic1, ic2, ic3, lit_sign)
 
                 verdicts[sv].append(fname)
                 lit_checks[lit_status].append(fname)
+                tw_commits[tw_sign].append(fname)
 
                 ic1_s = f"{ic1:>+9.4f}" if ic1 is not None else f"{'NA':>9}"
                 ic2_s = f"{ic2:>+9.4f}" if ic2 is not None else f"{'NA':>9}"
-                logger.info(f"  {fname:38} {ic1_s} {ic2_s} {lit_sign:>4} {sv:>26} {lit_status:>14}")
+                ic3_s = f"{ic3:>+10.4f}" if ic3 is not None else f"{'NA':>10}"
+                logger.info(f"  {fname:38} {ic1_s} {ic2_s} {ic3_s} {lit_sign:>4} {sv:>26} {lit_status:>11} {tw_sign:>10}")
 
         # Sign stability summary
         logger.info("\n" + "=" * 130)
@@ -272,6 +310,26 @@ def main():
             logger.warning(f"     觸發 T_CO-3 multi-horizon retest(待 §10 model_trainer 落地)")
         else:
             logger.warning(f"\n  ❌ §14.7-CO Gate:VIOLATION — sign-stable < 30% baseline")
+
+        # §14.7-CQ TW Empirical Sign Commitment Gate
+        logger.info("\n" + "=" * 150)
+        logger.info("§14.7-CQ TW Empirical Sign Commitment VERIFICATION")
+        logger.info("=" * 150)
+        n_plus = len(tw_commits["+"])
+        n_minus = len(tw_commits["-"])
+        n_unknown = len(tw_commits["?"])
+        logger.info(f"  TW Commit '+' (long signal): {n_plus}/43")
+        logger.info(f"  TW Commit '-' (short/contrarian): {n_minus}/43")
+        logger.info(f"  TW Commit '?' (indeterminate): {n_unknown}/43")
+        gate_cq = "✅ PASS" if n_unknown == 0 else f"⚠️ {n_unknown} features indeterminate"
+        logger.info(f"  §14.7-CQ Gate(0 indeterminate): {gate_cq}")
+        if n_unknown == 0:
+            logger.info(f"\n  🎯 §14.7-CQ TW Empirical Sign Commitment Gate:**PASS**")
+            logger.info(f"  ✅ 全 43 features 已 commit 明確方向(+ 或 -)")
+        else:
+            logger.warning(f"\n  ⚠️ §14.7-CQ Gate:{n_unknown} features 仍 indeterminate")
+            for f in tw_commits["?"]:
+                logger.warning(f"      - {f}")
 
     finally:
         conn.close()
