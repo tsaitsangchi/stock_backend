@@ -189,13 +189,13 @@ FEATURE_DEFINITIONS = [
     # 同 §0.3 broadcast 之 IC ≈ 0 artifact;同 doctrine 移除
     # (macro_dff_level / macro_vix_level / macro_t10y2y_level / macro_unrate_yoy)
     # 若 cross-pillar interaction 落地後可 reintroduce as per-stock form
-    # ── interaction 群（v0.2 新增，4）：對齊 §0.0-D.6 升版條件 #1
-    # 動機：將 macro / theme broadcast 與 stock-specific 特徵相乘，
-    #       恢復 cross-sectional variance，使 §0.3 戰術層脫離 IC=0 結構性失效。
-    {"name": "feature_macro_vix_x_vol_60d", "group": "interaction", "source": "FredData × TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "macro_vix_level × volatility_60d；§0.3 × §0.1 ΔlnP 路徑風險；高 VIX 環境下高波股放大訊號"},
-    {"name": "feature_macro_dff_x_eps_sum_4q", "group": "interaction", "source": "FredData × TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "zero_fill", "desc": "macro_dff_level × eps_sum_4q；§0.3 × §0.1.3 V 質量因子；高利率環境下盈利質量分化"},
-    {"name": "feature_theme_x_log_return_60d", "group": "interaction", "source": "TaiwanStockInfo × TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "theme_strength × log_return_60d；§0.3 MBNRIC × §0.1 ΔlnP；主題對齊動量"},
-    {"name": "feature_theme_x_foreign_net_60d", "group": "interaction", "source": "TaiwanStockInfo × TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "theme_is_semiconductor × foreign_net_60d；§0.3 半導體主題 × §0.1 F 外部力；半導體專屬資金流"},
+    # ── interaction 群 REMOVED per §14.7-CL(2026-05-28 第三十六輪 inscribed)
+    # 4 interaction features(feature_macro_vix_x_vol_60d / feature_macro_dff_x_eps_sum_4q /
+    #  feature_theme_x_log_return_60d / feature_theme_x_foreign_net_60d)依賴 macro_extended;
+    # §14.7-CK macro_extended disabled 後 silently 失敗(values None → drop policy);
+    # 加之 v0.2 ablation 已實證 IC = +0.0131 HARMFUL(§0.0-D.6 #1 已否決);
+    # → §14.7-CL Feature Canonical Scope Doctrine 正式從 FEATURE_DEFINITIONS 移除
+    # (43-feature canonical SPEC:§0.1 29 + §0.2 14)
 ]
 
 THEME_KEYWORDS = {
@@ -968,22 +968,16 @@ class FeatureStoreBuilder:
 
     def _active_feature_definitions(self):
         """依 feature_set_version 過濾出 active features。
-        v0.1: 27 base
-        v0.2: 27 base + 4 interaction = 31
-        v0.3: 27 base + 4 upside/downside = 31（不繼承 interaction）
+        v0.1: legacy(無 upside/downside split,無 interaction)
+        v0.2: SUPERSEDED(ablation IC = +0.0131 HARMFUL — §14.7-CL 已移除 interaction)
+        v0.3: legacy(無 interaction)
+        v0.4+: 43 features canonical SPEC(per §14.7-CL Feature Canonical Scope)
         """
         version = self.feature_set_version
         v03_new = {"upside_volatility_60d", "downside_volatility_60d",
                    "upside_capture_60d", "downside_capture_60d"}
-        v02_interaction = {"feature_macro_vix_x_vol_60d", "feature_macro_dff_x_eps_sum_4q",
-                           "feature_theme_x_log_return_60d", "feature_theme_x_foreign_net_60d"}
-        if version == "feature_set_v0.1":
-            return [fd for fd in FEATURE_DEFINITIONS
-                    if fd["name"] not in v03_new and fd["name"] not in v02_interaction]
-        elif version == "feature_set_v0.2":
+        if version in ("feature_set_v0.1", "feature_set_v0.2"):
             return [fd for fd in FEATURE_DEFINITIONS if fd["name"] not in v03_new]
-        elif version == "feature_set_v0.3":
-            return [fd for fd in FEATURE_DEFINITIONS if fd["name"] not in v02_interaction]
         else:
             return list(FEATURE_DEFINITIONS)
 
@@ -1164,36 +1158,9 @@ class FeatureStoreBuilder:
             "theme_is_semiconductor": 1.0 if industry and "半導體" in industry else 0.0,
         }
 
-    def _compute_interaction_features(self, base_features):
-        """v0.2 §0.0-D.6 升版條件 #1：macro/theme × stock-specific 交互特徵。
-
-        目的：將 broadcast 常數轉為含 cross-sectional variance 的訊號。
-        所有交互特徵僅為既有 base feature 之乘積；不引入新 raw 資料源；
-        不違反 §0.1-A 禁令 #2/#3（無 T3 元素）。
-
-        對 None 輸入採安全 fallback (0.0)，配合 zero_fill null policy。
-        """
-        def _safe(v):
-            try:
-                return float(v) if v is not None else 0.0
-            except (TypeError, ValueError):
-                return 0.0
-
-        vix = _safe(base_features.get("macro_vix_level"))
-        dff = _safe(base_features.get("macro_dff_level"))
-        vol_60d = _safe(base_features.get("volatility_60d"))
-        eps_4q = _safe(base_features.get("eps_sum_4q"))
-        theme_strength = _safe(base_features.get("theme_strength"))
-        theme_is_semi = _safe(base_features.get("theme_is_semiconductor"))
-        log_ret_60d = _safe(base_features.get("log_return_60d"))
-        foreign_60d = _safe(base_features.get("foreign_net_60d"))
-
-        return {
-            "feature_macro_vix_x_vol_60d": vix * vol_60d,
-            "feature_macro_dff_x_eps_sum_4q": dff * eps_4q,
-            "feature_theme_x_log_return_60d": theme_strength * log_ret_60d,
-            "feature_theme_x_foreign_net_60d": theme_is_semi * foreign_60d,
-        }
+    # _compute_interaction_features() REMOVED per §14.7-CL(2026-05-28)
+    # v0.2 ablation 已實證 IC = +0.0131 HARMFUL(§0.0-D.6 #1 已否決)
+    # + 依賴 macro_extended(§14.7-CK 已 disable)→ dead code 移除
 
     # ── BUILD ────────────────────────────────────────────────────────────────
 
@@ -1276,10 +1243,8 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy(§0.1 100% closure)
             balance_for_sid = balance_data.get(sid, {})
             stock_features["asset_growth_yoy"] = balance_for_sid.get("asset_growth_yoy")
-            # v0.2 §0.0-D.6 交互特徵：v0.3 起不繼承（§9.9-E policy.7 + §14.7-AD）
-            # v0.2 ablation 實證 IC = +0.0131 (HARMFUL)，僅 v0.2 feature_set 寫入
-            if self.feature_set_version == "feature_set_v0.2":
-                stock_features.update(self._compute_interaction_features(stock_features))
+            # v0.2 §0.0-D.6 interaction features REMOVED per §14.7-CL(2026-05-28):
+            # ablation IC = +0.0131 HARMFUL + macro deprecated(§14.7-CK)→ dead code 移除
 
             for fname, value in stock_features.items():
                 imputed = False
