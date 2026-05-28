@@ -44,7 +44,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"  # §14.7-CE P1 weekly automation 整合(audit + auto resync)
+TOOL_VER = "v0.3"  # §14.7-CI Step 4 升 strict mode --with-feature-gate(2026-05-28)
 
 
 def check_trading_day_close():
@@ -216,13 +216,15 @@ def main():
     else:
         print("\n──── [Step 3.5: API audit + resync] SKIPPED(--skip-api-audit)────")
 
-    # ---- Step 4: Native gate v0.13(§14.7-CG;整合 3 step 為 1 program)----
-    # OLD:scripts/maintenance/build_doctrine_gate_universe.py(SUPERSEDED-IN-TRANSITION;標 DEPRECATED)
+    # ---- Step 4: Native gate v0.14 strict(§14.7-CI;production-mode strict)----
+    # OLD:scripts/maintenance/build_doctrine_gate_universe.py(SUPERSEDED;標 DEPRECATED)
     # OLD:scripts/maintenance/apply_feature_completeness_gate.py + apply_raw_data_completeness_gate.py
-    # NEW:scripts/core/core_universe_builder.py --mode doctrine-native --commit
-    run_step("Step 4: §14.7-CG native gate builder v0.13 (3 step → 1 program)",
+    # OLD-v6.5.0:--mode doctrine-native(v0.13 standard / 寬鬆)
+    # NEW-v6.5.1:--mode doctrine-native --with-feature-gate(v0.14 strict 嚴格)per §14.7-CI 用戶 directive
+    #   「不符合條件就不入核心股」+ Stage 4-feature 37/37 enforcement
+    run_step("Step 4: §14.7-CI v0.14 strict native gate (Stage 1+2+3+4+4-feature)",
              [sys.executable, "scripts/core/core_universe_builder.py",
-              "--mode", "doctrine-native", "--commit"],
+              "--mode", "doctrine-native", "--with-feature-gate", "--commit"],
              args.dry_run)
 
     # ---- Step 5: Audit ----
