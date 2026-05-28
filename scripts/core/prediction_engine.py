@@ -79,7 +79,7 @@ except ImportError as exc:
 
 CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.3"
-DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.1"
+DEFAULT_PREDICTION_POLICY_VERSION = "prediction_policy_v0.2"  # §14.7-CU 2026-05-28:對齊 portfolio_sizer v0.3 expectation(原 v0.1 drift fix)
 
 DDL_PREDICTION_RUN = """
 CREATE TABLE IF NOT EXISTS "prediction_run" (
