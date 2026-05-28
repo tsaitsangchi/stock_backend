@@ -144,23 +144,19 @@ FEATURE_DEFINITIONS = [
     {"name": "revenue_yoy_3m_log", "group": "investment", "source": "TaiwanStockMonthRevenue", "window": "15m", "vtype": "numeric", "null": "drop", "desc": "log(1+revenue_yoy_3m);recent 3m revenue YoY growth log-transformed;TW IC +0.04 OOS;§0.1.D"},
     # ── investment 群 §14.7-CA Phase F-1 新增(2026-05-27;§0.1 100% closure)
     {"name": "asset_growth_yoy", "group": "investment", "source": "TaiwanStockBalanceSheet", "window": "24m", "vtype": "numeric", "null": "drop", "desc": "TotalAssets YoY growth;Cooper-Gulen-Schill 2008 asset growth anomaly;TW IC -0.05 OOS;§0.1.D Investment"},
-    # ── §0.3.1 K-wave pure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;6 features broadcast)
-    {"name": "kwave_tech_paradigm_strength", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "(PATENTUSALLTOTAL_yoy + B985RC1Q027SBEA_yoy)/2;Schumpeter/Perez tech paradigm intensity;§0.3.1"},
-    {"name": "kwave_credit_cycle_phase", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "TCMDO log_yoy;US credit cycle phase indicator;Reinhart-Rogoff 2009;§0.3.1"},
-    {"name": "kwave_credit_to_gdp_gap", "group": "kwave", "source": "fred_series", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "QUSPAM770A latest(BIS Credit-to-GDP gap);Drehmann 2014;TW IC -0.02 OOS;§0.3.1"},
-    {"name": "kwave_demographics_trend", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "(LFWA64_yoy+(1-SPPOPDPND_yoy))/2;Goodhart-Pradhan 2020;§0.3.1"},
-    {"name": "kwave_commodity_supercycle", "group": "kwave", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "PALLFNFINDEXQ log_yoy;Erten-Ocampo 2013;§0.3.1"},
-    {"name": "kwave_phase_indicator", "group": "kwave", "source": "fred_series", "window": "composite", "vtype": "numeric", "null": "zero_fill", "desc": "composite z-score(5 K-wave features mean);Mensch 1979;§0.3.1"},
-    # ── §0.3.2 Multi-cycle 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;5 features broadcast)
-    {"name": "mc_monetary_regime", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "M2SL log_yoy;Friedman monetary stance;§0.3.2"},
-    {"name": "mc_yield_curve_inversion", "group": "multi_cycle", "source": "fred_series", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "T10Y2Y latest;<0 = Juglar leading inversion;Estrella-Hardouvelis 1991 IC ~-0.04 OOS;§0.3.2"},
-    {"name": "mc_oil_juglar_phase", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "WTISPLC log_yoy;Stopford 2009 Juglar oil phase;§0.3.2"},
-    {"name": "mc_semi_kitchin", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "IPG3344S log_yoy(US Semi Industrial Production;Kitchin 4-y cycle);§14.7-CC FRED-native;§0.3.2"},
-    {"name": "mc_shipping_juglar", "group": "multi_cycle", "source": "fred_series", "window": "12m", "vtype": "numeric", "null": "zero_fill", "desc": "PCU4831114831115 log_yoy(US Deep Sea Freight PPI;Juglar 7-11y cycle);Stopford 2009;§14.7-CC FRED-native;§0.3.2"},
-    # ── §0.3.3 Microstructure 群 v0.3 §14.7-CA Phase C-1c-3 新增(2026-05-27;3 features broadcast)
-    {"name": "ms_volatility_regime", "group": "microstructure", "source": "fred_series", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "VIXCLS rolling 60d mean;Whaley 1993 IC ~-0.025;§0.3.3"},
-    {"name": "ms_vix_term_structure", "group": "microstructure", "source": "fred_series", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "(VIXCLS/252d_mean)-1;VIX premium;§0.3.3"},
-    {"name": "ms_market_stress", "group": "microstructure", "source": "fred_series", "window": "30d", "vtype": "boolean", "null": "zero_fill", "desc": "1 if max VIXCLS > 30 in last 30 days;crisis警示 binary;§0.3.3"},
+    # ── §0.3 macro broadcast 14 features DEPRECATED per §14.7-CK(2026-05-28)
+    # 用戶治權 directive「特徵值不能用就不入」:
+    # §0.3.1 K-wave(6)/ §0.3.2 Multi-cycle(5)/ §0.3.3 Microstructure(3)
+    # 全 broadcast(每股同值)→ cross-sectional Spearman IC ≈ +0.0336(數學 artifact)
+    # → 對 cross-sectional model training **無 predictive 效用**(per §14.7-CK 第三十五輪 inscribed)
+    # ⚠️ §0.3 K-wave macro gate 仍保留於 core_universe_builder Stage 1(selection 層;不影響此處)
+    # ⚠️ Future cross-pillar interactions(per T_CA-IC-4)將 reintroduce §0.3 as per-stock derived form
+    # ── ↓ 14 broadcast features 已從 active feature_store 移除(per §14.7-CK)↓ ──
+    # (kwave_tech_paradigm_strength / kwave_credit_cycle_phase / kwave_credit_to_gdp_gap /
+    #  kwave_demographics_trend / kwave_commodity_supercycle / kwave_phase_indicator /
+    #  mc_monetary_regime / mc_yield_curve_inversion / mc_oil_juglar_phase /
+    #  mc_semi_kitchin / mc_shipping_juglar /
+    #  ms_volatility_regime / ms_vix_term_structure / ms_market_stress)
     # ── §0.2 八二法則 explicit 群 v0.3 §14.7-CA Phase C-1c-4 新增(2026-05-27;7 features per-sector aggregation)
     {"name": "right_tail_concentration_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "top 10% sids volume share / total within sector;Pareto 分布實證;TW IC +0.015 OOS;§0.2"},
     {"name": "barbell_balance_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "abs((top 20% vol share) - 0.80);Pareto deviation;§9.2 barbell theory;§0.2"},
@@ -189,10 +185,10 @@ FEATURE_DEFINITIONS = [
     {"name": "theme_strength", "group": "theme", "source": "TaiwanStockInfo", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "THEME_KEYWORDS score / 100 from industry_category"},
     {"name": "theme_is_semiconductor", "group": "theme", "source": "TaiwanStockInfo", "window": "as_of", "vtype": "boolean", "null": "zero_fill", "desc": "1 if industry_category contains 半導體"},
     # ── macro 群（4，broadcast 至每股）
-    {"name": "macro_dff_level", "group": "macro", "source": "FredData", "window": "as_of", "vtype": "numeric", "null": "drop", "desc": "latest DFF (Fed Funds Rate) as of date"},
-    {"name": "macro_vix_level", "group": "macro", "source": "FredData", "window": "as_of", "vtype": "numeric", "null": "drop", "desc": "latest VIXCLS as of date"},
-    {"name": "macro_t10y2y_level", "group": "macro", "source": "FredData", "window": "as_of", "vtype": "numeric", "null": "drop", "desc": "latest T10Y2Y as of date"},
-    {"name": "macro_unrate_yoy", "group": "macro", "source": "FredData", "window": "13m", "vtype": "numeric", "null": "drop", "desc": "latest UNRATE - UNRATE 12 months prior"},
+    # ── macro legacy 4 features DEPRECATED per §14.7-CK(2026-05-28)
+    # 同 §0.3 broadcast 之 IC ≈ 0 artifact;同 doctrine 移除
+    # (macro_dff_level / macro_vix_level / macro_t10y2y_level / macro_unrate_yoy)
+    # 若 cross-pillar interaction 落地後可 reintroduce as per-stock form
     # ── interaction 群（v0.2 新增，4）：對齊 §0.0-D.6 升版條件 #1
     # 動機：將 macro / theme broadcast 與 stock-specific 特徵相乘，
     #       恢復 cross-sectional variance，使 §0.3 戰術層脫離 IC=0 結構性失效。
@@ -1229,9 +1225,10 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy raw load
             self._detail("📥 [LOAD] balance_sheet (Investment group §0.1 100% closure) ...")
             balance_data = self._load_balance_sheet(cur)
-            # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast
-            self._detail("📥 [LOAD] macro extended (§0.3.1/.2/.3 K-wave/Multi-cycle/Microstructure 14 features) ...")
-            macro_extended = self._load_macro_extended(cur)
+            # §14.7-CK(2026-05-28)— §0.3 Macro 14 broadcast features DEPRECATED
+            # 移除 _load_macro_extended call(per 用戶治權 directive「特徵值不能用就不入」)
+            # macro_extended = self._load_macro_extended(cur)  # ⚠️ DEPRECATED per §14.7-CK
+            macro_extended = {}  # 空 dict;不對每股 broadcast 14 macro features
         finally:
             cur.close()
             conn.close()
@@ -1254,7 +1251,7 @@ class FeatureStoreBuilder:
             }))
             stock_features["margin_ratio_60d"] = margin.get(sid)
             stock_features.update(self._theme_features(theme.get(sid, "")))
-            stock_features.update(macro)
+            # stock_features.update(macro)  # ⚠️ DEPRECATED per §14.7-CK(macro legacy 4 broadcast)
             # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast(same value 對每股)
             stock_features.update(macro_extended)
             # §14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 7 features per-sector

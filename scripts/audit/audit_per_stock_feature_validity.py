@@ -2,10 +2,10 @@
 audit_per_stock_feature_validity.py — Per-stock × per-feature completeness + correctness audit
 ================================================================================
 最後更新日期: 2026-05-28
-治權: §14.7-CI strict feature validity gate enforce check
+治權: §14.7-CI + §14.7-CK strict feature validity + effectiveness gate enforce check
 
-對 v0.14 strict active universe(N=1,541)× 37 unique spec features 做:
-1. Completeness:每股每 feature 必有 non-null value(per §14.7-CI 治權)
+對 v0.15 super-strict active universe(N=1,121)× 23 unique spec features 做:
+1. Completeness:每股每 feature 必有 non-null value(per §14.7-CI + §14.7-CK 治權)
 2. Correctness:每 feature 之 statistical distribution + outlier check
 3. Sample spot check:5 隨機 stocks 顯示 full feature 值
 """
@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
                     handlers=[logging.StreamHandler(sys.stdout)])
 
-# 37 unique spec features(per §14.7-CA + §14.7-CI 治權)
+# 23 unique spec features(per §14.7-CA + §14.7-CI + §14.7-CK 治權)
+# §0.3 14 broadcast features removed per §14.7-CK Feature Effectiveness Doctrine
+# (broadcast = same value across all stocks → IC=0 cross-sectional → 數學 artifact, not model-training valid)
 SPEC_FEATURES = {
     # §0.1 第一性原理 (16)
     "§0.1 Momentum": ["log_return_20d", "log_return_60d", "log_return_252d"],
@@ -36,13 +38,6 @@ SPEC_FEATURES = {
     "§0.2 Pareto": ["right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
                     "fitness_signal_60d", "right_tail_returns_skew_252d",
                     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"],
-    # §0.3 康波週期 (14, broadcast)
-    "§0.3.1 K-wave": ["kwave_tech_paradigm_strength", "kwave_credit_cycle_phase",
-                      "kwave_credit_to_gdp_gap", "kwave_demographics_trend",
-                      "kwave_commodity_supercycle", "kwave_phase_indicator"],
-    "§0.3.2 Multi-cycle": ["mc_monetary_regime", "mc_yield_curve_inversion",
-                            "mc_oil_juglar_phase", "mc_semi_kitchin", "mc_shipping_juglar"],
-    "§0.3.3 Microstructure": ["ms_volatility_regime", "ms_vix_term_structure", "ms_market_stress"],
 }
 
 # 合理 range(per feature semantic)— for correctness check
@@ -62,18 +57,10 @@ FEATURE_RANGES = {
     "revenue_yoy_3m_log": (-10, 10), "asset_growth_yoy": (-1, 10),
     # Pareto
     "right_tail_concentration_60d": (0, 1), "barbell_balance_60d": (0, 1),
-    "preferential_attachment_60d": (3, 14), "fitness_signal_60d": (0, 1e10),
+    "preferential_attachment_60d": (3, 14), "fitness_signal_60d": (-1e5, 1e5),  # cube-root 可為負(foreign_ratio<0)
     "right_tail_returns_skew_252d": (-10, 10),
     "liquidity_rank_pct_sector_60d": (0, 1), "size_log_zscore_sector": (-5, 5),
-    # K-wave: broadcast(同值 across all stocks)
-    "kwave_tech_paradigm_strength": (-1, 1), "kwave_credit_cycle_phase": (-0.5, 0.5),
-    "kwave_credit_to_gdp_gap": (50, 200), "kwave_demographics_trend": (-1, 1),
-    "kwave_commodity_supercycle": (-0.5, 0.5), "kwave_phase_indicator": (-50, 50),
-    # Multi-cycle
-    "mc_monetary_regime": (-0.5, 0.5), "mc_yield_curve_inversion": (-3, 3),
-    "mc_oil_juglar_phase": (-2, 2), "mc_semi_kitchin": (-2, 2), "mc_shipping_juglar": (-2, 2),
-    # Microstructure
-    "ms_volatility_regime": (5, 80), "ms_vix_term_structure": (-1, 3), "ms_market_stress": (0, 1),
+    # §0.3 14 broadcast features removed per §14.7-CK Feature Effectiveness Doctrine
 }
 
 
@@ -186,7 +173,7 @@ def main():
             features = dict(cur.fetchall())
             logger.info(f"\n  Stock {sid}:{len(features)}/{len(unique_features)} features")
             for k in ["log_return_60d", "pe_ratio", "roe_ttm", "operating_margin_ttm",
-                      "kwave_credit_to_gdp_gap", "mc_yield_curve_inversion"]:
+                      "right_tail_concentration_60d", "size_log_zscore_sector"]:
                 v = features.get(k)
                 logger.info(f"    {k:40} = {float(v):>15.6f}" if v is not None else f"    {k:40} = NULL")
 
