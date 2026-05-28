@@ -23,7 +23,8 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 | 跳過 FRED sync(若獨立 cron 已 sync)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --skip-fred-sync` |
 
 ## 📜 三、修訂歷程
-| v0.6 | 2026-05-28 | Codex | **§14.7-CN + §14.7-CO 整合(v6.11.1 patch)**:Step 8 插入 `audit_feature_necessity.py`(4-path necessity verdict);Step 9 插入 `audit_feature_sign_stability.py`(sign verdict + lit consistency)。Weekly cron 自動執行全 3 個 feature-layer audit(IC + necessity + sign)。 | ACTIVE |
+| v0.7 | 2026-05-28 | Codex | **§14.7-CP H4/H5/H8 + §14.7-CT 整合(v6.14.1)**:Step 10 H4 Data Quality / Step 11 H5 Universe Selection / Step 12 H8 Survivorship audit 加入(per §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer);Step 13 prediction inference placeholder(per §14.7-CT manual trigger)。Weekly cron 完整涵蓋 9 + 3 + 1 = 13 steps(feature audits + model pre-checks + inference)。 | ACTIVE |
+| v0.6 | 2026-05-28 | Codex | **§14.7-CN + §14.7-CO 整合(v6.11.1 patch)**:Step 8 插入 `audit_feature_necessity.py`(4-path necessity verdict);Step 9 插入 `audit_feature_sign_stability.py`(sign verdict + lit consistency)。Weekly cron 自動執行全 3 個 feature-layer audit(IC + necessity + sign)。 | SUPERSEDED |
 | v0.5 | 2026-05-28 | Codex | **§14.7-CM 整合**:Step 7 插入 `audit_feature_ic_vs_future_return.py`(43 features × forward N-day return Spearman IC)。每週重算 IC 實證 model-training viability + treaty gate(Mean |IC|>0.03 + ≥30% sig);違反觸發 feature re-evaluation per T_CM-3。 | SUPERSEDED |
 | v0.4 | 2026-05-28 | Codex | §14.7-CJ Step 4 升 super-strict `--with-reasonableness-gate`(v0.15 policy);觸發 outlier features 之 stocks 排除。 | SUPERSEDED |
 | v0.3 | 2026-05-28 | Codex | §14.7-CI Step 4 升 `--with-feature-gate`(v0.14 strict)— 不符合 37/37 features 計算之 stocks 嚴格排除。 | SUPERSEDED |
@@ -48,7 +49,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.6"  # §14.7-CN Step 8 + §14.7-CO Step 9 added(v6.11.1 patch 2026-05-28)
+TOOL_VER = "v0.7"  # §14.7-CP H4/H5/H8 Steps 10/11/12 + §14.7-CT Step 13 added(v6.14.1 2026-05-28)
 
 
 def check_trading_day_close():
@@ -275,6 +276,33 @@ def main():
     run_step("Step 9: §14.7-CO Feature Sign Stability audit(sign verdict + lit consistency)",
              [sys.executable, "scripts/audit/audit_feature_sign_stability.py"],
              args.dry_run, allow_fail=True)
+
+    # ---- Step 10(§14.7-CP T_CP-3 H4): Data Quality Bias audit ----
+    # Look-ahead / Imputation / Multicollinearity bias check
+    # treaty gate per §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer
+    run_step("Step 10: §14.7-CP H4 Data Quality Bias audit",
+             [sys.executable, "scripts/audit/audit_feature_data_quality_bias.py"],
+             args.dry_run, allow_fail=True)
+
+    # ---- Step 11(§14.7-CP T_CP-3 H5): Universe Selection Bias audit ----
+    # Sector / Size / Volatility bias check between §14.7-CJ included vs excluded
+    run_step("Step 11: §14.7-CP H5 Universe Selection Bias audit",
+             [sys.executable, "scripts/audit/audit_universe_selection_bias.py"],
+             args.dry_run, allow_fail=True)
+
+    # ---- Step 12(§14.7-CP T_CP-3 H8): Survivorship Bias audit ----
+    # Historical growth / Delisted / Info coverage check
+    run_step("Step 12: §14.7-CP H8 Survivorship Bias audit",
+             [sys.executable, "scripts/audit/audit_survivorship_bias.py"],
+             args.dry_run, allow_fail=True)
+
+    # ---- Step 13(§14.7-CT): Production prediction inference(optional)----
+    # 對最新 committed model 跑 inference,寫入 predictions table
+    # 不啟用 by default(需 model_id 動態查詢);僅標註 placeholder
+    # 啟用方式:在 main() 外手動 trigger production prediction(以避免 cron 自動寫 predictions)
+    print("\n──── [Step 13: §14.7-CT Production prediction inference] PLACEHOLDER ────")
+    print("  (per §14.7-CT,production inference 為 manual trigger;cron 不自動寫 predictions)")
+    print("  (model retrain cadence per §14.7-CS T_CS-5,8 weeks rolling)")
 
     print("\n" + "=" * 72)
     print(f"🎯 Weekly recommit pipeline {'DRY-RUN' if args.dry_run else 'COMMITTED'}")
