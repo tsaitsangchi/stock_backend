@@ -2282,7 +2282,8 @@ class DoctrineNativeGateBuilder:
         "ms_volatility_regime", "ms_vix_term_structure", "ms_market_stress",
     ]
 
-    POLICY_VERSION = "core_universe_policy_v0.13_doctrine_native_gate"
+    POLICY_VERSION_STANDARD = "core_universe_policy_v0.13_doctrine_native_gate"
+    POLICY_VERSION_STRICT = "core_universe_policy_v0.14_strict_feature_validity_gate"
 
     def __init__(self, as_of_date, commit=False, with_feature_gate=False, feature_set_id=None):
         self.as_of_date = as_of_date
@@ -2290,6 +2291,9 @@ class DoctrineNativeGateBuilder:
         self.with_feature_gate = with_feature_gate
         self.feature_set_id = feature_set_id
         self.stage_results = {}
+        # §14.7-CI(2026-05-28):strict mode 用 v0.14 policy 區分(per 用戶 directive
+        # 「不符合條件就不入核心股」+ Stage 4 feature gate enforcement)
+        self.POLICY_VERSION = self.POLICY_VERSION_STRICT if with_feature_gate else self.POLICY_VERSION_STANDARD
 
     def _check_kwave_market(self, cur):
         cur.execute(
