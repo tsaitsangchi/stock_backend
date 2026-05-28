@@ -62,6 +62,7 @@ reports/*
 !reports/feature_master_confirmation_*.md
 !reports/feature_sign_mismatch_*_retest_*.md
 !reports/feature_pipeline_master_summary_*.md
+!reports/cross_machine_handoff_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
