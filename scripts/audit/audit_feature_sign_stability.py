@@ -68,42 +68,45 @@ SPEC_43 = [
 ]
 
 # Literature sign:per builder FEATURE_DEFINITIONS + Phase A research (§14.7-CA)
-# "+" = positive predictive sign / "-" = negative / "±" = regime-dependent or ambiguous
-# 2026-05-28 v6.11.2 patch:5 features 改為 ±,基於 30d horizon empirical retest 揭露
-# TW 當前 regime growth/momentum-driven,Value/illiquidity 與 US literature 反向
-# (per reports/feature_sign_mismatch_30d_retest_20260528.md research report)
+# "+" = positive predictive sign / "-" = negative
+# 2026-05-28 v6.13.1 patch:依 §14.7-CR Mathematical Sign Realism,LITERATURE_SIGN 全清 "±"
+# 每 feature commit + 或 -,依 dominant US literature opinion(non-regime-conditional)
+# TW empirical 反向之 feature 反映於 TW_EMPIRICAL_SIGN(由 commit_tw_sign() 處理)
 LITERATURE_SIGN = {
     # Momentum: positive(Jegadeesh-Titman)
     "log_return_20d": "+", "log_return_60d": "+", "log_return_252d": "+",
     "ma_ratio_20": "+", "ma_ratio_60": "+",
-    "max_drawdown_252d": "±",  # v6.11.2: 30d empirical +0.089 mean reversion → ± regime-dep
-    # Volatility: risk premium positive(literature mixed for short horizon)
-    "upside_volatility_60d": "+", "downside_volatility_60d": "+", "convexity_60d": "±",
+    "max_drawdown_252d": "-",  # v6.13.1: US risk premium dominant — high DD → low forward return
+    # Volatility: risk premium positive
+    "upside_volatility_60d": "+", "downside_volatility_60d": "+",
+    "convexity_60d": "+",  # v6.13.1: §9.10 RMS asymmetry → 凸性正向(上行 > 下行)
     "volatility_60d": "+", "volatility_252d": "+",
     "upside_capture_60d": "+", "downside_capture_60d": "+",
-    # Liquidity: amihud positive in US lit / TW shows opposite(illiquid → underperform)
+    # Liquidity: amihud illiquidity premium(US literature dominant)
     "avg_daily_value_log_60d": "+", "avg_daily_value_log_252d": "+",
-    "amihud_illiquidity_60d": "±",  # v6.11.2: 30d empirical -0.066 → TW 反向 → ±
-    "zero_volume_ratio_252d": "-",  # stale → lower return
+    "amihud_illiquidity_60d": "+",  # v6.13.1: Amihud 2002 dominant lit;TW 反向見 TW_EMPIRICAL_SIGN
+    "zero_volume_ratio_252d": "-",
     "turnover_mean_60d": "+",
-    # Value: Fama-French HML in US;TW 2026 Q1-Q2 growth regime 強烈反向(高 P/E 強勢領先)
-    "pe_ratio": "±",  # v6.11.2: 30d empirical +0.21 → growth regime → ±
-    "pb_ratio": "±",  # v6.11.2: 30d empirical +0.24 → growth regime → ±
-    "dividend_yield": "±",  # v6.11.2: 30d empirical -0.16 → defensive underperform → ±
-    # Quality: Asness QMJ(high quality → high return)— 30d empirical 確認 ✅
+    # Value: Fama-French HML(US dominant — low P/E wins)
+    "pe_ratio": "-",  # v6.13.1: Fama-French HML dominant;TW 反向見 TW_EMPIRICAL_SIGN
+    "pb_ratio": "-",  # v6.13.1: 同上
+    "dividend_yield": "+",  # v6.13.1: Litzenberger 1979 yield premium dominant
+    # Quality: Asness QMJ(high quality → high return)
     "roe_ttm": "+", "operating_margin_ttm": "+",
     "eps_sum_4q": "+", "net_income_positive_ratio_8q": "+",
-    # Investment: Cooper-Gulen-Schill(high asset growth → low return)
+    # Investment: Cooper-Gulen-Schill
     "revenue_yoy_3m_log": "+", "asset_growth_yoy": "-",
     "revenue_yoy_3m": "+", "revenue_yoy_12m": "+",
     # Pareto:
-    "right_tail_concentration_60d": "+", "barbell_balance_60d": "+",  # §14.7-CQ v6.13.0: TW small-market 集中效應持續 → 高 imbalance 持續 → "+"(theoretical default per §9.2)
+    "right_tail_concentration_60d": "+",
+    "barbell_balance_60d": "+",  # §14.7-CQ v6.13.0: §9.2 barbell theory positive
     "preferential_attachment_60d": "+", "fitness_signal_60d": "+",
-    "right_tail_returns_skew_252d": "±",  # regime-dependent
-    "liquidity_rank_pct_sector_60d": "+", "size_log_zscore_sector": "±",  # SMB regime
+    "right_tail_returns_skew_252d": "+",  # v6.13.1: Kelly-Jiang 2014 positive skew premium
+    "liquidity_rank_pct_sector_60d": "+",
+    "size_log_zscore_sector": "-",  # v6.13.1: Fama-French SMB original — small wins → high size = "-"
     # Institutional: foreign positive / trust contrarian(TW empirical)
     "foreign_net_20d": "+", "foreign_net_60d": "+",
-    "trust_net_20d": "-", "trust_net_60d": "-",  # contrarian
+    "trust_net_20d": "-", "trust_net_60d": "-",
     "margin_ratio_60d": "+",
     # Theme: positive
     "theme_strength": "+", "theme_is_semiconductor": "+",
