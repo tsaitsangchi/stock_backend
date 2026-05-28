@@ -23,7 +23,8 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 | 跳過 FRED sync(若獨立 cron 已 sync)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --skip-fred-sync` |
 
 ## 📜 三、修訂歷程
-| v0.5 | 2026-05-28 | Codex | **§14.7-CM 整合**:Step 7 插入 `audit_feature_ic_vs_future_return.py`(43 features × forward N-day return Spearman IC)。每週重算 IC 實證 model-training viability + treaty gate(Mean |IC|>0.03 + ≥30% sig);違反觸發 feature re-evaluation per T_CM-3。 | ACTIVE |
+| v0.6 | 2026-05-28 | Codex | **§14.7-CN + §14.7-CO 整合(v6.11.1 patch)**:Step 8 插入 `audit_feature_necessity.py`(4-path necessity verdict);Step 9 插入 `audit_feature_sign_stability.py`(sign verdict + lit consistency)。Weekly cron 自動執行全 3 個 feature-layer audit(IC + necessity + sign)。 | ACTIVE |
+| v0.5 | 2026-05-28 | Codex | **§14.7-CM 整合**:Step 7 插入 `audit_feature_ic_vs_future_return.py`(43 features × forward N-day return Spearman IC)。每週重算 IC 實證 model-training viability + treaty gate(Mean |IC|>0.03 + ≥30% sig);違反觸發 feature re-evaluation per T_CM-3。 | SUPERSEDED |
 | v0.4 | 2026-05-28 | Codex | §14.7-CJ Step 4 升 super-strict `--with-reasonableness-gate`(v0.15 policy);觸發 outlier features 之 stocks 排除。 | SUPERSEDED |
 | v0.3 | 2026-05-28 | Codex | §14.7-CI Step 4 升 `--with-feature-gate`(v0.14 strict)— 不符合 37/37 features 計算之 stocks 嚴格排除。 | SUPERSEDED |
 | v0.2 | 2026-05-28 | Codex | **§14.7-CE P1 整合**:Step 3.5 插入 `weekly_api_audit_and_resync.py`(live API audit + auto resync)。確保 weekly recommit 之 Step 4 native gate build 前 DB 已 ≡ FinMind/FRED API byte-level;mismatch 自動 re-sync(per §14.7-CE absolute byte-level closure)。`--skip-api-audit` flag 加入。 | SUPERSEDED |
@@ -47,7 +48,7 @@ from core.db_utils import get_db_connection
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.5"  # §14.7-CM Step 7 Empirical IC tracking added(2026-05-28)
+TOOL_VER = "v0.6"  # §14.7-CN Step 8 + §14.7-CO Step 9 added(v6.11.1 patch 2026-05-28)
 
 
 def check_trading_day_close():
@@ -259,6 +260,20 @@ def main():
     # treaty gate:Mean |IC| > 0.03 + ≥30% features p<.05;違反觸發 feature re-evaluation
     run_step("Step 7: §14.7-CM Empirical IC audit(43 features × forward return)",
              [sys.executable, "scripts/audit/audit_feature_ic_vs_future_return.py"],
+             args.dry_run, allow_fail=True)
+
+    # ---- Step 8(§14.7-CN): Feature Necessity audit ----
+    # 4-path necessity verdict(literature + W1 + W2 + doctrine);0 NOT_NECESSARY required
+    # treaty gate:0 NOT_NECESSARY + STRONG+NECESSARY ≥ 50%
+    run_step("Step 8: §14.7-CN Feature Necessity audit(4-path verdict)",
+             [sys.executable, "scripts/audit/audit_feature_necessity.py"],
+             args.dry_run, allow_fail=True)
+
+    # ---- Step 9(§14.7-CO): Feature Sign Stability audit ----
+    # Sign verdict(4-tier)+ literature sign consistency check
+    # treaty gate:sign-stable ≥ 25% realistic + lit-mismatch ≤ 5 + REGIME-DEP disclosure
+    run_step("Step 9: §14.7-CO Feature Sign Stability audit(sign verdict + lit consistency)",
+             [sys.executable, "scripts/audit/audit_feature_sign_stability.py"],
              args.dry_run, allow_fail=True)
 
     print("\n" + "=" * 72)
