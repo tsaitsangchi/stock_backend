@@ -61,6 +61,7 @@ reports/*
 # Feature doctrine reports(per §14.7-CK/CL/CM/CN/CO doctrine cycle)
 !reports/feature_master_confirmation_*.md
 !reports/feature_sign_mismatch_*_retest_*.md
+!reports/feature_pipeline_master_summary_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
