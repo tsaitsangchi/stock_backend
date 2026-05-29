@@ -1,15 +1,15 @@
 """
-multi_cycle_extra_trees_validation.py v0.1 (Multi-Cycle Extra Trees Validation + Precision/Reliability Analysis · §14.7-CY 第六實作 · per Canonical Comparison Framework · per CLAUDE.md §一.11 三段式入憲)
+multi_cycle_transformer_dedicated_validation.py v0.1 (Multi-Cycle FT-Transformer Validation + Precision/Reliability Analysis · §14.7-CY 第 10 實作 dedicated · 首次非 tree 跨架構 · per Canonical Comparison Framework · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
 **最後更新日期**: 2026-05-29
-**主權狀態**: MULTI-CYCLE 4-HORIZON EXTRA TREES VALIDATION + PRECISION/RELIABILITY + CANONICAL COMPARISON FRAMEWORK + §14.7-CY HORIZON-EXTENSION + §14.7-CX 8-YEAR OOS + §14.7-CW TREE-FAMILY 第六實作 + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規
+**主權狀態**: MULTI-CYCLE 4-HORIZON FT-TRANSFORMER VALIDATION + PRECISION/RELIABILITY + CANONICAL COMPARISON FRAMEWORK + §14.7-CY HORIZON-EXTENSION + §14.7-CX 8-YEAR OOS + 10-MODEL 第 10 實作 dedicated(首次非 tree)+ §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 + §一.12 5-MIN-REPORTING-AWARE
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Multi-Cycle Horizon Coverage]** (v0.1, §14.7-CY T_CY-2): 4 horizons(weekly 5d / monthly 20d / quarterly 60d / annual 252d)完全對齊其他 multi-cycle validators。
-2. **[Extra Trees Bagging Ensemble]** (v0.1): 200 trees / max_depth=5 / bootstrap=True / max_features='sqrt' / seed=5422;ExtraTreesRegressor uses random split thresholds(vs RF best-split-within-subset)。
-3. **[Canonical Comparison Framework]** (v0.1, per RF 建立): metrics 與 LGBM/XGBoost/CatBoost/Ensemble/Random Forest validators 完全 standardized,確保 6-tree comparison reliable。
+2. **[FT-Transformer Deep Learning]** (v0.1): d_model=64 / n_heads=4 / n_layers=2 / ffn_dim=128 / dropout=0.3 / seed=5422;**multi-cycle 用 epochs=15**(降自 trainer 之 30 以控制 multi-cycle compute,per §一.10 #3 honest disclosure)。
+3. **[Canonical Comparison Framework]** (v0.1, per RF 建立): metrics 與 9-tree CCF validators 完全 standardized,確保 10-model cross-architecture comparison reliable。
 4. **[Overlap-Corrected n_effective]** (v0.1, §14.7-CY T_CY-3): n_eff = n × (30/horizon),長 horizon 之 overlap penalty;effective t-stat = t × sqrt(n_eff/n)。
 5. **[Honest Annualization]** (v0.1, §14.7-CY T_CY-4): mean × (252/horizon),非 √N 高估。
 6. **[Cost-Drag Per Horizon]** (v0.1, §14.7-CY T_CY-5): 0.6%/rebal × rebals_per_year。
@@ -18,8 +18,8 @@ multi_cycle_extra_trees_validation.py v0.1 (Multi-Cycle Extra Trees Validation +
 9. **[System Script Mandatory]** (v0.1, §14.7-CY T_CY-1): system 永久 script。
 10. **[Source Traceability]** (v0.1, CLAUDE.md §一.10): 全 (b) DB query + (a) program output;0 AI memory reuse。
 11. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): significance + precision tier 動態判定。
-12. **[Sovereignty Declaration]** (v0.1, §3.1 序列模組): 本程式為 **§14.7-CY 第六 evaluation 實作**(LGBM/XGB/CatBoost/Ensemble/Random Forest 為前五)。**治權邊界**:(a) §3.1 evaluation;(b) read-only;(c) 不訓練 production model;(d) 不修改 DB;(e) 唯一職責:Extra Trees 4-horizon walk-forward + precision/reliability + JSON 持久化。
-13. **[Historical Reference Authority]** (v0.1): Extra Trees 為 random-split bagging baseline(vs RF best-split-within-subset);bagging 家族 pairwise ablation 之第二實作。
+12. **[Sovereignty Declaration]** (v0.1, §3.1 序列模組): 本程式為 **§14.7-CY 第 10 evaluation 實作 dedicated(首次非 tree)**(9-tree CCF 為前九)。**治權邊界**:(a) §3.1 evaluation;(b) read-only;(c) 不訓練 production model;(d) 不修改 DB;(e) 唯一職責:FT-Transformer 4-horizon walk-forward + precision/reliability + JSON 持久化。
+13. **[Historical Reference Authority]** (v0.1): 9-tree CCF multi-cycle 結果為 reference;本 Transformer dedicated v0.1 為 cross-architecture 首次 multi-cycle 驗證。
 14. **[Idempotency]** (v0.1): pure read-only;JSON output 含 timestamp。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
@@ -29,12 +29,12 @@ multi_cycle_extra_trees_validation.py v0.1 (Multi-Cycle Extra Trees Validation +
 | :--- | :--- | :--- |
 | A.1-4 weekly/monthly/quarterly/annual | `evaluate_horizon()` 4 calls | §14.7-CY T_CY-2 |
 
-### Group B. Walk-Forward ET Training (per horizon)
+### Group B. Walk-Forward FT-Transformer Training (per horizon)
 | 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
 | B.1 Expanding window | train [0..i-1] → test i | §14.7-CW T_CW-2 |
-| B.2 ET params | ET_PARAMS(200/5/sqrt/5422)| §14.7-CW T_CW-4 |
-| B.3 Random-split bagging | `splitter='random'` (ExtraTrees default) | variance reduction++ |
+| B.2 FT-Transformer | d_model=64 / heads=4 / layers=2 / epochs=15 / early_stopping=3 / batch=512 | 學界 SOTA |
+| B.3 Adam optimizer | lr=1e-3 / weight_decay=1e-4 | standard |
 | B.4 Spearman IC | rank correlation | §14.7-CM |
 
 ### Group C. Overlap Correction + Honest Annualization
@@ -62,21 +62,22 @@ multi_cycle_extra_trees_validation.py v0.1 (Multi-Cycle Extra Trees Validation +
 | 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
 | F.1 Cross-cycle matrix stdout | per-horizon row | §14.7-CY T_CY-6 |
-| F.2 JSON output | `reports/multi_cycle_extra_trees_<ts>.json` | §一.10 |
+| F.2 JSON output | `reports/multi_cycle_transformer_dedicated_<ts>.json` | §一.10 |
 
 ### 對齊憲章 §二 維運矩陣
 | 場景 | 命令 |
 | :--- | :--- |
-| 日常 dry-run | `python scripts/evaluation/multi_cycle_extra_trees_validation.py --dry-run` |
+| 日常 dry-run | `python scripts/evaluation/multi_cycle_transformer_dedicated_validation.py --dry-run` |
 
 ### 不提供之旗標 (Intentionally Omitted)
 - `--seed`:固定 5422 per §14.7-CW T_CW-4。
+- `--epochs`:固定 15(multi-cycle compute control,trainer 為 30)。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.1 | 2026-05-29 | Codex | **首版:§14.7-CY 第六實作(Extra Trees)**。 (1) 4-horizon walk-forward,sklearn ExtraTreesRegressor;(2) Canonical Comparison Framework 對齊;(3) ET vs RF pairwise ablation(bagging 家族第二實作);(4) Precision/Reliability 新層延續其他 multi-cycle validators。 | **ACTIVE** |
+| v0.1 | 2026-05-29 | Codex | **首版:§14.7-CY 第 10 實作 dedicated(FT-Transformer)** under Canonical Comparison Framework — **首次非 tree 跨架構 multi-cycle**。 (1) 4-horizon walk-forward,FT-Transformer;(2) Precision/Reliability 新層延續其他 multi-cycle validators;(3) **compute control:epochs=15**(trainer 為 30 / per §一.10 honest disclosure);(4) §一.12 5-min reporting aware(預計 multi-cycle ≥ 5 min)。 | **ACTIVE** |
 """
 
 from __future__ import annotations
@@ -90,8 +91,10 @@ if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 import numpy as np
-from sklearn.ensemble import ExtraTreesRegressor
-import sklearn
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 from core.db_utils import get_db_conn
 
 logger = logging.getLogger(__name__)
@@ -101,7 +104,20 @@ CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.1"
 SEED = 5422
 
-ET_PARAMS = {"n_estimators": 200, "max_depth": 5, "min_samples_leaf": 30, "max_features": "sqrt", "bootstrap": True, "random_state": SEED, "n_jobs": -1}
+TF_PARAMS = {
+    "d_model": 64,
+    "n_heads": 4,
+    "n_layers": 2,
+    "ffn_dim": 128,
+    "dropout": 0.3,
+    "learning_rate": 1e-3,
+    "weight_decay": 1e-4,
+    "epochs": 15,
+    "early_stopping_patience": 3,
+    "batch_size": 512,
+    "val_fraction": 0.15,
+    "seed": SEED,
+}
 
 SPEC_43 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
@@ -117,6 +133,37 @@ SPEC_43 = [
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
     "theme_is_semiconductor",  # §14.7-DC v0.2: theme_strength removed (hardcoded THEME_KEYWORDS = AI hallucination)
 ]
+
+
+# === FT-Transformer (same as trainer) ===
+class FeatureTokenizer(nn.Module):
+    def __init__(self, n_features, d_model):
+        super().__init__()
+        self.weight = nn.Parameter(torch.empty(n_features, d_model))
+        self.bias = nn.Parameter(torch.empty(n_features, d_model))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        nn.init.uniform_(self.bias, -1/math.sqrt(d_model), 1/math.sqrt(d_model))
+
+    def forward(self, x):
+        return x.unsqueeze(-1) * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
+
+
+class FTTransformer(nn.Module):
+    def __init__(self, n_features, d_model, n_heads, n_layers, ffn_dim, dropout):
+        super().__init__()
+        self.tokenizer = FeatureTokenizer(n_features, d_model)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        nn.init.normal_(self.cls_token, std=0.02)
+        enc_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=ffn_dim, dropout=dropout, activation="gelu", batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
+        self.head = nn.Sequential(nn.LayerNorm(d_model), nn.Linear(d_model, ffn_dim), nn.GELU(), nn.Dropout(dropout), nn.Linear(ffn_dim, 1))
+
+    def forward(self, x):
+        tokens = self.tokenizer(x)
+        cls = self.cls_token.expand(x.size(0), -1, -1)
+        seq = torch.cat([cls, tokens], dim=1)
+        out = self.encoder(seq)
+        return self.head(out[:, 0, :]).squeeze(-1)
 
 
 def get_panel_dates():
@@ -162,6 +209,50 @@ def winsorize(arr, lo_q=0.01, hi_q=0.99):
     return np.clip(arr, np.quantile(arr, lo_q), np.quantile(arr, hi_q))
 
 
+def train_transformer_fold(X_train, y_train, params):
+    torch.manual_seed(params["seed"]); np.random.seed(params["seed"])
+    n = len(X_train); val_n = max(int(n * params["val_fraction"]), 50)
+    perm = np.random.permutation(n)
+    val_idx, tr_idx = perm[:val_n], perm[val_n:]
+    X_tr, y_tr = X_train[tr_idx], y_train[tr_idx]
+    X_val, y_val = X_train[val_idx], y_train[val_idx]
+    mu = X_tr.mean(axis=0); sigma = X_tr.std(axis=0) + 1e-6
+    X_tr_norm = (X_tr - mu) / sigma; X_val_norm = (X_val - mu) / sigma
+
+    Xt = torch.tensor(X_tr_norm, dtype=torch.float32); yt = torch.tensor(y_tr, dtype=torch.float32)
+    Xv = torch.tensor(X_val_norm, dtype=torch.float32); yv = torch.tensor(y_val, dtype=torch.float32)
+    loader = DataLoader(TensorDataset(Xt, yt), batch_size=params["batch_size"], shuffle=True)
+
+    model = FTTransformer(n_features=Xt.size(1), d_model=params["d_model"], n_heads=params["n_heads"], n_layers=params["n_layers"], ffn_dim=params["ffn_dim"], dropout=params["dropout"])
+    opt = optim.AdamW(model.parameters(), lr=params["learning_rate"], weight_decay=params["weight_decay"])
+    loss_fn = nn.MSELoss()
+
+    best_val = float("inf"); best_state = None; bad_epochs = 0
+    for epoch in range(params["epochs"]):
+        model.train()
+        for Xb, yb in loader:
+            opt.zero_grad(); pred = model(Xb); loss = loss_fn(pred, yb); loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
+        model.eval()
+        with torch.no_grad():
+            val_loss = loss_fn(model(Xv), yv).item()
+        if val_loss < best_val - 1e-5:
+            best_val = val_loss; best_state = {k: v.clone() for k, v in model.state_dict().items()}; bad_epochs = 0
+        else:
+            bad_epochs += 1
+            if bad_epochs >= params["early_stopping_patience"]: break
+
+    if best_state: model.load_state_dict(best_state)
+    return model, mu, sigma
+
+
+def predict_transformer(model, X, mu, sigma):
+    X_norm = (X - mu) / sigma
+    Xt = torch.tensor(X_norm, dtype=torch.float32)
+    model.eval()
+    with torch.no_grad(): return model(Xt).cpu().numpy()
+
+
 def evaluate_horizon(cur, panels, horizon_days, universe, label):
     logger.info(f"\n{'='*100}\nHorizon: {label}({horizon_days}d)\n{'='*100}")
     panel_data = {}
@@ -182,6 +273,7 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
     panel_ics, panel_top20_rets, panel_univ_rets = [], [], []
     panel_hit_rates, panel_overlaps, panel_rmses, panel_maes = [], [], [], []
 
+    t_fold_start = time.monotonic()
     for i in range(1, len(panel_keys)):
         test_key = panel_keys[i]
         X_test, y_test, _, _ = panel_data[test_key]
@@ -189,13 +281,12 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
         for j in range(i):
             X_j, y_j, _, _ = panel_data[panel_keys[j]]
             train_X.extend(X_j); train_y.extend(y_j)
-        X_tr = np.array(train_X); y_tr = winsorize(np.array(train_y))
+        X_tr = np.array(train_X, dtype=np.float32); y_tr = winsorize(np.array(train_y, dtype=np.float32)).astype(np.float32)
         if len(X_tr) < 100: continue
 
-        fold_model = ExtraTreesRegressor(**ET_PARAMS)
-        fold_model.fit(X_tr, y_tr)
-        X_te = np.array(X_test)
-        pred_te = fold_model.predict(X_te)
+        fold_model, mu, sigma = train_transformer_fold(X_tr, y_tr, TF_PARAMS)
+        X_te = np.array(X_test, dtype=np.float32)
+        pred_te = predict_transformer(fold_model, X_te, mu, sigma)
         ic = spearman_ic(pred_te, y_test)
 
         n_top = min(20, len(pred_te))
@@ -204,7 +295,6 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
         top20_ret = float(np.mean([y_test[k] for k in top_idx]))
         univ_ret = float(np.mean(y_test))
 
-        # Precision
         y_arr = np.array(y_test); pred_arr = np.array(pred_te)
         hit_rate = float(np.mean(np.sign(pred_arr) == np.sign(y_arr)))
         overlap = len(set(top_idx.tolist()) & set(actual_top_idx.tolist())) / n_top
@@ -213,6 +303,10 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
 
         panel_ics.append(ic); panel_top20_rets.append(top20_ret); panel_univ_rets.append(univ_ret)
         panel_hit_rates.append(hit_rate); panel_overlaps.append(overlap); panel_rmses.append(rmse); panel_maes.append(mae)
+
+        if i % 10 == 0:
+            elapsed = time.monotonic() - t_fold_start
+            logger.info(f"    [{label}] {i}/{len(panel_keys)-1} folds done — elapsed {elapsed:.1f}s — last IC={ic:+.4f}")
 
     if not panel_top20_rets: return None
 
@@ -272,22 +366,20 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
     }
 
     logger.info(f"\n  Results({label}, {horizon_days}d):")
-    logger.info(f"    OOS panels: {n} | n_eff: {n_eff:.1f}")
+    logger.info(f"    OOS panels: {n} | n_eff: {n_eff:.1f} | total elapsed: {time.monotonic()-t_fold_start:.1f}s")
     logger.info(f"    Sharpe: {sharpe:+.4f} | Win: {win_rate*100:.1f}% | α: {mean_alpha*100:+.4f}% | IR: {ir:+.4f}")
     logger.info(f"    Eff t-stat: {eff_t_stat:+.3f} | Sig p<0.05: {'✅' if is_significant else '❌'}")
     logger.info(f"    Annualized NET: {annualized_simple_net*100:+.2f}%/yr | Mean IC: {result['mean_ic']:+.4f}")
-    logger.info(f"")
     logger.info(f"    --- Precision ---")
     logger.info(f"    Directional hit rate: {mean_hit*100:.1f}% | Top-20 actual overlap: {mean_overlap*100:.1f}%")
     logger.info(f"    RMSE: {mean_rmse:.4f} | MAE: {mean_mae:.4f}")
-    logger.info(f"")
     logger.info(f"    --- Reliability ---")
     logger.info(f"    IC stability(CoV): {ic_cov:.4f}")
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description=f"Multi-Cycle Extra Trees Validation {TOOL_VER}")
+    parser = argparse.ArgumentParser(description=f"Multi-Cycle FT-Transformer Validation {TOOL_VER}(Canonical Comparison Framework)")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--commit", action="store_true")
@@ -305,11 +397,12 @@ def main():
         else: horizon_labels.append(("annual", d))
 
     logger.info("="*100)
-    logger.info(f"Multi-Cycle Extra Trees Validation {TOOL_VER}(per §14.7-CY)")
+    logger.info(f"Multi-Cycle FT-Transformer Validation {TOOL_VER}(per §14.7-CY / Canonical Comparison Framework)")
     logger.info("="*100)
     logger.info(f"  Horizons: {horizon_labels}")
-    logger.info(f"  sklearn version: {sklearn.__version__}")
+    logger.info(f"  PyTorch version: {torch.__version__} threads={torch.get_num_threads()}")
     logger.info(f"  Mode: {'COMMIT' if args.commit else 'DRY-RUN'}")
+    logger.info(f"  epochs(multi-cycle compute control)= {TF_PARAMS['epochs']}")
 
     conn = get_db_conn()
     try:
@@ -326,8 +419,9 @@ def main():
         for label, days in horizon_labels:
             r = evaluate_horizon(cur, panels, days, universe, label)
             if r: results[label] = r
+            logger.info(f"\n  [Cumulative elapsed: {time.monotonic()-t_global:.1f}s after {label}]")
 
-        logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix(Extra Trees)+ Precision/Reliability\n{'='*100}")
+        logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix(FT-Transformer dedicated)+ Precision/Reliability\n{'='*100}")
         logger.info(f"  {'Horizon':10} {'n_eff':>6} {'Eff t':>7} {'Sig?':>5} {'Sharpe':>7} {'NetAnn':>9} {'HitRate':>9} {'Overlap':>9}")
         for label, r in results.items():
             sig = "✅" if r["is_significant_p05"] else "❌"
@@ -336,16 +430,17 @@ def main():
         logger.info(f"\n  Total elapsed: {time.monotonic()-t_global:.1f}s")
 
         if args.output or args.commit:
-            output_path = args.output or f"reports/multi_cycle_extra_trees_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            output_path = args.output or f"reports/multi_cycle_transformer_dedicated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             output_full = Path(_base_dir).parent / output_path
             output_full.parent.mkdir(parents=True, exist_ok=True)
             output_results = {label: r for label, r in results.items()}
             output_results["_meta"] = {
-                "tool": "multi_cycle_extra_trees_validation.py", "tool_ver": TOOL_VER,
-                "model_family": "extra_trees", "sklearn_version": sklearn.__version__,
+                "tool": "multi_cycle_transformer_dedicated_validation.py", "tool_ver": TOOL_VER,
+                "model_family": "transformer", "pytorch_version": torch.__version__,
                 "run_at": datetime.now().isoformat(), "constitution_ver": CONSTITUTION_VER, "seed": SEED,
                 "horizons": horizon_days_list, "n_universe": len(universe), "n_panels_input": len(panels),
                 "source_traceability": "per CLAUDE.md §一.10 — all (b) DB query",
+                "compute_control_note": "epochs=15 (trainer 30) per §一.10 honest disclosure",
             }
             with open(output_full, "w") as f:
                 json.dump(output_results, f, indent=2, default=str)

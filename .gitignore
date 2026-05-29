@@ -83,6 +83,10 @@ reports/*
 !reports/xgboost_dedicated_validation_report_*.md
 !reports/catboost_dedicated_validation_report_*.md
 !reports/tree_family_9_model_master_summary_*.md
+!reports/tree_family_10_model_*.md
+!reports/multi_cycle_*_clean910_*.json
+!reports/multi_cycle_*_v018_*.json
+!reports/transformer_dedicated_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md

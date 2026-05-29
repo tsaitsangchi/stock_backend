@@ -140,7 +140,7 @@ SPEC_43 = [
     "fitness_signal_60d", "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
-    "theme_strength", "theme_is_semiconductor",
+    "theme_is_semiconductor",  # §14.7-DC v0.2: theme_strength removed (hardcoded THEME_KEYWORDS = AI hallucination)
 ]
 
 
