@@ -67,8 +67,14 @@ reports/*
 !reports/multi_cycle_validation_*.json
 !reports/multi_cycle_xgboost_*.json
 !reports/multi_cycle_catboost_*.json
+!reports/multi_cycle_ensemble_*.json
+!reports/multi_cycle_random_forest_*.json
+!reports/multi_cycle_extra_trees_*.json
 !reports/xgboost_validation_report_*.md
 !reports/catboost_validation_report_*.md
+!reports/ensemble_validation_report_*.md
+!reports/random_forest_validation_report_*.md
+!reports/extra_trees_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
