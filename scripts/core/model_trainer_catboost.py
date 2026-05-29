@@ -150,10 +150,10 @@ SPEC_43 = [
     "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
     "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
     "right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
-    "fitness_signal_60d", "right_tail_returns_skew_252d",
+    "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
-    "theme_is_semiconductor",  # §14.7-DC v0.2: theme_strength removed (hardcoded THEME_KEYWORDS = AI hallucination)
+    # §14.7-DC v0.3 strict: theme_is_semiconductor + fitness_signal_60d + theme_strength all removed (hardcoded knowledge / transitively tainted = AI hallucination)
 ]
 
 
