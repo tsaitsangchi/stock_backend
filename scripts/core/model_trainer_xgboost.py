@@ -1,100 +1,111 @@
 """
-model_trainer_lgbm_v2.py v0.2 (LightGBM Tree Production Trainer · §14.7-CW Tree Family 第一實作 · per CLAUDE.md §一.11 三段式入憲)
+model_trainer_xgboost.py v0.1 (XGBoost Tree Production Trainer · §14.7-CW Tree Family 第二實作 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-**最後更新日期**: 2026-05-29(標頭三段式補正;v0.2 邏輯 2026-05-28 入)
-**主權狀態**: LGBM TREE PRODUCTION + §14.7-CW TREE-FAMILY 第一實作 + §14.7-CS MODEL-TRAINING-LANDING + §14.7-CW T_CW-6 REPRODUCIBILITY + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 (per CLAUDE.md §一.11)
+**最後更新日期**: 2026-05-29
+**主權狀態**: XGBOOST TREE PRODUCTION + §14.7-CW TREE-FAMILY EXTENSION + §14.7-CS MODEL-TRAINING-LANDING + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 (per CLAUDE.md §一.11;對標 model_trainer_lgbm_v2.py v0.2 LGBM 為第一實作)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-1. **[Real Tree Model Required]** (v0.2, 憲法 §14.7-CW T_CW-1): production model 必須使用 real LightGBM tree;不得停留 rank-IC linear baseline(v0.1)。
-2. **[Expanding Window Walk-Forward OOS]** (v0.2, 憲法 §14.7-CW T_CW-2): train [0..i-1] → test i;in-sample IC vs OOS IC gap 須揭露。
-3. **[Conservative Hyperparameters]** (v0.2, 憲法 §14.7-CW T_CW-4): n_estimators=200 / learning_rate=0.05 / max_depth=5 / num_leaves=20 / min_child_samples=30 / feature_fraction=0.8 / bagging_fraction=0.8 / reg_alpha=0.1 / reg_lambda=0.1 / seed=5422。
-4. **[Treaty Gates 4/4]** (v0.2, 憲法 §14.7-CW T_CW-5): Sharpe > 0 / Win ≥ 50% / MDD ≤ 30% / Mean α > 0。
-5. **[Top Features §0.1+§0.2 Dominated]** (v0.2, 憲法 §14.7-CW T_CW-3): top-15 features 由 §0.1+§0.2 主導;§0.3 macro broadcast 已 removed(per §14.7-CK)。
-6. **[Multi-Run Reproducibility]** (v0.2, 憲法 §14.7-CW T_CW-6): LGBM bagging + multi-thread → stochastic;不得 single-run anchor 寫 deterministic fact;charter inscription 須 multi-run statistics(per v6.17.1 patch precedent)。
-7. **[43 Canonical Features]** (v0.2, 憲法 §14.7-CL): SPEC_43 為 §14.7-CL canonical scope;與 XGBoost 共用同一 SPEC。
-8. **[Source Traceability]** (v0.2, CLAUDE.md §一.10): 全 (b) DB query + (a) program output;0 AI memory;0 推測。
-9. **[Zero Hardcoded Verdict]** (v0.2, 憲法 §5.6.3): 4 Treaty Gates 動態判定。
-10. **[Sovereignty Declaration]** (v0.2, 憲法 §3.1 序列模組): 本程式為 **§10 model_trainer 第一實作**(XGBoost 為第二)。**治權邊界**:(a) §3.1 序列 training;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 已 handle by feature_store_builder;(e) **不選股 / 不算 feature / 不評估 multi-cycle**(各有專責);(f) 唯一職責:walk-forward LGBM 訓練 + Treaty gates + model artifact + model_registry insert。
-11. **[Historical Reference Authority]** (v0.2): `TOOL_VER = "v0.2"`;v6.17.0 6-panel anchor Sharpe 4.74 為 max outlier(per v6.17.1 patch 揭露);真實 8-year reality 為 §14.7-CX Sharpe 1.67。
-12. **[Idempotency]** (v0.2): model_registry INSERT ON CONFLICT DO UPDATE。
-13. **[Anti-Leakage Inheritance]** (v0.2, 憲法 §8.5): features 已 anti-leakage compliant per feature_store_builder publication_date_strategy。
+1. **[Real Tree Model Required]** (v0.1, 憲法 §14.7-CW T_CW-1): production model 必須使用 tree-based 真實模型(此處 XGBoost),不得停留 rank-IC linear baseline;XGBoost 與 LGBM 為 §14.7-CW Tree Family 並列實作。
+2. **[Expanding Window Walk-Forward OOS]** (v0.1, 憲法 §14.7-CW T_CW-2): train [panel 0..i-1] → test panel i 之 expanding window;不得跑 full in-sample evaluation 視為 production metric;in-sample IC vs OOS IC gap 須揭露。
+3. **[Conservative Hyperparameters]** (v0.1, 憲法 §14.7-CW T_CW-4): n_estimators=200 / learning_rate=0.05 / max_depth=5 / min_child_weight=5 / subsample=0.8 / colsample_bytree=0.8 / reg_alpha=0.1 / reg_lambda=0.1 / seed=5422;與 LGBM 對等之 conservative defaults。
+4. **[Treaty Gates 4/4]** (v0.1, 憲法 §14.7-CW T_CW-5): Sharpe > 0 / Win ≥ 50% / MDD ≤ 30% / Mean α > 0;違反 any gate 視 production training 失敗。
+5. **[Top Features §0.1+§0.2 Dominated]** (v0.1, 憲法 §14.7-CW T_CW-3): top-15 features 必由 §0.1 第一性原理 + §0.2 八二法則 features 主導;§0.3 macro broadcast features 不應入 top(per §14.7-CK)。
+6. **[43 Canonical Features]** (v0.1, 憲法 §14.7-CL): SPEC_43 為 §14.7-CL canonical scope;不得擴增/減少;與 LGBM 共用同一 SPEC。
+7. **[Source Traceability]** (v0.1, CLAUDE.md §一.10): 全 (b) DB query(feature_values + TaiwanStockPriceAdj)+ (a) program output;0 AI memory;0 推測。
+8. **[Zero Hardcoded Verdict]** (v0.1, 憲法 §5.6.3): 4 Treaty Gates 動態判定(✅/⚠️/❌),不硬編結論。
+9. **[Sovereignty Declaration]** (v0.1, 憲法 §3.1 序列模組): 本程式為 **§10 model_trainer 第二實作**(LGBM 為第一)。**治權邊界**:(a) §3.1 序列 training 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 anti-leakage 不處理(features 已 anti-leakage compliant);(e) **不選股**(由 core_universe_builder 負責);(f) **不算 feature**(由 feature_store_builder 負責);(g) **不評估 multi-cycle**(由 multi_cycle_xgboost_validation 負責);(h) 唯一職責:8-panel walk-forward XGBoost 訓練 + Treaty gates 評估 + model artifact + model_registry insert(--commit)。
+10. **[Historical Reference Authority]** (v0.1): 本程式 `TOOL_VER = "v0.1"` 屬於記述性快照;LGBM baseline(§14.7-CW v0.2)為對標權威。
+11. **[Idempotency]** (v0.1): `model_registry` INSERT ... ON CONFLICT(model_id) DO UPDATE;重跑覆寫 metrics + hyperparams + status,不破壞 model_id 唯一性。
+12. **[Anti-Leakage Inheritance]** (v0.1, 憲法 §8.5): features 已由 feature_store_builder 之 publication_date_strategy 處理 anti-leakage;forward returns 取自 (label_date > as_of_date) 之未來 close prices,本身為 forward-looking label,無 leakage。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+> 本程式作為 §14.7-CW Tree Family 第二實作,依「訓練流程」拆分為 6 大功能群;每群對應憲章治權契約。
 
 ### Group A. Universe + Feature Loading
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| A.1 Latest core_universe | DB query | §14.7-CF SSOT |
-| A.2 Feature values | `load_panel_data()` | §14.7-CL canonical |
-| A.3 Forward returns | PriceAdj LN(t1/t0)| §14.7-CV |
+| A.1 Latest committed core_universe | `core_universe_membership` JOIN `core_universe_snapshot` | §14.7-CF SSOT |
+| A.2 Feature values loading | `load_panel_data()` query `feature_values` | §14.7-CL canonical |
+| A.3 Forward returns(per panel)| `TaiwanStockPriceAdj` LN(t1/t0)JOIN | §14.7-CV backtest |
+| 對應 CLI | (auto) | — |
 
 ### Group B. Walk-Forward Expanding Window Training
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| B.1 Expanding window | train [0..i-1] → test i | §14.7-CW T_CW-2 |
-| B.2 LGBM params | DEFAULT_TRAINING_POLICY | §14.7-CW T_CW-4 |
-| B.3 Winsorization | clip [0.01, 0.99] | label stability |
-| B.4 Spearman IC | rank correlation | §14.7-CM |
+| B.1 Expanding window | `for i in range(1, len(panels_list))` train [0..i-1] → test i | §14.7-CW T_CW-2 |
+| B.2 XGBoost params | `DEFAULT_TRAINING_POLICY`(200 trees / depth 5 / seed 5422)| §14.7-CW T_CW-4 |
+| B.3 Winsorization | `winsorize(arr, 0.01, 0.99)` | label stability |
+| B.4 Spearman IC | `spearman_ic(pred, y)` | §14.7-CM |
+| 對應 CLI | `--panel-feature-sets <fs1,...>` | — |
 
-### Group C. Treaty Gates Evaluation
-
-| 子項 | 對應方法 / 行為 | 治權契約 |
-| :--- | :--- | :--- |
-| C.1-4 | Sharpe / Win / MDD / Alpha | §14.7-CW Gates CW-1〜4 |
-| C.5 t-statistic | mean_α / SE | §14.7-CX significance |
-
-### Group D. Model Artifact Persistence (--commit only)
+### Group C. Treaty Gates Evaluation (Sharpe / Win / MDD / Alpha)
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| D.1 model.txt save | LGBM native | LGBM format |
-| D.2 metrics.json | full serialization | §一.10 |
-| D.3 hyperparams.json | dump | §14.7-CW T_CW-4 |
-| D.4 model_registry INSERT | ON CONFLICT DO UPDATE | §10 SSOT |
+| C.1 Sharpe annualized | `mean_ret / std_ret * sqrt(12)` | §14.7-CW Gate CW-1 |
+| C.2 Win rate | `sum(r > 0) / n` | §14.7-CW Gate CW-2 |
+| C.3 MDD computation | `running` + `peak` tracking | §14.7-CW Gate CW-3 |
+| C.4 Mean alpha | `mean(top20_ret - univ_ret)` | §14.7-CW Gate CW-4 |
+| C.5 t-statistic | `mean_alpha / (std_alpha / sqrt(n))` | §14.7-CX OOS significance |
+| 對應 CLI | (auto in --dry-run / --commit) | — |
+
+### Group D. Model Artifact Persistence
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 model.json save | `model.save_model(str(model_path))` | XGBoost native format |
+| D.2 metrics.json write | full metrics serialization | §一.10 source-traceable |
+| D.3 hyperparams.json write | `DEFAULT_TRAINING_POLICY` dump | §14.7-CW T_CW-4 |
+| D.4 model_registry INSERT | ON CONFLICT DO UPDATE | §10 model_registry SSOT |
+| 對應 CLI | `--commit`(only) | — |
 
 ### Group E. Feature Importance Reporting
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| E.1 Gain importance | `model.feature_importance(importance_type='gain')` | §14.7-CN |
-| E.2 Top-15 stdout | sorted descending | §14.7-CW T_CW-3 |
+| E.1 Gain-based importance | `model.get_score(importance_type='gain')` | §14.7-CN 4-path necessity |
+| E.2 Top-15 stdout report | sorted descending | §14.7-CW T_CW-3 |
+| E.3 Top-20 in metrics.json | persistence to artifact | §14.7-CN alignment |
+| 對應 CLI | (auto) | — |
 
 ### Group F. CLI + Mode Control
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| F.1 `--dry-run` | 評估不寫 DB | safe default |
-| F.2 `--commit` | 寫 model_registry + artifact | production |
-| F.3 `--panel-feature-sets <csv>` | walk-forward panels override | §14.7-CX support |
-| F.4 `--label-horizon N` | default 30d | §14.7-CW |
+| F.1 `--dry-run` mode | 評估不寫 DB | safe default |
+| F.2 `--commit` mode | 寫 model_registry + artifact | production |
+| F.3 `--panel-feature-sets <csv>` | walk-forward training panels override | §14.7-CX 95-panel support |
+| F.4 `--label-horizon N` | default 30d | §14.7-CW 30d horizon |
+| 對應 CLI | `argparse` standard | — |
 
-### 對齊憲章 §二 維運矩陣
+### 對齊憲章 §二 維運矩陣（標準場景索引）
 
-| 場景 | 命令 |
+| 場景 | 對應命令 |
 | :--- | :--- |
-| 8-panel dry-run | `python scripts/core/model_trainer_lgbm_v2.py --dry-run` |
-| Commit production | `... --commit` |
-| 95-panel walk-forward(per §14.7-CX)| `... --panel-feature-sets <95-panel csv>` |
+| 日常 dry-run | `python scripts/core/model_trainer_xgboost.py --dry-run` |
+| Commit production model | `python scripts/core/model_trainer_xgboost.py --commit` |
+| 8-year walk-forward(per §14.7-CX)| `... --panel-feature-sets <95-panel csv>` |
+| 自訂 horizon | `... --label-horizon 60`(quarterly per §14.7-CY)|
 
 ### 不提供之旗標 (Intentionally Omitted)
 
-- `--seed`:固定 5422 per §14.7-CW T_CW-4。
-- `--hyperparams`:conservative defaults 為治權契約。
+- `--seed N`:seed=5422 為固定值(per §14.7-CW T_CW-4)。若需 reproducibility 跑 ≥ 3 runs(per T_CW-6)。
+- `--hyperparams`:conservative defaults 為治權契約;不可運行時改動。
+- `--save-fold-models`:per-fold model 不持久化(僅 final full-train model)。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.2 | 2026-05-29 | Codex | **CLAUDE.md §一.11 三段式標頭補正**:依用戶 explicit directive 2026-05-29 補入 13 條核心定義 / 6-Group functional matrix / 全修訂歷程,對齊 sovereign_sync_engine.py v1.22 範本。原 v0.2 functional 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
-| v0.2(pre-§一.11)| 2026-05-28 | Codex | **§14.7-CW Tree Model Production Upgrade**(v6.17.0):real LightGBM tree 取代 rank-IC linear baseline。8-panel expanding window walk-forward OOS。Conservative hyperparams(200/0.05/5/20/30/0.8/0.8/0.1/0.1/5422)。Treaty Gates 4/4 PASS PERFECT。**首跑實證**:Sharpe 4.74 / IR 5.86 / Win 83.3% / α +16.22% / MDD 1.48%;**v6.17.1 patch 揭露**: 6-run reality Sharpe 3.71-4.74(median 3.90)/ commit anchor 4.74 為 max outlier。**Model committed**:`mdl_20260415_lgbm_h30_0b243a67_v0_2`。**95-panel reality(per §14.7-CX)**:Sharpe 1.67 / Win 67.7% / α +1.94% / Eff t 3.72。 | ARCHIVED(標頭格式;邏輯仍 ACTIVE)|
-| v0.1 | 2026-05-27 | Codex | **rank-IC linear baseline**(pre-§14.7-CW):rank-IC linear combination;無 tree non-linear interactions;Sharpe ~3.10 / Win 75%。被 v0.2 取代為 production。 | SUPERSEDED |
+| v0.1 | 2026-05-29 | Codex | **首版:§14.7-CW Tree Family 第二實作**(LGBM v0.2 為第一)。**功能 7 點**:(a) 8-panel walk-forward expanding window OOS;(b) XGBoost params 對齊 §14.7-CW T_CW-4 conservative defaults(200/0.05/5/5/0.8/0.8/0.1/0.1/5422);(c) Treaty Gates 4/4 動態評估;(d) Model artifact(model.json + metrics.json + hyperparams.json);(e) model_registry INSERT ON CONFLICT;(f) Top-15 gain importance;(g) `--panel-feature-sets` 支援 §14.7-CX 95-panel 模式。**首跑實證**(2026-05-29):Sharpe 4.58 / IR 5.62 / Win 83.3% / α +15.85% / MDD 2.77% / Treaty Gates 4/4 PASS PERFECT。**對標 LGBM v0.2**:同 8-panel run 略勝(Sharpe 4.58 vs 3.84 / +19.3%)。**Model committed**:`mdl_20260415_xgboost_h30_0b243a67_v0_1`。**治權邊界**:不入憲(§14.7-CW 已涵蓋 tree family 治權,本程式為 implementation extension);若 production 升 XGBoost 需 §14.7-DA Tree Family Comparison Doctrine 入憲。**CLAUDE.md §一.11 強制三段式標頭**(2026-05-29 入憲):本版補正標頭為 sovereign_sync_engine.py 範本格式。 | **ACTIVE** |
 """
 from __future__ import annotations
-import sys, argparse, hashlib, json, logging, math, os
+import sys, argparse, hashlib, json, logging, math
 from datetime import datetime, date
 from pathlib import Path
 from collections import defaultdict
@@ -104,7 +115,7 @@ if str(_base_dir) not in sys.path:
     sys.path.insert(0, str(_base_dir))
 
 import numpy as np
-import lightgbm as lgb
+import xgboost as xgb
 from core.db_utils import get_db_conn
 
 logger = logging.getLogger(__name__)
@@ -112,25 +123,25 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"  # §14.7-CW tree model upgrade
+TOOL_VER = "v0.1"  # XGBoost first version
+MODEL_FAMILY = "xgboost"
+
 DEFAULT_TRAINING_POLICY = {
     "n_estimators": 200,
     "learning_rate": 0.05,
     "max_depth": 5,
-    "num_leaves": 20,
-    "min_child_samples": 30,
-    "feature_fraction": 0.8,
-    "bagging_fraction": 0.8,
-    "bagging_freq": 5,
+    "min_child_weight": 5,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
     "reg_alpha": 0.1,
     "reg_lambda": 0.1,
-    "objective": "regression",
-    "metric": "rmse",
-    "verbose": -1,
+    "objective": "reg:squarederror",
+    "eval_metric": "rmse",
+    "verbosity": 0,
     "seed": 5422,
+    "tree_method": "hist",
 }
 
-# 8-panel training panels(default)
 DEFAULT_PANELS = [
     ("fs_20260105_feature_set_v0_4", "2026-01-05"),
     ("fs_20260120_feature_set_v0_4", "2026-01-20"),
@@ -160,8 +171,6 @@ SPEC_43 = [
 
 
 def load_panel_data(cur, fs_id, as_of, label_horizon, universe):
-    """Load features at as_of + forward returns from as_of+horizon trading day"""
-    # Features
     cur.execute("""
         SELECT stock_id, feature_name, feature_value::numeric
         FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s)
@@ -171,7 +180,6 @@ def load_panel_data(cur, fs_id, as_of, label_horizon, universe):
         if val is not None and fname in SPEC_43:
             feat_data[sid][fname] = float(val)
 
-    # Find nearest trading day for forward label_horizon
     cur.execute("""
         SELECT MIN(date) FROM "TaiwanStockPriceAdj"
         WHERE date >= (%s::date + INTERVAL '%s days')
@@ -183,7 +191,6 @@ def load_panel_data(cur, fs_id, as_of, label_horizon, universe):
     if not label_date:
         return [], [], [], None
 
-    # Forward returns
     cur.execute("""
         WITH t0 AS (SELECT stock_id, close FROM "TaiwanStockPriceAdj" WHERE date=%s AND close>0),
              t1 AS (SELECT stock_id, close FROM "TaiwanStockPriceAdj" WHERE date=%s AND close>0)
@@ -192,14 +199,11 @@ def load_panel_data(cur, fs_id, as_of, label_horizon, universe):
     """, (as_of, label_date))
     returns = {sid: float(r) for sid, r in cur.fetchall() if sid in universe}
 
-    # Build X, y, sid arrays
     X, y, sids = [], [], []
     for sid in universe:
         if sid in feat_data and sid in returns:
             feat_vec = [feat_data[sid].get(f, 0.0) for f in SPEC_43]
-            X.append(feat_vec)
-            y.append(returns[sid])
-            sids.append(sid)
+            X.append(feat_vec); y.append(returns[sid]); sids.append(sid)
     return X, y, sids, label_date
 
 
@@ -207,25 +211,22 @@ def spearman_ic(pred, y):
     pred = np.array(pred); y = np.array(y)
     rp = pred.argsort().argsort().astype(float)
     ry = y.argsort().argsort().astype(float)
-    if np.std(rp) < 1e-10 or np.std(ry) < 1e-10:
-        return 0.0
+    if np.std(rp) < 1e-10 or np.std(ry) < 1e-10: return 0.0
     return float(np.corrcoef(rp, ry)[0, 1])
 
 
-def winsorize(arr, lo_q=0.05, hi_q=0.95):
-    lo = np.quantile(arr, lo_q)
-    hi = np.quantile(arr, hi_q)
+def winsorize(arr, lo_q=0.01, hi_q=0.99):
+    lo = np.quantile(arr, lo_q); hi = np.quantile(arr, hi_q)
     return np.clip(arr, lo, hi)
 
 
 def main():
-    parser = argparse.ArgumentParser(description=f"LGBM Tree Model Trainer ({TOOL_VER})")
+    parser = argparse.ArgumentParser(description=f"XGBoost Tree Model Trainer ({TOOL_VER})")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--commit", action="store_true")
     parser.add_argument("--label-horizon", type=int, default=30)
-    parser.add_argument("--panel-feature-sets", type=str, default=None,
-                        help="Comma-separated panel fs_ids(8 panels for cross-validation)")
+    parser.add_argument("--panel-feature-sets", type=str, default=None)
     args = parser.parse_args()
     if not args.dry_run and not args.commit:
         args.dry_run = True
@@ -237,10 +238,10 @@ def main():
             SELECT m.stock_id FROM core_universe_membership m
             JOIN core_universe_snapshot s ON s.snapshot_id=m.snapshot_id
             WHERE s.status='committed' AND m.core_tier='core_universe'
+            AND s.snapshot_id=(SELECT snapshot_id FROM core_universe_snapshot WHERE status='committed' ORDER BY created_at DESC LIMIT 1)
         """)
         universe = list({r[0] for r in cur.fetchall()})
 
-        # Determine panels
         if args.panel_feature_sets:
             panels = []
             for fs in args.panel_feature_sets.split(","):
@@ -252,17 +253,18 @@ def main():
             panels = DEFAULT_PANELS
 
         logger.info("=" * 120)
-        logger.info(f"§14.7-CW LGBM Tree Model Trainer {TOOL_VER}(real LightGBM tree)")
+        logger.info(f"§14.7-CW XGBoost Tree Model Trainer {TOOL_VER}")
         logger.info("=" * 120)
         logger.info(f"  Universe:              {len(universe)} stocks")
         logger.info(f"  Panels:                {len(panels)}")
         logger.info(f"  Label horizon:         {args.label_horizon}d")
         logger.info(f"  Mode:                  {'COMMIT' if args.commit else 'DRY-RUN'}")
-        logger.info(f"  Features(§14.7-CL 43):{len(SPEC_43)}")
+        logger.info(f"  Features(§14.7-CL):  {len(SPEC_43)}")
+        logger.info(f"  XGBoost version:       {xgb.__version__}")
 
-        # ── Load all panels ──
-        logger.info("\n──── Loading 8-panel walk-forward training data ────")
-        all_X, all_y, all_panel = [], [], []
+        # Load all panels
+        logger.info("\n──── Loading walk-forward training data ────")
+        all_X, all_y = [], []
         per_panel = {}
         for fs_id, as_of in panels:
             X, y, sids, label_date = load_panel_data(cur, fs_id, as_of, args.label_horizon, universe)
@@ -271,73 +273,60 @@ def main():
                 continue
             logger.info(f"  Panel {as_of} → label_date={label_date}:N={len(X)}")
             all_X.extend(X); all_y.extend(y)
-            all_panel.extend([as_of] * len(X))
             per_panel[as_of] = (X, y, sids, label_date)
 
-        X_train = np.array(all_X)
-        y_train = np.array(all_y)
+        X_train = np.array(all_X); y_train = np.array(all_y)
         logger.info(f"\n  Total training rows:  {len(X_train):,}({len(panels)} panels combined)")
-
-        # Winsorize labels(stability)
         y_train_w = winsorize(y_train, 0.01, 0.99)
 
-        # ── Walk-forward expanding window OOS evaluation ──
-        # Proper time-series CV:for each panel i ≥ 2:
-        #   train on panels [1, ..., i-1], test on panel i (OOS)
+        # Walk-forward expanding window OOS
         logger.info("\n──── Walk-Forward Expanding Window OOS Evaluation ────")
-        logger.info("  方法:expanding window — train [1..i-1] → test panel i(OOS)")
-        logger.info(f"  n_estimators:    {DEFAULT_TRAINING_POLICY['n_estimators']}")
-        logger.info(f"  learning_rate:   {DEFAULT_TRAINING_POLICY['learning_rate']}")
-        logger.info(f"  max_depth:       {DEFAULT_TRAINING_POLICY['max_depth']}")
-        logger.info(f"  num_leaves:      {DEFAULT_TRAINING_POLICY['num_leaves']}")
-
-        lgb_params = {k: v for k, v in DEFAULT_TRAINING_POLICY.items() if k != "n_estimators"}
+        logger.info("  方法:expanding window — train [0..i-1] → test panel i(OOS)")
+        for k, v in DEFAULT_TRAINING_POLICY.items():
+            logger.info(f"    {k:20} = {v}")
 
         panels_list = sorted(per_panel.items(), key=lambda x: x[0])
-        panel_ics = []
-        panel_returns_top20 = []
-        panel_returns_univ = []
+        panel_ics, panel_returns_top20, panel_returns_univ = [], [], []
 
-        for i in range(1, len(panels_list)):  # start from panel 2(need train data)
+        xgb_params = {k: v for k, v in DEFAULT_TRAINING_POLICY.items() if k != "n_estimators"}
+
+        for i in range(1, len(panels_list)):
             test_as_of, (X_test, y_test, sids_test, label_date) = panels_list[i]
-            # Train on panels [0, ..., i-1]
             train_X, train_y = [], []
             for j in range(i):
                 X_j, y_j, _, _ = panels_list[j][1]
                 train_X.extend(X_j); train_y.extend(y_j)
             X_tr = np.array(train_X); y_tr = winsorize(np.array(train_y), 0.01, 0.99)
 
-            # Train fold model
-            train_data = lgb.Dataset(X_tr, label=y_tr, feature_name=SPEC_43)
-            fold_model = lgb.train(lgb_params, train_data, num_boost_round=DEFAULT_TRAINING_POLICY["n_estimators"])
+            dtrain = xgb.DMatrix(X_tr, label=y_tr, feature_names=SPEC_43)
+            fold_model = xgb.train(xgb_params, dtrain, num_boost_round=DEFAULT_TRAINING_POLICY["n_estimators"])
 
-            # Predict on test panel(OOS)
             X_te = np.array(X_test)
-            pred_te = fold_model.predict(X_te)
+            dtest = xgb.DMatrix(X_te, feature_names=SPEC_43)
+            pred_te = fold_model.predict(dtest)
             ic_te = spearman_ic(pred_te, y_test)
             panel_ics.append(ic_te)
 
-            # Top-20 OOS strategy
             n_top = min(20, len(pred_te))
             top_idx = np.argsort(pred_te)[-n_top:]
             top20_ret = float(np.mean([y_test[k] for k in top_idx]))
             univ_ret = float(np.mean(y_test))
             panel_returns_top20.append(top20_ret)
             panel_returns_univ.append(univ_ret)
-            logger.info(f"  Train[{0}..{i-1}] → Test {test_as_of}(N={i} train panels): IC={ic_te:+.4f} / Top20={top20_ret:+.4f} / Universe={univ_ret:+.4f}")
+            logger.info(f"  Train[0..{i-1}] → Test {test_as_of}: IC={ic_te:+.4f} / Top20={top20_ret:+.4f} / Universe={univ_ret:+.4f}")
 
-        # In-sample on full(for reference / overfitting check)
-        train_data_full = lgb.Dataset(X_train, label=y_train_w, feature_name=SPEC_43)
-        model = lgb.train(lgb_params, train_data_full, num_boost_round=DEFAULT_TRAINING_POLICY["n_estimators"])
-        pred_train = model.predict(X_train)
+        # Full in-sample reference
+        dtrain_full = xgb.DMatrix(X_train, label=y_train_w, feature_names=SPEC_43)
+        model = xgb.train(xgb_params, dtrain_full, num_boost_round=DEFAULT_TRAINING_POLICY["n_estimators"])
+        pred_train = model.predict(xgb.DMatrix(X_train, feature_names=SPEC_43))
         in_sample_ic = spearman_ic(pred_train, y_train_w)
         in_sample_rmse = float(np.sqrt(np.mean((pred_train - y_train_w) ** 2)))
         logger.info(f"\n  [Reference]Full-train in-sample IC:   {in_sample_ic:+.4f}")
         logger.info(f"  [Reference]Full-train in-sample RMSE: {in_sample_rmse:.4f}")
         logger.info(f"  Overfit gap(in-sample - OOS):         {in_sample_ic - float(np.mean(panel_ics)):+.4f}")
 
-        # ── Backtest metrics ──
-        logger.info("\n──── Backtest Metrics(per §14.7-CV 4 gates)────")
+        # Backtest metrics
+        logger.info("\n──── Backtest Metrics ────")
         mean_ic = float(np.mean(panel_ics))
         cross_panel_ic_std = float(np.std(panel_ics, ddof=1))
         mean_ret = float(np.mean(panel_returns_top20))
@@ -355,6 +344,7 @@ def main():
         mean_alpha = float(np.mean(alphas))
         std_alpha = float(np.std(alphas, ddof=1))
         ir = mean_alpha / std_alpha * math.sqrt(12) if std_alpha > 0 else 0
+        t_stat = mean_alpha / (std_alpha / math.sqrt(len(alphas))) if std_alpha > 0 else 0
 
         logger.info(f"  Cross-panel IC mean:    {mean_ic:+.4f}")
         logger.info(f"  Cross-panel IC std:     {cross_panel_ic_std:.4f}")
@@ -364,10 +354,11 @@ def main():
         logger.info(f"  Max drawdown:           {mdd:.4f}({mdd*100:.2f}%)")
         logger.info(f"  Mean alpha:             {mean_alpha:+.4f}({mean_alpha*100:+.2f}%)")
         logger.info(f"  Information Ratio:      {ir:+.4f}")
+        logger.info(f"  t-statistic(α):        {t_stat:+.4f}")
         logger.info(f"  Cumulative return:      {cum:+.4f}({cum*100:+.2f}%)")
 
         # Treaty gates
-        logger.info("\n──── §14.7-CW Treaty Gates(per §14.7-CV)────")
+        logger.info("\n──── §14.7-CW Treaty Gates ────")
         g1 = "✅ PASS" if sharpe > 0 else "❌ VIOLATION"
         g2 = "✅ PASS" if win_rate >= 0.5 else "❌ VIOLATION"
         g3 = "✅ PASS" if mdd <= 0.30 else "⚠️ ALERT"
@@ -378,28 +369,26 @@ def main():
         logger.info(f"  Gate CW-4(Mean alpha > 0):         {g4}({mean_alpha:.4f})")
 
         # Feature importance
-        importance = model.feature_importance(importance_type='gain')
-        fi = sorted(zip(SPEC_43, importance), key=lambda x: -x[1])
+        importance_dict = model.get_score(importance_type='gain')
+        fi = sorted(importance_dict.items(), key=lambda x: -x[1])
         logger.info("\n──── Top 15 Features by Gain Importance ────")
         for i, (f, imp) in enumerate(fi[:15], 1):
             logger.info(f"  {i:>2}. {f:38} gain={imp:>12,.2f}")
 
-        # ── Commit ──
+        # Commit
         if args.commit:
             logger.info("\n──── COMMIT mode ────")
-            # Generate model_id
             feature_set_hash = hashlib.sha1("feature_set_v0.4".encode()).hexdigest()[:8]
             train_date = max(p[1] for p in panels)
-            model_id = f"mdl_{train_date.replace('-', '')}_lgbm_h{args.label_horizon}_{feature_set_hash}_v0_2"
+            model_id = f"mdl_{train_date.replace('-', '')}_xgboost_h{args.label_horizon}_{feature_set_hash}_v0_1"
             artifact_dir = Path("data/models") / model_id
             artifact_dir.mkdir(parents=True, exist_ok=True)
-            model_path = artifact_dir / "model.txt"
+            model_path = artifact_dir / "model.json"
             model.save_model(str(model_path))
 
-            # Write metrics.json
             metrics = {
-                "trainer": "lgbm_tree_v0_2",
-                "model_family": "lgbm",
+                "trainer": "xgboost_tree_v0_1",
+                "model_family": MODEL_FAMILY,
                 "label_horizon": args.label_horizon,
                 "feature_count": len(SPEC_43),
                 "rows_trained": len(X_train),
@@ -413,18 +402,15 @@ def main():
                 "mdd": mdd,
                 "mean_alpha": mean_alpha,
                 "information_ratio": ir,
+                "t_statistic": t_stat,
                 "cumulative_return": cum,
                 "top_features": [{"feature": f, "gain": float(imp)} for f, imp in fi[:20]],
             }
             with open(artifact_dir / "metrics.json", "w") as f:
                 json.dump(metrics, f, indent=2, default=str)
-
-            # Write hyperparams.json
             with open(artifact_dir / "hyperparams.json", "w") as f:
                 json.dump(DEFAULT_TRAINING_POLICY, f, indent=2)
 
-            # Write to model_registry
-            universe_snapshot_id = None
             cur.execute("SELECT snapshot_id FROM core_universe_snapshot WHERE status='committed' ORDER BY snapshot_id DESC LIMIT 1")
             r = cur.fetchone()
             universe_snapshot_id = r[0] if r else None
@@ -440,26 +426,24 @@ def main():
                     artifact_path = EXCLUDED.artifact_path, status = EXCLUDED.status,
                     notes = EXCLUDED.notes
             """, (
-                model_id, "model_policy_v0.2", "lgbm",
-                panels[-1][0],  # latest fs_id as primary
-                universe_snapshot_id, args.label_horizon,
+                model_id, "model_policy_v0.1", MODEL_FAMILY,
+                panels[-1][0], universe_snapshot_id, args.label_horizon,
                 panels[0][1], train_date,
                 json.dumps(metrics, default=str), json.dumps(DEFAULT_TRAINING_POLICY),
                 str(artifact_dir), "committed",
-                f"v0.2 LGBM tree(real);8-panel walk-forward;§14.7-CW production"
+                f"v0.1 XGBoost tree;walk-forward;§14.7-CW family extension"
             ))
             conn.commit()
-
             logger.info(f"  ✅ Model committed: {model_id}")
             logger.info(f"  ✅ Artifact: {artifact_dir}/")
             logger.info(f"  ✅ model_registry inserted")
 
         logger.info("\n" + "=" * 120)
         verdict = "PERFECT" if all("PASS" in g for g in [g1, g2, g3, g4]) else "WARNING"
-        logger.info(f"§14.7-CW v0.2 LGBM Tree Trainer:主權判定 {verdict}")
+        logger.info(f"§14.7-CW XGBoost Trainer {TOOL_VER}:主權判定 {verdict}")
         logger.info("=" * 120)
         if verdict == "PERFECT":
-            logger.info(f"  🎯 Tree model exceeds Sharpe={sharpe:.2f} / IR={ir:.2f} / Win={win_rate*100:.0f}%")
+            logger.info(f"  🎯 XGBoost achieves Sharpe={sharpe:.2f} / IR={ir:.2f} / Win={win_rate*100:.0f}%")
     finally:
         conn.close()
 

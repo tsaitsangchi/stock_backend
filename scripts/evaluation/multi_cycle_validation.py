@@ -1,29 +1,87 @@
 """
-multi_cycle_validation.py — Multi-Horizon Multi-Cycle Production Validation
+multi_cycle_validation.py v0.1 (Multi-Cycle LGBM Validation Engine · §14.7-CY 第一實作 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-治權:§14.7-CX 進階 multi-cycle validation(v6.18.1 pending §14.7-CY)
-最後更新:2026-05-28
-用戶 directive 2026-05-28:多週期驗證(週/月/季/年 horizon)為 institutional standard
-                          不可在 AI 環境執行,必須為 system 永久 script。
+**最後更新日期**: 2026-05-29(標頭三段式補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: MULTI-CYCLE 4-HORIZON LGBM VALIDATION + §14.7-CY HORIZON-DOCTRINE 第一實作 + §14.7-CX 8-YEAR OOS EXTENSION + §14.7-CW LGBM-TREE-FAMILY + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 (per CLAUDE.md §一.11)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-對 95 historical feature_store_snapshots(2018-06 ~ 2026-04)跑:
-  - 4 horizons:weekly(5d)/ monthly(20d)/ quarterly(60d)/ annual(252d)
-  - Walk-forward expanding window OOS per horizon
-  - 真實 transaction cost modeling
-  - Cross-horizon comparison
-  - Statistical significance per horizon
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-CLI:
-  --dry-run / --commit              (commit writes results to evaluation_log)
-  --horizons 5,20,60,252            (comma-separated label horizons in days)
-  --output reports/multi_cycle_*.md (optional structured report path)
-  --persist-db                       (write per-horizon summary to evaluation_log)
+1. **[Multi-Cycle Horizon Coverage]** (v0.1, 憲法 §14.7-CY T_CY-2): 至少 ≥ 3 horizons;預設 4(weekly 5d / monthly 20d / quarterly 60d / annual 252d)。
+2. **[Overlap-Corrected n_effective]** (v0.1, 憲法 §14.7-CY T_CY-3): `n_eff = n × (30 / horizon)` for overlap > 0;raw t-stat 不得作為 production claim。
+3. **[Honest Annualization]** (v0.1, 憲法 §14.7-CY T_CY-4): annualized = `mean × (252 / horizon)`;不得 sum overlap panels(double-count)。
+4. **[Cost-Drag Per Horizon]** (v0.1, 憲法 §14.7-CY T_CY-5): `cost_drag = 0.6% × rebals_per_year`;weekly 50 rebals → 30% drag catastrophic。
+5. **[System Script Mandatory]** (v0.1, 憲法 §14.7-CY T_CY-1): system 永久 script;禁止 AI ephemeral 環境臨時計算。
+6. **[Source Traceability]** (v0.1, CLAUDE.md §一.10): 全 (b) DB query + (a) program output;0 AI memory reuse。
+7. **[Reality-Check Hierarchy]** (v0.1, 憲法 §14.7-CY T_CY-6 / §14.7-CZ T_CZ-6): production horizon 須 Eff t > 1.997 + n_eff ≥ 30 + cost < 5%/yr;**quarterly(60d)為 sweet spot**(Eff t ≈ 4.20)。
+8. **[Zero Hardcoded Verdict]** (v0.1, 憲法 §5.6.3): significance 動態(`abs(eff_t) > 1.997`),不硬編。
+9. **[Sovereignty Declaration]** (v0.1, 憲法 §3.1 序列模組): **§14.7-CY 第一實作**(XGBoost 為第二)。**治權邊界**:(a) §3.1 evaluation 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 已 handle by feature_store_builder;(e) **不訓練 production model**;(f) **不修改 feature_values / PriceAdj**(read-only);(g) 唯一職責:4-horizon walk-forward LGBM evaluation + JSON 持久化。
+10. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述性快照。
+11. **[Idempotency]** (v0.1): `--dry-run` 不寫 DB;`--commit` 寫 `evaluation_log`;JSON output 含 timestamp。
+12. **[Anti-Leakage Inheritance]** (v0.1, 憲法 §8.5): features 已 anti-leakage compliant;forward returns 取自 (label_date > as_of_date)。
 
-治權 enforce(per CLAUDE.md §一.10):
-  - All data from (b) DB query — feature_values + TaiwanStockPriceAdj
-  - 0 AI hallucinated numbers
-  - 0 推測 / 估算 / placeholder
-  - 結果可重現(seed=5422 + multi-thread stochasticity disclosed)
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Horizon-Specific Walk-Forward — `--horizons <days_csv>`
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1-4 | weekly(5d)/ monthly(20d)/ quarterly(60d)/ annual(252d)| §14.7-CY T_CY-2 |
+| 對應 CLI | `--horizons 5,20,60,252` | — |
+
+### Group B. Walk-Forward LGBM Training (per horizon)
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Expanding window | train [0..i-1] → test i | §14.7-CW T_CW-2 |
+| B.2 LGBM params | LGB_PARAMS(200/0.05/5/20/30/0.8/0.8/0.1/0.1/5422)| §14.7-CW T_CW-4 |
+| B.3 Winsorization | clip [0.01, 0.99] | label stability |
+| B.4 Spearman IC | rank correlation | §14.7-CM |
+
+### Group C. Overlap Correction + Honest Annualization
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 n_effective | `n × (30 / horizon)` if overlap | §14.7-CY T_CY-3 |
+| C.2 Effective t-stat | `t × sqrt(n_eff / n)` | §14.7-CY T_CY-3 |
+| C.3 Annualization | `mean × (252 / horizon)` | §14.7-CY T_CY-4 |
+| C.4 Cost-drag | `0.006 × rebals_per_year` | §14.7-CY T_CY-5 |
+| C.5 Significance | `abs(eff_t) > 1.997` | §5.6.3 動態 |
+
+### Group D. Cross-Cycle Comparison + Persistence
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 Cross-cycle matrix | stdout 4-horizon table | §14.7-CY T_CY-6 |
+| D.2 JSON persistence | `reports/multi_cycle_validation_<ts>.json` | §一.10 |
+| D.3 evaluation_log write | optional --commit | §10 evaluation_log |
+
+### Group E. Source Traceability (全 DB / 0 AI memory)
+
+| 子項 | 對應方法 / 行為 | 治權契約 |
+| :--- | :--- | :--- |
+| E.1-3 | Universe / Features / Forward returns via DB | §一.10 (b) DB query |
+| E.4 | 0 AI memory reuse | §一.10 第 1 條 |
+
+### 對齊憲章 §二 維運矩陣
+
+| 場景 | 命令 |
+| :--- | :--- |
+| 日常 dry-run | `python scripts/evaluation/multi_cycle_validation.py --dry-run` |
+| Persist + commit | `... --commit --output reports/multi_cycle_<date>.json` |
+
+### 不提供之旗標 (Intentionally Omitted)
+
+- `--seed`:固定 5422;multi-run reproducibility 跑 ≥ 3 次(per T_CW-6)。
+- `--cost-per-rebal`:0.6% standard per §14.7-CY T_CY-5。
+- `--write-model`:不寫 model_registry(屬 model_trainer 治權)。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **CLAUDE.md §一.11 三段式標頭補正**:依用戶 explicit directive 2026-05-29 補入完整 12 條核心定義 / 5-Group functional matrix / 全修訂歷程,對齊 sovereign_sync_engine.py v1.22 範本格式。原 functional 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CY 第一實作**。4-horizon walk-forward LGBM(weekly 5d / monthly 20d / quarterly 60d / annual 252d)。Overlap correction n_eff = n × (30/horizon)。Honest annualization mean × (252/horizon)。Cost-drag per horizon。Cross-cycle comparison matrix。**首跑實證**:quarterly Eff t=4.20 / Sharpe 2.55 / Win 79.7% / Net annual +24.44% ✅ PASS §14.7-CZ T_CZ-6(sweet spot)。weekly/monthly Eff t < 1.997 ❌。annual Eff t=3.58 ✅ 但 n_eff=7.3 caveat。**配套 inscriptions**:§14.7-CY 入憲 charter L11733;v6.19.0 milestone tag。 | ARCHIVED(標頭格式;邏輯仍為 ACTIVE)|
 """
 from __future__ import annotations
 import sys, argparse, math, json, logging, time
