@@ -86,6 +86,9 @@ reports/*
 !reports/tree_family_10_model_*.md
 !reports/multi_cycle_*_clean910_*.json
 !reports/multi_cycle_*_v018_*.json
+!reports/multi_cycle_*_v019_*.json
+!reports/multi_cycle_*_v020_*.json
+!reports/tree_family_10_model_v*_*.md
 !reports/transformer_dedicated_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
