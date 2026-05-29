@@ -71,12 +71,15 @@ reports/*
 !reports/multi_cycle_random_forest_*.json
 !reports/multi_cycle_extra_trees_*.json
 !reports/multi_cycle_lightgbm_*.json
+!reports/multi_cycle_xgboost_dedicated_*.json
 !reports/xgboost_validation_report_*.md
 !reports/catboost_validation_report_*.md
 !reports/ensemble_validation_report_*.md
 !reports/random_forest_validation_report_*.md
 !reports/extra_trees_validation_report_*.md
 !reports/lightgbm_validation_report_*.md
+!reports/lightgbm_vs_production_comparison_*.md
+!reports/xgboost_dedicated_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
