@@ -1,13 +1,65 @@
 """
-audit_live_api_vs_db.py — §14.7-CE Deep Audit:Live API vs DB byte-level match
+audit_live_api_vs_db.py v0.1 (§14.7-CE Deep Live API vs DB Byte-Level Auditor · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-主權狀態: ACTIVE (§14.7-CE deep audit / API endpoint live verification)
-最高原則: 「實際呼叫 FinMind/FRED API,逐股比對 DB record byte-level match」
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CE Deep Audit + Live API endpoint verification + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-## 一、Audit Strategy
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-對 active universe N 個 stocks 做 live API call,byte-level 比對 DB:
+1. **[Live API vs DB Byte-Level]** (v0.1, §14.7-CE): 實際呼叫 FinMind/FRED API,逐股比對 DB record byte-level match。
+2. **[FinMind Strategy]** (v0.1): 每股抓最近 5 days(api.finmindtrade.com)+ DB close/volume/money byte-level compare。
+3. **[FRED Strategy]** (v0.1): 全 24 series 抓 latest 5 observations(api.stlouisfed.org)+ DB value byte-level compare。
+4. **[Mismatch = System-Generated Evidence]** (v0.1, §14.7-CE): API ≠ DB 即 system-computed 之證據;100% match 即 API-origin attestation。
+5. **[Source Traceability]** (v0.1, §一.10): 全 (c) API response + (b) DB query;0 AI memory。
+6. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): match % 動態判定。
+7. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CE): 本程式為 **§14.7-CE Deep Audit 唯一 live API verification 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only(不修改 DB / 不 sync);(c) FinMind quota 考量(rate-limit aware);(d) 唯一職責:live API call + DB byte-level compare + mismatch report。
+8. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+9. **[Idempotency]** (v0.1): pure read-only;但 API call 計入 quota(注意 rate limit)。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. FinMind Live API Verification (per stock)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 PriceAdj endpoint call | api.finmindtrade.com v4/data | §14.7-CE FinMind |
+| A.2 Latest 5 days fetch | safety window | rate limit aware |
+| A.3 close/Trading_Volume/Trading_money compare | byte-level | §14.7-CE strict |
+
+### Group B. FRED Live API Verification (per series)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 series/observations endpoint | api.stlouisfed.org | §14.7-CE FRED |
+| B.2 Latest 5 obs fetch | safety window | — |
+| B.3 value byte-level compare | precision-aware | §14.7-CE strict |
+
+### Group C. Mismatch Report
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Per-stock mismatch count | aggregation | report |
+| C.2 100% match attestation | source-origin proof | §14.7-CE |
+| C.3 weekly_api_audit_and_resync 整合 | 由 wrapper 呼叫 | §14.7-CH cron |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Weekly cron(由 weekly_api_audit_and_resync 呼叫)| `python scripts/audit/audit_live_api_vs_db.py` |
+| Ad-hoc per-stock verification | `... --stock-id <id>` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--full-history`:每股只抓最近 5 days(rate limit aware)。
+- `--auto-resync`:audit only;resync 屬 sovereign_sync_engine 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CE Deep Audit**。Live FinMind/FRED API call + DB byte-level compare。Latest 5 obs per stock/series。Mismatch ≡ system-generated evidence。 | ARCHIVED(標頭格式)|
+"""
+
+# (Original docstring content continues below)
+"""
 
 1. **FinMind PriceAdj**:每股抓最近 5 days(2026-05-14 ~ 2026-05-20)
    - API endpoint:api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPriceAdj

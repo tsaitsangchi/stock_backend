@@ -1,21 +1,65 @@
 """
-audit_feature_necessity.py — 43 features × 4-path necessity verdict
+audit_feature_necessity.py v0.1 (43-Feature 4-Path Necessity Auditor · §14.7-CN Doctrine · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CN Feature Necessity Doctrine — 預測必要性正式入憲
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CN Feature Necessity Doctrine + §14.7-CL canonical 43-feature + §14.7-CH weekly cron + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-4-path 必要性檢驗(per §14.7-CN):
-  A. Literature/theoretical support(學術文獻或 doctrine 中之預測力 prior)
-  B. Empirical W1(fs_20260430 → t+14 forward Spearman IC sig p<.05)
-  B'. Empirical W2(fs_20260506 → t+10 forward Spearman IC sig p<.05)
-  C. Doctrine canonical scope(在 §14.7-CL 43 SPEC 內 — 三層 alignment)
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-必要性裁決(per §14.7-CN T_CN-1):
-  🟢 STRONG NECESSARY(4/4 paths):文獻 + 雙窗口 sig + doctrine
-  🟢 NECESSARY(3/4 paths):至少一窗口 sig + 文獻 + doctrine
-  🟡 CONDITIONAL(2/4 paths):文獻 + doctrine,empirical 14d 弱(可能 30d+ 顯著)
-  ⏳ PENDING:measurement gap(historical builder bug / feature 後新增)
-  ❌ NOT NECESSARY(< 2/4):治權 violation,觸發 §14.7-CN T_CN-2 退出
+1. **[4-Path Necessity Verdict]** (v0.1, §14.7-CN): 對 43 canonical features 之 4-path 必要性檢驗。
+2. **[Path A — Literature/Theoretical]** (v0.1): 學術文獻或 doctrine 中之預測力 prior。
+3. **[Path B — Empirical W1]** (v0.1): fs_20260430 → t+14 forward Spearman IC sig p<.05。
+4. **[Path B' — Empirical W2]** (v0.1): fs_20260506 → t+10 forward Spearman IC sig p<.05。
+5. **[Path C — Doctrine Canonical Scope]** (v0.1, §14.7-CL): 在 43 SPEC 內(三層 alignment)。
+6. **[Necessity Tier Verdict]** (v0.1, §14.7-CN T_CN-1): STRONG(4/4)/ NECESSARY(3/4)/ CONDITIONAL(2/4)/ PENDING / NOT NECESSARY(<2)。
+7. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query + (a) IC computation;0 AI memory。
+8. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): tier 動態判定。
+9. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CN): 本程式為 **§14.7-CN Feature Necessity 唯一 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) **不修改 feature_values**;(d) 唯一職責:43-feature × 4-path 必要性檢驗 + tier verdict。
+10. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照;LITERATURE_PRIOR 內含表為記述性 prior。
+11. **[Idempotency]** (v0.1): pure read-only。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Path A — Literature/Theoretical Prior
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 LITERATURE_PRIOR dict | code-level constant | §14.7-CN Path A |
+| A.2 Per-feature prior lookup | dictionary lookup | reference |
+
+### Group B/B'. Empirical W1/W2 IC + Sig
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 W1 IC(fs_20260430 → t+14)| Spearman + sig | §14.7-CN Path B |
+| B.2 W2 IC(fs_20260506 → t+10)| Spearman + sig | §14.7-CN Path B' |
+
+### Group C. Doctrine Canonical Scope
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 §14.7-CL SPEC 43 membership | hardcoded SPEC_43 | §14.7-CL canonical |
+
+### Group D. Tier Verdict
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 4-path scoring | A + B + B' + C | §14.7-CN T_CN-1 |
+| D.2 STRONG / NECESSARY / CONDITIONAL / PENDING / NOT NECESSARY | tier mapping | §14.7-CN T_CN-2 |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Weekly cron(per §14.7-CH Step 8)| `python scripts/audit/audit_feature_necessity.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--multi-horizon`:固定 W1/W2 雙窗口;30d+ horizon 屬 §14.7-CY 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CN Feature Necessity Doctrine**。4-path(A/B/B'/C)necessity verdict;5-tier(STRONG/NECESSARY/CONDITIONAL/PENDING/NOT)。Weekly cron 重跑。 | ARCHIVED(標頭格式)|
+
+## 附錄 一、Treaty Gate Details
 
 §14.7-CN treaty gate:
   - 任一 feature NOT_NECESSARY → 觸發 doctrine review

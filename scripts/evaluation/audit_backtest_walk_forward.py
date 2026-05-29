@@ -1,22 +1,60 @@
 """
-audit_backtest_walk_forward.py — Real 8-panel walk-forward backtest
+audit_backtest_walk_forward.py v0.1 (Real 8-Panel Walk-Forward Backtest Auditor · §14.7-CV Production Closure · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CV Backtest Production Closure(將 walk-forward IC 延伸為 portfolio P&L 實證)
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CV Backtest Production Closure + §14.7-CX 8-year extension precursor + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-對 8 個 historical snapshots(fs_20260105 → fs_20260415)+ 30d forward returns
-跑 real portfolio backtest:
-  1. Top-20 long candidates per panel(per model predictions)
-  2. Equal-weight portfolio
-  3. Forward 30d return per panel
-  4. Cross-panel Sharpe / MDD / Win Rate
-  5. Compare vs benchmark(equal-weight universe)
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-Treaty gates(per §14.7-CV):
-  - Cross-panel Sharpe > 0(positive expected return)
-  - Win rate ≥ 50%(超過 random walk)
-  - MDD ≤ 30%(controlled drawdown)
-  - Top-20 outperform equal-weight universe(positive alpha)
+1. **[8-Panel Walk-Forward Backtest]** (v0.1, §14.7-CV): 對 8 historical snapshots(fs_20260105 → fs_20260415)+ 30d forward returns 跑 real portfolio backtest。
+2. **[Top-20 Long Strategy]** (v0.1): 等權 top-20 portfolio + forward 30d return + cross-panel metrics。
+3. **[Treaty Gates 4/4]** (v0.1, §14.7-CV): Sharpe > 0 / Win rate ≥ 50% / MDD ≤ 30% / Top-20 outperform universe。
+4. **[Nearest Trading Day Match]** (v0.1): label_date 落非交易日時取 nearest within 10d window;無 nearest trading day 之 panel 排除。
+5. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query(feature_values + TaiwanStockPriceAdj);0 AI memory。
+6. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): 4 gates 動態判定。
+7. **[Sovereignty Declaration]** (v0.1, §3.1 序列 backtest 模組): 本程式為 **§14.7-CV Backtest Production 唯一實作**(§3.1 序列 evaluation 模組;為 §14.7-CX/CY 之 precursor)。**治權邊界**:(a) §3.1 序列 backtest;(b) read-only;(c) **不訓練 model**(用 log_return_60d 作為 predictor proxy);(d) §8.5 已 handle by feature_store_builder;(e) 唯一職責:8-panel backtest + 4-gate verdict + portfolio P&L 量化證據。
+8. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照;被 §14.7-CX 95-panel walk-forward 取代為 production reality。
+9. **[Idempotency]** (v0.1): pure read-only。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. 8-Panel Loading + Forward Returns
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 8 fixed panels load | fs_20260105 → fs_20260415 | §14.7-CV |
+| A.2 Nearest trading day | INTERVAL '7 days' window | safety |
+| A.3 Forward returns | LN(t1/t0) JOIN | §14.7-CV |
+
+### Group B. Top-20 Strategy Evaluation
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Top-20 by log_return_60d | proxy predictor | §14.7-CV |
+| B.2 Equal-weight portfolio | mean return | §14.7-CV |
+| B.3 Forward 30d return | per panel | §14.7-CV |
+
+### Group C. Cross-Panel Metrics + Treaty Gates
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Sharpe annualized | mean/std * sqrt(12) | Gate CV-1 |
+| C.2 Win rate | sum(>0)/n | Gate CV-2 |
+| C.3 MDD | running peak tracking | Gate CV-3 |
+| C.4 Alpha vs universe | mean(top20 - univ) | Gate CV-4 |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 8-panel backtest 驗證 | `python scripts/evaluation/audit_backtest_walk_forward.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--horizons / --multi-cycle`:本程式為 single 30d;multi-horizon 屬 §14.7-CY multi_cycle_validation 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CV Backtest Production**。8-panel walk-forward + nearest-trading-day fix + 4-gate verdict。**首跑實證**:Sharpe 3.10 / IR 3.57 / Win 75% / MDD 9.72% / Cum +75.21% / Treaty Gates 4/4 PASS。被 §14.7-CX 95-panel 取代為 production reality(95-panel Sharpe 1.67)。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 import sys, logging, math

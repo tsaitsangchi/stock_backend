@@ -1,20 +1,55 @@
 """
-audit_universe_selection_bias.py — H5 Universe Selection Bias audit
+audit_universe_selection_bias.py v0.1 (H5 Universe Selection Bias Auditor · §14.7-CP T_CP-3 配套 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer landing
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CP T_CP-3 H5 audit + §14.7-CS 必要前置 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-H5 假說檢驗:§14.7-CJ super-strict universe(1,121)是否引入 systematic selection bias?
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-3-axis check:
-  1. Sector bias:exclusion ratio 是否 systematic 偏某些 sectors?
-  2. Size bias:exclusion 是否偏小型/大型?
-  3. Volume bias:exclusion 是否偏低流動性?
+1. **[H5 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H5 — §14.7-CJ super-strict universe(1,121)是否引入 systematic selection bias。
+2. **[3-Axis Check]** (v0.1): Sector bias / Size bias / Volume bias 之 exclusion ratio 系統性偏向。
+3. **[Treaty Gates]** (v0.1): Sector exclusion variance ≤ 30%;Size Wasserstein ≤ 2.0;Volume Wasserstein ≤ 2.0。
+4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): PASS/ALERT 動態判定。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit): 本程式為 **§14.7-CP T_CP-3 H5 唯一 audit 載體**(§3.2 橫切 pre-training audit)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) §14.7-CS 必要前置;(d) 不修改 universe;(e) 唯一職責:scan TaiwanStockInfo + PriceAdj + universe → 計算 3-axis bias metrics → H5 verdict。
+7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+8. **[Idempotency]** (v0.1): pure read-only。
 
-Treaty gates(per §14.7-CP T_CP-3):
-  - Sector exclusion ratio variance ≤ 30%(no single sector excluded > 30% above average)
-  - Size distribution Wasserstein distance ≤ 2.0(included vs excluded)
-  - Volume distribution Wasserstein distance ≤ 2.0
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Sector Bias Analysis
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 Per-sector inclusion ratio | TaiwanStockInfo industry_category JOIN | §14.7-CP H5.A |
+| A.2 Variance check | sector exclusion variance ≤ 30% | treaty gate |
+
+### Group B. Size Bias Analysis
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Size proxy(market cap or avg vol)| computed from PriceAdj | §14.7-CP H5.B |
+| B.2 Wasserstein distance | included vs excluded distributions | treaty gate |
+
+### Group C. Volume Bias Analysis
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Avg daily volume | computed from PriceAdj | §14.7-CP H5.C |
+| C.2 Wasserstein distance | included vs excluded | treaty gate |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 模型訓練前必跑 | `python scripts/audit/audit_universe_selection_bias.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--fix`:audit only,bias 修正屬 §14.7-CB/CI/CJ universe builder 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CP T_CP-3 H5 audit**。3-axis(sector/size/volume)bias check;treaty gates Wasserstein ≤ 2.0。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 import sys, logging

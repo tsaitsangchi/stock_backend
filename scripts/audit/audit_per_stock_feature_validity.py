@@ -1,14 +1,56 @@
 """
-audit_per_stock_feature_validity.py — Per-stock × per-feature completeness + correctness audit
+audit_per_stock_feature_validity.py v0.1 (Per-Stock × Per-Feature Completeness + Correctness Auditor · §14.7-CI/CK/CL 配套 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CI + §14.7-CK + §14.7-CL strict validity + effectiveness + canonical scope gate
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CI Strict Validity + §14.7-CK Effectiveness + §14.7-CL Canonical Scope + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-對 v0.15 super-strict active universe(N=1,121)× 43 canonical SPEC features 做:
-(§0.1 第一性原理 29 + §0.2 八二法則 14;per §14.7-CL Feature Canonical Scope Doctrine)
-1. Completeness:每股每 feature 必有 non-null value(per §14.7-CI + §14.7-CK + §14.7-CL 治權)
-2. Correctness:每 feature 之 statistical distribution + outlier check
-3. Sample spot check:5 隨機 stocks 顯示 full feature 值
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+
+1. **[Per-Stock × Per-Feature Completeness]** (v0.1, §14.7-CI): 對 v0.15 active universe(N=1,121)× 43 canonical features(§14.7-CL)逐 stock × 逐 feature 之 non-null check。
+2. **[Correctness Statistical Check]** (v0.1, §14.7-CJ): 每 feature 之 distribution + outlier detection。
+3. **[Sample Spot Check]** (v0.1): 5 隨機 stocks 顯示 full 43-feature values for human verification。
+4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): completeness % / outlier count 動態判定。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CI/CK/CL): 本程式為 **§14.7-CI/CK/CL 三節 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) **不修改 feature_values**;(d) 唯一職責:scan feature_values + universe 計算 per-stock × per-feature compliance metrics。
+7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照;對齊 §14.7-CL canonical 43-feature SPEC。
+8. **[Idempotency]** (v0.1): pure read-only。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Completeness Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 1,121 × 43 grid scan | feature_values WHERE feature_set_id | §14.7-CI/CL |
+| A.2 NULL count per cell | NULL detection | §14.7-CI strict |
+| A.3 100% completeness gate | per §14.7-CB hard gate | treaty |
+
+### Group B. Correctness Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Per-feature distribution | min/max/mean/std/quantiles | §14.7-CJ |
+| B.2 Outlier detection | z-score > N | §14.7-CJ reasonableness |
+
+### Group C. Sample Spot Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 5 random stocks | random sample | human audit |
+| C.2 Full 43-feature display | per stock | transparency |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 模型訓練前 feature 完整性驗證 | `python scripts/audit/audit_per_stock_feature_validity.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--fix`:audit only;feature 修正屬 feature_store_builder 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CI/CK/CL audit**。Per-stock × per-feature completeness + correctness check;sample spot 5 stocks。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 import sys, logging

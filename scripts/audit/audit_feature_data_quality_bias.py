@@ -1,22 +1,55 @@
 """
-audit_feature_data_quality_bias.py — H4 Data Quality Bias audit
+audit_feature_data_quality_bias.py v0.1 (H4 Feature Data Quality Bias Auditor · §14.7-CP T_CP-3 配套 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer landing
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CP T_CP-3 H4 audit + §14.7-CS 必要前置 + §8.5 anti-leakage 對齊 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-H4 假說檢驗:feature 計算方式是否引入 systematic bias?
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-3-axis check:
-  1. Look-ahead bias:features computed using only data ≤ as_of_date?
-  2. Imputation bias:zero_fill features 是否 systematic 偏向某方向?
-  3. Multicollinearity bias:rank-isomorphic features 是否過多?
+1. **[H4 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H4 — feature 計算方式是否引入 systematic bias。
+2. **[3-Axis Check]** (v0.1): Look-ahead / Imputation / Multicollinearity bias。
+3. **[Treaty Gates]** (v0.1): Look-ahead 0 violation(strict);zero_fill ≤ 30% + imputed ≤ 10%/feature;|rank-corr| > 0.95 pairs ≤ 4。
+4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): PASS/ALERT/VIOLATION 動態判定。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §8.5): 本程式為 **§14.7-CP T_CP-3 H4 + §8.5 anti-leakage 配套 audit**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) §14.7-CS 必要前置;(d) 不修改 feature_values;(e) 唯一職責:scan feature_values + feature_definition → 計算 3-axis bias metrics → H4 verdict。
+7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+8. **[Idempotency]** (v0.1): pure read-only。
 
-Treaty gates(per §14.7-CP T_CP-3):
-  - Look-ahead bias: 0 violation(strict)
-  - Imputation bias: zero_fill features ≤ 30% of total + imputed values ≤ 10% per feature
-  - Multicollinearity: |rank-correlation| > 0.95 之 feature pairs ≤ 4(per §14.7-CM disclosed collinear group)
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
-§14.7-CP T_CP-3 violation → H4 FAIL → §10 model_trainer cannot land
+### Group A. Look-Ahead Bias Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 Feature value vs as_of_date | feature_values JOIN snapshot | §8.5 strict |
+| A.2 Strict 0 violation gate | any future leak → FAIL | treaty gate |
+
+### Group B. Imputation Bias Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 zero_fill ratio per feature | feature_definition policy | §14.7-CP H4.B |
+| B.2 Systematic bias detection | distribution of imputed values | treaty gate |
+
+### Group C. Multicollinearity Check
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Pairwise rank correlation | spearman(f_i, f_j) | §14.7-CM disclosed |
+| C.2 |corr| > 0.95 pairs count | tolerance ≤ 4 | treaty gate |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 模型訓練前必跑 | `python scripts/audit/audit_feature_data_quality_bias.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--fix`:audit only;feature 修正屬 §14.7-CA feature_store_builder 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CP T_CP-3 H4 audit**。3-axis(look-ahead/imputation/multicollinearity);treaty gates strict 0 look-ahead violation。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 import sys, logging

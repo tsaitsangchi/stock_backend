@@ -1,6 +1,72 @@
 """
-fetch_fred_data.py — FRED 全球宏觀資料（v3.2 核心模組全面升級版）
+fetch_fred_data.py v3.2 (FRED 全球宏觀資料 Fetcher · §0.3 K-wave indicators · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v3.2 邏輯不變)
+**主權狀態**: ACTIVE (§0.3 K-wave 13 indicators + §14.7-BY/BZ doctrine purity + §14.7-BG/BH 配套 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
+
+1. **[FRED Macro Data Authority]** (v3.2, §0.3 K-wave): 對齊憲章 §0.3 康波週期 13 indicators 之唯一 FRED API fetch 載體。
+2. **[Per-Day Atomic Commit]** (v3.2): `commit_per_stock_per_day` — 每一天 × 每一指標獨立原子 commit;失敗 retry 不破壞已 commit。
+3. **[Smart Retry/Gap-Fill]** (v3.2): `--retry-failed` + `--gap-fill` 依賴 fetch_log 補抓邏輯。
+4. **[fetch_log Integration]** (v3.1+): 每次抓取(成功 / 失敗 / 跳過)寫入監控日誌。
+5. **[Source Traceability]** (v3.2, §一.10): 全 (c) FRED API response + (b) DB write;0 AI memory。
+6. **[Zero Hardcoded Verdict]** (v3.2, §5.6.3): success/failure 動態判定。
+7. **[Sovereignty Declaration]** (v3.2, §3.1 ingestion 模組 / §0.3): 本程式為 **§0.3 康波週期 FRED 唯一 ingestion 載體**(§3.1 序列 ingestion;與 sovereign_sync_engine 之 FRED group 並列)。**治權邊界**:(a) §3.1 ingestion 載體;(b) **僅 fetch FRED**(不 fetch FinMind);(c) **不選股 / 不算 feature**;(d) 唯一職責:從 FRED API 抓 macro indicators + per-day atomic commit 至 fred_series table。
+8. **[Historical Reference Authority]** (v3.2): `TOOL_VER = "v3.2"` 為記述快照;13 P0 indicators 為 §14.7-BY 治權範圍。
+9. **[Idempotency]** (v3.2): `--force` 控制 re-fetch;預設 skip-if-exists;ON CONFLICT upsert 保護。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Default Fetch (預設 13 P0 indicators)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 11 P0 series | M2SL/CPIAUCSL/DGS10/DGS2/T10Y2Y/VIXCLS/INDPRO/IPG3344S/UMCSENT/WTISPLC/PALLFNFINDEXQ | §14.7-BY |
+| A.2 2 Path E P1 series | BIS Credit / EIA Oil(per §14.7-BY Path E)| §14.7-BY Path E |
+| A.3 Default 全 fetch | no flag | §0.3 K-wave |
+
+### Group B. Selective Fetch (--ids)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Specific series | `--ids T10Y2Y VIXCLS ...` | ad-hoc |
+| B.2 Combined with --force | force re-fetch | maintenance |
+
+### Group C. Resume / Gap-Fill
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 `--retry-failed` | fetch_log lookup | smart resume |
+| C.2 `--gap-fill` | DB gap detection | data integrity |
+
+### Group D. Error Handling + Retry
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| D.1 fred_get backoff | exponential retry | resilience |
+| D.2 Per-day commit | atomic | data safety |
+| D.3 fetch_log write | success/fail/skip | observability |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Default 全抓 | `python scripts/fetchers/fetch_fred_data.py` |
+| 特定 indicator | `... --ids T10Y2Y VIXCLS` |
+| 強制重抓 | `... --ids DGS10 --force` |
+| 補抓失敗 | `... --retry-failed` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--universe`:本程式僅 fetch FRED(macro),無 stock universe 概念。
+- `--worker N`:FRED 單 endpoint serial fetch(rate limit 友善)。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v3.2-§一.11 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v3.2 邏輯不變。 | **ACTIVE** |
+| v3.2 | (legacy)| — | **v3.2 改進**(配合 db_utils v3.0 / path_setup v2.0):導入 core.path_setup;完整實作 `--retry-failed` / `--gap-fill`;模組化抓取邏輯;強化 fred_get 退避重試。 | ARCHIVED(標頭格式)|
+| v3.1 | (legacy)| — | **v3.1 既有**:整合 fetch_log(成功/失敗/跳過皆 log);效能追蹤;commit_per_stock_per_day 原子化。 | ARCHIVED |
+
+# Legacy detail(原 docstring 內容延續):
+
 v3.2 改進（配合 db_utils v3.0, path_setup v2.0）：
   ★ 導入 `core.path_setup` 統一處理路徑與確保目錄存在。
   ★ 完整實作 `--retry-failed` 與 `--gap-fill` 智慧補抓邏輯（依賴 fetch_log）。

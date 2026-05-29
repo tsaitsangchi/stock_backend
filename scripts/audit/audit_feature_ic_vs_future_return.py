@@ -1,22 +1,61 @@
 """
-audit_feature_ic_vs_future_return.py — 43 features × forward return Spearman IC empirical audit
+audit_feature_ic_vs_future_return.py v0.1 (43-Feature Empirical IC Auditor · §14.7-CM Doctrine · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CM Empirical IC Doctrine — 模型訓練有效性量化證據
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CM Empirical IC Doctrine + §14.7-CL canonical 43-feature + §14.7-CH weekly cron + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-對 §14.7-CL 43 canonical SPEC features 計算 Spearman rank IC vs forward N-day return:
-1. Picks historical fs snapshot for features(default: 至少 14 trading days 前)
-2. Computes forward return from t to t+N(default N=14, configurable)
-3. Spearman rank correlation per feature(no scipy needed)
-4. Statistical significance test(|t| > 1.96 → p<.05, two-tailed)
-5. Output by pillar + sorted ranking + summary stats
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-用途:
-- 每週 cron 重跑(per §14.7-CM 治權)— track IC degradation
-- 新 feature 入 §14.7-CL SPEC 前須通過 |IC| > 0.03 baseline 檢驗
-- 治權判準十七純化軸:Feature-Empirical-IC
+1. **[Empirical IC Quantification]** (v0.1, §14.7-CM): 對 §14.7-CL 43 canonical features 計算 Spearman rank IC vs forward N-day return — 模型訓練有效性量化證據。
+2. **[5-Step Workflow]** (v0.1): (a) Historical fs pick;(b) Forward return computation;(c) Spearman per feature;(d) Significance test |t| > 1.96;(e) By-pillar + ranking output。
+3. **[|IC| > 0.03 Baseline]** (v0.1, §14.7-CM): 新 feature 入 §14.7-CL SPEC 前須通過此 baseline。
+4. **[Weekly Cron Integration]** (v0.1, §14.7-CH): 每週 cron 重跑 track IC degradation。
+5. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 scipy(自實作 Spearman)。
+6. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): IC + significance 動態計算。
+7. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CM): 本程式為 **§14.7-CM Empirical IC 唯一 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) **不修改 feature_values**;(d) 唯一職責:43-feature × forward return Spearman IC computation + by-pillar ranking。
+8. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+9. **[Idempotency]** (v0.1): pure read-only。
 
-Usage:
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Historical Snapshot Selection
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 fs_v0.4 snapshot pick | feature_store_snapshot ≥ 14d ago | §14.7-CM time gap |
+| A.2 Forward N-day window | configurable N(default 14)| §14.7-CM |
+
+### Group B. Spearman IC Computation
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Per-feature rank correlation | self-impl(no scipy)| dependency-free |
+| B.2 Per-pillar grouping | §0.1 / §0.2 / §0.3 | §14.7-CN necessity |
+
+### Group C. Significance + Verdict
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 t-statistic | rank corr × sqrt((n-2)/(1-r²)) | §14.7-CM |
+| C.2 |t| > 1.96 → p<.05 | two-tailed | significance gate |
+| C.3 |IC| > 0.03 baseline | new feature gate | §14.7-CM |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Weekly cron(per §14.7-CH Step 7)| `python scripts/audit/audit_feature_ic_vs_future_return.py` |
+| Ad-hoc 模型訓練前 IC validation | 同上 |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--multi-horizon`:本程式為 single N-day;multi-horizon 屬 §14.7-CY multi_cycle_validation 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CM Empirical IC Doctrine**。43 features × forward return Spearman IC + significance test + by-pillar ranking。Weekly cron 重跑。 | ARCHIVED(標頭格式)|
+
+## 附錄 一、Usage
+
   python audit_feature_ic_vs_future_return.py [--horizon 14]
 
 CLI args(optional):

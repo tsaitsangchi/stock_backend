@@ -1,20 +1,64 @@
 """
-audit_feature_sign_stability.py — 43 features × sign stability + literature consistency + TW commit
+audit_feature_sign_stability.py v0.1 (43-Feature Sign Stability + Literature + TW Commit Auditor · §14.7-CO/CQ Doctrines · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CO Feature Sign Stability Doctrine — IC 正負相關性正式入治權
-治權: §14.7-CQ TW Empirical Sign Commitment Doctrine — 每 feature commit + 或 -(v6.13.0)
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CO Sign Stability + §14.7-CQ TW Empirical Sign Commitment + §14.7-CR Mathematical Sign Realism + §14.7-CH weekly cron + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-對 43 SPEC features 跨三窗口計算 sign stability + 文獻 sign 一致性 + TW commit:
-  Window 1: fs_20260430 → 2026-05-20(14 trading days forward)
-  Window 2: fs_20260506 → 2026-05-20(10 trading days forward)
-  Window 3: fs_20260316 → 2026-04-30(32 trading days, **30d horizon** primary)
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-4-tier sign verdict(per §14.7-CO T_CO-1):
-  🟢 ROBUST POSITIVE:IC₁ > 0 AND IC₂ > 0(雙窗口同為正,trustworthy long signal)
-  🟢 ROBUST NEGATIVE:IC₁ < 0 AND IC₂ < 0(雙窗口同為負,trustworthy short/contrarian signal)
-  🔄 REGIME-DEPENDENT:IC₁ × IC₂ < 0(異號,sign 不穩定 production 風險)
-  ⏳ PENDING:NA in either window(等下次 biweekly cycle)
+1. **[Sign Stability Doctrine]** (v0.1, §14.7-CO): 對 43 SPEC features 跨三窗口計算 sign stability(IC 正負相關性正式入治權)。
+2. **[Triple-Window Test]** (v0.1): W1(fs_20260430 → t+14)+ W2(fs_20260506 → t+10)+ W3(fs_20260316 → t+32, 30d primary)。
+3. **[4-Tier Sign Verdict]** (v0.1, §14.7-CO T_CO-1): ROBUST POSITIVE / ROBUST NEGATIVE / REGIME-DEPENDENT / PENDING。
+4. **[TW Empirical Sign Commitment]** (v0.1, §14.7-CQ): 每 feature commit + 或 -(v6.13.0 doctrine)。
+5. **[Mathematical Sign Realism]** (v0.1, §14.7-CR): LITERATURE_SIGN 全清理為 ±(v6.13.1 patch)— 無 0 / 無中性 sign。
+6. **[Literature Consistency Check]** (v0.1): empirical sign vs literature sign consistency 檢驗。
+7. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
+8. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): tier 動態判定。
+9. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CO/CQ/CR): 本程式為 **§14.7-CO/CQ/CR 三節 Sign Stability 唯一 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) 唯一職責:43-feature × 3-window sign stability + literature consistency + TW commit verification。
+10. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照;LITERATURE_SIGN / TW_EMPIRICAL_SIGN 內含 dict 為 v6.13.x doctrine snapshot。
+11. **[Idempotency]** (v0.1): pure read-only。
+
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Triple-Window Sign Computation
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 W1 IC sign | fs_20260430 → t+14 | §14.7-CO |
+| A.2 W2 IC sign | fs_20260506 → t+10 | §14.7-CO |
+| A.3 W3 IC sign | fs_20260316 → t+32(30d primary)| §14.7-CO |
+
+### Group B. 4-Tier Verdict per Feature
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 ROBUST POSITIVE | W1>0 AND W2>0 | §14.7-CO T_CO-1 |
+| B.2 ROBUST NEGATIVE | W1<0 AND W2<0 | §14.7-CO T_CO-1 |
+| B.3 REGIME-DEPENDENT | W1 × W2 < 0 | §14.7-CO T_CO-1 |
+| B.4 PENDING | NA in either | safety |
+
+### Group C. Literature + TW Commit Consistency
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 LITERATURE_SIGN check | 全 ± 無 0(per §14.7-CR)| §14.7-CR |
+| C.2 TW_EMPIRICAL_SIGN check | 每 feature ±(per §14.7-CQ)| §14.7-CQ |
+| C.3 Empirical vs Literature consistency | match / mismatch verdict | §14.7-CO |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Weekly cron(per §14.7-CH Step 9)| `python scripts/audit/audit_feature_sign_stability.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--auto-commit`:TW commit 屬手動治權決策(per §14.7-CQ),不自動。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CO/CQ/CR Sign Stability**。43 features × 3-window sign + literature consistency + TW commit。4-tier verdict(ROBUST+/ROBUST-/REGIME-DEPENDENT/PENDING)。LITERATURE_SIGN ± 全清理(per §14.7-CR v6.13.1 patch)。 | ARCHIVED(標頭格式)|
+
+## 附錄 一、Treaty Gate Details
 
 + Sign vs Literature 一致性檢驗(per §14.7-CO T_CO-2):
   ✅ MATCH:empirical W1 sign 與 literature 一致

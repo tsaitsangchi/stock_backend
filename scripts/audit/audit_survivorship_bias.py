@@ -1,19 +1,56 @@
 """
-audit_survivorship_bias.py — H8 Survivorship Bias audit
+audit_survivorship_bias.py v0.1 (H8 Survivorship Bias Auditor · §14.7-CP T_CP-3 配套 · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-治權: §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer landing
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CP T_CP-3 H8 audit + §14.7-CS Model Training Landing 必要前置 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-H8 假說檢驗:歷史資料 vs 當前 universe 之 survivorship bias?
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-3-axis check:
-  1. Historical stock count vs current — 過去交易過但現在 universe 不在的?
-  2. Time-series coverage — 不同歷史時點之 stock 數變化
-  3. Delisted estimation — TaiwanStockInfo 涵蓋程度
+1. **[H8 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H8 — 歷史 vs 當前 universe survivorship bias 檢驗。
+2. **[3-Axis Check]** (v0.1): Historical count / Time-series coverage / Delisted estimation。
+3. **[Treaty Gate]** (v0.1): historical/current ≤ 1.30;delisted ≤ 20%。
+4. **[Source Traceability]** (v0.1, CLAUDE.md §一.10): 全 (b) DB query;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): PASS/ALERT/VIOLATION 動態判定。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit): 本程式為 **§14.7-CP T_CP-3 H8 唯一 audit 載體**(§3.2 橫切 pre-training audit)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) §14.7-CS 必要前置;(d) 不選股/不算 feature/不訓練 model;(e) 唯一職責:scan PriceAdj+Info+universe 計算 survivorship 指標 + H8 verdict。
+7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+8. **[Idempotency]** (v0.1): pure read-only;可重跑無副作用。
 
-Treaty gates(per §14.7-CP T_CP-3):
-  - Historical 10y window 之 stocks 比 current 多 ≤ 30%(severe survivorship)
-  - Delisted estimate(via stale stock_id 未在 latest year)≤ 20%
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Historical vs Current Universe
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 Current count | core_universe_membership | §14.7-CJ |
+| A.2 Historical 10y count | PriceAdj distinct stock_id | §14.7-CP T_CP-3 |
+| A.3 Delta verdict | (hist-curr)/curr | severity |
+
+### Group B. Time-Series Coverage
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Per-year counts | GROUP BY year | trend |
+| B.2 Growth rate | annualized | regime |
+
+### Group C. Delisted Estimation
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Info coverage | distinct vs PriceAdj | info quality |
+| C.2 Inferred delisted | PriceAdj-only | delisted proxy |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 模型訓練前必跑 | `python scripts/audit/audit_survivorship_bias.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--fix`:audit only,no auto-fix(survivorship 修正屬 §10 治權)。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CP T_CP-3 H8 audit**。3-axis check;treaty gate historical/current ≤ 1.30;為 §14.7-CS 必要前置。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 import sys, logging

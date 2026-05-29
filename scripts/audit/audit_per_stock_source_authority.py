@@ -1,18 +1,57 @@
 """
-audit_per_stock_source_authority.py — §14.7-CE Empirical Verification per stock
+audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority Auditor · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-主權狀態: ACTIVE (§14.7-CE Empirical-Verification-axis / per-stock byte-level proof)
-最高原則: 「全部來源資料皆從 FinMind/FRED API 抓取,0 system-computed」
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis per-stock byte-level proof + §14.7-CC Source Authority + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-## 一、Audit Scope
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-對 active core_universe 全 N stocks 之每支 × 11 raw sources 做逐項 byte-level 驗證:
-1. Row existence(stock-level row 存在於 raw table 中)
-2. Source origin(透過 schema/value pattern attestation 為 API-fetched)
-3. NO synthetic / NO system-computed values
+1. **[Per-Stock × Per-Source Byte-Level Audit]** (v0.1, §14.7-CE): 對 active core_universe 全 N stocks × 11 raw sources 之逐項 byte-level 驗證。
+2. **[3-Check Workflow]** (v0.1): (a) Row existence;(b) Source origin attestation(API-fetched);(c) NO synthetic / NO system-computed。
+3. **[Source Authority Treaty]** (v0.1, §14.7-CC): 「全部來源資料皆從 FinMind/FRED API 抓取,0 system-computed」之 empirical proof。
+4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): per-stock × per-source 100% match → PASS;任一不 match → ALERT/FAIL。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CE): 本程式為 **§14.7-CE Per-Stock Empirical Verification 唯一 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) **不 sync data**(只驗證);(d) 唯一職責:scan core_universe × 11 raw tables → empirical proof report。
+7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+8. **[Idempotency]** (v0.1): pure read-only。
 
-## 二、11 Raw Sources
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
+
+### Group A. Row Existence Check (per stock × per source)
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 11 raw tables iteration | TaiwanStock* + fred_series | §14.7-CC 11 sources |
+| A.2 Per-stock row existence | EXISTS query | §14.7-CD completeness |
+
+### Group B. Source Origin Attestation
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Schema attestation | data_schema.py DATASET_REGISTRY check | §14.7-CC |
+| B.2 Value pattern check | API-typical patterns(date format / precision)| empirical proof |
+
+### Group C. NO Synthetic / NO System-Computed
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 No computed columns | 確認 raw values not derived | §14.7-CC strict |
+| C.2 No interpolation | gap analysis(allow weekend gap)| anti-synthetic |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| 從零閉環後 source authority 證明 | `python scripts/audit/audit_per_stock_source_authority.py` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--fix`:audit only;sync 屬 sovereign_sync_engine 治權。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CE Per-Stock Source Authority**。3-check workflow(row existence / source origin / no synthetic)。Per active N stocks × 11 sources。 | ARCHIVED(標頭格式)|
+
+## 附錄 一、11 Raw Sources
 
 FinMind API (9 tables):
 - TaiwanStockPriceAdj, TaiwanStockPER, TaiwanStockMonthRevenue

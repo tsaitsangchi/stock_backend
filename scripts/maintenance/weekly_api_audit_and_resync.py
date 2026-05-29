@@ -1,26 +1,57 @@
 """
-weekly_api_audit_and_resync.py — §14.7-CE Weekly Automation Wrapper
+weekly_api_audit_and_resync.py v0.1 (§14.7-CE Weekly Automation Wrapper · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-最後更新日期: 2026-05-28
-主權狀態: ACTIVE (§14.7-CE Empirical-Verification-axis weekly automation;P1 落地)
-最高原則: 「Weekly assured: DB ≡ FinMind/FRED API at byte-level」
+**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis weekly automation + §14.7-CH 配套 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
-## 一、Purpose
+## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
-整合 §14.7-CE 之 audit + resync 為單一 weekly automation step:
-1. Live API audit(audit_live_api_vs_db.py)
-2. 若 mismatch > 0 → auto trigger re-sync
-3. Re-audit verify 100% match
-4. Exit code:0=clean, 1=audit fail, 2=resync fail, 3=re-audit still mismatched
+1. **[Weekly DB ≡ API Invariant]** (v0.1, §14.7-CE): 「Weekly assured: DB ≡ FinMind/FRED API at byte-level」之 weekly enforcement。
+2. **[3-Step Workflow]** (v0.1): (1) Live API audit(audit_live_api_vs_db);(2) mismatch > 0 → auto trigger resync;(3) Re-audit verify。
+3. **[Exit Code Treaty]** (v0.1): 0=clean / 1=audit fail / 2=resync fail / 3=re-audit still mismatch。
+4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query + (c) live API call;0 AI memory。
+5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): exit code 動態判定。
+6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit wrapper / §14.7-CE/CH): 本程式為 **§14.7-CE Weekly Automation 唯一 wrapper**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切 audit wrapper;(b) 子程式為 audit_live_api_vs_db.py + sovereign_sync_engine.py;(c) **不直接 audit raw tables**(delegated);(d) **不直接 sync**(delegated);(e) 唯一職責:orchestrate 3-step weekly verification + exit code。
+7. **[Idempotency]** (v0.1): 重跑安全;DB ≡ API 已達成則 audit pass,無 re-sync。
+8. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
 
-## 二、CLI
+## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
-    python scripts/maintenance/weekly_api_audit_and_resync.py [--dry-run]
-        --dry-run: audit only,不 auto resync
+### Group A. Step 1 — Live API Audit
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| A.1 subprocess call | `audit_live_api_vs_db.py` | §14.7-CE deep audit |
+| A.2 mismatch count parsing | stdout regex | source traceability |
 
-## 三、Cron integration
+### Group B. Step 2 — Conditional Re-sync
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| B.1 Trigger condition | mismatch > 0 | gate |
+| B.2 subprocess call | `sovereign_sync_engine.py --resync <stocks>` | §7 sync 治權 |
+| B.3 --dry-run override | audit only,no resync | safe default |
 
-由 `run_weekly_doctrine_recommit.py` Step 2 自動呼叫。
+### Group C. Step 3 — Re-Audit Verify
+| 子項 | 對應方法 | 治權契約 |
+| :--- | :--- | :--- |
+| C.1 Post-resync audit | re-call audit_live_api_vs_db | §14.7-CE |
+| C.2 Final verdict | 100% match → clean | treaty gate |
+
+### 對齊憲章 §二 維運矩陣
+| 場景 | 命令 |
+| :--- | :--- |
+| Weekly cron(由 run_weekly_doctrine_recommit Step 2 呼叫)| `python scripts/maintenance/weekly_api_audit_and_resync.py` |
+| Audit only dry-run | `... --dry-run` |
+
+### 不提供之旗標 (Intentionally Omitted)
+- `--force-resync`:無條件 resync 不適合 weekly automation。
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CE Weekly Automation Wrapper**。3-step workflow:audit → conditional resync → re-audit。Exit code 治權 0/1/2/3。 | ARCHIVED(標頭格式)|
 """
 from __future__ import annotations
 
