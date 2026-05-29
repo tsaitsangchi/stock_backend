@@ -65,6 +65,10 @@ reports/*
 !reports/cross_machine_handoff_*.md
 !reports/multi_cycle_validation_*.md
 !reports/multi_cycle_validation_*.json
+!reports/multi_cycle_xgboost_*.json
+!reports/multi_cycle_catboost_*.json
+!reports/xgboost_validation_report_*.md
+!reports/catboost_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
