@@ -93,8 +93,11 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.10"  # 2026-05-26 §14.7-BT Phase C: 取消 150 hardcode + Dynamic Universe Selection(v6.3.0 軌道 / charter §6.7.1 annex)
+TOOL_VER = "v0.11"  # 2026-05-29 §14.7-DC v0.8 MVP v0.21 Step A: 新增 _apply_source_pure_filter() per §14.7-DC source-pure doctrine
+# v0.10 (2026-05-26) §14.7-BT Phase C: 取消 150 hardcode + Dynamic Universe Selection(v6.3.0 軌道 / charter §6.7.1 annex)
 # DEFAULT_POLICY_VERSION 維持 v0.7(post §14.7-BT Phase C):legacy v0.7 為當前 production-current
+# v0.17_source_pure_doctrine 為 opt-in via --policy-version core_universe_policy_v0.17_source_pure_doctrine
+# (§14.7-DC v0.8 MVP v0.21 Step E enforcement endpoint)
 # v0.8_dynamic 為 opt-in via --policy-version core_universe_policy_v0.8_dynamic(Phase D-1 起 production-current)
 # v0.7 production state:§14.7-BI ROE 解鎖 SUCCESS / 2353 stocks BS sync / 150/150 core+convex 100% ROE coverage
 # v0.6 snapshot 保留為 audit trail(歷史記述)
@@ -1798,8 +1801,69 @@ class CoreUniverseBuilder:
             )
             for row in rows
         ]
+        self._apply_source_pure_filter(candidates)
         self._assign_tiers(candidates)
         return candidates
+
+    def _apply_source_pure_filter(self, candidates):
+        """§14.7-DC v0.8 Source-Pure Doctrine enforcement.
+
+        任一 stock 之任一 feature `is_null_imputed=True` → exclusion_reason 標註
+        為 quarantine,per §一.10 No Data Hallucination 之 universe layer enforcement。
+        Source:latest committed feature_store_snapshot 之 feature_values。
+
+        若無 committed feature_store_snapshot 則 skip(initial bootstrap)+ warn。
+        """
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """SELECT feature_set_id FROM feature_store_snapshot
+                   WHERE status='committed' ORDER BY created_at DESC LIMIT 1"""
+            )
+            row = cur.fetchone()
+            if not row:
+                self._detail(
+                    "⚠️ [§14.7-DC] no committed feature_store_snapshot; "
+                    "skipping source-pure filter (bootstrap state)"
+                )
+                self.stats["section_14_7_dc_skipped"] = True
+                return
+            latest_fs = row[0]
+            cur.execute(
+                """SELECT stock_id, array_agg(DISTINCT feature_name ORDER BY feature_name)
+                   FROM feature_values
+                   WHERE feature_set_id = %s AND is_null_imputed = TRUE
+                   GROUP BY stock_id""",
+                (latest_fs,),
+            )
+            imputed_map = {sid: feats for sid, feats in cur.fetchall()}
+            self._detail(
+                f"🔒 [§14.7-DC] source-pure filter: latest fs={latest_fs}; "
+                f"found {len(imputed_map)} stocks with imputed features"
+            )
+            quarantined = 0
+            for c in candidates:
+                if c.stock_id in imputed_map:
+                    feats = ", ".join(imputed_map[c.stock_id])
+                    reason = (
+                        f"§14.7-DC Source-Pure Doctrine: imputed features "
+                        f"[{feats}] (no FinMind/FRED API source per §一.10)"
+                    )
+                    c.exclusion_reason = (
+                        reason if c.exclusion_reason is None
+                        else f"{c.exclusion_reason}; {reason}"
+                    )
+                    quarantined += 1
+            self._detail(
+                f"🔒 [§14.7-DC] applied: {quarantined} stocks quarantined "
+                f"(source feature_set={latest_fs})"
+            )
+            self.stats["section_14_7_dc_quarantined"] = quarantined
+            self.stats["section_14_7_dc_source_feature_set"] = latest_fs
+        finally:
+            cur.close()
+            conn.close()
 
     def _assign_tiers(self, candidates):
         eligible = [c for c in candidates if c.exclusion_reason is None]

@@ -100,8 +100,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.5"
-DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.4"  # feature_set 版號不變(v0.4 為 schema 版號;v0.5 為程式 patch)
+TOOL_VER = "v0.6"  # 2026-05-29 §14.7-DC v0.8 MVP v0.21 Step B+C-partial: 移除 5 Tier 4-5 features(theme_strength/theme_is_semiconductor/fitness_signal_60d/barbell_balance_60d/right_tail_concentration_60d)+ THEME_KEYWORDS dict
+DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.5"  # v0.5 = 38 source-pure features(v0.4 為 43 含 5 Tier 4-5;v0.5 為 §14.7-DC compliant)
 DEFAULT_LABEL_HORIZON = 20
 
 # v0.5 SSOT helper(從 data_schema v2.20 import;v0.4 之 local _publication_date_gate 已移除)
@@ -159,11 +159,10 @@ FEATURE_DEFINITIONS = [
     #  mc_monetary_regime / mc_yield_curve_inversion / mc_oil_juglar_phase /
     #  mc_semi_kitchin / mc_shipping_juglar /
     #  ms_volatility_regime / ms_vix_term_structure / ms_market_stress)
-    # ── §0.2 八二法則 explicit 群 v0.3 §14.7-CA Phase C-1c-4 新增(2026-05-27;7 features per-sector aggregation)
-    {"name": "right_tail_concentration_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "top 10% sids volume share / total within sector;Pareto 分布實證;TW IC +0.015 OOS;§0.2"},
-    {"name": "barbell_balance_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "abs((top 20% vol share) - 0.80);Pareto deviation;§9.2 barbell theory;§0.2"},
+    # ── §0.2 八二法則 explicit 群 v0.5 §14.7-DC v0.8 MVP v0.21 Step B 移除 3 Tier 4 features
+    # (right_tail_concentration_60d / barbell_balance_60d / fitness_signal_60d)
+    # 剩餘 4 features per-sector aggregation(per §14.7-DC v0.8 source-pure compliant)
     {"name": "preferential_attachment_60d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_daily_value 60d)attachment proxy;Barabási-Albert 1999;TW IC +0.015 OOS;§0.2"},
-    {"name": "fitness_signal_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo × Institutional", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "(avg_value × (theme_strength+0.01) × (foreign_ratio+0.01))^(1/3);Bianconi-Barabási 2001;TW IC +0.02 OOS;§0.2"},
     {"name": "right_tail_returns_skew_252d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "skew of positive daily log returns over 252d;right-tail asymmetry;TW IC ±0.02 regime-dep;§0.2"},
     {"name": "liquidity_rank_pct_sector_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "sector 內 avg_value_60d 之 percentile rank ∈ [0,1];per-stock 相對集中度;TW IC +0.015 OOS;§0.2"},
     {"name": "size_log_zscore_sector", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_value_60d) z-score within sector;Fama-French SMB proxy;TW IC ±0.01 emerging-market regime;§0.2"},
@@ -183,9 +182,9 @@ FEATURE_DEFINITIONS = [
     {"name": "trust_net_20d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "20d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 20d"},
     {"name": "trust_net_60d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 60d"},
     {"name": "margin_ratio_60d", "group": "institutional", "source": "TaiwanStockMarginPurchaseShortSale", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "avg margin/short balance ratio over 60d"},
-    # ── theme 群（2）
-    {"name": "theme_strength", "group": "theme", "source": "TaiwanStockInfo", "window": "as_of", "vtype": "numeric", "null": "zero_fill", "desc": "THEME_KEYWORDS score / 100 from industry_category"},
-    {"name": "theme_is_semiconductor", "group": "theme", "source": "TaiwanStockInfo", "window": "as_of", "vtype": "boolean", "null": "zero_fill", "desc": "1 if industry_category contains 半導體"},
+    # ── theme 群 REMOVED per §14.7-DC v0.8 MVP v0.21 Step B+C-partial
+    # (theme_strength = Tier 5 THEME_KEYWORDS dict-derived;theme_is_semiconductor = Tier 4
+    #  hardcoded keyword choice;per §一.13 doctrine v0.3 strict + v0.5 Concept vs Specific Value)
     # ── macro 群（4，broadcast 至每股）
     # ── macro legacy 4 features DEPRECATED per §14.7-CK(2026-05-28)
     # 同 §0.3 broadcast 之 IC ≈ 0 artifact;同 doctrine 移除
@@ -200,11 +199,13 @@ FEATURE_DEFINITIONS = [
     # (43-feature canonical SPEC:§0.1 29 + §0.2 14)
 ]
 
-THEME_KEYWORDS = {
-    "半導體": 100, "生技": 95, "醫療": 95, "資訊": 90, "電腦": 85, "通信": 85,
-    "電子": 80, "機器": 80, "電機": 75, "綠能": 75, "光電": 70, "能源": 70,
-    "航太": 65, "汽車": 60,
-}
+# THEME_KEYWORDS dict REMOVED per §14.7-DC v0.8 MVP v0.21 Step C-partial
+# (Tier 5 hardcoded knowledge dict per §一.13 v0.3 strict / 14 entries 之 score
+#  從 100/95/.../60 為 AI-inferred domain classification 無 FinMind/FRED API source)
+# Theme-related features 已從 FEATURE_DEFINITIONS 移除(同次 Step B);
+# 引用此 dict 之 _theme_features() 與 _compute_sector_features() THEME_KEYWORDS lookup
+# 已同步移除 / 改為 source-pure compliant 之 no-op。
+# 註:core_universe_builder.py 之 THEME_KEYWORDS 仍存(v0.22 follow-up)。
 
 
 class FeatureStoreBuilder:
@@ -811,16 +812,19 @@ class FeatureStoreBuilder:
         }
 
     def _compute_sector_features(self, price_series, institutional, theme):
-        """§14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 explicit 7 features per-sector aggregation。
+        """§14.7-CA Phase C-1c-4(2026-05-27)v0.5 §14.7-DC v0.8 MVP v0.21 Step B 後:
+        §0.2 八二法則 explicit 4 features per-sector aggregation(post-removal)。
 
-        對每股 sid 返回 7 features:
-        - right_tail_concentration_60d(per-sector;top 10% volume share)
-        - barbell_balance_60d(per-sector;abs(top 20% share - 0.80))
+        對每股 sid 返回 4 features:
         - preferential_attachment_60d(per-stock;log10(avg_value_60d))
-        - fitness_signal_60d(per-stock;Bianconi-Barabási 1/3 power)
         - right_tail_returns_skew_252d(per-stock;skew(r>0))
         - liquidity_rank_pct_sector_60d(per-sector;sid's percentile within sector)
         - size_log_zscore_sector(per-sector;sid's log size z-score)
+
+        REMOVED per §14.7-DC v0.8(Step B):
+        - right_tail_concentration_60d(Tier 4 10% Pareto cutoff + AP-2 broadcast bug)
+        - barbell_balance_60d(Tier 4 0.80 Pareto hardcoded + AP-2 broadcast bug)
+        - fitness_signal_60d(Tier 4 Bianconi-Barabási 0.01+1/3 + transitively tainted by theme_strength)
         """
         # Pass 1:per-stock raw stats
         per_stock = {}
@@ -841,21 +845,10 @@ class FeatureStoreBuilder:
                         returns_pos.append(r)
             skew_pos = self._skew(returns_pos) if len(returns_pos) >= 3 else None
 
-            inst = institutional.get(sid, {})
-            foreign_60d = float(inst.get("foreign_net_60d", 0) or 0)
-            foreign_ratio = (foreign_60d / avg_value_60d) if avg_value_60d > 0 else 0.0
-
             industry = theme.get(sid, "")
-            theme_str = 0.0
-            for kw, score in THEME_KEYWORDS.items():
-                if kw in industry:
-                    theme_str = score / 100.0
-                    break
 
             per_stock[sid] = {
                 "avg_value_60d": avg_value_60d,
-                "foreign_ratio": foreign_ratio,
-                "theme_strength": theme_str,
                 "returns_skew_pos_252d": skew_pos,
                 "industry": industry,
             }
@@ -870,23 +863,9 @@ class FeatureStoreBuilder:
         for industry, sids in sectors.items():
             if not sids:
                 continue
-            # per-sector liquidity rank
             sids_by_vol = sorted(sids, key=lambda s: per_stock[s]["avg_value_60d"])
             n_sector = len(sids_by_vol)
 
-            # right_tail_concentration:top 10% volume share / total
-            sorted_desc = sorted(sids, key=lambda s: -per_stock[s]["avg_value_60d"])
-            top_10_count = max(1, n_sector // 10)
-            top_10_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc[:top_10_count])
-            total_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc)
-            right_tail_conc = (top_10_sum / total_sum) if total_sum > 0 else 0.0
-
-            # barbell_balance:abs((top 20% share) - 0.80)
-            top_20_count = max(1, n_sector // 5)
-            top_20_sum = sum(per_stock[s]["avg_value_60d"] for s in sorted_desc[:top_20_count])
-            barbell = abs((top_20_sum / total_sum) - 0.80) if total_sum > 0 else 0.0
-
-            # size_log_zscore within sector
             log_vals = [math.log10(max(per_stock[s]["avg_value_60d"], 1)) for s in sids]
             mean_lv = sum(log_vals) / len(log_vals)
             var_lv = sum((lv - mean_lv) ** 2 for lv in log_vals) / max(len(log_vals) - 1, 1)
@@ -894,8 +873,6 @@ class FeatureStoreBuilder:
 
             for rank_idx, sid in enumerate(sids_by_vol):
                 result[sid] = {
-                    "right_tail_concentration_60d": right_tail_conc,
-                    "barbell_balance_60d": barbell,
                     "liquidity_rank_pct_sector_60d": rank_idx / (n_sector - 1) if n_sector > 1 else 0.5,
                 }
 
@@ -906,18 +883,7 @@ class FeatureStoreBuilder:
         # Per-stock features(not sector-dep)
         for sid, stats in per_stock.items():
             avg_v = stats["avg_value_60d"]
-            # preferential_attachment_60d
             result.setdefault(sid, {})["preferential_attachment_60d"] = math.log10(avg_v) if avg_v > 0 else None
-            # fitness_signal_60d:(avg_value × (theme_strength+0.01) × (foreign_ratio+0.01))^(1/3)
-            ts_shift = stats["theme_strength"] + 0.01
-            fr_shift = stats["foreign_ratio"] + 0.01
-            product = avg_v * ts_shift * fr_shift
-            if product > 0:
-                result.setdefault(sid, {})["fitness_signal_60d"] = product ** (1.0 / 3.0)
-            else:
-                # 負 product → 取 negated cube root 之 signed cubic root
-                result.setdefault(sid, {})["fitness_signal_60d"] = -(abs(product) ** (1.0 / 3.0)) if product < 0 else None
-            # right_tail_returns_skew_252d
             result.setdefault(sid, {})["right_tail_returns_skew_252d"] = stats["returns_skew_pos_252d"]
 
         return result
@@ -1148,17 +1114,10 @@ class FeatureStoreBuilder:
         yoy_3m = (recent_3m - prior_3m) / prior_3m if prior_3m > 0 else None
         return {"revenue_yoy_12m": yoy_12m, "revenue_yoy_3m": yoy_3m}
 
-    def _theme_features(self, industry):
-        strength = 0.0
-        if industry:
-            for kw, score in THEME_KEYWORDS.items():
-                if kw in industry:
-                    strength = score / 100.0
-                    break
-        return {
-            "theme_strength": strength,
-            "theme_is_semiconductor": 1.0 if industry and "半導體" in industry else 0.0,
-        }
+    # _theme_features() REMOVED per §14.7-DC v0.8 MVP v0.21 Step B+C-partial(2026-05-29)
+    # (theme_strength = Tier 5 THEME_KEYWORDS dict + AP-2 broadcast bug 全 0;
+    #  theme_is_semiconductor = Tier 4 hardcoded keyword choice;
+    #  per §一.13 v0.3 strict / 2 features 已從 FEATURE_DEFINITIONS 移除 → 函式 obsolete)
 
     # _compute_interaction_features() REMOVED per §14.7-CL(2026-05-28)
     # v0.2 ablation 已實證 IC = +0.0131 HARMFUL(§0.0-D.6 #1 已否決)
@@ -1219,11 +1178,11 @@ class FeatureStoreBuilder:
                 "trust_net_20d": None, "trust_net_60d": None,
             }))
             stock_features["margin_ratio_60d"] = margin.get(sid)
-            stock_features.update(self._theme_features(theme.get(sid, "")))
+            # _theme_features() call REMOVED per §14.7-DC v0.8 MVP v0.21 Step B+C-partial
             # stock_features.update(macro)  # ⚠️ DEPRECATED per §14.7-CK(macro legacy 4 broadcast)
             # §14.7-CA Phase C-1c-3(2026-05-27)— §0.3 Macro 14 features broadcast(same value 對每股)
             stock_features.update(macro_extended)
-            # §14.7-CA Phase C-1c-4(2026-05-27)— §0.2 八二法則 7 features per-sector
+            # §14.7-CA Phase C-1c-4(2026-05-27)v0.5: §0.2 八二法則 4 features per-sector(post Step B 移除 3)
             stock_features.update(sector_features.get(sid, {}))
             # §14.7-CA Phase C-1c-1(2026-05-27)— §0.1 Value features 3(pe_ratio / pb_ratio / dividend_yield)
             per_for_sid = per_data.get(sid, {})

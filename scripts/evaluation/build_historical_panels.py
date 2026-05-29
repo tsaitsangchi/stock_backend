@@ -101,18 +101,30 @@ def generate_panel_dates(start_date: date, end_date: date) -> list[date]:
 
 
 def main():
-    # 8-year span: 2018-06 to 2026-04 (BalanceSheet starts 2018-05)
-    start = date(2018, 6, 1)
-    end = date(2026, 4, 30)
+    import argparse
+    parser = argparse.ArgumentParser(description="Build historical monthly feature_store snapshots")
+    parser.add_argument("--feature-set-version", default="feature_set_v0.4",
+                        help="feature_set_version to build (default v0.4;v0.5 for §14.7-DC v0.8 MVP v0.21)")
+    parser.add_argument("--label-horizon", default="30", help="label horizon days (default 30)")
+    parser.add_argument("--start-year", type=int, default=2018, help="panel start year (default 2018)")
+    parser.add_argument("--start-month", type=int, default=6, help="panel start month (default 6)")
+    parser.add_argument("--end-year", type=int, default=2026, help="panel end year (default 2026)")
+    parser.add_argument("--end-month", type=int, default=4, help="panel end month (default 4)")
+    args = parser.parse_args()
+
+    start = date(args.start_year, args.start_month, 1)
+    end = date(args.end_year, args.end_month, 30 if args.end_month != 2 else 28)
     panels = generate_panel_dates(start, end)
+    safe_fsv = args.feature_set_version.replace(".", "_")
     logger.info("=" * 100)
     logger.info(f"Building {len(panels)} historical monthly snapshots(§14.7-CX)")
+    logger.info(f"Target feature_set_version: {args.feature_set_version}")
     logger.info("=" * 100)
     logger.info(f"  Start: {panels[0]}")
     logger.info(f"  End:   {panels[-1]}")
     logger.info(f"  Total: {len(panels)}")
     logger.info(f"  Anti-leakage: §8.5-9 publication_date_strategy enforced")
-    logger.info(f"  Universe: current 1,121 stocks(survivorship bias acknowledged)")
+    logger.info(f"  Universe: latest committed core_universe(membership-driven)")
     logger.info("")
 
     builder = _base_dir / "core" / "feature_store_builder.py"
@@ -122,13 +134,13 @@ def main():
     t_global = time.monotonic()
 
     for i, d in enumerate(panels, 1):
-        fs_id = f"fs_{d.strftime('%Y%m%d')}_feature_set_v0_4"
+        fs_id = f"fs_{d.strftime('%Y%m%d')}_{safe_fsv}"
         cmd = [
             sys.executable, str(builder),
             "--commit",
             "--as-of-date", d.strftime("%Y-%m-%d"),
-            "--label-horizon", "30",
-            "--feature-set-version", "feature_set_v0.4"
+            "--label-horizon", args.label_horizon,
+            "--feature-set-version", args.feature_set_version,
         ]
         t0 = time.monotonic()
         try:
