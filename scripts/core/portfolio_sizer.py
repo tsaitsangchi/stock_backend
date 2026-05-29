@@ -1,9 +1,11 @@
 """
 portfolio_sizer.py v0.3 (Quantum Finance Portfolio Sizing Authority)
 ================================================================================
-最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §9.2-I v0.3 補強條款 + §14.7-BN 治權升版預備 + ROE-aware Pareto weighting + sector count 5→3 + G13/G14/G15 audit gates;對齊 v6.1.18+(§14.7-BI ROE 解鎖 / §14.7-BH RMS / §14.7-AA Part C sector 集中揭露))
-最高原則: Portfolio Sizing Authority — formal prediction → allocation proposal
+**最後更新日期**: 2026-05-29(§一.11 補入 [Sovereignty Declaration] + Supreme Authority Principle line)
+**主權狀態**: IMPLEMENTED (憲法 v6.1.0 §9.2-I v0.3 + §14.7-BN ROE-aware Pareto + sector count 5→3 + G13/G14/G15 audit gates + §14.7-CU Portfolio Sizing Production Closure + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+**[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CU): 本程式為 **§9.2 portfolio_sizer + §14.7-CU Production Closure 唯一治權載體**(§3.1 序列模組第 9/9 員)。**治權邊界**:(a) §3.1 序列 portfolio sizing 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 不處理;(e) **不訓練 model**;(f) **不預測**(讀取 prediction_run 結果);(g) **不執行交易**;(h) 唯一職責:從 prediction_run 取 top stocks + 依 §9.2 barbell 計算 sizing → portfolio_proposal markdown 輸出。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Sizing Authority]: 對齊憲章 §0.0-A.5 第五個轉換器裁決——本程式為「formal

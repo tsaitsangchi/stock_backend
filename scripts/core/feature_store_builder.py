@@ -1,9 +1,11 @@
 """
 feature_store_builder.py v0.5 (Quantum Finance Feature Store Build Authority)
 ================================================================================
-最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch §8.2 + §9.9 v0.3 upside/downside + §8.5 第 9 條 Publication-date Discipline Phase 2 落地;讀 PUBLICATION_DATE_STRATEGY_REGISTRY + SQL gate per-table 分派;v0.5 改用 data_schema.build_publication_date_gate SSOT helper)
-最高原則: Feature Store Build Authority
+**最後更新日期**: 2026-05-29(§一.11 補入 [Sovereignty Declaration] + Supreme Authority Principle line)
+**主權狀態**: IMPLEMENTED (憲法 v6.1.0-patch §8.2 + §9.9 v0.3 upside/downside + §8.5 第 9 條 Publication-date Discipline Phase 2 + v0.5 data_schema.build_publication_date_gate SSOT + §14.7-CL canonical 43 features + §14.7-CK broadcast 移除 + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+**[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CA/CL): 本程式為 **§8.2 Feature Store + §14.7-CL canonical 43-feature 唯一治權載體**(§3.1 序列模組第 7/9 員;對應 §二 維運矩陣 Step 9)。**治權邊界**:(a) §3.1 序列 feature computation 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) **§8.5 anti-leakage 之 publication_date_strategy enforcement 為核心職責**(per data_schema.PUBLICATION_DATE_STRATEGY_REGISTRY);(e) **不選股**(由 core_universe_builder.py 負責);(f) **不訓練 model**(由 model_trainer 負責);(g) **不修改 raw API tables**(read-only from data_schema-aligned tables);(h) 唯一職責:依 §14.7-CL 43-feature canonical 從 raw + universe 計算 features + 寫入 feature_store_snapshot / feature_values / feature_definition 三 governance tables。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Feature Store Build Authority]: 對齊憲章 §8.2 Feature Store v0.1 草案，

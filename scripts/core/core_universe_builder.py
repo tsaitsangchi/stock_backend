@@ -1,9 +1,11 @@
 """
 core_universe_builder.py v0.7.1 (Quantum Finance Core Universe Selection Authority)
 ================================================================================
-最後更新日期: 2026-05-25
-主權狀態: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 + v0.5 §14.7-BC FG + v0.5.1 §14.7-BE Part + v0.6 §14.7-BF F proxy 補強 + v0.7 §14.7-BG VC 凸性對齊(STDDEV fast-track 試錯) + **v0.7.1 §14.7-BH P1 v0.1 公式對齊 ablation 完成;§9.10 起草 → 正式條文;公式 STDDEV → RMS 對齊 §9.9 強制契約;ablation 揭露 Top-120 overlap 73.3% / max |Δscore| 75 分**;policy v0.6)
-最高原則: Core Universe Selection Authority
+**最後更新日期**: 2026-05-29(§一.11 補入 [Sovereignty Declaration] + Supreme Authority Principle line)
+**主權狀態**: IMPLEMENTED (憲法 v6.1.0-patch CoreScore v0.2 六層 + v0.3 GrossProfit + v0.4 §8.5-9 + v0.5 §14.7-BC FG + v0.5.1 §14.7-BE Part + v0.6 §14.7-BF F proxy 補強 + v0.7 §14.7-BG VC 凸性對齊 + v0.7.1 §14.7-BH P1 v0.1 RMS 對齊 + v0.13 §14.7-CG Doctrine Native Gate + §一.11 三段式合規; policy v0.13)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+**[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CF SSOT / §14.7-CG Native Gate): 本程式為 **§14.7-CF/CG 核心股 selection 唯一治權載體**(§3.1 序列模組第 6/9 員;對應 §二 維運矩陣 Step 4B / 5)。**治權邊界**:(a) §3.1 序列 selection 模組;(b) 五套禁令(§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8)不涉;(c) T1-T3 不分層(§6.4 CoreScore v0.2 / v0.13 native gate 為唯一選股機制);(d) §8.5 anti-leakage 不處理(由 audit_leakage.py 負責);(e) **不直接 sync raw data**(由 sovereign_sync_engine.py 負責);(f) **不算 features**(由 feature_store_builder.py 負責);(g) **不訓練 model**(由 model_trainer 負責);(h) 唯一職責:依 §6.4 CoreScore 或 §14.7-CG doctrine native gate 計算 core_universe + 寫入 core_universe_snapshot / core_universe_membership / core_universe_scores 三 governance tables。
 
 v0.2 六層 CoreScore 評分公式:
   CoreScore = 0.25*DQ + 0.25*LM + 0.20*FG + 0.15*TR + 0.10*IF + 0.05*VC - RP

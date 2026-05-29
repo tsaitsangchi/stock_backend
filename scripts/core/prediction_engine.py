@@ -1,9 +1,11 @@
 """
 prediction_engine.py v0.3 (Quantum Finance Prediction Authority · §10 Phase C milestone #3.5 — train/inference sector_balance consistency)
 ================================================================================
-最後更新日期: 2026-05-26
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §8.4 + §8.8.8 exactly-one prediction-backed + **§10 milestone #3.5 sector_balance inference consistency (apply Lagrangian adjustment from model.json preprocessing.sector_balance if present)**)
-最高原則: Prediction Authority
+**最後更新日期**: 2026-05-29(§一.11 補入 [Sovereignty Declaration] + Supreme Authority Principle line)
+**主權狀態**: IMPLEMENTED (憲法 v6.1.0 §8.4 + §8.8.8 exactly-one prediction-backed + §10 milestone #3.5 sector_balance inference consistency + §14.7-CT Prediction Production Closure + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+**[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CT): 本程式為 **§9.1 prediction_engine + §14.7-CT Production Closure 唯一治權載體**(§3.1 序列模組第 8/9 員)。**治權邊界**:(a) §3.1 序列 prediction 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 已 handle by feature_store_builder;(e) **不訓練 model**(load committed model from model_registry);(f) **不算 features**(讀取 feature_values);(g) **不持有 portfolio sizing**(由 portfolio_sizer 負責);(h) 唯一職責:load committed model + 對 latest feature_values 預測 + 寫入 prediction_run governance table。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Prediction Authority]: 對齊憲章 §8.4 Prediction Table v0.1 草案，

@@ -1,11 +1,11 @@
 """
 audit_doctrine_compliance.py v0.4 (Quantum Finance §0 Supreme Doctrine Compliance Auditor · §14.7-AV Dual-Track Promotion Gate)
 ================================================================================
-最後更新日期: 2026-05-23
-主權狀態: IMPLEMENTED (憲法 v6.1.0 §0 四大支柱 + §0.1-A 禁令 #2/#3 自動化檢驗
-                    + §0.1-B audit 載體 + §0.1.3 V 變數對應透明化
-                    + §14.7-AV dual-track promotion gate (Operations Reality v6.1.0 vs §8/§9 軌道 v6.1.1+))
-最高原則: Doctrine Compliance Authority — §0 從文件 → 機器強制
+**最後更新日期**: 2026-05-29(§一.11 補入 [Sovereignty Declaration] + Supreme Authority Principle line)
+**主權狀態**: IMPLEMENTED (憲法 v6.1.0 §0 四大支柱 + §0.1-A 禁令 #2/#3 自動化檢驗 + §0.1-B audit 載體 + §0.1.3 V 變數對應透明化 + §14.7-AV dual-track promotion gate + §一.11 三段式合規)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+**[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.2 橫切 audit 模組): 本程式為 **§0 四大支柱 doctrine compliance 自動化檢驗唯一治權載體**(§3.2 橫切 audit 模組)。**治權邊界**:(a) §3.2 橫切 audit;(b) **不修改** raw / governance tables(read-only);(c) §0.1-A 禁令 #2/#3 機器化檢驗為核心職責;(d) §14.7-AV dual-track promotion gate(Operations Reality v6.1.0 vs §8/§9 軌道 v6.1.1+)為核心功能;(e) **不選股 / 不算 feature / 不訓練 model**;(f) 唯一職責:scan codebase + DB state → 產出 doctrine compliance audit report。
 
 ## 修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
