@@ -14,7 +14,7 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 6. [Zero Hardcoded Verdict]: 動態判定 verdict per §5.6.3。
 7. [Sovereignty Declaration]: 本工具屬 §11C 治權檢驗延伸 + §14.7-BX Phase C orchestrator;不選股(委 builder)、不訓練模型、不預測、不分配資金;不涉 §0.1-A / §0.2-A / §0.3-A 五套禁令;不在 T1-T3 分層內。
 
-## 📊 二、執行指令
+## 📊 二、全量維運指令總矩陣 (The Ultimate Operational Matrix)
 | 場景 | 指令 |
 | :--- | :--- |
 | Dry-run(顯示 pipeline 各步,不寫 DB)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --dry-run` |
@@ -22,7 +22,11 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 | 強制執行(非交易日 / 收盤前) | `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --force-now` |
 | 跳過 FRED sync(若獨立 cron 已 sync)| `$ python scripts/maintenance/run_weekly_doctrine_recommit.py --commit --skip-fred-sync` |
 
-## 📜 三、修訂歷程
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.7-§一.11 | 2026-05-29 | Codex | **§一.11 三段式標頭規範對齊**:§二 標題「執行指令」→「全量維運指令總矩陣」+ §三 標題「修訂歷程」→「全修訂歷程 (Full Revision History)」對齊 CLAUDE.md §一.11 強制格式。原 v0.7 邏輯不變。 | **ACTIVE** |
 | v0.7 | 2026-05-28 | Codex | **§14.7-CP H4/H5/H8 + §14.7-CT 整合(v6.14.1)**:Step 10 H4 Data Quality / Step 11 H5 Universe Selection / Step 12 H8 Survivorship audit 加入(per §14.7-CP T_CP-3 mandatory pre-check before §10 model_trainer);Step 13 prediction inference placeholder(per §14.7-CT manual trigger)。Weekly cron 完整涵蓋 9 + 3 + 1 = 13 steps(feature audits + model pre-checks + inference)。 | ACTIVE |
 | v0.6 | 2026-05-28 | Codex | **§14.7-CN + §14.7-CO 整合(v6.11.1 patch)**:Step 8 插入 `audit_feature_necessity.py`(4-path necessity verdict);Step 9 插入 `audit_feature_sign_stability.py`(sign verdict + lit consistency)。Weekly cron 自動執行全 3 個 feature-layer audit(IC + necessity + sign)。 | SUPERSEDED |
 | v0.5 | 2026-05-28 | Codex | **§14.7-CM 整合**:Step 7 插入 `audit_feature_ic_vs_future_return.py`(43 features × forward N-day return Spearman IC)。每週重算 IC 實證 model-training viability + treaty gate(Mean |IC|>0.03 + ≥30% sig);違反觸發 feature re-evaluation per T_CM-3。 | SUPERSEDED |

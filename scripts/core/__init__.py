@@ -61,7 +61,7 @@ core/__init__.py v1.17 (Quantum Finance Sovereign Hub - Constitution v6.0.0 Alig
 4. **[所有核心股同步]**     : `$ python scripts/ingestion/sovereign_sync_engine.py --universe core`  (§6.7 SQL)
 5. **[FRED 宏觀全量同步]**  : `$ python scripts/ingestion/sovereign_sync_engine.py --source fred`
 
-## 📜 四、全修訂歷程 (Full Revision History)
+## 📜 四、全修訂歷程 (Full Revision History) — 亦對應 §一.11 三段式之第三段(三、全修訂歷程)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
 | **v1.17** | 2026-05-21 | Codex | **path_setup v4.46 hub 邊界同步（逐元件審計 Step 1.1.1 v4.46 升版連帶補正）**：依 path_setup.py v4.45 → v4.46 升版（補 [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義 2 條達 100% 合規），同步更新 hub 邊界引用以維持 §0.0-I 單一引用源原則 + [Hub Compatibility] 核心定義第 2 條之邊界承諾。**補正內容**：(I) Header L1 cosmetic 字串 v1.16 → v1.17；(II) 最後更新日期 2026-05-20 → 2026-05-21；(III) 主權狀態行升至「ACTIVE (憲法 v6.0.0 對齊 + path_setup v4.46 hub 邊界同步；8 項檢查面 100% 合規)」；(IV) [Boundary Integrity] 條 path_setup v4.45 → v4.46；(V) 全量維運矩陣 Step 1 path_setup v4.45 → v4.46；(VI) HUB 行 core/__init__ v1.16 → v1.17；(VII) `HUB_VER` 常數 v1.16 → v1.17；(VIII) `run_sovereign_hub_audit` docstring v1.16 → v1.17；(IX) `record_lifecycle` task_name v1.16 → v1.17。**CONSTITUTION_VER 保持 v6.0.0（憲章版本未升）；7 條核心定義無變更；25 維路徑接口、`db_utils v2.45` 公共 API 鏡像、`__all__` 對外匯出清單、四層動態稽核邏輯、verdict 計算邏輯、所有公開行為皆無變更**；本補正純為 hub 邊界版本同步（與 v1.14 → v1.15 連帶 path_setup v4.44 → v4.45 同模式）。 | **ACTIVE** |

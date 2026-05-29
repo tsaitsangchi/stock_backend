@@ -26,9 +26,10 @@ universe_completeness_schema.py v0.1 (§14.7-BU Phase C+D — Cross-Layer × Cro
 | 4. 離線復原（略過 preflight） | `$ python scripts/core/universe_completeness_schema.py --init --skip-preflight` | universe_completeness_schema v0.1 |
 | 5. Materialized view refresh（手動） | `$ python scripts/core/universe_completeness_schema.py --refresh-view` | universe_completeness_schema v0.1 |
 
-## 📜 三、修訂歷程
+## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
+| v0.1-§一.11 | 2026-05-29 | Codex | **§一.11 三段式標頭規範對齊**:標題從「修訂歷程」改為「全修訂歷程 (Full Revision History)」對齊 CLAUDE.md §一.11 強制格式。原 v0.1 邏輯不變。 | **ACTIVE** |
 | **v0.1** | 2026-05-26 | Codex | **§14.7-BU Phase C+D 落地首版**:依憲章 v6.1.0-patch 第十九輪 §14.7-BU Phase B 入憲（charter L9378 新子節）+ Phase A 設計研究（commit `73228ba` 523 行 §6 schemas）;建 3 new tables + 1 materialized view。Path C hybrid 之治權邊界:(I) prediction_run + predictions 補 §8 prediction layer 0% gap;(II) universe_completeness_snapshot 為 cross-layer × cross-pillar SSOT（PK = snapshot_id × stock_id × pillar × layer / CHECK enums for pillar + layer + pct）;(III) universe_completeness_matrix_current 為 reporting materialized view（CONCURRENTLY refresh ready）。對既有 28 tables 影響:零 schema 變動（purely additive）。前置依賴:core_universe_snapshot / core_universe_policy / model_registry / feature_store_snapshot / TaiwanStockInfo / pipeline_execution_log / data_audit_log。對應 §0.4 數位孿生完整性 implicit→explicit;對應 §8 ACTIVE DRAFT 升正式條文 schema 預備完成。 | **ACTIVE** |
 ================================================================================
 """

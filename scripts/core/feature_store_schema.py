@@ -13,6 +13,7 @@ feature_store_schema.py v0.1 (Quantum Finance Feature Store Schema Authority)
 5. [Snapshot Governance]: Feature Set 必須以 `feature_set_id` / `feature_set_version` / `as_of_date` 版本化。
 6. [Hybrid Observability]: 建表行為必須接入 record_lifecycle 與 data_audit_log，並輸出完整終端摘要。
 7. [Zero Hardcoded Verdict]: 主權判定必須動態計算 (§5.6.3)。
+8. **[Sovereignty Declaration]** (2026-05-29 §一.11 補入, 憲法 §3.2 橫切 schema 模組 / §8.2 Feature Store): 本程式為 **§8.2 Feature Store 之 3 governance tables(feature_store_snapshot / feature_definition / feature_values)唯一 schema 建立載體**(§3.2 橫切;與 data_schema.py / core_universe_schema.py 並列)。**治權邊界**:(a) §3.2 橫切 schema;(b) **不管理 raw API schema**(由 data_schema.py 負責);(c) **不管理 core_universe_* 表**(由 core_universe_schema.py 負責);(d) **不管理 model / prediction 表**(由 data_schema.py / universe_completeness_schema.py 負責);(e) **不計算 features**(由 feature_store_builder.py 負責);(f) **不選股**;(g) 唯一職責:建立 §8.2 三 governance tables + 欄位繼承 + as-of-strict 治權邊界 enforcement。
 
 ## 📊 二、全量維運指令總矩陣
 | 場景 | 指令 | 對齊 |
@@ -22,9 +23,10 @@ feature_store_schema.py v0.1 (Quantum Finance Feature Store Schema Authority)
 | 3. 單表重鑄 | `$ python scripts/core/feature_store_schema.py --init --table feature_values` | feature_store_schema v0.1 |
 | 4. 離線復原 | `$ python scripts/core/feature_store_schema.py --init --skip-preflight` | feature_store_schema v0.1 |
 
-## 📜 三、修訂歷程
+## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
+| v0.1-§一.11 | 2026-05-29 | Codex | **§一.11 三段式標頭規範對齊**:(I) §一 補入 [Sovereignty Declaration] 治權邊界宣告(原 7 條 → 8 條);(II) §三 標題從「修訂歷程」改為「全修訂歷程 (Full Revision History)」對齊 CLAUDE.md §一.11 強制格式。原 v0.1 邏輯不變。 | **ACTIVE** |
 | **v0.1** | 2026-05-16 | Codex | **Feature Store 治理層初版**：依憲章 §8.2.1 建立 feature_store_snapshot / feature_definition / feature_values 三表，並落地欄位繼承與 as-of-strict 治權邊界。 | **ACTIVE (DRAFT)** |
 ================================================================================
 """
