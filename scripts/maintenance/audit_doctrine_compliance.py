@@ -271,16 +271,18 @@ class DoctrineAuditor:
                      "無 active core_universe_policy；§0.1 物理量化未落地")
             return
         weights = row[0] or {}
+        # v0.12 §14.7-DC v0.9 Step C: TR theme_resonance_score 移除 → 五層 required
+        # (theme_resonance_score 為 Tier 5 hardcoded knowledge violation;非 source-pure)
         required_layers = ["data_quality_score", "liquidity_mass_score",
-                           "fundamental_gravity_score", "theme_resonance_score",
+                           "fundamental_gravity_score",
                            "institutional_flow_score", "volatility_control_score"]
         missing = [k for k in required_layers if k not in weights]
         if missing:
-            self.add("P1_first_principles", "FAIL", "corescore_six_layers",
-                     f"policy weight_config 缺少六層 components: {missing}")
+            self.add("P1_first_principles", "FAIL", "corescore_five_layers",
+                     f"policy weight_config 缺少五層 components: {missing}")
         else:
-            self.add("P1_first_principles", "PASS", "corescore_six_layers",
-                     "六層 CoreScore (DQ/LM/FG/TR/IF/VC) 完整存在於 active policy")
+            self.add("P1_first_principles", "PASS", "corescore_five_layers",
+                     "五層 CoreScore (DQ/LM/FG/IF/VC) 完整存在於 active policy (v0.12 §14.7-DC v0.9 source-pure)")
 
         # 2. feature_definition 含 liquidity / institutional / volatility 三群（重力井觀測載體）
         if not (_table_exists(cur, 'feature_definition') and _table_exists(cur, 'feature_store_snapshot')):
@@ -357,22 +359,28 @@ class DoctrineAuditor:
                      "core_universe_builder 缺少 _annual_rebalance_guard")
 
     def audit_p3_kondratiev_2026(self, cur):
-        """§0.3 康波週期 + 6th wave MBNRIC 對映檢驗"""
-        # 1. THEME_KEYWORDS 涵蓋第六波核心主題
+        """§0.3 康波週期 + 6th wave MBNRIC 對映檢驗(v0.12 §14.7-DC v0.9 inverted check)
+
+        v0.12 起 K-wave 治權:思想層(§0.3 framework)允許 inspire,但 specific
+        keyword scores hardcode 為 §一.13 v0.3 Tier 5 violation。本 audit 反轉
+        為:若 THEME_KEYWORDS dict 仍存 → FAIL(violation);若 已移除 → PASS。
+        """
+        # 1. THEME_KEYWORDS dict 不得 hardcode 為 production code(per §14.7-DC v0.9)
         builder = PROJECT_ROOT / "scripts/core/core_universe_builder.py"
         if not builder.exists():
             self.add("P3_kondratiev_2026", "FAIL", "theme_keywords",
                      "core_universe_builder.py 不存在")
             return
         builder_text = builder.read_text(encoding="utf-8")
-        required_themes = ["半導體", "生技", "醫療", "綠能"]
-        missing_themes = [t for t in required_themes if t not in builder_text]
-        if missing_themes:
-            self.add("P3_kondratiev_2026", "FAIL", "theme_keywords",
-                     f"THEME_KEYWORDS 缺少第六波 MBNRIC 必要主題: {missing_themes}")
+        # 檢 THEME_KEYWORDS = { active dict literal(非 comment / 非 narrative)
+        import re as _re
+        active_dict = _re.search(r"^THEME_KEYWORDS\s*=\s*\{", builder_text, _re.MULTILINE)
+        if active_dict:
+            self.add("P3_kondratiev_2026", "FAIL", "theme_keywords_source_pure",
+                     "THEME_KEYWORDS active dict 仍存於 production code(§一.13 v0.3 Tier 5 violation;須移除)")
         else:
-            self.add("P3_kondratiev_2026", "PASS", "theme_keywords",
-                     "THEME_KEYWORDS 涵蓋第六波 MBNRIC 核心主題（半導體/生技/醫療/綠能）")
+            self.add("P3_kondratiev_2026", "PASS", "theme_keywords_source_pure",
+                     "THEME_KEYWORDS active dict 已移除(per §14.7-DC v0.9 source-pure doctrine;§0.3 思想層 framework 為 charter clean)")
 
         # 2. feature_definition 含 macro 群（DFF/VIX/T10Y2Y/UNRATE）
         if not (_table_exists(cur, 'feature_definition') and _table_exists(cur, 'feature_store_snapshot')):

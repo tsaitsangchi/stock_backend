@@ -27,6 +27,9 @@ scratch/
 __pycache__/
 venv/
 .venv/
+venv_fm/
+.hf_cache/
+.np_torch/
 .env
 outputs/
 lightning_logs/

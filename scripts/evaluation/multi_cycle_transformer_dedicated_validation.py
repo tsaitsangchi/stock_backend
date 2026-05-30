@@ -170,7 +170,7 @@ def get_panel_dates():
     dates = []
     current = date(2018, 6, 15)
     while current <= date(2026, 4, 30):
-        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_4", current))
+        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_5", current))
         if current.month == 12: current = date(current.year+1, 1, 15)
         else: current = date(current.year, current.month+1, 15)
     return dates
@@ -385,8 +385,11 @@ def main():
     mode.add_argument("--commit", action="store_true")
     parser.add_argument("--horizons", type=str, default="5,20,60,252")
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=SEED,
+                        help="§一.10 #3 multi-run seed(canonical 5422;≥3 distinct seeds → min/median/max/mean)")
     args = parser.parse_args()
     if not args.dry_run and not args.commit: args.dry_run = True
+    TF_PARAMS["seed"] = args.seed; globals()["SEED"] = args.seed  # §一.10 #3: inject run seed
 
     horizon_days_list = [int(d.strip()) for d in args.horizons.split(",")]
     horizon_labels = []

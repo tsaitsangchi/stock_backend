@@ -7,10 +7,13 @@ core_universe_builder.py v0.7.1 (Quantum Finance Core Universe Selection Authori
 
 **[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CF SSOT / §14.7-CG Native Gate): 本程式為 **§14.7-CF/CG 核心股 selection 唯一治權載體**(§3.1 序列模組第 6/9 員;對應 §二 維運矩陣 Step 4B / 5)。**治權邊界**:(a) §3.1 序列 selection 模組;(b) 五套禁令(§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8)不涉;(c) T1-T3 不分層(§6.4 CoreScore v0.2 / v0.13 native gate 為唯一選股機制);(d) §8.5 anti-leakage 不處理(由 audit_leakage.py 負責);(e) **不直接 sync raw data**(由 sovereign_sync_engine.py 負責);(f) **不算 features**(由 feature_store_builder.py 負責);(g) **不訓練 model**(由 model_trainer 負責);(h) 唯一職責:依 §6.4 CoreScore 或 §14.7-CG doctrine native gate 計算 core_universe + 寫入 core_universe_snapshot / core_universe_membership / core_universe_scores 三 governance tables。
 
-v0.2 六層 CoreScore 評分公式:
-  CoreScore = 0.25*DQ + 0.25*LM + 0.20*FG + 0.15*TR + 0.10*IF + 0.05*VC - RP
-  DataQuality(25%) + LiquidityMass(25%) + FundamentalGravity(20%)
-  + ThemeResonance(15%) + InstitutionalFlow(10%) + VolatilityControl(5%) - RiskPenalty
+v0.12 五層 CoreScore 評分公式(§14.7-DC v0.9 MVP v0.21 Step C land):
+  CoreScore = 0.30*DQ + 0.30*LM + 0.20*FG + 0.15*IF + 0.05*VC - RP
+  DataQuality(30%) + LiquidityMass(30%) + FundamentalGravity(20%)
+  + InstitutionalFlow(15%) + VolatilityControl(5%) - RiskPenalty
+  (TR ThemeResonance 15% REMOVED per §14.7-DC v0.9:THEME_KEYWORDS Tier 5
+   hardcoded knowledge dict 違反 §一.10 source-pure doctrine + §一.13 doctrine;
+   原 15% 重分配為 DQ +5 / LM +5 / IF +5;v0.2-v0.11 era CoreScore 六層為歷史記述)
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Core Universe Selection Authority]: 對齊憲章 §6.1〜§6.6，作為 CoreScore
@@ -93,7 +96,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.11"  # 2026-05-29 §14.7-DC v0.8 MVP v0.21 Step A: 新增 _apply_source_pure_filter() per §14.7-DC source-pure doctrine
+TOOL_VER = "v0.12"  # 2026-05-29 §14.7-DC v0.9 MVP v0.21 Step C: 移除 THEME_KEYWORDS Tier 5 dict + _theme_resonance_score() + CoreScore 重分配為五層(DQ 0.30 / LM 0.30 / FG 0.20 / IF 0.15 / VC 0.05)
+# v0.11 (2026-05-29) §14.7-DC v0.8 MVP v0.21 Step A: 新增 _apply_source_pure_filter() per §14.7-DC source-pure doctrine
 # v0.10 (2026-05-26) §14.7-BT Phase C: 取消 150 hardcode + Dynamic Universe Selection(v6.3.0 軌道 / charter §6.7.1 annex)
 # DEFAULT_POLICY_VERSION 維持 v0.7(post §14.7-BT Phase C):legacy v0.7 為當前 production-current
 # v0.17_source_pure_doctrine 為 opt-in via --policy-version core_universe_policy_v0.17_source_pure_doctrine
@@ -189,50 +193,18 @@ V02_INPUT_CONTRACT = [
 
 EQUITY_TYPES = {"twse", "tpex"}
 EXCLUDED_INDUSTRY_KEYWORDS = ("ETF", "ETN", "指數", "權證")
-# v0.9 §14.7-BP THEME_KEYWORDS 字典升版(2026-05-26 evening Phase C)
-# MBNRIC 6 支柱完整補完(原 14 keywords → 30 keywords;治本 §0.3 N 72.7% 主導 root cause)
-# 新加 16 keywords:M 支柱 9 + C 支柱 5 + B 1 (農科) + R 1 (油電) = 16
-# 對映 §0.3.9 MBNRIC 6 支柱完整 mapping;§0.3 evidence issue #1 治本
-# 對映 §14.7-BP Phase A 設計研究(reports/theme_keywords_dictionary_upgrade_phase_a_research_20260526.md)
-THEME_KEYWORDS = {
-    # === N Nanotech/Neural 支柱(原有 4 keywords;不改 — N 已主導) ===
-    "半導體": 100,
-    "電子": 80,
-    "機器": 80,
-    "光電": 70,           # I+N partial(光電業)
-    # === C Computing/Cloud 支柱(v0.9 新增 5 keywords;對齊 §0.3 第六波 priority) ===
-    "量子": 100,         # ✨ NEW v0.9 §14.7-BP(對映 §0.3 K-wave 第六波頂分)
-    "AI": 95,            # ✨ NEW v0.9 §14.7-BP(對映 其他電子類 / 資訊服務業 C 部分)
-    "雲端": 95,          # ✨ NEW v0.9 §14.7-BP(對映 數位雲端類 24+22 = 46 stocks)
-    "算力": 90,          # ✨ NEW v0.9 §14.7-BP(對映 GPU AI 算力新興)
-    "演算": 85,          # ✨ NEW v0.9 §14.7-BP(對映 algorithm-driven)
-    # === I Info 支柱(原有 3 keywords;不改) ===
-    "資訊": 90,
-    "電腦": 85,
-    "通信": 85,
-    # === R Robotics/綠能 支柱(原有 3 + v0.9 新 1 = 4 keywords) ===
-    "電機": 75,
-    "綠能": 75,
-    "汽車": 60,
-    "油電": 70,          # ✨ NEW v0.9 §14.7-BP(對映 油電燃氣業 13 stocks;取代「能源」之精確化)
-    # === B Biotech 支柱(原有 2 + v0.9 新 1 = 3 keywords) ===
-    "生技": 95,
-    "醫療": 95,
-    "農科": 80,          # ✨ NEW v0.9 §14.7-BP(對映 農業科技業 / 農業科技 7 stocks)
-    # === M Materials 支柱(原有 0 + v0.9 新 9 keywords;治本核心) ===
-    "化學": 65,          # ✨ NEW v0.9 §14.7-BP(化學工業 24 + 化學生技醫療 42 之 M 部分)
-    "建材": 55,          # ✨ NEW v0.9 §14.7-BP(建材營造 89 stocks)
-    "鋼鐵": 50,          # ✨ NEW v0.9 §14.7-BP(鋼鐵工業 54 stocks)
-    "紡織": 50,          # ✨ NEW v0.9 §14.7-BP(紡織纖維 54 stocks)
-    "塑膠": 55,          # ✨ NEW v0.9 §14.7-BP(塑膠工業 27 stocks)
-    "橡膠": 50,          # ✨ NEW v0.9 §14.7-BP(橡膠工業 11 stocks;EV 輪胎)
-    "水泥": 45,          # ✨ NEW v0.9 §14.7-BP(水泥工業 8 stocks)
-    "造紙": 45,          # ✨ NEW v0.9 §14.7-BP(造紙工業 8 stocks)
-    "玻璃": 50,          # ✨ NEW v0.9 §14.7-BP(玻璃陶瓷 5 stocks;先進陶瓷)
-    # === 其他既有(不對應 MBNRIC 直接;保留為 thematic cushion) ===
-    "能源": 70,          # 原 keyword;部分對映 R(已被「油電」精確化但保留 backward-compat)
-    "航太": 65,          # 原 keyword;I partial
-}
+# THEME_KEYWORDS dict REMOVED per §14.7-DC v0.9 MVP v0.21 Step C(2026-05-29)
+# 原 30-entry dict 為 Tier 5 hardcoded knowledge violation(per §一.10 / §一.13 v0.3 strict /
+#  v0.5 Concept vs Specific Value clarification):每 keyword 之 score(45-100)為 AI-inferred
+#  domain classification,無 FinMind / FRED API source。「挑哪個 keyword 並賦予什麼 score」
+#  之選擇為 AI / human domain knowledge,非 mathematical transformation of source data。
+# 同次移除 _theme_resonance_score() 函式 + CoreScore TR sub-score(15%);
+# 原 15% TR weight 重分配為 DQ +5 / LM +5 / IF +5(per §14.7-DC v0.9 之 §6.4 weights 升版)。
+# 對齊用戶 2026-05-29 第九次 explicit doctrine:「八二法則 / 康波週期為思想非特定值」+
+#  「imputed 或你自己補的值即 AI 幻像」。MBNRIC 第六波主題 framework 為 §0.3 思想層概念
+#  (charter clean),不應 hardcode 為 specific keyword scores 進入 production code。
+# §14.7-BP Phase A 設計研究(reports/theme_keywords_dictionary_upgrade_phase_a_research_20260526.md)
+#  之 30-entry expanded dict 為歷史記述;v0.12 起 TR sub-score 永久棄用。
 
 
 @dataclass
@@ -361,7 +333,7 @@ class CoreUniverseBuilder:
 
     def _snapshot_note(self):
         note = (
-            "core_universe_builder v0.2; six-layer CoreScore (DQ+LM+FG+TR+IF+VC-RP); "
+            "core_universe_builder v0.12; five-layer CoreScore (DQ+LM+FG+IF+VC-RP) per §14.7-DC v0.9 MVP v0.21 Step C; "
             f"rebalance_mode={self._rebalance_mode()}; no feature/model/prediction values"
         )
         if self.special_rebalance_reason:
@@ -1357,14 +1329,10 @@ class CoreUniverseBuilder:
             return 0.0
         return -3.0
 
-    def _theme_resonance_score(self, industry_category):
-        """ThemeResonance (15%): MBNRIC 第六波主題共振 (AI/半導體/生技/綠能)"""
-        if not industry_category:
-            return 30.0
-        for keyword, score in THEME_KEYWORDS.items():
-            if keyword in industry_category:
-                return float(score)
-        return 30.0
+    # _theme_resonance_score() REMOVED per §14.7-DC v0.9 MVP v0.21 Step C(2026-05-29)
+    # 原 ThemeResonance(15%): MBNRIC 第六波主題共振 → 移除為 Tier 5 hardcoded knowledge violation。
+    # CoreScore 從六層降為五層;原 15% TR weight 重分配為 DQ +5 / LM +5 / IF +5。
+    # 對齊 §14.7-DC v0.9 + §6.4 v0.x weights 升版 + 用戶第九次 strictest re-check directive。
 
     def _institutional_flow_score(self, stock_id, institutional_data,
                                    margin_data=None, shareholding_data=None,
@@ -1623,7 +1591,7 @@ class CoreUniverseBuilder:
 
         risk_penalty, risk_reasons = self._risk_profile(type_value, industry_category, missing_fields)
 
-        # Six-layer scoring (v0.5: FG 加 6 新 sub-scores)
+        # v0.12 §14.7-DC v0.9 MVP v0.21 Step C: Five-layer scoring(TR sub-score 移除)
         dq = self._data_quality_score_v2(stock_id, price_data, revenue_data, financial_data)
         lm = self._liquidity_mass_score(stock_id, price_data)
         fg = self._fundamental_gravity_score(
@@ -1631,7 +1599,6 @@ class CoreUniverseBuilder:
             per_data=per_data, dividend_data=dividend_data,
             industry_median=industry_median, industry_category=industry_category,
         )
-        tr = self._theme_resonance_score(industry_category)
         inst_f = self._institutional_flow_score(
             stock_id, institutional_data,
             margin_data=margin_data, shareholding_data=shareholding_data,
@@ -1648,8 +1615,9 @@ class CoreUniverseBuilder:
             extra_penalty += 10.0
         total_penalty = min(risk_penalty + extra_penalty, 99.0)
 
+        # v0.12 weights: TR 15% 移除 + DQ +5 / LM +5 / IF +5 重分配(per §14.7-DC v0.9 §6.4 升版)
         core_score = max(0.0, min(100.0,
-            0.25 * dq + 0.25 * lm + 0.20 * fg + 0.15 * tr + 0.10 * inst_f + 0.05 * vc - total_penalty
+            0.30 * dq + 0.30 * lm + 0.20 * fg + 0.15 * inst_f + 0.05 * vc - total_penalty
         ))
 
         # Coverage metrics for membership table
@@ -1659,8 +1627,8 @@ class CoreUniverseBuilder:
 
         exclusion_reason = "; ".join(risk_reasons) if risk_penalty >= 50.0 else None
         selection_reason = (
-            f"CoreScore v0.7: {core_score:.1f} "
-            f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} TR={tr:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
+            f"CoreScore v0.12: {core_score:.1f} "
+            f"(DQ={dq:.0f} LM={lm:.0f} FG={fg:.0f} IF={inst_f:.0f} VC={vc:.0f} RP={total_penalty:.0f})"
         )
         if exclusion_reason:
             selection_reason = f"quarantine: {exclusion_reason}"
@@ -1673,10 +1641,10 @@ class CoreUniverseBuilder:
         sh_data = (shareholding_data or {}).get(stock_id, {})
         inst_data = (institutional_data or {}).get(stock_id, {})
         score_detail = {
-            "score_scope": "v0.8_roe_unlocked_via_balance_sheet",
+            "score_scope": "v0.12_tr_removed_five_layer_source_pure",
             "constitution": CONSTITUTION_VER,
             "tool_version": TOOL_VER,
-            "weights": {"DQ": 0.25, "LM": 0.25, "FG": 0.20, "TR": 0.15, "IF": 0.10, "VC": 0.05},
+            "weights": {"DQ": 0.30, "LM": 0.30, "FG": 0.20, "IF": 0.15, "VC": 0.05},
             "data_quality_score": dq,
             "liquidity_mass_score": lm,
             "fundamental_gravity_score": fg,
@@ -1714,7 +1682,7 @@ class CoreUniverseBuilder:
             "fg_pretax_margin": f_data.get("pretax_margin"),
             "fg_continuing_op_ratio": f_data.get("continuing_op_ratio"),
             "fg_attributable_ratio": f_data.get("attributable_ratio"),
-            "theme_resonance_score": tr,
+            # theme_resonance_score 移除 per §14.7-DC v0.9 MVP v0.21 Step C(原 TR 15% weight 重分配)
             "institutional_flow_score": inst_f,
             "volatility_control_score": vc,
             "risk_penalty": total_penalty,
@@ -1735,7 +1703,7 @@ class CoreUniverseBuilder:
             source_date=source_date,
             core_score=round(core_score, 4),
             data_quality_score=round(dq, 4),
-            theme_score=round(tr, 4),
+            theme_score=0.0,  # v0.12 §14.7-DC v0.9 Step C: TR sub-score removed; field kept as legacy=0.0(convex_pool filter `>= 70.0` 自然 no-op,對齊 §14.7-BW Path D pure doctrine 之 tier split deprecation)
             risk_penalty=round(total_penalty, 4),
             core_tier="pending",
             selection_reason=selection_reason,
@@ -1916,14 +1884,14 @@ class CoreUniverseBuilder:
     def _policy_payload(self):
         return {
             "policy_version": self.policy_version,
-            "policy_name": "Core Universe Policy v0.2 Six-Layer CoreScore",
-            "description": "CoreScore v0.2 six-layer scoring: DQ+LM+FG+TR+IF+VC-RP. DB-driven from TaiwanStockInfo + six individual stock tables. No model or prediction values.",
+            "policy_name": "Core Universe Policy v0.12 Five-Layer CoreScore(§14.7-DC v0.9 Step C source-pure)",
+            "description": "CoreScore v0.12 five-layer scoring: DQ+LM+FG+IF+VC-RP. DB-driven from TaiwanStockInfo + six individual stock tables. TR ThemeResonance(15%)REMOVED per §14.7-DC v0.9 MVP v0.21 Step C(THEME_KEYWORDS Tier 5 dict violation);原 15% 重分配為 DQ +5 / LM +5 / IF +5. No model or prediction values.",
             "weight_config": {
-                "data_quality_score": 0.25,
-                "liquidity_mass_score": 0.25,
+                "data_quality_score": 0.30,
+                "liquidity_mass_score": 0.30,
                 "fundamental_gravity_score": 0.20,
-                "theme_resonance_score": 0.15,
-                "institutional_flow_score": 0.10,
+                # theme_resonance_score 移除 per §14.7-DC v0.9 MVP v0.21 Step C
+                "institutional_flow_score": 0.15,
                 "volatility_control_score": 0.05,
                 "risk_penalty": -1.00,
             },
@@ -2330,27 +2298,28 @@ class DoctrineNativeGateBuilder:
     }
 
     # §14.7-CB Stage 4 feature completeness gate(optional;per Reading B convergence verification)
-    # 37 spec features list inherited from apply_feature_completeness_gate.py
-    SPEC_37_FEATURES = [
-        "log_return_20d", "log_return_60d", "log_return_252d",
-        "upside_volatility_60d", "downside_volatility_60d", "convexity_60d",
-        "avg_daily_value_log_60d", "amihud_illiquidity_60d", "zero_volume_ratio_252d",
-        "pe_ratio", "pb_ratio", "dividend_yield",
-        "roe_ttm", "operating_margin_ttm",
-        "revenue_yoy_3m_log", "asset_growth_yoy",
-        "right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
-        "fitness_signal_60d", "right_tail_returns_skew_252d", "liquidity_rank_pct_sector_60d",
-        "size_log_zscore_sector",
-        "kwave_tech_paradigm_strength", "kwave_credit_cycle_phase", "kwave_credit_to_gdp_gap",
-        "kwave_demographics_trend", "kwave_commodity_supercycle", "kwave_phase_indicator",
-        "mc_monetary_regime", "mc_yield_curve_inversion", "mc_oil_juglar_phase",
-        "mc_semi_kitchin", "mc_shipping_juglar",
-        "ms_volatility_regime", "ms_vix_term_structure", "ms_market_stress",
+    # §14.7-DC v0.21 Step E: synced to feature_set_v0.5 SPEC_38(舊 SPEC_37 含 fs_v0.5 不存在之
+    # kwave_*/mc_*/ms_* + 已移除 Tier 4-5 之 right_tail_concentration/barbell/fitness;會全 reject)
+    SPEC_38_FEATURES = [
+        "amihud_illiquidity_60d", "asset_growth_yoy", "avg_daily_value_log_252d",
+        "avg_daily_value_log_60d", "convexity_60d", "dividend_yield",
+        "downside_capture_60d", "downside_volatility_60d", "eps_sum_4q",
+        "foreign_net_20d", "foreign_net_60d", "liquidity_rank_pct_sector_60d",
+        "log_return_20d", "log_return_252d", "log_return_60d",
+        "ma_ratio_20", "ma_ratio_60", "margin_ratio_60d",
+        "max_drawdown_252d", "net_income_positive_ratio_8q", "operating_margin_ttm",
+        "pb_ratio", "pe_ratio", "preferential_attachment_60d",
+        "revenue_yoy_12m", "revenue_yoy_3m", "revenue_yoy_3m_log",
+        "right_tail_returns_skew_252d", "roe_ttm", "size_log_zscore_sector",
+        "trust_net_20d", "trust_net_60d", "turnover_mean_60d",
+        "upside_capture_60d", "upside_volatility_60d", "volatility_252d",
+        "volatility_60d", "zero_volume_ratio_252d",
     ]
 
     POLICY_VERSION_STANDARD = "core_universe_policy_v0.13_doctrine_native_gate"
     POLICY_VERSION_STRICT = "core_universe_policy_v0.14_strict_feature_validity_gate"
     POLICY_VERSION_SUPER_STRICT = "core_universe_policy_v0.15_feature_reasonableness_gate"
+    POLICY_VERSION_SOURCE_PURE = "core_universe_policy_v0.18_source_pure_panhistorical_gate"
 
     # §14.7-CJ(2026-05-28):Feature Reasonableness Gate 之 bounds
     # 對映 audit 揭露之 5 outlier features;真實 API-derived 但 extreme outlier
@@ -2365,15 +2334,20 @@ class DoctrineNativeGateBuilder:
     }
 
     def __init__(self, as_of_date, commit=False, with_feature_gate=False,
-                 with_reasonableness_gate=False, feature_set_id=None):
+                 with_reasonableness_gate=False, with_source_pure_gate=False,
+                 feature_set_id=None):
         self.as_of_date = as_of_date
         self.commit_mode = commit
         self.with_feature_gate = with_feature_gate
         self.with_reasonableness_gate = with_reasonableness_gate
+        self.with_source_pure_gate = with_source_pure_gate
         self.feature_set_id = feature_set_id
         self.stage_results = {}
-        # §14.7-CI v0.14 / §14.7-CJ v0.15 / standard v0.13
-        if with_reasonableness_gate:
+        # §14.7-DC v0.17 / §14.7-CJ v0.15 / §14.7-CI v0.14 / standard v0.13
+        if with_source_pure_gate:
+            assert with_feature_gate, "--with-source-pure-gate requires --with-feature-gate"
+            self.POLICY_VERSION = self.POLICY_VERSION_SOURCE_PURE
+        elif with_reasonableness_gate:
             assert with_feature_gate, "--with-reasonableness-gate requires --with-feature-gate"
             self.POLICY_VERSION = self.POLICY_VERSION_SUPER_STRICT
         elif with_feature_gate:
@@ -2491,7 +2465,7 @@ class DoctrineNativeGateBuilder:
     def _apply_feature_gate(self, cur, qualified):
         """§14.7-CB Stage 4 feature completeness gate(optional;per Reading B convergence verification).
 
-        Filter `qualified` to stocks 同時 pass 37/37 features in feature_values (per feature_set_id).
+        Filter `qualified` to stocks 同時 pass 38/38 features in feature_values (per feature_set_id).
         Returns (filtered_qualified, feature_rejected_reasons).
         """
         if not self.feature_set_id:
@@ -2510,7 +2484,7 @@ class DoctrineNativeGateBuilder:
                FROM feature_values
                WHERE feature_set_id = %s AND feature_name = ANY(%s) AND stock_id = ANY(%s)
                GROUP BY stock_id""",
-            (self.feature_set_id, self.SPEC_37_FEATURES, list(qualified)),
+            (self.feature_set_id, self.SPEC_38_FEATURES, list(qualified)),
         )
         feature_count = dict(cur.fetchall())
 
@@ -2518,10 +2492,10 @@ class DoctrineNativeGateBuilder:
         rejected_reasons = {}
         for sid in qualified:
             n = feature_count.get(sid, 0)
-            if n >= 37:
+            if n >= 38:
                 filtered.append(sid)
             else:
-                rejected_reasons[sid] = f"feature_count={n}<37"
+                rejected_reasons[sid] = f"feature_count={n}<38"
         return filtered, {
             "feature_set_id": self.feature_set_id,
             "n_input": len(qualified),
@@ -2576,7 +2550,63 @@ class DoctrineNativeGateBuilder:
             "bounds": self.REASONABLE_BOUNDS,
         }
 
-    def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist):
+    def _apply_source_pure_gate(self, cur, qualified):
+        """§14.7-DC v0.18 Source-Pure Doctrine gate — PAN-HISTORICAL(doctrine-native path）。
+
+        排除任一 walk-forward 面板中 feature `is_null_imputed=TRUE` 之 stock(無 FinMind/FRED
+        API source per §一.10）。Pan-historical:跨同版 feature_set 全面板(fs_%_<version>)比對,
+        任一面板任一 feature imputed 即排除(point-in-time v0.17 僅比對單一 reference 面板,
+        無法擋住 walk-forward 訓練其他面板帶入之 imputed taint）。
+        Returns (filtered_qualified, audit_info）;audit_info['quarantined'] 為
+        [(stock_id, exclusion_reason), ...] 供 _commit_snapshot 寫 quarantine membership。
+        """
+        if not self.feature_set_id:
+            cur.execute(
+                """SELECT feature_set_id FROM feature_store_snapshot
+                   WHERE status='committed' ORDER BY as_of_date DESC LIMIT 1"""
+            )
+            row = cur.fetchone()
+            if not row:
+                return qualified, {
+                    "_meta": "no committed feature_store_snapshot — skip source-pure gate",
+                    "quarantined": [],
+                }
+            self.feature_set_id = row[0]
+
+        version_part = self.feature_set_id.split("_", 2)[2]  # fs_<date>_<version> → <version>
+        cur.execute(
+            """SELECT stock_id, array_agg(DISTINCT feature_name ORDER BY feature_name)
+               FROM feature_values
+               WHERE feature_set_id LIKE %s AND is_null_imputed = TRUE AND stock_id = ANY(%s)
+               GROUP BY stock_id""",
+            (f"fs_%_{version_part}", list(qualified)),
+        )
+        imputed_map = {sid: feats for sid, feats in cur.fetchall()}
+
+        filtered = []
+        quarantined = []
+        for sid in qualified:
+            if sid in imputed_map:
+                feats = ", ".join(imputed_map[sid])
+                quarantined.append((
+                    sid,
+                    f"§14.7-DC Source-Pure Doctrine (pan-historical): imputed features "
+                    f"[{feats}] in ≥1 walk-forward panel (no FinMind/FRED API source per §一.10)",
+                ))
+            else:
+                filtered.append(sid)
+
+        return filtered, {
+            "feature_set_id": self.feature_set_id,
+            "n_input": len(qualified),
+            "n_output": len(filtered),
+            "n_rejected": len(quarantined),
+            "sample_rejected": [(s, r[:60]) for s, r in quarantined[:5]],
+            "quarantined": quarantined,
+        }
+
+    def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist, quarantined=None):
+        quarantined = quarantined or []
         today_str = self.as_of_date.strftime("%Y%m%d")
         new_snap = f"core_universe_{today_str}_{self.POLICY_VERSION.replace('.', '_')}"
 
@@ -2591,31 +2621,49 @@ class DoctrineNativeGateBuilder:
         print(f"   Old snapshot: {old_snap}")
         print(f"   New snapshot: {new_snap}")
 
+        gates = ["§14.7-CG K-wave+11raw"]
+        if self.with_feature_gate:
+            gates.append("§14.7-CB feature38")
+        if self.with_reasonableness_gate:
+            gates.append("§14.7-CJ reasonable")
+        if self.with_source_pure_gate:
+            gates.append("§14.7-DC source-pure")
+        gate_label = " ∩ ".join(gates)
+
         cur.execute(
             """INSERT INTO core_universe_policy (policy_version, policy_name, description, active, effective_from)
                VALUES (%s, %s, %s, TRUE, CURRENT_DATE)
                ON CONFLICT (policy_version) DO NOTHING""",
             (self.POLICY_VERSION,
-             "§14.7-CG Doctrine Native Gate v0.13",
-             "§14.7-CF 三 invariant 原生實現(Stage 1 K-wave + Stage 2/3 11 raw sources + Stage 4 union)"),
+             f"Doctrine Native Gate ({self.POLICY_VERSION})",
+             f"{gate_label} 原生實現(Stage 1 K-wave + Stage 2/3 11 raw sources + Stage 4 gates union)"),
         )
 
         cur.execute(
             """INSERT INTO core_universe_snapshot
                 (snapshot_id, as_of_date, source_data_cutoff, policy_version,
-                 total_candidates, core_count, status, notes, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, 'committed', %s, NOW())""",
+                 total_candidates, core_count, quarantine_count, status, notes, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, 'committed', %s, NOW())""",
             (new_snap, self.as_of_date, self.as_of_date, self.POLICY_VERSION,
-             n_candidates, len(qualified),
-             f"§14.7-CG Doctrine Native Gate v0.13; superseded {old_snap}"),
+             n_candidates, len(qualified), len(quarantined),
+             f"{gate_label}; superseded {old_snap}; quarantine={len(quarantined)}"),
         )
 
         cur.executemany(
             """INSERT INTO core_universe_membership
                 (snapshot_id, stock_id, core_tier, active, selected_at, selection_reason)
                VALUES (%s, %s, 'core_universe', TRUE, NOW(), %s)""",
-            [(new_snap, sid, "§14.7-CG doctrine native gate verified") for sid in qualified],
+            [(new_snap, sid, f"{gate_label} verified") for sid in qualified],
         )
+
+        if quarantined:
+            cur.executemany(
+                """INSERT INTO core_universe_membership
+                    (snapshot_id, stock_id, core_tier, active, selected_at,
+                     exclusion_reason, train_eligible, predict_eligible, backtest_eligible)
+                   VALUES (%s, %s, 'quarantine', TRUE, NOW(), %s, FALSE, FALSE, FALSE)""",
+                [(new_snap, sid, reason) for sid, reason in quarantined],
+            )
 
         if old_snap:
             cur.execute(
@@ -2624,10 +2672,12 @@ class DoctrineNativeGateBuilder:
             )
 
         detail = json.dumps({
-            "step": "§14.7-CG",
+            "step": "§14.7-CG/DC",
+            "gate_label": gate_label,
             "n_candidates": n_candidates,
             "n_qualified": len(qualified),
-            "n_rejected": n_candidates - len(qualified),
+            "n_quarantined": len(quarantined),
+            "n_rejected": n_candidates - len(qualified) - len(quarantined),
             "reason_hist": reason_hist,
             "stage1_kwave": self.stage_results['stage1'],
         })
@@ -2637,9 +2687,9 @@ class DoctrineNativeGateBuilder:
                  policy_version, snapshot_id, detail, note)
                VALUES (NOW(), 'core_universe_builder_doctrine_native',
                        'doctrine_native_gate', 'snapshot',
-                       %s, %s, %s, %s::jsonb,
-                       '§14.7-CG v0.13: native gate 3 step → 1 program 整合')""",
-            (new_snap, self.POLICY_VERSION, new_snap, detail),
+                       %s, %s, %s, %s::jsonb, %s)""",
+            (new_snap, self.POLICY_VERSION, new_snap, detail,
+             f"{gate_label}: doctrine native gate + source-pure quarantine"),
         )
 
         conn.commit()
@@ -2706,7 +2756,7 @@ class DoctrineNativeGateBuilder:
             # Stage 4 (optional): feature completeness gate per §14.7-CB
             # — Reading B convergence verification mode
             if self.with_feature_gate:
-                print(f"\n[Stage 4-feature] §14.7-CB Feature Completeness Gate (37/37 spec features)")
+                print(f"\n[Stage 4-feature] §14.7-CB Feature Completeness Gate (38/38 spec features)")
                 pre_n = len(qualified)
                 qualified, feature_audit = self._apply_feature_gate(cur, qualified)
                 self.stage_results['stage4_feature'] = feature_audit
@@ -2721,10 +2771,10 @@ class DoctrineNativeGateBuilder:
                     print(f"  (skip) {feature_audit.get('_meta', '')}")
                 if pre_n != len(qualified):
                     print(f"\n📊 [Stage 4 result] Post-feature-gate universe N={len(qualified)} "
-                          f"(removed {pre_n - len(qualified)} stocks lacking 37/37 features)")
+                          f"(removed {pre_n - len(qualified)} stocks lacking 38/38 features)")
                 else:
                     print(f"\n📊 [Stage 4 result] Reading A+C ↔ Reading B 收斂 ✅ "
-                          f"(all {len(qualified)} stocks 37/37 features present)")
+                          f"(all {len(qualified)} stocks 38/38 features present)")
 
             # Stage 4-reasonable (optional / §14.7-CJ):Feature reasonableness bounds
             # — 排除 outlier 之 stocks(per 用戶「特徵值不能用就不入」延伸)
@@ -2747,11 +2797,34 @@ class DoctrineNativeGateBuilder:
                 print(f"\n📊 [Stage 4-reasonable result] Post-reasonableness-gate N={len(qualified)} "
                       f"(removed {pre_n - len(qualified)} stocks with outlier features)")
 
+            # Stage 4-source-pure (optional / §14.7-DC):排除任一 is_null_imputed=TRUE 之 stock
+            # — imputed/self-filled 無 FinMind/FRED API source = AI 幻像值(per §一.10 / §一.13）
+            quarantined = []
+            if self.with_source_pure_gate:
+                print(f"\n[Stage 4-source-pure] §14.7-DC Source-Pure Doctrine Gate")
+                pre_n = len(qualified)
+                qualified, sp_audit = self._apply_source_pure_gate(cur, qualified)
+                self.stage_results['stage4_source_pure'] = sp_audit
+                quarantined = sp_audit.get('quarantined', [])
+                if 'feature_set_id' in sp_audit:
+                    print(f"  feature_set_id: {sp_audit['feature_set_id']}")
+                    print(f"  Input  : {sp_audit['n_input']}")
+                    print(f"  Output : {sp_audit['n_output']}")
+                    print(f"  Quarantined (imputed): {sp_audit['n_rejected']}")
+                    if sp_audit['sample_rejected']:
+                        print(f"  Sample quarantined:")
+                        for sid, reason in sp_audit['sample_rejected'][:3]:
+                            print(f"    {sid}: {reason}")
+                else:
+                    print(f"  (skip) {sp_audit.get('_meta', '')}")
+                print(f"\n📊 [Stage 4-source-pure result] Post-source-pure-gate N={len(qualified)} "
+                      f"(quarantined {pre_n - len(qualified)} stocks with imputed features)")
+
             if not self.commit_mode:
-                print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)}")
+                print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)} / quarantine N={len(quarantined)}")
                 return True
 
-            return self._commit_snapshot(cur, conn, qualified, len(candidates), reason_hist)
+            return self._commit_snapshot(cur, conn, qualified, len(candidates), reason_hist, quarantined=quarantined)
         finally:
             conn.close()
 
@@ -2773,7 +2846,7 @@ def parse_args():
     parser.add_argument(
         "--with-feature-gate",
         action="store_true",
-        help="(§14.7-CI v0.14 strict)apply §14.7-CB feature completeness gate(37/37 features)"
+        help="(§14.7-CI v0.14 strict)apply §14.7-CB feature completeness gate(38/38 features)"
              "after raw layer pass;production model training universe;若 with --with-reasonableness-gate 則升 v0.15",
     )
     parser.add_argument(
@@ -2782,6 +2855,13 @@ def parse_args():
         help="(§14.7-CJ v0.15 super-strict)apply feature value reasonableness bounds"
              "(pe/pb/roe/operating_margin/dividend_yield);必同時 --with-feature-gate;per 用戶 directive"
              "「outlier features 之 stocks 不入核心股」",
+    )
+    parser.add_argument(
+        "--with-source-pure-gate",
+        action="store_true",
+        help="(§14.7-DC v0.18 source-pure PAN-HISTORICAL)排除任一面板 is_null_imputed=TRUE 之 stock"
+             "(imputed/self-filled 無 FinMind/FRED API source = AI 幻像值 per §一.10/§一.13);"
+             "必同時 --with-feature-gate;quarantine membership train/predict/backtest_eligible=FALSE",
     )
     parser.add_argument(
         "--feature-set-id",
@@ -2817,6 +2897,7 @@ def main():
             commit=args.commit,
             with_feature_gate=args.with_feature_gate,
             with_reasonableness_gate=args.with_reasonableness_gate,
+            with_source_pure_gate=args.with_source_pure_gate,
             feature_set_id=args.feature_set_id,
         )
         ok = builder.build()

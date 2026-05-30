@@ -140,7 +140,7 @@ def get_panel_dates():
     dates = []
     current = date(2018, 6, 15)
     while current <= date(2026, 4, 30):
-        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_4", current))
+        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_5", current))
         if current.month == 12: current = date(current.year+1, 1, 15)
         else: current = date(current.year, current.month+1, 15)
     return dates
@@ -367,9 +367,12 @@ def main():
                         help="Comma-separated label horizons in days")
     parser.add_argument("--output", type=str, default=None,
                         help="Output markdown report path")
+    parser.add_argument("--seed", type=int, default=LGB_PARAMS["seed"],
+                        help="§一.10 #3 multi-run seed(canonical 5422;≥3 distinct seeds → min/median/max/mean)")
     args = parser.parse_args()
     if not args.dry_run and not args.commit:
         args.dry_run = True
+    LGB_PARAMS["seed"] = args.seed  # §一.10 #3: inject run seed into frozen params
 
     horizon_days_list = [int(d.strip()) for d in args.horizons.split(",")]
     horizon_labels = []
