@@ -96,6 +96,11 @@ reports/*
 !reports/tree_family_10_model_v*_*.md
 !reports/transformer_dedicated_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
+# Foundation-model(Chronos)deliverable + 共同比較基準定義(§一.10 (a) source-of-truth)
+!reports/common_model_comparison_baseline_*.md
+!reports/chronos_multi_cycle_validation_report_*.md
+!reports/chronos_v0/
+!reports/chronos_v0/chronos_s*.json
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
