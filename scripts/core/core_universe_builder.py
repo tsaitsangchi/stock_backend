@@ -2652,8 +2652,10 @@ class DoctrineNativeGateBuilder:
 
         cur.executemany(
             """INSERT INTO core_universe_membership
-                (snapshot_id, stock_id, core_tier, active, selected_at, selection_reason)
-               VALUES (%s, %s, 'core_universe', TRUE, NOW(), %s)""",
+                (snapshot_id, stock_id, core_tier, active, selected_at, selection_reason,
+                 train_eligible, predict_eligible, backtest_eligible, downstream_ready)
+               VALUES (%s, %s, 'core_universe', TRUE, NOW(), %s,
+                       TRUE, TRUE, TRUE, TRUE)""",
             [(new_snap, sid, f"{gate_label} verified") for sid in qualified],
         )
 
