@@ -911,6 +911,51 @@ PHASE 10(trainer 產 artifacts + registry)與 PHASE 11(validator self-contained 
 
 **證據基礎(本條入憲)**:用戶 2026-05-31 explicit directive「Tree-based(production 主軸)從零開始到模型產生及之後的模型驗証...請依目前的憲章來進行產生,如果有不足的需要先進行憲章的修訂後再修改此報告」+ AskUserQuestion Q1=「現在入憲 §14.7-DD」+ Q2=「修正 B1-B3」之直接入憲。B1+B2 已依 Q2 授權**僅改 code 修正**(py_compile PASS)**未 commit、未 DB write、未 retrain**(commit 仍另需 §二.2 授權)。
 
+### 15. K-wave 多尺度循環思想 — 個股級 Source-Pure 投影治權(§0.3-A 修正案 / §14.7-DC T_DC-30 / 2026-05-31 用戶 explicit directive 入憲)
+
+任何 **K-wave(康波週期)循環思想之個股級投影特徵**(`cycle_phase` / `macro_beta` / 任何循環位置或景氣敏感度 per-stock feature)欲進入 feature store / model,**必須**依主憲章 §0.3-A 多尺度循環思想修正案 + §14.7-DC T_DC-30 執行。本條為該二者之 CLAUDE.md(AI 協作工具規則)雙層治權鎖伙伴(同次入憲);主憲章 §0.3-A 修正案 + T_DC-30 為治權 SSOT,本條為 AI 工具 enforcement。
+
+**1. 循環思想 reframe(thought-level,非特定值)**
+
+K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-60 年週期長度(per 用戶 2026-05-31「不是用 40~60 年,可以用週、月、季、年的週期 cycle 來看這個思想」)。多尺度 calendar 投影:
+
+| 尺度 | rolling window |
+|---|---|
+| **週** | **5d** ⭐ NEW(用戶 explicit) |
+| 月 | 20d |
+| 季 | 60d |
+| 年 | 252d |
+
+40-60 年僅為其一個 macro 尺度觀測(§0.3.1 保留),非思想本身定義(同構 §0.2 Pareto「思想非特定值」)。
+
+**2. 4 條 strict 要件(must ALL hold;任一 fail = 違規,per T_DC-30)**
+
+- **(i) Per-stock 區分性**:跨 stocks `COUNT(DISTINCT value) > 1`(非 broadcast 常數,per §14.7-CK T_CK-1)
+- **(ii) Source-pure**:FinMind / FRED API raw → mathematical transformation;**無** hardcoded dict、**無** hardcoded 週期年限、**無** imputed(`is_null_imputed` 必 FALSE,per §14.7-DC + §一.10 + §一.13)
+- **(iii) 無 hardcoded 週期年限**:rolling window 用 5d/20d/60d/252d calendar conventions(Tier 1,per §0.3-A 禁令 #2);**不得** hardcode 40/60 年
+- **(iv) IC-gated retention**:PHASE 9 cross-sectional IC + sign-stability;ablation `drop_minus_full < -0.01`(per §0.3-E「Macro features 升級成效」gate)否則撤銷,**不得**以「K-wave 思想」維持失效 feature
+
+**3. 允許之 initial feature families(2026-05-31 scope;PHASE 9 IC-gated)**
+
+| family | 定義 | source |
+|---|---|---|
+| **(A) cycle_phase_{5d,20d,60d,252d}** | `(close − rolling_min)/(rolling_max − rolling_min)` | TaiwanStockPriceAdj |
+| **(B) macro_beta_{t10y2y,unrate,ipg3344s}** | 個股 returns 對 FRED 景氣因子變動之 rolling-OLS slope(rolling 252d) | TaiwanStockPriceAdj + fred_series |
+
+**4. L2 戰術層 reconcile(7 禁令維持有效,僅 scope 釐清)**
+
+§0.3-A 7 永久禁令**不撤銷、不削弱**;其禁止 scope = (a) K-wave macro 敘事 +(b) hardcoded 週期參數 +(c) broadcast macro features(§14.7-CK 移除,IC = +0.0336 artifact)。**per-stock source-pure 循環特徵進入 §9.1 model(含 30-day prediction)為允許** —— 預測力由 walk-forward IC 決定(非敘事);為 §14.7-CK T_CK-5 唯一 sanctioned reintroduction path + §0.3-C #2 pre-sanction 之 activation。此為 scope 釐清,非禁令削弱。
+
+**5. honest doctrine-evolution 揭露(per §一.8)**
+
+本修正案含兩處 genuine 演進(非純 activation):(1) K-wave 從「40-60 年 macro 敘事」reframe 為「週/月/季/年多尺度循環思想」;(2) 釐清 per-stock source-pure 循環特徵可進入 L2(§9.1 30 日 model)。features **尚未實作**於 `feature_store_builder.py`(本修正案為 §0.3-A 修憲先行,code 改動為後續 task per 用戶「再改 feature_store_builder.py」);任何 metrics 須俟實跑後 trace 回 (a)(b)(c),本條 0 數據宣稱。
+
+**6. 雙層治權鎖(主憲章 + CLAUDE.md)**
+
+本條 §一.15 + 主憲章 §0.3-A 多尺度循環思想修正案 + §14.7-DC T_DC-30 同次入憲;任一側更新另側未對齊 → §14.7-DC T_DC-6 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-05-31 explicit directive「**康波週期核心思想是指景氣 cycle 及股價的變化 cycle。不是用 40~60 年,可以用週、月、季、年的週期 cycle 來看這個思想**」+「**週(5d)先修憲 §0.3-A + 入憲 → 再改 feature_store_builder.py**」之直接入憲。修憲先行已完成(主憲章 §0.3-A 修正案 L2573 + T_DC-30 L12237 + §0.3-C #2 activation L2662 + §0.3-E gate activation L2689 + 本 §一.15);feature_store_builder.py code 改動為後續 task。**未 commit**(per §二.2 需 explicit 授權)。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)

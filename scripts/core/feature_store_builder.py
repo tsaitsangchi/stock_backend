@@ -100,7 +100,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.6"  # 2026-05-29 §14.7-DC v0.8 MVP v0.21 Step B+C-partial: 移除 5 Tier 4-5 features(theme_strength/theme_is_semiconductor/fitness_signal_60d/barbell_balance_60d/right_tail_concentration_60d)+ THEME_KEYWORDS dict
+TOOL_VER = "v0.7"  # 2026-05-31 §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30: +7 IC-pending K-wave 個股級投影特徵(cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s});null='drop' source-pure;canonical SPEC 仍 37(gate/trainer 不選),7 新特徵俟 PHASE 9 IC-gate(ablation drop_minus_full<-0.01)始 promote。前 v0.6(2026-05-29 §14.7-DC v0.8): 移除 5 Tier 4-5 features + THEME_KEYWORDS dict
 DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.5"  # v0.5 = 38 source-pure features(v0.4 為 43 含 5 Tier 4-5;v0.5 為 §14.7-DC compliant)
 DEFAULT_LABEL_HORIZON = 20
 
@@ -195,6 +195,18 @@ FEATURE_DEFINITIONS = [
     # 加之 v0.2 ablation 已實證 IC = +0.0131 HARMFUL(§0.0-D.6 #1 已否決);
     # → §14.7-CL Feature Canonical Scope Doctrine 正式從 FEATURE_DEFINITIONS 移除
     # (43-feature canonical SPEC:§0.1 29 + §0.2 14)
+    # ── cyclical 群 §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)新增 7 IC-pending features ──
+    # K-wave 循環思想之個股級 source-pure 投影(週/月/季/年 多尺度);null='drop'(無 imputation);
+    # ⚠️ NOT in canonical SPEC_37(core_universe_builder gate / trainer / 既有 audit SPEC 不選);
+    #    俟 PHASE 9 IC-gate(ablation drop_minus_full < -0.01,per §0.3-A 要件 iv / §0.3-E)通過後始
+    #    promote 入 canonical SPEC。寫入 feature_values 僅供 PHASE 9 IC 評估,不影響 §14.7-CB 完整度 gate。
+    {"name": "cycle_phase_5d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "5d", "vtype": "numeric", "null": "drop", "desc": "週尺度股價循環位置=(close−min)/(max−min) over 5d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
+    {"name": "cycle_phase_20d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "20d", "vtype": "numeric", "null": "drop", "desc": "月尺度股價循環位置=(close−min)/(max−min) over 20d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
+    {"name": "cycle_phase_60d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "季尺度股價循環位置=(close−min)/(max−min) over 60d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
+    {"name": "cycle_phase_252d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "年尺度股價循環位置=(close−min)/(max−min) over 252d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
+    {"name": "macro_beta_t10y2y", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔT10Y2Y(殖利率曲線)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
+    {"name": "macro_beta_unrate", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔUNRATE(失業率)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
+    {"name": "macro_beta_ipg3344s", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔIPG3344S(半導體工業生產)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
 ]
 
 # THEME_KEYWORDS dict REMOVED per §14.7-DC v0.8 MVP v0.21 Step C-partial
@@ -651,6 +663,27 @@ class FeatureStoreBuilder:
             "macro_unrate_yoy": unrate_yoy,
         }
 
+    def _load_macro_factor_series(self, cur):
+        """§0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— macro_beta 之 FRED 景氣因子 time series。
+
+        來源 fred_series(§14.7-CC Source Authority Doctrine 唯一來源);3 factors:
+        T10Y2Y(殖利率曲線)/ UNRATE(失業率)/ IPG3344S(半導體工業生產;取代 system-computed proxy)。
+        date <= as_of_date(§8.5 as-of-strict)。回傳 {factor_id: [(date, value), ...]} sorted by date asc。"""
+        factors = ["T10Y2Y", "UNRATE", "IPG3344S"]
+        cur.execute(
+            """
+            SELECT series_id, date, value::numeric
+            FROM fred_series
+            WHERE date <= %s AND series_id = ANY(%s) AND value IS NOT NULL
+            ORDER BY series_id, date
+            """,
+            (self.as_of_date, factors),
+        )
+        out = {}
+        for sid, d, v in cur.fetchall():
+            out.setdefault(sid, []).append((d, float(v)))
+        return out
+
     def _load_macro_extended(self, cur):
         """§14.7-CA Phase C-1c-3(2026-05-27)— §0.3.1/.2/.3 macro features broadcast。
 
@@ -932,6 +965,98 @@ class FeatureStoreBuilder:
                     max_dd = dd
         return max_dd
 
+    @staticmethod
+    def _cycle_phase(closes, n):
+        """§0.3-A 多尺度循環思想 / T_DC-30:股價循環位置 ∈ [0,1] = (close − min) / (max − min) over n 日。
+        n ∈ {5,20,60,252}(週/月/季/年);source-pure(僅 adjusted close min/max);max==min(無波動)→ None。"""
+        if len(closes) < n:
+            return None
+        window = closes[-n:]
+        lo = min(window)
+        hi = max(window)
+        if hi <= lo:
+            return None
+        return (closes[-1] - lo) / (hi - lo)
+
+    @staticmethod
+    def _asof_align(factor_obs, trading_dates):
+        """§8.5 as-of-strict macro alignment:每個 trading_date 取最近 obs_date ≤ trading_date 之 factor value。
+        factor_obs sorted [(date, value)];trading_dates sorted asc;回傳對齊 list(無對應 → None)。
+        ⚠️ 此為合憲 as-of level read(source 仍為真實 obs value,取 ≤ 之最近真值),非 §一.13 禁止之
+        forward-fill 補值(後者 as_of point source 缺失而系統補造);macro 因子發布頻率低於日頻,
+        交易日讀取「當下已知最新真實水準」為標準作法(per 既有 _load_macro / _load_macro_extended)。"""
+        out = []
+        j = 0
+        last_val = None
+        m = len(factor_obs)
+        for td in trading_dates:
+            while j < m and factor_obs[j][0] <= td:
+                last_val = factor_obs[j][1]
+                j += 1
+            out.append(last_val)
+        return out
+
+    @staticmethod
+    def _ols_slope(xs, ys, min_obs=60, var_floor=1e-18):
+        """單變量 OLS 斜率 = Cov(x,y)/Var(x);N < min_obs 或 Var(x) ≤ var_floor(退化/常數)→ None。"""
+        n = len(xs)
+        if n < min_obs or n != len(ys):
+            return None
+        mx = sum(xs) / n
+        my = sum(ys) / n
+        sxx = sum((x - mx) ** 2 for x in xs)
+        if sxx <= var_floor:
+            return None
+        sxy = sum((xs[i] - mx) * (ys[i] - my) for i in range(n))
+        return sxy / sxx
+
+    def _compute_macro_beta_features(self, series, factor_series):
+        """§0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— 個股景氣敏感度 beta。
+
+        個股日 log returns 對 FRED 景氣因子 as-of-aligned 首階差分之 rolling-OLS slope
+        (trailing 252 交易日);source-pure(真實 price returns × 真實 factor level,皆 ≤ as_of_date)。
+        null='drop':N<60 或 Var(Δfactor)≤floor → None → 該 feature 不寫該股(無 imputation)。
+        3 factors:T10Y2Y / UNRATE / IPG3344S。PHASE 9 IC-pending(非 canonical SPEC)。"""
+        result = {"macro_beta_t10y2y": None, "macro_beta_unrate": None, "macro_beta_ipg3344s": None}
+        if not series or len(series) < 61:
+            return result
+        dates = [r[0] for r in series]
+        closes = [r[1] for r in series]
+        rets = []
+        ret_dates = []
+        for i in range(1, len(closes)):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                rets.append(math.log(closes[i] / closes[i - 1]))
+                ret_dates.append(dates[i])
+        if len(rets) < 60:
+            return result
+        if len(rets) > 252:
+            rets = rets[-252:]
+            ret_dates = ret_dates[-252:]
+        factor_map = {
+            "macro_beta_t10y2y": "T10Y2Y",
+            "macro_beta_unrate": "UNRATE",
+            "macro_beta_ipg3344s": "IPG3344S",
+        }
+        for fname, factor_id in factor_map.items():
+            obs = factor_series.get(factor_id, [])
+            if len(obs) < 2:
+                continue
+            aligned = self._asof_align(obs, ret_dates)
+            deltas = []
+            ys = []
+            prev = None
+            for i, lvl in enumerate(aligned):
+                if lvl is None:
+                    prev = None
+                    continue
+                if prev is not None:
+                    deltas.append(lvl - prev)
+                    ys.append(rets[i])
+                prev = lvl
+            result[fname] = self._ols_slope(deltas, ys)
+        return result
+
     def _active_feature_definitions(self):
         """依 feature_set_version 過濾出 active features。
         v0.1: legacy(無 upside/downside split,無 interaction)
@@ -1051,6 +1176,13 @@ class FeatureStoreBuilder:
         else:
             f["convexity_60d"] = None
 
+        # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— 股價循環位置(週/月/季/年)
+        # source-pure price oscillator(Stochastic %K 同構);null='drop';PHASE 9 IC-pending(非 canonical SPEC)
+        f["cycle_phase_5d"] = self._cycle_phase(closes, 5)
+        f["cycle_phase_20d"] = self._cycle_phase(closes, 20)
+        f["cycle_phase_60d"] = self._cycle_phase(closes, 60)
+        f["cycle_phase_252d"] = self._cycle_phase(closes, 252)
+
         # liquidity
         if len(moneys) >= 60:
             avg60 = sum(moneys[-60:]) / 60
@@ -1133,6 +1265,9 @@ class FeatureStoreBuilder:
             # 移除 _load_macro_extended call(per 用戶治權 directive「特徵值不能用就不入」)
             # macro_extended = self._load_macro_extended(cur)  # ⚠️ DEPRECATED per §14.7-CK
             macro_extended = {}  # 空 dict;不對每股 broadcast 14 macro features
+            # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— macro_beta 之 FRED 景氣因子 series
+            self._detail("📥 [LOAD] macro factor series (§0.3-A 多尺度循環 / T_DC-30 macro_beta) ...")
+            macro_factor_series = self._load_macro_factor_series(cur)
         finally:
             cur.close()
             conn.close()
@@ -1180,6 +1315,8 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy(§0.1 100% closure)
             balance_for_sid = balance_data.get(sid, {})
             stock_features["asset_growth_yoy"] = balance_for_sid.get("asset_growth_yoy")
+            # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— macro_beta 景氣敏感度(PHASE 9 IC-pending)
+            stock_features.update(self._compute_macro_beta_features(price_series.get(sid, []), macro_factor_series))
             # v0.2 §0.0-D.6 interaction features REMOVED per §14.7-CL(2026-05-28):
             # ablation IC = +0.0131 HARMFUL + macro deprecated(§14.7-CK)→ dead code 移除
 
@@ -1262,7 +1399,7 @@ class FeatureStoreBuilder:
                 self.universe_snapshot_id, self.policy_version,
                 len(self.core_stocks), len(self._active_feature_definitions()),
                 self.label_horizon,
-                f"feature_store_builder {TOOL_VER}; §8.2 v0.1 草案；27 features × {len(self.core_stocks)} stocks",
+                f"feature_store_builder {TOOL_VER}; {len(self._active_feature_definitions())} features(37 canonical SPEC + 7 §0.3-A 多尺度循環 IC-pending)× {len(self.core_stocks)} stocks",
             ),
         )
 

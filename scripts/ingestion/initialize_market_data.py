@@ -45,7 +45,7 @@ if str(_PROJECT_ROOT / "scripts") not in sys.path:
 try:
     from core.finmind_client import FinMindClient
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
-    from core.data_schema import init_schema
+    from core.data_schema import SovereignSchemaManager
 except ImportError as e:
     print(f"❌ 關鍵初始化錯誤: 核心組件導入失敗 ({e})。")
     sys.exit(1)
@@ -86,7 +86,7 @@ def ensure_infrastructure():
         
         # 3. 建立數據契約表
         logging.info("🛡️ 正在同步數據契約採集表...")
-        init_schema()
+        SovereignSchemaManager().init_tables()
         
     except Exception as e:
         conn.rollback()
