@@ -130,7 +130,7 @@ def get_panel_dates():
 
 
 def load_features(cur, fs_id, universe):
-    cur.execute("SELECT stock_id, feature_name, feature_value::numeric FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s)", (fs_id, list(universe)))
+    cur.execute("SELECT stock_id, feature_name, feature_value::numeric FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s) AND is_null_imputed IS NOT TRUE", (fs_id, list(universe)))
     feat_data = defaultdict(dict)
     for sid, fname, val in cur.fetchall():
         if val is not None and fname in SPEC_43:

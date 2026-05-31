@@ -248,7 +248,7 @@ def fetch_fred_series(
     conn.commit()
     
     latest = get_all_safe_starts(conn, "fred_series", id_col="series_id")
-    flog = FailureLogger("fred_series", db_conn=conn)
+    flog = FailureLogger("fred_series", db_conn=conn, log_to_db=False)
     total_rows = 0
     fetch_mode = fetch_mode_override or "per_stock"
 
@@ -299,7 +299,7 @@ def fetch_fred_series(
             
         except Exception as e:
             dur = int((time.time() - t0) * 1000)
-            flog.record(stock_id=sid, error=str(e), start_date=s, end_date=end)
+            flog.add(sid, str(e), fetch_date_from=s, fetch_date_to=end)
             _write_fetch_log(
                 conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
                 fetch_date_from=s, fetch_date_to=end, rows_inserted=0, 
@@ -307,7 +307,9 @@ def fetch_fred_series(
             )
             
     logger.info(f"  [fred_series] 總共寫入 {total_rows} 筆")
-    flog.summary()
+    if flog.has_failures():
+        failed = flog.dump()
+        logger.warning(f"  [fred_series] {len(failed)} 個 series 失敗：{[f.get('stock_id') for f in failed]}")
 
 
 # ─────────────────────────────────────────────

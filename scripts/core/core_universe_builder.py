@@ -2335,13 +2335,14 @@ class DoctrineNativeGateBuilder:
 
     def __init__(self, as_of_date, commit=False, with_feature_gate=False,
                  with_reasonableness_gate=False, with_source_pure_gate=False,
-                 feature_set_id=None):
+                 feature_set_id=None, bootstrap=False):
         self.as_of_date = as_of_date
         self.commit_mode = commit
         self.with_feature_gate = with_feature_gate
         self.with_reasonableness_gate = with_reasonableness_gate
         self.with_source_pure_gate = with_source_pure_gate
         self.feature_set_id = feature_set_id
+        self.bootstrap = bootstrap
         self.stage_results = {}
         # §14.7-DC v0.17 / §14.7-CJ v0.15 / §14.7-CI v0.14 / standard v0.13
         if with_source_pure_gate:
@@ -2354,6 +2355,10 @@ class DoctrineNativeGateBuilder:
             self.POLICY_VERSION = self.POLICY_VERSION_STRICT
         else:
             self.POLICY_VERSION = self.POLICY_VERSION_STANDARD
+        # §14.7-AM from-zero transitional bootstrap:distinct policy suffix so the
+        # pre-sync snapshot won't collide with the post-sync final build's snapshot PK
+        if bootstrap:
+            self.POLICY_VERSION = self.POLICY_VERSION + "_bootstrap"
 
     def _check_kwave_market(self, cur):
         cur.execute(
@@ -2370,8 +2375,12 @@ class DoctrineNativeGateBuilder:
         return len(missing) == 0
 
     def _get_candidate_set(self, cur):
+        # 個股宇宙不含指數系列(類指數 / 加權指數 / 櫃買指數);與 get_core_stocks_from_db
+        # 之 resolution-time 過濾 ("Index","大盤") 對齊,避免指數被當成 candidate / member
         cur.execute(
-            'SELECT DISTINCT stock_id FROM "TaiwanStockInfo" WHERE industry_category IS NOT NULL'
+            'SELECT DISTINCT stock_id FROM "TaiwanStockInfo" '
+            "WHERE industry_category IS NOT NULL "
+            "AND industry_category NOT IN ('Index', '大盤')"
         )
         return sorted([r[0] for r in cur.fetchall()])
 
@@ -2606,8 +2615,9 @@ class DoctrineNativeGateBuilder:
             "quarantined": quarantined,
         }
 
-    def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist, quarantined=None):
+    def _commit_snapshot(self, cur, conn, qualified, n_candidates, reason_hist, quarantined=None, research=None):
         quarantined = quarantined or []
+        research = research or []
         today_str = self.as_of_date.strftime("%Y%m%d")
         new_snap = f"core_universe_{today_str}_{self.POLICY_VERSION.replace('.', '_')}"
 
@@ -2643,11 +2653,11 @@ class DoctrineNativeGateBuilder:
         cur.execute(
             """INSERT INTO core_universe_snapshot
                 (snapshot_id, as_of_date, source_data_cutoff, policy_version,
-                 total_candidates, core_count, quarantine_count, status, notes, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, 'committed', %s, NOW())""",
+                 total_candidates, core_count, quarantine_count, research_count, status, notes, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'committed', %s, NOW())""",
             (new_snap, self.as_of_date, self.as_of_date, self.POLICY_VERSION,
-             n_candidates, len(qualified), len(quarantined),
-             f"{gate_label}; superseded {old_snap}; quarantine={len(quarantined)}"),
+             n_candidates, len(qualified), len(quarantined), len(research),
+             f"{gate_label}; superseded {old_snap}; quarantine={len(quarantined)}; research={len(research)}"),
         )
 
         cur.executemany(
@@ -2668,6 +2678,15 @@ class DoctrineNativeGateBuilder:
                 [(new_snap, sid, reason) for sid, reason in quarantined],
             )
 
+        if research:
+            cur.executemany(
+                """INSERT INTO core_universe_membership
+                    (snapshot_id, stock_id, core_tier, active, selected_at,
+                     exclusion_reason, train_eligible, predict_eligible, backtest_eligible)
+                   VALUES (%s, %s, 'research_universe', TRUE, NOW(), %s, FALSE, FALSE, FALSE)""",
+                [(new_snap, sid, reason) for sid, reason in research],
+            )
+
         if old_snap:
             cur.execute(
                 "UPDATE core_universe_snapshot SET status='superseded' WHERE snapshot_id=%s",
@@ -2680,7 +2699,8 @@ class DoctrineNativeGateBuilder:
             "n_candidates": n_candidates,
             "n_qualified": len(qualified),
             "n_quarantined": len(quarantined),
-            "n_rejected": n_candidates - len(qualified) - len(quarantined),
+            "n_research": len(research),
+            "n_rejected": n_candidates - len(qualified) - len(quarantined) - len(research),
             "reason_hist": reason_hist,
             "stage1_kwave": self.stage_results['stage1'],
         })
@@ -2697,7 +2717,8 @@ class DoctrineNativeGateBuilder:
 
         conn.commit()
         print(f"   ✅ COMMIT done")
-        print(f"   Snapshot: {new_snap} (N={len(qualified)})")
+        print(f"   Snapshot: {new_snap} "
+              f"(core={len(qualified)} / quarantine={len(quarantined)} / research={len(research)})")
         return True
 
     def build(self):
@@ -2823,11 +2844,28 @@ class DoctrineNativeGateBuilder:
                 print(f"\n📊 [Stage 4-source-pure result] Post-source-pure-gate N={len(qualified)} "
                       f"(quarantined {pre_n - len(qualified)} stocks with imputed features)")
 
+            # §14.7-AM from-zero transitional bootstrap:在尚無市場資料時所有 candidate 因
+            # raw-threshold 全 reject → qualified 近乎空。為破「雞與蛋」(PHASE 4 --universe full
+            # 需有 committed membership 才能 resolve),將所有未 qualified/quarantine 之 candidate
+            # 寫為 research_universe transitional 成員(research_universe ∈ UNIVERSE_TIERS["full"]),
+            # 供 PHASE 4 全市場同步 resolve;PHASE 6 真實資料 final build 會 supersede 本 snapshot。
+            research = []
+            if self.bootstrap:
+                excluded = set(qualified) | {sid for sid, _ in quarantined}
+                boot_reason = ("§14.7-AM from-zero transitional bootstrap (pre-sync; no raw data yet); "
+                               "research_universe so --universe full resolves all candidates for PHASE 4; "
+                               "superseded by final build")
+                research = [(sid, boot_reason) for sid in candidates if sid not in excluded]
+                print(f"\n🌱 [Bootstrap] §14.7-AM transitional: {len(research)} candidates → research_universe "
+                      f"(qualified={len(qualified)} / quarantine={len(quarantined)})")
+
             if not self.commit_mode:
-                print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)} / quarantine N={len(quarantined)}")
+                print(f"\n[DRY-RUN] no DB write — qualified N={len(qualified)} / "
+                      f"quarantine N={len(quarantined)} / research N={len(research)}")
                 return True
 
-            return self._commit_snapshot(cur, conn, qualified, len(candidates), reason_hist, quarantined=quarantined)
+            return self._commit_snapshot(cur, conn, qualified, len(candidates), reason_hist,
+                                         quarantined=quarantined, research=research)
         finally:
             conn.close()
 
@@ -2867,6 +2905,14 @@ def parse_args():
              "必同時 --with-feature-gate;quarantine membership train/predict/backtest_eligible=FALSE",
     )
     parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="(§14.7-AM from-zero transitional)空 DB 重建用:raw 資料尚未同步時所有 candidate 因"
+             "threshold 全 reject,將未 qualified/quarantine 之 candidate 寫為 research_universe"
+             "transitional 成員,使 PHASE 4 --universe full 可 resolve 全候選集;policy 加 _bootstrap"
+             "後綴避免與 final build 之 snapshot PK 衝突;PHASE 6 真實資料 final build 會 supersede",
+    )
+    parser.add_argument(
         "--feature-set-id",
         type=str,
         default=None,
@@ -2902,6 +2948,7 @@ def main():
             with_reasonableness_gate=args.with_reasonableness_gate,
             with_source_pure_gate=args.with_source_pure_gate,
             feature_set_id=args.feature_set_id,
+            bootstrap=args.bootstrap,
         )
         ok = builder.build()
         sys.exit(0 if ok else 1)

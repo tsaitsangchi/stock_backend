@@ -150,7 +150,7 @@ def load_features(cur, fs_id, universe):
     """Load (X, sids) for given panel — features only"""
     cur.execute("""
         SELECT stock_id, feature_name, feature_value::numeric
-        FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s)
+        FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s) AND is_null_imputed IS NOT TRUE
     """, (fs_id, list(universe)))
     feat_data = defaultdict(dict)
     for sid, fname, val in cur.fetchall():

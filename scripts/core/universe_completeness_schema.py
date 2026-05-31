@@ -121,7 +121,7 @@ UNIVERSE_COMPLETENESS_REGISTRY = {
         },
         "primary_key": ["snapshot_id", "stock_id", "pillar", "layer"],
         "check_constraints": [
-            ("ck_completeness_pillar", "pillar IN ('first_principle', 'pareto', 'kondratiev')"),
+            ("ck_completeness_pillar", "pillar IN ('first_principle', 'pareto', 'kondratiev', 'kondratiev_kwave', 'kondratiev_multicycle', 'kondratiev_microstructure')"),
             ("ck_completeness_layer", "layer IN ('data', 'feature', 'model', 'prediction')"),
             ("ck_completeness_pct", "completeness_pct BETWEEN 0 AND 100"),
         ],
@@ -137,9 +137,11 @@ UNIVERSE_COMPLETENESS_REGISTRY = {
 }
 
 MATERIALIZED_VIEW_NAME = "universe_completeness_matrix_current"
+# Walk-forward rebuilds bind many panel-completeness snapshots to one committed
+# universe; DISTINCT ON keeps the latest completeness per (stock,pillar,layer).
 MATERIALIZED_VIEW_DDL = """
 CREATE MATERIALIZED VIEW "universe_completeness_matrix_current" AS
-SELECT
+SELECT DISTINCT ON (c.stock_id, c.pillar, c.layer)
     c.stock_id,
     c.pillar,
     c.layer,
@@ -158,6 +160,7 @@ WHERE u.status = 'committed'
   AND u.as_of_date = (
       SELECT MAX(as_of_date) FROM "core_universe_snapshot" WHERE status = 'committed'
   )
+ORDER BY c.stock_id, c.pillar, c.layer, c.as_of_date DESC, c.computed_at DESC
 """.strip()
 
 MATERIALIZED_VIEW_UNIQUE_INDEX = (
