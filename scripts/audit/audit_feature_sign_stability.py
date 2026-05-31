@@ -88,7 +88,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
                     handlers=[logging.StreamHandler(sys.stdout)])
 
-# 43 SPEC features per §14.7-CL canonical scope
+# 37 SPEC features per §14.7-CL canonical scope(v0_5;§0.2.C theme + 3 Pareto AI 幻像 removed §14.7-DC)
 SPEC_43 = [
     ("§0.1.A 動量", ["log_return_20d", "log_return_60d", "log_return_252d",
                     "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d"]),
@@ -96,19 +96,18 @@ SPEC_43 = [
                     "volatility_60d", "volatility_252d",
                     "upside_capture_60d", "downside_capture_60d"]),
     ("§0.1.C 流動性", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                     "amihud_illiquidity_60d", "zero_volume_ratio_252d", "turnover_mean_60d"]),
+                     "zero_volume_ratio_252d", "turnover_mean_60d"]),
     ("§0.1.D 估值", ["pe_ratio", "pb_ratio", "dividend_yield"]),
     ("§0.1.E 質量", ["roe_ttm", "operating_margin_ttm",
                     "eps_sum_4q", "net_income_positive_ratio_8q"]),
     ("§0.1.F 投資", ["revenue_yoy_3m_log", "asset_growth_yoy",
                     "revenue_yoy_3m", "revenue_yoy_12m"]),
-    ("§0.2.A Pareto", ["right_tail_concentration_60d", "barbell_balance_60d",
-                       "preferential_attachment_60d", "fitness_signal_60d",
+    ("§0.2.A Pareto", ["preferential_attachment_60d",
                        "right_tail_returns_skew_252d",
                        "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"]),
     ("§0.2.B 法人", ["foreign_net_20d", "foreign_net_60d",
                     "trust_net_20d", "trust_net_60d", "margin_ratio_60d"]),
-    ("§0.2.C 主題", ["theme_strength", "theme_is_semiconductor"]),
+    # §0.2.C 主題 removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 ]
 
 # Literature sign:per builder FEATURE_DEFINITIONS + Phase A research (§14.7-CA)
@@ -126,9 +125,8 @@ LITERATURE_SIGN = {
     "convexity_60d": "+",  # v6.13.1: §9.10 RMS asymmetry → 凸性正向(上行 > 下行)
     "volatility_60d": "+", "volatility_252d": "+",
     "upside_capture_60d": "+", "downside_capture_60d": "+",
-    # Liquidity: amihud illiquidity premium(US literature dominant)
+    # Liquidity
     "avg_daily_value_log_60d": "+", "avg_daily_value_log_252d": "+",
-    "amihud_illiquidity_60d": "+",  # v6.13.1: Amihud 2002 dominant lit;TW 反向見 TW_EMPIRICAL_SIGN
     "zero_volume_ratio_252d": "-",
     "turnover_mean_60d": "+",
     # Value: Fama-French HML(US dominant — low P/E wins)
@@ -142,9 +140,7 @@ LITERATURE_SIGN = {
     "revenue_yoy_3m_log": "+", "asset_growth_yoy": "-",
     "revenue_yoy_3m": "+", "revenue_yoy_12m": "+",
     # Pareto:
-    "right_tail_concentration_60d": "+",
-    "barbell_balance_60d": "+",  # §14.7-CQ v6.13.0: §9.2 barbell theory positive
-    "preferential_attachment_60d": "+", "fitness_signal_60d": "+",
+    "preferential_attachment_60d": "+",
     "right_tail_returns_skew_252d": "+",  # v6.13.1: Kelly-Jiang 2014 positive skew premium
     "liquidity_rank_pct_sector_60d": "+",
     "size_log_zscore_sector": "-",  # v6.13.1: Fama-French SMB original — small wins → high size = "-"
@@ -152,8 +148,6 @@ LITERATURE_SIGN = {
     "foreign_net_20d": "+", "foreign_net_60d": "+",
     "trust_net_20d": "-", "trust_net_60d": "-",
     "margin_ratio_60d": "+",
-    # Theme: positive
-    "theme_strength": "+", "theme_is_semiconductor": "+",
 }
 
 
@@ -163,6 +157,24 @@ def spearman_ic(x, y):
     if np.std(rx) < 1e-10 or np.std(ry) < 1e-10:
         return None
     return float(np.corrcoef(rx, ry)[0, 1])
+
+
+def pick_forward_window(cur, fwd_days):
+    """Dynamically select (t0, t1, fs_id) so this audit survives a from-zero rebuild
+    (per §14.7-DD):t1 = latest adj price date;t0 = newest feature snapshot ≥ fwd_days+7
+    calendar days before t1(fallback = earliest snapshot)。無 hardcoded snapshot/date。"""
+    cur.execute('SELECT MAX(date) FROM "TaiwanStockPriceAdj"')
+    t1 = cur.fetchone()[0]
+    cur.execute("""
+        SELECT feature_set_id, as_of_date FROM feature_store_snapshot
+        WHERE as_of_date <= (%s::date - (%s || ' days')::interval)
+        ORDER BY as_of_date DESC LIMIT 1
+    """, (t1, fwd_days + 7))
+    row = cur.fetchone()
+    if not row:
+        cur.execute("SELECT feature_set_id, as_of_date FROM feature_store_snapshot ORDER BY as_of_date ASC LIMIT 1")
+        row = cur.fetchone()
+    return row[1], t1, row[0]
 
 
 def compute_window_ic(cur, t0, t1, fs_id, universe):
@@ -260,18 +272,20 @@ def main():
         universe = {r[0] for r in cur.fetchall()}
 
         logger.info("=" * 130)
-        logger.info("§14.7-CO Feature Sign Stability Audit — 43 features × sign verdict + literature consistency")
+        logger.info("§14.7-CO Feature Sign Stability Audit — 37 features × sign verdict + literature consistency")
         logger.info("=" * 130)
         logger.info(f"Universe: {len(universe)} stocks(§14.7-CJ super-strict)")
-        logger.info("Computing Window 1: fs_20260430 → 2026-05-20(14d)...")
-        ic_w1 = compute_window_ic(cur, '2026-04-30', '2026-05-20',
-                                   'fs_20260430_feature_set_v0_4', universe)
-        logger.info("Computing Window 2: fs_20260506 → 2026-05-20(10d)...")
-        ic_w2 = compute_window_ic(cur, '2026-05-06', '2026-05-20',
-                                   'fs_20260506_feature_set_v0_4', universe)
-        logger.info("Computing Window 3: fs_20260316 → 2026-04-30(30d)...")
-        ic_w3 = compute_window_ic(cur, '2026-03-16', '2026-04-30',
-                                   'fs_20260316_feature_set_v0_4', universe)
+        # Forward-IC windows — dynamically chosen so this audit survives a from-zero
+        # rebuild(per §14.7-DD;no hardcoded snapshot id / date)
+        t0_1, t1_1, fs_1 = pick_forward_window(cur, 14)
+        logger.info(f"Computing Window 1: {fs_1} {t0_1} → {t1_1}(~14d)...")
+        ic_w1 = compute_window_ic(cur, t0_1, t1_1, fs_1, universe)
+        t0_2, t1_2, fs_2 = pick_forward_window(cur, 10)
+        logger.info(f"Computing Window 2: {fs_2} {t0_2} → {t1_2}(~10d)...")
+        ic_w2 = compute_window_ic(cur, t0_2, t1_2, fs_2, universe)
+        t0_3, t1_3, fs_3 = pick_forward_window(cur, 30)
+        logger.info(f"Computing Window 3: {fs_3} {t0_3} → {t1_3}(~30d)...")
+        ic_w3 = compute_window_ic(cur, t0_3, t1_3, fs_3, universe)
 
         # Per-feature analysis
         logger.info("\n" + "=" * 150)

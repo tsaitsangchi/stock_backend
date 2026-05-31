@@ -94,24 +94,23 @@ SPEC_43 = [
     ("§0.1.B 波動(7)", ["upside_volatility_60d", "downside_volatility_60d", "convexity_60d",
                        "volatility_60d", "volatility_252d",
                        "upside_capture_60d", "downside_capture_60d"]),
-    ("§0.1.C 流動性(5)", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                        "amihud_illiquidity_60d", "zero_volume_ratio_252d", "turnover_mean_60d"]),
+    ("§0.1.C 流動性(4)", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
+                        "zero_volume_ratio_252d", "turnover_mean_60d"]),
     ("§0.1.D 估值(3)", ["pe_ratio", "pb_ratio", "dividend_yield"]),
     ("§0.1.E 質量(4)", ["roe_ttm", "operating_margin_ttm",
                        "eps_sum_4q", "net_income_positive_ratio_8q"]),
     ("§0.1.F 投資(4)", ["revenue_yoy_3m_log", "asset_growth_yoy",
                        "revenue_yoy_3m", "revenue_yoy_12m"]),
-    ("§0.2.A Pareto(7)", ["right_tail_concentration_60d", "barbell_balance_60d",
-                          "preferential_attachment_60d", "fitness_signal_60d",
+    ("§0.2.A Pareto(4)", ["preferential_attachment_60d",
                           "right_tail_returns_skew_252d",
                           "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"]),
     ("§0.2.B 法人(5)", ["foreign_net_20d", "foreign_net_60d",
                        "trust_net_20d", "trust_net_60d", "margin_ratio_60d"]),
-    ("§0.2.C 主題(2)", ["theme_strength", "theme_is_semiconductor"]),
+    # §0.2.C 主題 removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 ]
 
 # Path A: literature/theoretical support per builder FEATURE_DEFINITIONS descriptions
-# 全 43 features 皆有 doctrine selection rationale per §14.7-CA Phase A research
+# 全 37 features 皆有 doctrine selection rationale per §14.7-CA Phase A research
 LITERATURE_REF = {
     "log_return_20d": "Jegadeesh-Titman 1993",
     "log_return_60d": "Jegadeesh-Titman 1993",
@@ -128,7 +127,6 @@ LITERATURE_REF = {
     "downside_capture_60d": "§9.9 C downside capture",
     "avg_daily_value_log_60d": "Liquidity premium",
     "avg_daily_value_log_252d": "LT liquidity",
-    "amihud_illiquidity_60d": "Amihud 2002(TW IC +0.04~0.06 OOS)",
     "zero_volume_ratio_252d": "Stale price proxy",
     "turnover_mean_60d": "Turnover signal",
     "pe_ratio": "Fama-French HML(TW IC -0.02~-0.04 OOS)",
@@ -142,10 +140,7 @@ LITERATURE_REF = {
     "asset_growth_yoy": "Cooper-Gulen-Schill 2008(TW IC -0.05 OOS)",
     "revenue_yoy_3m": "Revenue momentum",
     "revenue_yoy_12m": "LT revenue trend",
-    "right_tail_concentration_60d": "Pareto distribution(TW IC +0.015 OOS)",
-    "barbell_balance_60d": "§9.2 barbell theory",
     "preferential_attachment_60d": "Barabási-Albert 1999(TW IC +0.015 OOS)",
-    "fitness_signal_60d": "Bianconi-Barabási 2001(TW IC +0.02 OOS)",
     "right_tail_returns_skew_252d": "Tail asymmetry(TW IC ±0.02 regime-dep)",
     "liquidity_rank_pct_sector_60d": "Sector Pareto(TW IC +0.015 OOS)",
     "size_log_zscore_sector": "Fama-French SMB(TW IC ±0.01 regime)",
@@ -154,8 +149,6 @@ LITERATURE_REF = {
     "trust_net_20d": "Investment trust flow(contrarian)",
     "trust_net_60d": "LT investment trust flow",
     "margin_ratio_60d": "Margin sentiment",
-    "theme_strength": "Theme rotation",
-    "theme_is_semiconductor": "Industry semi flag",
 }
 
 
@@ -203,6 +196,24 @@ def compute_window_ic(cur, t0, t1, fs_id, universe):
             sig = "✅" if abs(t) > 1.96 else ("△" if abs(t) > 1.645 else "—")
             out[fname] = (ic, t, sig)
     return out, len(fwd)
+
+
+def pick_forward_window(cur, fwd_days):
+    """Dynamically select (t0, t1, fs_id) for a forward-IC window so this audit survives a
+    from-zero rebuild(per §14.7-DD):t1 = latest adj price date;t0 = newest feature snapshot
+    ≥ fwd_days+7 calendar days before t1(fallback = earliest snapshot)。無 hardcoded snapshot/date。"""
+    cur.execute('SELECT MAX(date) FROM "TaiwanStockPriceAdj"')
+    t1 = cur.fetchone()[0]
+    cur.execute("""
+        SELECT feature_set_id, as_of_date FROM feature_store_snapshot
+        WHERE as_of_date <= (%s::date - (%s || ' days')::interval)
+        ORDER BY as_of_date DESC LIMIT 1
+    """, (t1, fwd_days + 7))
+    row = cur.fetchone()
+    if not row:
+        cur.execute("SELECT feature_set_id, as_of_date FROM feature_store_snapshot ORDER BY as_of_date ASC LIMIT 1")
+        row = cur.fetchone()
+    return row[1], t1, row[0]
 
 
 def classify_necessity(fname, has_lit, ic1_sig, ic2_sig, in_spec):
@@ -257,19 +268,19 @@ def main():
         universe = {r[0] for r in cur.fetchall()}
 
         logger.info("=" * 130)
-        logger.info("§14.7-CN Feature Necessity Audit — 43 features × 4-path necessity verdict")
+        logger.info("§14.7-CN Feature Necessity Audit — 37 features × 4-path necessity verdict")
         logger.info("=" * 130)
         logger.info(f"Universe: {len(universe)} current core stocks(§14.7-CJ super-strict)")
         logger.info(f"4 paths: A=Literature support / B=Empirical W1 / B'=Empirical W2 / C=Doctrine SPEC")
 
-        # Window 1
-        logger.info("Computing Window 1: fs_20260430 → 2026-05-20(14d forward)...")
-        ic1, n1 = compute_window_ic(cur, '2026-04-30', '2026-05-20',
-                                     'fs_20260430_feature_set_v0_4_ablation_20260430', universe)
-        # Window 2
-        logger.info("Computing Window 2: fs_20260506 → 2026-05-20(10d forward)...")
-        ic2, n2 = compute_window_ic(cur, '2026-05-06', '2026-05-20',
-                                     'fs_20260506_feature_set_v0_4', universe)
+        # Forward-IC windows — dynamically chosen so this audit survives a from-zero
+        # rebuild(per §14.7-DD;no hardcoded snapshot id / date)
+        t0_1, t1_1, fs_1 = pick_forward_window(cur, 14)
+        logger.info(f"Computing Window 1: {fs_1} {t0_1} → {t1_1}(~14d forward)...")
+        ic1, n1 = compute_window_ic(cur, t0_1, t1_1, fs_1, universe)
+        t0_2, t1_2, fs_2 = pick_forward_window(cur, 10)
+        logger.info(f"Computing Window 2: {fs_2} {t0_2} → {t1_2}(~10d forward)...")
+        ic2, n2 = compute_window_ic(cur, t0_2, t1_2, fs_2, universe)
 
         in_spec_set = set()
         for _, fnames in SPEC_43:

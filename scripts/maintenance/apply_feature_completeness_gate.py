@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 SPEC_37_FEATURES = [
     "log_return_20d", "log_return_60d", "log_return_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d",
-    "avg_daily_value_log_60d", "amihud_illiquidity_60d", "zero_volume_ratio_252d",
+    "avg_daily_value_log_60d", "zero_volume_ratio_252d",
     "pe_ratio", "pb_ratio", "dividend_yield",
     "roe_ttm", "operating_margin_ttm",
     "revenue_yoy_3m_log", "asset_growth_yoy",

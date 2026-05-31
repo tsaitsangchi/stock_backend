@@ -86,21 +86,20 @@ SPEC_43 = [
                            "volatility_60d", "volatility_252d",
                            "upside_capture_60d", "downside_capture_60d"]),
     ("§0.1.C Liquidity", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                          "amihud_illiquidity_60d", "zero_volume_ratio_252d",
+                          "zero_volume_ratio_252d",
                           "turnover_mean_60d"]),
     ("§0.1.D Value", ["pe_ratio", "pb_ratio", "dividend_yield"]),
     ("§0.1.E Quality", ["roe_ttm", "operating_margin_ttm",
                         "eps_sum_4q", "net_income_positive_ratio_8q"]),
     ("§0.1.F Investment", ["revenue_yoy_3m_log", "asset_growth_yoy",
                            "revenue_yoy_3m", "revenue_yoy_12m"]),
-    ("§0.2.A Pareto", ["right_tail_concentration_60d", "barbell_balance_60d",
-                       "preferential_attachment_60d", "fitness_signal_60d",
+    ("§0.2.A Pareto", ["preferential_attachment_60d",
                        "right_tail_returns_skew_252d",
                        "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"]),
     ("§0.2.B Institutional", ["foreign_net_20d", "foreign_net_60d",
                               "trust_net_20d", "trust_net_60d",
                               "margin_ratio_60d"]),
-    ("§0.2.C Theme", ["theme_strength", "theme_is_semiconductor"]),
+    # §0.2.C Theme removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 ]
 
 

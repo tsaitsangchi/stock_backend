@@ -71,29 +71,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # 4 interaction features removed per §14.7-CL(IC = +0.0131 HARMFUL ablation + macro deprecated)
 # § Final canonical scope:§0.1 29 + §0.2 14 = 43 per-stock model-trainable features
 SPEC_FEATURES = {
-    # ── §0.1 第一性原理 — 29 features ────────────────────────────────────────
+    # ── §0.1 第一性原理 — 28 features ────────────────────────────────────────
     "§0.1.A Momentum (6)": ["log_return_20d", "log_return_60d", "log_return_252d",
                             "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d"],
     "§0.1.B Volatility (7)": ["upside_volatility_60d", "downside_volatility_60d", "convexity_60d",
                               "volatility_60d", "volatility_252d",
                               "upside_capture_60d", "downside_capture_60d"],
-    "§0.1.C Liquidity (5)": ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                             "amihud_illiquidity_60d", "zero_volume_ratio_252d",
+    "§0.1.C Liquidity (4)": ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
+                             "zero_volume_ratio_252d",
                              "turnover_mean_60d"],
     "§0.1.D Value (3)": ["pe_ratio", "pb_ratio", "dividend_yield"],
     "§0.1.E Quality (4)": ["roe_ttm", "operating_margin_ttm",
                            "eps_sum_4q", "net_income_positive_ratio_8q"],
     "§0.1.F Investment (4)": ["revenue_yoy_3m_log", "asset_growth_yoy",
                               "revenue_yoy_3m", "revenue_yoy_12m"],
-    # ── §0.2 八二法則 — 14 features ──────────────────────────────────────────
-    "§0.2.A Pareto explicit (7)": ["right_tail_concentration_60d", "barbell_balance_60d",
-                                    "preferential_attachment_60d", "fitness_signal_60d",
+    # ── §0.2 八二法則 — 9 features ───────────────────────────────────────────
+    "§0.2.A Pareto explicit (4)": ["preferential_attachment_60d",
                                     "right_tail_returns_skew_252d",
                                     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"],
     "§0.2.B Institutional flow (5)": ["foreign_net_20d", "foreign_net_60d",
                                        "trust_net_20d", "trust_net_60d",
                                        "margin_ratio_60d"],
-    "§0.2.C Theme alignment (2)": ["theme_strength", "theme_is_semiconductor"],
+    # §0.2.C Theme alignment removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 }
 
 # 合理 range(per feature semantic)— for correctness check
@@ -107,7 +106,7 @@ FEATURE_RANGES = {
     "upside_capture_60d": (0, 0.2), "downside_capture_60d": (0, 0.2),
     # §0.1.C Liquidity
     "avg_daily_value_log_60d": (3, 12), "avg_daily_value_log_252d": (3, 12),
-    "amihud_illiquidity_60d": (0, 1e-3), "zero_volume_ratio_252d": (0, 1),
+    "zero_volume_ratio_252d": (0, 1),
     # turnover_mean_60d: raw counts, range omitted
     # §0.1.D Value
     "pe_ratio": (0, 1000), "pb_ratio": (0, 50), "dividend_yield": (0, 30),
@@ -118,13 +117,10 @@ FEATURE_RANGES = {
     "revenue_yoy_3m_log": (-10, 10), "asset_growth_yoy": (-1, 10),
     "revenue_yoy_3m": (-1, 1000), "revenue_yoy_12m": (-1, 1000),
     # §0.2.A Pareto
-    "right_tail_concentration_60d": (0, 1), "barbell_balance_60d": (0, 1),
-    "preferential_attachment_60d": (3, 14), "fitness_signal_60d": (-1e5, 1e5),  # cube-root 可為負(foreign_ratio<0)
+    "preferential_attachment_60d": (3, 14),
     "right_tail_returns_skew_252d": (-10, 10),
     "liquidity_rank_pct_sector_60d": (0, 1), "size_log_zscore_sector": (-5, 5),
     # §0.2.B Institutional flow: raw shares/balance, range omitted(wide dynamic range)
-    # §0.2.C Theme alignment
-    "theme_strength": (0, 1.01), "theme_is_semiconductor": (0, 1.01),
     # §0.3 14 broadcast features removed per §14.7-CK + 4 interaction removed per §14.7-CL
 }
 

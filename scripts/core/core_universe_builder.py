@@ -2301,7 +2301,7 @@ class DoctrineNativeGateBuilder:
     # §14.7-DC v0.21 Step E: synced to feature_set_v0.5 SPEC_38(舊 SPEC_37 含 fs_v0.5 不存在之
     # kwave_*/mc_*/ms_* + 已移除 Tier 4-5 之 right_tail_concentration/barbell/fitness;會全 reject)
     SPEC_38_FEATURES = [
-        "amihud_illiquidity_60d", "asset_growth_yoy", "avg_daily_value_log_252d",
+        "asset_growth_yoy", "avg_daily_value_log_252d",
         "avg_daily_value_log_60d", "convexity_60d", "dividend_yield",
         "downside_capture_60d", "downside_volatility_60d", "eps_sum_4q",
         "foreign_net_20d", "foreign_net_60d", "liquidity_rank_pct_sector_60d",
@@ -2490,12 +2490,13 @@ class DoctrineNativeGateBuilder:
 
         filtered = []
         rejected_reasons = {}
+        required_n = len(self.SPEC_38_FEATURES)
         for sid in qualified:
             n = feature_count.get(sid, 0)
-            if n >= 38:
+            if n >= required_n:
                 filtered.append(sid)
             else:
-                rejected_reasons[sid] = f"feature_count={n}<38"
+                rejected_reasons[sid] = f"feature_count={n}<{required_n}"
         return filtered, {
             "feature_set_id": self.feature_set_id,
             "n_input": len(qualified),

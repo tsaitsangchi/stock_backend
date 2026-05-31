@@ -125,21 +125,21 @@ DEFAULT_TRAINING_POLICY = {
 }
 
 DEFAULT_PANELS = [
-    ("fs_20260105_feature_set_v0_4", "2026-01-05"),
-    ("fs_20260120_feature_set_v0_4", "2026-01-20"),
-    ("fs_20260205_feature_set_v0_4", "2026-02-05"),
-    ("fs_20260220_feature_set_v0_4", "2026-02-20"),
-    ("fs_20260305_feature_set_v0_4", "2026-03-05"),
-    ("fs_20260316_feature_set_v0_4", "2026-03-16"),
-    ("fs_20260401_feature_set_v0_4", "2026-04-01"),
-    ("fs_20260415_feature_set_v0_4", "2026-04-15"),
+    ("fs_20250915_feature_set_v0_5", "2025-09-15"),
+    ("fs_20251015_feature_set_v0_5", "2025-10-15"),
+    ("fs_20251115_feature_set_v0_5", "2025-11-15"),
+    ("fs_20251215_feature_set_v0_5", "2025-12-15"),
+    ("fs_20260115_feature_set_v0_5", "2026-01-15"),
+    ("fs_20260215_feature_set_v0_5", "2026-02-15"),
+    ("fs_20260315_feature_set_v0_5", "2026-03-15"),
+    ("fs_20260415_feature_set_v0_5", "2026-04-15"),
 ]
 
 SPEC_43 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d", "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
-    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "amihud_illiquidity_60d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "zero_volume_ratio_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
     "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
     "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
@@ -152,7 +152,7 @@ SPEC_43 = [
 
 
 def load_panel_data(cur, fs_id, as_of, label_horizon, universe):
-    cur.execute("SELECT stock_id, feature_name, feature_value::numeric FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s)", (fs_id, list(universe)))
+    cur.execute("SELECT stock_id, feature_name, feature_value::numeric FROM feature_values WHERE feature_set_id=%s AND stock_id=ANY(%s) AND is_null_imputed IS NOT TRUE", (fs_id, list(universe)))
     feat_data = defaultdict(dict)
     for sid, fname, val in cur.fetchall():
         if val is not None and fname in SPEC_43:

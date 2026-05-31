@@ -74,26 +74,26 @@ SPEC_43 = [
     "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
     "avg_daily_value_log_60d", "avg_daily_value_log_252d",
-    "amihud_illiquidity_60d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "zero_volume_ratio_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
     "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
     "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
-    "right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
-    "fitness_signal_60d", "right_tail_returns_skew_252d",
+    "preferential_attachment_60d",
+    "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
-    "theme_strength", "theme_is_semiconductor",
+    # 5 doctrine-removed features(theme_strength / theme_is_semiconductor / fitness_signal_60d /
+    # barbell_balance_60d / right_tail_concentration_60d)dropped per §14.7-DC(AI 幻像)
 ]
 
 # zero_fill features per feature_store_builder FEATURE_DEFINITIONS
 ZERO_FILL_FEATURES = {
-    "right_tail_concentration_60d", "barbell_balance_60d", "preferential_attachment_60d",
-    "fitness_signal_60d", "right_tail_returns_skew_252d",
+    "preferential_attachment_60d",
+    "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
     "eps_sum_4q", "net_income_positive_ratio_8q",
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d",
     "margin_ratio_60d",
-    "theme_strength", "theme_is_semiconductor",
 }
 
 

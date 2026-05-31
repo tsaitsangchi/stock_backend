@@ -96,15 +96,21 @@ reports/*
 !reports/tree_family_10_model_v*_*.md
 !reports/transformer_dedicated_validation_report_*.md
 !reports/from_zero_to_model_build_guide_*.md
+!reports/tree_based_from_zero_build_runbook_*.md
 # Foundation-model(Chronos)deliverable + 共同比較基準定義(§一.10 (a) source-of-truth)
 !reports/common_model_comparison_baseline_*.md
 !reports/chronos_multi_cycle_validation_report_*.md
+!reports/itransformer_multi_cycle_validation_report_*.md
+!reports/patchtst_multi_cycle_validation_report_*.md
+!reports/tft_multi_cycle_validation_report_*.md
 !reports/chronos_v0/
 !reports/chronos_v0/chronos_s*.json
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
 !reports/downstream_promotion_readiness_*.md
+!reports/full_db_vs_api_reconciliation_*.md
+!reports/core_selection_*provenance*.md
 # Cross-session planning documents
 !reports/phase_*_planning_*.md
 !reports/phase_d_ablation_*.md
