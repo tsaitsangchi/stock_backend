@@ -24,6 +24,18 @@
 
 > **§一.8 誠實聲明**:B1 為本人於前一階段 amihud dead-feature 移除(SPEC 38→37)時遺漏同步的 gate 常數,屬本次移除引入之 self-introduced regression;B2/B3 為先前即存在之命名債/結構,非本次引入。**狀態(2026-05-31,依用戶 Q2 授權「修正 B1-B3」)**:B1+B2 **已 code-fix(py_compile 全 PASS),但僅改 code — 未 git commit、未 DB write、未 retrain**(commit 仍另需 §二.2 explicit 授權);B3 為 resolved-by-ordering;B4 為治權揭露。4 項已全數入憲主憲章 §14.7-DD + CLAUDE.md §一.14。
 
+### 〇.A — 2026-06-01 真正空 DB 從零重建實證:3 個 bootstrap 順序 BLOCKERS (B5-B7)
+
+> **背景**:2026-06-01 於另一台機器(Linux/WSL)做「完全從零」重建(換機接續)。B1-B4 在「有殘留表」之機器寫成,**未在乾淨空 DB 跑過 bootstrap 起手段**。實證揭露以下 3 個**僅對真正空 DB 才觸發**之順序缺口(皆 resolved-by-ordering,無需改 production code,但 runbook PHASE 序列須補步驟):
+
+| # | 缺陷 | 觸發 PHASE | 修法(序列補正) |
+|---|---|---|---|
+| **B5** | `core_universe_builder.build()` Stage 1 K-wave 硬 gate 查 `fred_series` 表(§0.3-A,v6.25.0 加入),需 13 個 KWAVE_SERIES;但 PHASE 4.2 `--source fred` 灌的是 **`FredData`**(不同表),`fred_series` 無人在 PHASE 3 前建 → PHASE 3 `UndefinedTable: fred_series` | PHASE 3 | **PHASE 2 與 3 之間插入** `python scripts/fetchers/fetch_fred_data.py`(建+灌 `fred_series`,預設 24 series 含全部 13 KWAVE);此步亦供 PHASE 7 feature_store K-wave macro_beta 使用 |
+| **B6** | PHASE 3 `core_universe_builder --commit --mode doctrine-native`(**無 `--bootstrap`**)在無 raw data 時 doctrine-native per-stock 門檻全 reject → commit **0 成員** → PHASE 4 `--universe full`「無標的」只抓 FRED、股票 0 筆 | PHASE 3→4 | PHASE 3 指令**加 `--bootstrap`**(把候選寫為 `research_universe` transitional 成員,使 `--universe full` 可 resolve 全候選集)。**僅 PHASE 3 需要**;PHASE 6/8 真實資料 build 不加 |
+| **B7** | `feature_store_builder.py` v0.7 結尾寫 `universe_completeness_snapshot`;該表由 `universe_completeness_schema.py` 建(runbook 排 PHASE 11),且其 `predictions` 表有 FK→`model_registry`(runbook 由 PHASE 10 base trainer 建)→ 空 DB 下 **PHASE 7⟂10⟂11 循環依賴**,PHASE 7 全 panel `BUILD-FAILED: UndefinedTable universe_completeness_snapshot` | PHASE 7 | **PHASE 7 之前**先 (a) 執行 `model_trainer.DDL_MODEL_REGISTRY` + `DDL_MODEL_TRAINING_RUN` 建表(DDL-only,不訓練;可 import 常數或 psql),(b) 跑 `python scripts/core/universe_completeness_schema.py --init`(FK→model_registry 此時可滿足) |
+
+> **§一.8 誠實聲明(B5-B7)**:3 項皆於 2026-06-01 本機從零重建實證踩到並 resolved-by-ordering(operational driver 補步驟,**未改 production code**)。實證最終狀態:v0.18 source-pure / **397 core** / 730 quarantine(strict pan-historical;對齊本 runbook §六記載之 ~398,**非** handoff 之 914)/ feature_set_v0_5 96 panels × 44 features / 17 models / 9 validators pass(3 annual cell 過 T_CZ-6:xgboost / xgboost_dedicated / lightgbm)。詳見 `reports/cross_machine_handoff_20260601_v6_26_1_from_zero_reproduction_sealed.md`。
+
 ---
 
 ## 一、系統概觀與資料流
