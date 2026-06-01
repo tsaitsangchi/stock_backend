@@ -100,7 +100,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.7"  # 2026-05-31 §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30: +7 IC-pending K-wave 個股級投影特徵(cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s});null='drop' source-pure;canonical SPEC 仍 37(gate/trainer 不選),7 新特徵俟 PHASE 9 IC-gate(ablation drop_minus_full<-0.01)始 promote。前 v0.6(2026-05-29 §14.7-DC v0.8): 移除 5 Tier 4-5 features + THEME_KEYWORDS dict
+TOOL_VER = "v0.8"  # 2026-06-01 §0.3-A K-wave 7 IC-pending features REMOVED(用戶治權 directive「死重應排除」): cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s} 從未通過 PHASE 9 IC-gate promote(ablation 從未實跑,canonical SPEC 始終 37,trainer/gate 不選)→ 移除避免死重 + 過擬合風險;§0.3-A doctrine + Stage 1 macro gate 保留。feature_set 回 canonical 37 source-pure。前 v0.7(2026-05-31 T_DC-30 +7 IC-pending);前 v0.6(2026-05-29 §14.7-DC v0.8): 移除 5 Tier 4-5 features
 DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.5"  # v0.5 = 38 source-pure features(v0.4 為 43 含 5 Tier 4-5;v0.5 為 §14.7-DC compliant)
 DEFAULT_LABEL_HORIZON = 20
 
@@ -195,18 +195,12 @@ FEATURE_DEFINITIONS = [
     # 加之 v0.2 ablation 已實證 IC = +0.0131 HARMFUL(§0.0-D.6 #1 已否決);
     # → §14.7-CL Feature Canonical Scope Doctrine 正式從 FEATURE_DEFINITIONS 移除
     # (43-feature canonical SPEC:§0.1 29 + §0.2 14)
-    # ── cyclical 群 §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)新增 7 IC-pending features ──
-    # K-wave 循環思想之個股級 source-pure 投影(週/月/季/年 多尺度);null='drop'(無 imputation);
-    # ⚠️ NOT in canonical SPEC_37(core_universe_builder gate / trainer / 既有 audit SPEC 不選);
-    #    俟 PHASE 9 IC-gate(ablation drop_minus_full < -0.01,per §0.3-A 要件 iv / §0.3-E)通過後始
-    #    promote 入 canonical SPEC。寫入 feature_values 僅供 PHASE 9 IC 評估,不影響 §14.7-CB 完整度 gate。
-    {"name": "cycle_phase_5d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "5d", "vtype": "numeric", "null": "drop", "desc": "週尺度股價循環位置=(close−min)/(max−min) over 5d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
-    {"name": "cycle_phase_20d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "20d", "vtype": "numeric", "null": "drop", "desc": "月尺度股價循環位置=(close−min)/(max−min) over 20d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
-    {"name": "cycle_phase_60d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "季尺度股價循環位置=(close−min)/(max−min) over 60d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
-    {"name": "cycle_phase_252d", "group": "cyclical", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "年尺度股價循環位置=(close−min)/(max−min) over 252d;§0.3-A 多尺度循環/T_DC-30;PHASE 9 IC-pending(非 canonical SPEC)"},
-    {"name": "macro_beta_t10y2y", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔT10Y2Y(殖利率曲線)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
-    {"name": "macro_beta_unrate", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔUNRATE(失業率)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
-    {"name": "macro_beta_ipg3344s", "group": "cyclical", "source": "TaiwanStockPriceAdj × fred_series", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "個股日 returns 對 ΔIPG3344S(半導體工業生產)as-of-aligned 變動之 rolling-OLS slope(trailing 252 交易日);§0.3-A 景氣敏感度/T_DC-30/§0.3-C #2;PHASE 9 IC-pending"},
+    # ── §0.3-A K-wave 7 IC-pending features REMOVED(2026-06-01 用戶治權 directive「死重應排除」)──
+    # 原 cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s} 為 T_DC-30 IC-pending 候選,
+    # 設計為俟 PHASE 9 IC-gate(ablation drop_minus_full<-0.01)通過後始 promote 入 canonical SPEC;
+    # 然 canonical SPEC 始終 37(trainer/gate/audit 不選),ablation IC-gate 從未實跑,7 特徵長期懸置為死重。
+    # 依 §0.3-A 自身 promote-only-if-proven 設計 + 簡約原則移除(IC-gate 未通過→不升格);
+    # §0.3-A K-wave 多尺度循環思想本身保留(core_universe_builder Stage 1 macro 存在性 gate 不受影響)。
 ]
 
 # THEME_KEYWORDS dict REMOVED per §14.7-DC v0.8 MVP v0.21 Step C-partial
@@ -1176,12 +1170,8 @@ class FeatureStoreBuilder:
         else:
             f["convexity_60d"] = None
 
-        # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— 股價循環位置(週/月/季/年)
-        # source-pure price oscillator(Stochastic %K 同構);null='drop';PHASE 9 IC-pending(非 canonical SPEC)
-        f["cycle_phase_5d"] = self._cycle_phase(closes, 5)
-        f["cycle_phase_20d"] = self._cycle_phase(closes, 20)
-        f["cycle_phase_60d"] = self._cycle_phase(closes, 60)
-        f["cycle_phase_252d"] = self._cycle_phase(closes, 252)
+        # §0.3-A K-wave cycle_phase 4 features REMOVED(2026-06-01「死重應排除」;T_DC-30 IC-pending 從未 promote)
+        # (_cycle_phase() 函式保留為 dead code,符合本檔 deprecated 慣例;不再被呼叫)
 
         # liquidity
         if len(moneys) >= 60:
@@ -1265,9 +1255,8 @@ class FeatureStoreBuilder:
             # 移除 _load_macro_extended call(per 用戶治權 directive「特徵值不能用就不入」)
             # macro_extended = self._load_macro_extended(cur)  # ⚠️ DEPRECATED per §14.7-CK
             macro_extended = {}  # 空 dict;不對每股 broadcast 14 macro features
-            # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— macro_beta 之 FRED 景氣因子 series
-            self._detail("📥 [LOAD] macro factor series (§0.3-A 多尺度循環 / T_DC-30 macro_beta) ...")
-            macro_factor_series = self._load_macro_factor_series(cur)
+            # §0.3-A K-wave macro_beta REMOVED(2026-06-01「死重應排除」)— 不再載入 FRED 景氣因子 series
+            # (_load_macro_factor_series() 函式保留為 dead code,不再被呼叫)
         finally:
             cur.close()
             conn.close()
@@ -1315,8 +1304,7 @@ class FeatureStoreBuilder:
             # §14.7-CA Phase F-1(2026-05-27)— §0.1 Investment asset_growth_yoy(§0.1 100% closure)
             balance_for_sid = balance_data.get(sid, {})
             stock_features["asset_growth_yoy"] = balance_for_sid.get("asset_growth_yoy")
-            # §0.3-A 多尺度循環思想修正案 / §14.7-DC T_DC-30(2026-05-31)— macro_beta 景氣敏感度(PHASE 9 IC-pending)
-            stock_features.update(self._compute_macro_beta_features(price_series.get(sid, []), macro_factor_series))
+            # §0.3-A K-wave macro_beta 3 features REMOVED(2026-06-01「死重應排除」;T_DC-30 IC-pending 從未 promote)
             # v0.2 §0.0-D.6 interaction features REMOVED per §14.7-CL(2026-05-28):
             # ablation IC = +0.0131 HARMFUL + macro deprecated(§14.7-CK)→ dead code 移除
 
