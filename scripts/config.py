@@ -1,4 +1,38 @@
 """
+config.py v6 (全域設定 SSOT)
+================================================================================
+**最後更新日期**: 2026-06-02
+**主權狀態**: ACTIVE (configuration SSOT)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:專案全域設定(路徑 / 參數 / 比例如 core/agg 0.80/0.20 portfolio sleeve)之單一來源。
+
+**輸入 → 輸出**:(無)→ 全域 config 常數
+
+**為什麼需要它**:各模組 import 取得設定值;Tier-3 operational 參數集中處。
+
+## 📜 一、核心定義說明 (Core Definitions)
+
+1. **[Config SSOT]**:全域設定常數
+2. **[Sovereignty Declaration]**:本檔為設定容器(非治權程式);0.80/0.20 等為 §9.2 portfolio operational 參數(Tier-3,非 feature 值)。
+3. **[Historical Reference Authority]**:本檔標頭版本為記述性快照,非權威來源(權威為憲章 + 程式現行碼)。
+
+## 📊 二、全量功能群矩陣 (Functional Group Matrix)
+
+| 功能 / 指令 | 說明 |
+| :--- | :--- |
+| import config | 取得全域設定 |
+| PARETO_RATIO / target_core 等 | operational 參數 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v6 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話補正;原設定不變。 | **ACTIVE** |
+
+## 原始說明
 config.py — 全域設定：路徑、超參數、特徵分組
 資料來源：PostgreSQL 17（連線設定在下方 DB_CONFIG）
 

@@ -1,3 +1,37 @@
+"""
+parallel_fetch.py v6 (並行抓取工具(root))
+================================================================================
+**最後更新日期**: 2026-06-02
+**主權狀態**: ACTIVE (parallel fetch util)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:並行抓取工具(多 worker 平行 fetch)。
+
+**輸入 → 輸出**:dataset 清單 → 並行抓取
+
+**為什麼需要它**:加速多 dataset 抓取(子系統用)。
+
+## 📜 一、核心定義說明 (Core Definitions)
+
+1. **[Parallel Fetch]**:多 worker 並行抓取
+2. **[Sovereignty Declaration]**:本程式為**非 charter-core 子系統**工具(charter 可達/引用),不涉 §3.1/§3.2 序列治權主軸、不持五套禁令、不處理 §8.5 anti-leakage。
+3. **[Historical Reference Authority]**:本檔標頭版本為記述性快照,非權威來源(權威為憲章 + 程式現行碼)。
+
+## 📊 二、全量功能群矩陣 (Functional Group Matrix)
+
+| 功能 / 指令 | 說明 |
+| :--- | :--- |
+| parallel_fetch | 並行抓取多 dataset |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v6 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話補正;原邏輯不變。 | **ACTIVE** |
+"""
+
 import sys
 import os
 import subprocess

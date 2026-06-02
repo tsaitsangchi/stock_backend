@@ -1,4 +1,39 @@
 """
+features/feature_engineering.py v6 (特徵工程(features/))
+================================================================================
+**最後更新日期**: 2026-06-02
+**主權狀態**: ACTIVE (feature engineering)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:特徵工程:加技術 / 籌碼 / 基本面 / 估值特徵(features/ 版)。
+
+**輸入 → 輸出**:raw 資料 → 加工特徵 DataFrame
+
+**為什麼需要它**:backtest/portfolio 子系統之特徵生成。
+
+## 📜 一、核心定義說明 (Core Definitions)
+
+1. **[Feature Engineering]**:技術/籌碼/基本面/估值特徵
+2. **[Sovereignty Declaration]**:本程式為**非 charter-core 子系統**工具(charter 可達/引用),不涉 §3.1/§3.2 序列治權主軸、不持五套禁令、不處理 §8.5 anti-leakage。 注意:與 §14.7-CA `feature_store_builder.py`(charter-core 37 source-pure 特徵)不同,本檔為子系統 backtest 用特徵。
+3. **[Historical Reference Authority]**:本檔標頭版本為記述性快照,非權威來源(權威為憲章 + 程式現行碼)。
+
+## 📊 二、全量功能群矩陣 (Functional Group Matrix)
+
+| 功能 / 指令 | 說明 |
+| :--- | :--- |
+| add_technical_features() | 技術指標 |
+| add_fundamental_features() | 基本面 |
+| add_valuation_features() | 估值 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v6 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話補正;原邏輯不變。 | **ACTIVE** |
+
+## 原始說明
 feature_engineering.py v6.5 (Quantum Finance Edition)
 ================================================================================
 特徵工程核心引擎 — 物理資訊動力學版 (Quantum v5.1 標準)

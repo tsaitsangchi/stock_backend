@@ -1,4 +1,37 @@
 """
+resync_priceadj_mismatch.py v0.2 (priceadj 重同步)
+================================================================================
+**最後更新日期**: 2026-06-02
+**主權狀態**: ACTIVE (one-off / maintenance)
+**最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**一次性/維運** 工具:重新同步 TaiwanStockPriceAdj 之 value_mismatch(除權息回溯)。
+
+**輸入 → 輸出**:既有 DB → 一次性處理結果
+
+**為什麼需要它**:記述性保留(已執行);非常態流程。
+
+## 📜 一、核心定義說明 (Core Definitions)
+
+1. **[One-off Script]**:一次性/維運腳本
+2. **[Sovereignty Declaration]**:本程式為**非 charter-core 子系統**工具(charter 可達/引用),不涉 §3.1/§3.2 序列治權主軸、不持五套禁令、不處理 §8.5 anti-leakage。 本檔為**一次性**腳本,非常態 pipeline;保留作 audit trail(亦為 C-隔離候選)。
+3. **[Historical Reference Authority]**:本檔標頭版本為記述性快照,非權威來源(權威為憲章 + 程式現行碼)。
+
+## 📊 二、全量功能群矩陣 (Functional Group Matrix)
+
+| 功能 / 指令 | 說明 |
+| :--- | :--- |
+| python <此檔> | 執行一次性處理 |
+
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.2 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話補正;標示一次性。原邏輯不變。 | **ACTIVE** |
+
+## 原始說明
 P0 re-sync — find all mismatch stocks via live API + upsert DB to match latest FinMind adjustment
 """
 import os, sys, time, requests
