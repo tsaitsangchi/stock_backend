@@ -1,9 +1,26 @@
 """
-multi_cycle_chronos_validation.py v0.1 (Chronos · Amazon 時序基礎模型 Foundation Model · 2024 / Ansari et al. "Chronos: Learning the Language of Time Series" · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
+multi_cycle_chronos_validation.py v0.2 (Chronos · Amazon 時序基礎模型 Foundation Model · 2024 / Ansari et al. "Chronos: Learning the Language of Time Series" · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
 ================================================================================
-**最後更新日期**: 2026-05-30
-**主權狀態**: CHRONOS(AMAZON 時序基礎模型 / 2024)ZERO-SHOT 4-HORIZON WALK-FORWARD VALIDATION + ⚠️ EXTERNAL-PRETRAINED PRIOR(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權)+ §14.7-DC v0.18 SOURCE-PURE *INPUT* UNIVERSE + §一.10 INPUT SOURCE-TRACEABLE(全 DB)+ 共同比較基準(COMMON COMPARISON BASELINE)第四實作 + §一.11 三段式合規
+**最後更新日期**: 2026-06-02
+**主權狀態**: CHRONOS(AMAZON 時序基礎模型 / 2024)ZERO-SHOT 4-HORIZON WALK-FORWARD VALIDATION + ⚠️ EXTERNAL-PRETRAINED PRIOR(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權)+ §14.7-DC v0.18 SOURCE-PURE *INPUT* UNIVERSE + §一.10 INPUT SOURCE-TRACEABLE(全 DB)+ 共同比較基準(COMMON COMPARISON BASELINE)第四實作 + §一.11 三段式合規 + §14.7-DE §0.0-I panel-date helper 切換(2026-06-02)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 Chronos(時間序列基礎模型 foundation model) 序列模型,吃每支股票的「歷史價格序列」,預測未來報酬,評估「靠它選股能不能賺錢、準不準、可不可信」。
+
+**它怎麼做(步驟)**:
+1. 取 397 支「乾淨核心股」,載入每支的歷史價格序列(序列模型看時間走勢,非橫斷面特徵)。
+2. 把 2013-05 ~ 2026-06 切成月度時間點(panel)。
+3. **逐點往前走(walk-forward)**:每點只用那之前的序列訓練,預測之後報酬,不偷看未來(防洩漏)。
+4. 依預測挑最看好的股票做多,跟全市場平均比,算賺賠。
+5. 在 **4 種持有期**各做一遍:週(5 天)/ 月(20 天)/ 季(60 天)/ 年(252 天)。
+6. 算成績:報酬率、Sharpe、勝率,加上**排序 IC、淨 Sharpe、機率校準覆蓋率**(此類序列模型用自有 calibration 導向 `aggregate_horizon`;§14.7-DF 註明 torch 暫不套樹模型 metric helper,各模型 rework 時再對齊共同欄位後與樹模型並比)。
+7. 判定這模型在哪個週期「真的能賺錢且可信」。
+
+**輸入**:資料庫(股價序列)。**輸出**:JSON(各週期成績)+ log。
+**它不做的事**:不改資料庫(純讀取評估;§3.1 evaluation 角色)。
+**為什麼需要它**:序列/基礎模型路線的實證裁判,與樹模型並列比較(共同欄位對齊後)。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
@@ -105,7 +122,8 @@ multi_cycle_chronos_validation.py v0.1 (Chronos · Amazon 時序基礎模型 Fou
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.1 | 2026-05-30 | Claude | **首版**:Chronos(Amazon 時序基礎模型 / 2024 / Ansari et al.)zero-shot multi-cycle 股價預測驗證 + 共同比較基準第四實作。每股最長 weekly close 序列 → BaseChronosPipeline.predict_quantiles → P10/P50/P90 price path → score=ln(median/last_close)→ 4-horizon。⚠️ **external-pretrained prior**(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權,醒目揭露於 §一.2)。INPUT 全 DB source-pure(TaiwanStockPriceAdj weekly close,無 imputed/forward-fill)。calibration AVAILABLE(機率模型,與 TFT 同)。與 baseline 同 universe(v0.18/398)/ panels(95)/ forward returns / portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。真正 Google TimesFM 無法安裝(lingvo Linux-only)→ Chronos 為基礎模型族代表。§一.10 #3 multi-seed(Bolt deterministic → spread≈0,誠實揭露)。§8.5 leakage-safe(context ≤ as_of)。§一.11 三段式合規。 | **ACTIVE** |
+| v0.2 | 2026-06-02 | Codex | **§0.0-I panel-date helper 切換(§14.7-DE)**:panel 窗改用 `get_canonical_panel_dates()`(§14.7-DE 單一引用源,移除寫死 date(2018,6,15) → 資料驅動 157 panels)+ 修正 stale log 字串(2018-2026/95→data-driven)。metric 仍用自有 `aggregate_horizon`(calibration 框架,§14.7-DF deferred,各模型 rework 時對齊)。**未改模型、未 retrain**。 | **ACTIVE** |
+| v0.1 | 2026-05-30 | Claude | **首版**:Chronos(Amazon 時序基礎模型 / 2024 / Ansari et al.)zero-shot multi-cycle 股價預測驗證 + 共同比較基準第四實作。每股最長 weekly close 序列 → BaseChronosPipeline.predict_quantiles → P10/P50/P90 price path → score=ln(median/last_close)→ 4-horizon。⚠️ **external-pretrained prior**(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權,醒目揭露於 §一.2)。INPUT 全 DB source-pure(TaiwanStockPriceAdj weekly close,無 imputed/forward-fill)。calibration AVAILABLE(機率模型,與 TFT 同)。與 baseline 同 universe(v0.18/398)/ panels(95)/ forward returns / portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。真正 Google TimesFM 無法安裝(lingvo Linux-only)→ Chronos 為基礎模型族代表。§一.10 #3 multi-seed(Bolt deterministic → spread≈0,誠實揭露)。§8.5 leakage-safe(context ≤ as_of)。§一.11 三段式合規。 | SUPERSEDED |
 """
 from __future__ import annotations
 import warnings
@@ -135,7 +153,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 
 # ── Common Comparison Baseline constants (FIXED — 不可變更,否則破壞跨模型比較) ──
 HORIZONS = [("weekly", 5), ("monthly", 20), ("quarterly", 60), ("annual", 252)]

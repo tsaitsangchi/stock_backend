@@ -1,9 +1,26 @@
 """
-multi_cycle_lightgbm_validation.py v0.1 (Multi-Cycle LightGBM Validation + Precision/Reliability Analysis · §14.7-CY 第七實作 dedicated · per Canonical Comparison Framework · per CLAUDE.md §一.11 三段式入憲)
+multi_cycle_lightgbm_validation.py v0.2 (Multi-Cycle LightGBM Validation + Precision/Reliability Analysis · §14.7-CY 第七實作 dedicated · per Canonical Comparison Framework · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-**最後更新日期**: 2026-05-29
-**主權狀態**: MULTI-CYCLE 4-HORIZON LIGHTGBM VALIDATION + PRECISION/RELIABILITY + CANONICAL COMPARISON FRAMEWORK + §14.7-CY HORIZON-EXTENSION + §14.7-CX 8-YEAR OOS + §14.7-CW TREE-FAMILY 第七實作 dedicated + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規
+**最後更新日期**: 2026-06-02
+**主權狀態**: MULTI-CYCLE 4-HORIZON LIGHTGBM VALIDATION + PRECISION/RELIABILITY + CANONICAL COMPARISON FRAMEWORK + §14.7-CY HORIZON-EXTENSION + §14.7-CX 8-YEAR OOS + §14.7-CW TREE-FAMILY 第七實作 dedicated + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 + §14.7-DE/DF §0.0-I 雙 helper 切換(2026-06-02)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
+
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 LightGBM 機器學習模型,實測「靠過去的股票特徵能不能預測未來、選股賺錢」,並給出「賺多少 / 準不準 / 可不可信」的成績單。
+
+**它怎麼做(步驟)**:
+1. 取 397 支「乾淨核心股」+ 每股 37 個經驗證的特徵(估值、動能、籌碼、財務等;全來自真實 FinMind/FRED API,無 AI 亂補值)。
+2. 把 2013-05 ~ 2026-06 切成 157 個月度時間點(panel)。
+3. **逐點往前走(walk-forward)**:每個時間點「只用那之前的資料」訓練模型,預測「之後」每支股票的報酬 —— 模擬當時真的只看得到過去、不偷看未來(防資料洩漏)。
+4. 依預測分數挑最看好的 **前 20 支等權做多**,跟「全市場平均」比,算這一期賺賠。
+5. 上面在 **4 種持有期**各做一遍:週(5 天)/ 月(20 天)/ 季(60 天)/ 年(252 天)。
+6. 算出每種週期的成績:**報酬率、Sharpe(風險調整後績效)、勝率、預測命中率、跨次穩定度(可信度)、扣交易成本後年化報酬**。
+7. 用門檻(§14.7-CZ T_CZ-6:有效 t 值 ≥ 4.20 且 Sharpe ≥ 2.40 且 勝率 ≥ 79%)判定:**這模型在哪個週期「真的能賺錢且可信」**。
+
+**輸入**:資料庫(feature_values 特徵 + TaiwanStockPriceAdj 股價)。**輸出**:一份 JSON(各週期成績 + 來源標記)+ 終端機 log。
+**它不做的事**:不訓練正式上線模型、不改資料庫(純讀取做評估;§3.1 evaluation 角色)。
+**為什麼需要它**:這是回答「股票預測到底能不能賺錢」的實證裁判;且 XGBoost / CatBoost 等所有模型都用「同一支標準、同一窗、同一指標」跑 → 成績才能公平並排比較。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
@@ -76,7 +93,8 @@ multi_cycle_lightgbm_validation.py v0.1 (Multi-Cycle LightGBM Validation + Preci
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.1 | 2026-05-29 | Codex | **首版:§14.7-CY 第七實作 dedicated(LightGBM)** under Canonical Comparison Framework。 (1) 4-horizon walk-forward,LightGBM LGBMRegressor;(2) 與 multi_cycle_validation.py(LGBM v0.2 production §14.7-CY 基準)並存;此 dedicated 版本為 Canonical Comparison Framework 對齊;(3) Precision/Reliability 新層延續其他 multi-cycle validators;(4) Hyperparameters 對齊 LGBM v0.2 production(200/0.05/5/20/30/0.8/0.8/0.1/0.1/5422)。 | **ACTIVE** |
+| v0.2 | 2026-06-02 | Codex | **§0.0-I 雙 helper 切換(§14.7-DE + §14.7-DF)**:(1) panel 窗改用 `get_canonical_panel_dates()`(§14.7-DE 單一引用源,移除寫死 date(2018,6,15));(2) horizon-summary metric 改用 `summarize_horizon_metrics()`(§14.7-DF 單一計算源,移除 inline 計算 → 收集 (pred,actual) per panel 交 helper)。資料驅動 157 panels(2013-05-15~2026-06-01);helper 忠實性 synthetic unit test bit-identical(max|Δ|=0.00);**未改模型超參、未 retrain**。雙層治權鎖 §14.7-DE/DF + CLAUDE.md §一.16/§一.17。 | **ACTIVE** |
+| v0.1 | 2026-05-29 | Codex | **首版:§14.7-CY 第七實作 dedicated(LightGBM)** under Canonical Comparison Framework。 (1) 4-horizon walk-forward,LightGBM LGBMRegressor;(2) 與 multi_cycle_validation.py(LGBM v0.2 production §14.7-CY 基準)並存;此 dedicated 版本為 Canonical Comparison Framework 對齊;(3) Precision/Reliability 新層延續其他 multi-cycle validators;(4) Hyperparameters 對齊 LGBM v0.2 production(200/0.05/5/20/30/0.8/0.8/0.1/0.1/5422)。 | SUPERSEDED |
 """
 
 from __future__ import annotations
@@ -97,7 +115,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.1"
+TOOL_VER = "v0.2"
 SEED = 5422
 
 LGBM_PARAMS = {
