@@ -106,6 +106,17 @@ reports/*
 !reports/tft_multi_cycle_validation_report_*.md
 !reports/chronos_v0/
 !reports/chronos_v0/chronos_s*.json
+# 跨模型比較交付物 + time-series/foundation validator JSON 輸出(§一.10 (a) source-of-truth;跨機接續用)
+!reports/model_comparison_*.md
+!reports/model_comparison_*.json
+!reports/multi_cycle_chronos_*.json
+!reports/multi_cycle_itransformer_*.json
+!reports/multi_cycle_patchtst_*.json
+!reports/multi_cycle_transformer_dedicated_*.json
+!reports/multi_cycle_timesfm_*.json
+!reports/multi_cycle_stockformer_*.json
+!reports/multi_cycle_hist_*.json
+!reports/multi_cycle_tft_*.json
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
