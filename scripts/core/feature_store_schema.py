@@ -31,6 +31,14 @@ feature_store_schema.py v0.1 (Quantum Finance Feature Store Schema Authority)
 | 3. 單表重鑄 | `$ python scripts/core/feature_store_schema.py --init --table feature_values` | feature_store_schema v0.1 |
 | 4. 離線復原 | `$ python scripts/core/feature_store_schema.py --init --skip-preflight` | feature_store_schema v0.1 |
 
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --init | 建 feature_values/feature_set 表 | §3.2/§6.7 |
+| --force | 強制重置現有表 | 維運 |
+| --table <name> | 只建指定表 | 維運 |
+
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |

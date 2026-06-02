@@ -12,6 +12,14 @@ apply_raw_data_completeness_gate.py — §14.7-CD Raw Data Completeness Gate
 - **歷史用途**: v0.12 N=1,543 snapshot 為本 script 之 historical evidence(已 superseded by v0.13)
 - **下架時點**: 預計 v6.5.x 後完全移除(per §14.7-CG Phase E migration)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:套用 §14.7-CD Raw Data Completeness Gate:檢查每股原始資料是否完整,不齊者排除。
+
+**輸入 → 輸出**:raw 資料 + universe → 過 gate 之 snapshot
+
+**為什麼需要它**:確保核心股的 raw 資料完整(模型前置)。
+
 ## 一、核心定義說明
 - [Raw Data Completeness Gate]: 個股 raw API 資料任何 source 缺漏 → 排除核心股
 - [Source-Level Audit]: 在 RAW table layer 直接 check(stricter than feature-level gate)
@@ -22,6 +30,19 @@ apply_raw_data_completeness_gate.py — §14.7-CD Raw Data Completeness Gate
 ## 二、CLI 範例
     python scripts/maintenance/apply_raw_data_completeness_gate.py --dry-run
     python scripts/maintenance/apply_raw_data_completeness_gate.py --commit
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.2 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話段補正;原邏輯不變。 | **ACTIVE** |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --dry-run(預設) | 只稽核 | §14.7-CD |
+| --commit | 套 gate + 寫 DB | §14.7-CD |
+
 """
 from __future__ import annotations
 

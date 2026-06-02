@@ -5,6 +5,14 @@ audit_kwave_transition.py v0.2 (§14.7-BR Phase C-4 — K-wave Transition Audit 
 主權狀態: IMPLEMENTED (憲法 v6.1.0 §0.3.8 5 leading indicators 之 §11C 治權檢驗延伸 / §0.3.8.4 INFO-only / §14.7-BR Phase C-3 + C-4 落地 / **5-of-5 完整**)
 最高原則: Audit-Only Authority (讀;不寫;不作 FAIL gate;對齊 §0.3-A 禁令 #1 / #6)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:K-wave 轉折稽核(§14.7-BR,5-of-5 升級):檢驗康波週期轉折訊號。
+
+**輸入 → 輸出**:FRED/macro 資料 → K-wave 轉折判定
+
+**為什麼需要它**:監測景氣循環階段轉換(循環思想層,非特定值)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Audit-Only Authority]: 對齊憲章 §0.3.8.4 治權邊界 + §14.7-BR Phase C-3。
    讀 4 indicators 計算 spring signal composite;輸出僅作 **INFO** 不作 FAIL gate。
@@ -43,6 +51,14 @@ audit_kwave_transition.py v0.2 (§14.7-BR Phase C-4 — K-wave Transition Audit 
 | **指定 as_of_date(historical 重算)** | `$ python scripts/maintenance/audit_kwave_transition.py --as-of-date 2026-05-21` |
 | **Output JSON 之 machine-readable**| `$ python scripts/maintenance/audit_kwave_transition.py --output-format json` |
 | **Annual review hook(2026 年度)** | `$ python scripts/maintenance/audit_kwave_transition.py --annual-review 2026` |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --as-of-date <d> | 指定基準日 | §14.7-BR |
+| --output-format console|json | 輸出格式 | 維運 |
+| --annual-review <y> | 年度回顧 | 維運 |
 
 ## 📜 三、全修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |

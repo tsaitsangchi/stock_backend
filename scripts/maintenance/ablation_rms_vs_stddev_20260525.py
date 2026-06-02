@@ -5,6 +5,14 @@ ablation_rms_vs_stddev_20260525.py v0.1 (P1 v0.1 公式對齊 ablation 實證)
 主權狀態: ABLATION (憲法 v6.1.0 §9.9 RMS vs §14.7-BG/§9.10 STDDEV 公式對齊實證)
 最高原則: Evidence-First Verdict (實證讀數驅動公式裁決)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:P1 v0.1 公式對齊 ablation:實證比較 RMS vs STDDEV 兩種波動公式(§9.10/§14.7-BH)。
+
+**輸入 → 輸出**:as-of 資料 → RMS vs STDDEV ablation 結果
+
+**為什麼需要它**:裁決 ΔlnP 波動度用哪個公式(已裁決 RMS)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Ablation Authority]: 對齊憲章 §9.9 (RMS 強制契約) 與 §14.7-BG / §9.10
    (STDDEV raw-first fast-track),在不改 builder / 不改 feature_store
@@ -24,6 +32,13 @@ ablation_rms_vs_stddev_20260525.py v0.1 (P1 v0.1 公式對齊 ablation 實證)
 | **全市場 ablation (預設 as_of_date=2026-05-21)** | `$ python scripts/maintenance/ablation_rms_vs_stddev_20260525.py` |
 | **指定 as_of_date** | `$ python scripts/maintenance/ablation_rms_vs_stddev_20260525.py --as-of-date 2026-05-21` |
 | **No-report mode (只印 stdout)** | `$ python scripts/maintenance/ablation_rms_vs_stddev_20260525.py --no-report` |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --as-of-date <d> | 基準日(預設內建) | §14.7-BH |
+| --no-report | 只印 stdout 不寫檔 | 維運 |
 
 ## 📜 三、全修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |

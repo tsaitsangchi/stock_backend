@@ -12,6 +12,14 @@ compute_semi_supply_cycle_proxy.py v0.1 (§14.7-BR Phase C-2 — 半導體庫存
 - **calling site**: `scripts/maintenance/run_weekly_doctrine_recommit.py` Step 2 (半導體業 / TW_SEMI_VWAP_YOY) + Step 3 (航運業 / TW_SHIPPING_VWAP_YOY)。
 - **下架時點**: 待 (a) weekly pipeline 切換至 `apply_raw_data_completeness_gate.py` (§14.7-CD 新 SSOT) (b) `kwave_supply_cycle_proxy` 表 DROP (charter §14.7-CD 預告 v6.4.5) 後與 `build_doctrine_gate_universe.py` 一併下架。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:計算半導體庫存週期 proxy(§14.7-BR;K-wave 景氣 proxy)。
+
+**輸入 → 輸出**:半導體業個股資料 → proxy 序列(如 TW_SEMI_VWAP_YOY)
+
+**為什麼需要它**:K-wave 循環思想之 proxy 指標(已 deprecated 改用 FRED IPG3344S)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Proxy Computation Authority]: 對齊憲章 §14.7-BR Phase A 之 B1 方案
    (commit `f07ba16` §3.2)+ Phase B 入憲 (commit `95fda16`)。
@@ -43,6 +51,15 @@ compute_semi_supply_cycle_proxy.py v0.1 (§14.7-BR Phase C-2 — 半導體庫存
 | **Commit (寫入 DB)** | `$ python scripts/maintenance/compute_semi_supply_cycle_proxy.py --commit` |
 | **指定 industry filter (默認 半導體業)** | `$ python scripts/maintenance/compute_semi_supply_cycle_proxy.py --commit --industry-filter 半導體業` |
 | **指定 proxy_id (默認 TW_SEMI_VWAP_YOY)** | `$ python scripts/maintenance/compute_semi_supply_cycle_proxy.py --commit --proxy-id TW_SEMI_VWAP_YOY` |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --dry-run | 只算不寫 | §14.7-BR |
+| --commit | 算 + 寫 DB | §14.7-BR |
+| --industry-filter <業> | 產業過濾(預設 半導體業) | 維運 |
+| --proxy-id <id> | proxy 序列 id | 維運 |
 
 ## 📜 三、全修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |

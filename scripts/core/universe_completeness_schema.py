@@ -34,6 +34,14 @@ universe_completeness_schema.py v0.1 (§14.7-BU Phase C+D — Cross-Layer × Cro
 | 4. 離線復原（略過 preflight） | `$ python scripts/core/universe_completeness_schema.py --init --skip-preflight` | universe_completeness_schema v0.1 |
 | 5. Materialized view refresh（手動） | `$ python scripts/core/universe_completeness_schema.py --refresh-view` | universe_completeness_schema v0.1 |
 
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --init | 建 3 表 + 1 物化視圖(§14.7-BU) | §14.7-BU |
+| --force | 強制重置 | 維運 |
+| --table <name> | 只建指定表(跳過 view) | 維運 |
+
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |

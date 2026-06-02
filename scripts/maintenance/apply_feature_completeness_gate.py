@@ -12,6 +12,14 @@ apply_feature_completeness_gate.py — §14.7-CB Feature Completeness Gate(Steps
 - **歷史用途**: v0.11 N=1,640 snapshot 為本 script 之 historical evidence
 - **下架時點**: 預計 v6.5.x 後完全移除(per §14.7-CG Phase E migration)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:套用 §14.7-CB Feature Completeness Gate:檢查每股 37 特徵是否齊全,不齊者排除核心。
+
+**輸入 → 輸出**:feature_set + universe → 過 gate 之新 snapshot
+
+**為什麼需要它**:確保進模型的核心股特徵完整(無缺 row)。
+
 ## 一、核心定義說明
 - [Feature Completeness Gate]: 依用戶治權原則「特徵值不全到位之股票不應列入核心股」,
   本 script 對 current core_universe_snapshot 套用 hard gate:
@@ -25,6 +33,20 @@ apply_feature_completeness_gate.py — §14.7-CB Feature Completeness Gate(Steps
 ## 二、CLI 範例
     python scripts/maintenance/apply_feature_completeness_gate.py --dry-run
     python scripts/maintenance/apply_feature_completeness_gate.py --commit
+## 📜 三、全修訂歷程 (Full Revision History)
+
+| 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
+| :--- | :--- | :--- | :--- | :--- |
+| v0.2 | 2026-06-02 | Codex | §一.11 標頭三段式 + 白話段補正;原邏輯不變。 | **ACTIVE** |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --dry-run(預設) | 只稽核,不寫 DB | §14.7-CB |
+| --commit | 套 gate + 寫新 snapshot | §14.7-CB |
+| --feature-set-id <id> | 指定特徵集版本 | 維運 |
+
 """
 from __future__ import annotations
 

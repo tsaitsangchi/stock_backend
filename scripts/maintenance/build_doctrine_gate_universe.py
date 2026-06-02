@@ -12,6 +12,14 @@ build_doctrine_gate_universe.py v0.9 (§14.7-BV Phase C — Doctrine-Gate-First 
 - **歷史用途**: v0.10 N=1,862 snapshot 為本 script 之 historical evidence(已 superseded by v0.13)
 - **下架時點**: 預計 v6.5.x 後完全移除(per §14.7-CG Phase E migration)。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:Doctrine-Gate-First 核心股建構(§14.7-BV):先過 source-pure/completeness doctrine gate 再選股。
+
+**輸入 → 輸出**:raw + feature → committed universe snapshot + membership
+
+**為什麼需要它**:§14.7-DC 之 doctrine-gate 選股 SSOT(core 列明設 eligibility 4×TRUE)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Doctrine-Gate-First Authority]: 本工具落地 §14.7-BV Phase B 入憲之 Path C algorithm — 三基柱資料源依據為 selection 必要條件;N 完全動態;CoreScore 降為 gate-pass 內 tier ranking。
 2. [Stage Pipeline]: 4 stages — (1) §0.3 K-wave market prerequisite 5/5 / (2) per-stock §0.1 5-source check + §0.2 by-def / (3) CoreScore composite (INFO display only per §14.7-BW) / (4) all doctrine-pass → core_universe(無 cap/floor/tier % per §14.7-BW pure doctrine)。
@@ -26,6 +34,14 @@ build_doctrine_gate_universe.py v0.9 (§14.7-BV Phase C — Doctrine-Gate-First 
 | :--- | :--- |
 | Dry-run(只顯示 gate-pass 數量 + tier split,不寫 DB) | `$ python scripts/maintenance/build_doctrine_gate_universe.py --dry-run` |
 | Commit(寫 v0.9 snapshot + membership + §14.7-BU completeness data layer) | `$ python scripts/maintenance/build_doctrine_gate_universe.py --commit` |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --dry-run | 顯示 gate-pass + tier split 不寫 | §14.7-BV |
+| --commit | 寫新 snapshot + membership + completeness | §14.7-BV |
+| --weekly-mode | 週度 recommit 模式 | §14.7-BX |
 
 ## 📜 三、修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |

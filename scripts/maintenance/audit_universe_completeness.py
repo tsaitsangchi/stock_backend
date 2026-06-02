@@ -5,6 +5,14 @@ audit_universe_completeness.py v0.1 (§14.7-BU Phase F — Cross-Layer × Cross-
 主權狀態: IMPLEMENTED (憲法 v6.1.0 §14.7-BU Phase F 落地 / §0.4 數位孿生完整性 audit-only verdict / INFO-only non-blocking)
 最高原則: Audit-Only Authority (讀;不寫;不作 FAIL gate;對齊 §11C 治權檢驗延伸)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:跨層×跨支柱 universe 完整度稽核(§14.7-BU Phase F)。
+
+**輸入 → 輸出**:core_universe snapshot → 完整度 check 報告
+
+**為什麼需要它**:驗證核心股在各資料層/支柱的完整度。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Audit-Only Authority]: 本工具屬 §11C 治權檢驗延伸 + L1 audit-only;只讀 universe_completeness_snapshot / universe_completeness_matrix_current / core_universe_snapshot / core_universe_membership;不寫 DB;不執行 sync / fetcher;不作 FAIL gate(對齊 audit_kwave_transition.py 同模式)。
 2. [Cross-Layer × Cross-Pillar Audit Scope]: 12 checks(C1-C12)涵蓋 schema integrity(C1-C4)+ data integrity(C5-C8)+ coverage(C9-C11)+ trinity dashboard(C12)。Phase E builders 補 hook 前,data-side checks 多為 INFO(records 為空);Phase E 後變實質驗證。
@@ -24,6 +32,14 @@ audit_universe_completeness.py v0.1 (§14.7-BU Phase F — Cross-Layer × Cross-
 | **指定 snapshot_id** | `$ python scripts/maintenance/audit_universe_completeness.py --snapshot-id <snapshot_id>` |
 | **Output JSON(machine-readable)** | `$ python scripts/maintenance/audit_universe_completeness.py --output-format json` |
 | **Verbose(顯示每 cell completeness)** | `$ python scripts/maintenance/audit_universe_completeness.py --verbose` |
+
+## 📊 二、全量維運指令總矩陣 (Operational Matrix)
+
+| 指令 / 模式 | 行為 | 治權對應 |
+| :--- | :--- | :--- |
+| --snapshot-id <id> | 指定 snapshot(預設 latest committed) | §14.7-BU |
+| --output-format console|json | 輸出格式 | 維運 |
+| --verbose | 顯示每 check 細節 | 維運 |
 
 ## 📜 三、修訂歷程
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
