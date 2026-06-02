@@ -84,6 +84,20 @@
 - 部分稽核快照 + handoff(被活躍 research/sync/handoff 檔連結);`common_model_comparison_baseline_v1`(被 chronos/itransformer 報告連結)
 > 若日後一併處理 `project_structure.md` / `系統核心完整度評估報告.md` 之 stale 連結,可解除這批阻擋。
 
+### 第五批 follow-up(+7 檔,2026-06-02,用戶「處理 2 索引檔 stale 連結」+ AskUserQuestion「全清 6 檔」)
+
+解除上批 23 阻擋中之 7 檔(reports_md/ 89→96):
+
+| 檔 | 數 | 處置 |
+|---|---|---|
+| `project_structure.md` | 1 | 5/9 自動產生之專案結構 dump(無產生器、含 53 個已隔離檔的 stale 連結、早於整個重建+清理)→ 整檔過時隔離。其殘留引用全為 `.gitignore` allowlist 與憲章內 gitignore-doc 引述區塊(`!reports/project_structure.md` glob,隔離後自然 no-op)|
+| Quantum_Finance v5(`v5.1` / `v5_Asset_Matrix` / `v5_Roadmap`)| 3 | §0.1-A 明令禁止之物理隱喻(F=M×a / 重力井 / 20-60-20)v5 原始文件;雖 .gitignore glob 列「T1 治權文件」,經 AskUserQuestion 確認全清(可逆,git 史保留)|
+| 舊版憲章/架構(`系統架構_v5.2` / `系統架構大憲章_v5.4.18` / `系統架構設計報告`)| 3 | v6.1.0 為 SSOT;v5.x 全被取代 |
+
+**`系統核心完整度評估報告.md`(CLAUDE.md §六 引用,保留)之 stale 連結處理**:該報告為 2026-05-19 快照(基準 v6.0.0),§1.1 文件清單以歷史目錄列此 6 檔。已於報告頂部置入 **§一.11 SUPERSEDED banner**,聲明其為 5/19 快照且清單中多份已於 2026-06-02 隔離 → **保留歷史目錄完整,不逐行破壞記錄**。故該報告仍 textually 提及此 6 檔名(intentional 歷史目錄,banner 已註),**非斷裂連結**。
+
+> 仍未解除之 23 阻擋餘 16(被其他活躍 research/sync/handoff 檔引用,非本 2 索引檔)— deferred。
+
 ## 未移(保留待審)
 - **B 層 診斷 CLI**(5):`check_db_locks` / `check_finmind_datalist` / `check_finmind_quota` / `check_finmind_token` / `search_finmind_datasets` —— 獨立診斷工具,可能偶爾手動跑。
 - **C 層 疑似工作流工具**(10):`auto_predict_manager` / `batch_predict_all` / `batch_tune` / `historical_backfill` / `train_evaluate_body` / `update_feature_store` / `parallel_ingestion` / `phase_d_ablation` / `run_batch_backtest` / `top_roi_stocks` —— 須逐個確認用途。
