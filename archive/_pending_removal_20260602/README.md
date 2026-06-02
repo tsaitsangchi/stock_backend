@@ -33,6 +33,22 @@
 
 **附帶**:`requirements.txt` L92-93 `fastapi`/`uvicorn` 為此死服務依賴,隔離後成 unused(留著無害,日後可一併清)。
 
+## Trinity v5.5.x legacy 子系統(34 檔,2026-06-02 第三批,用戶 explicit「隔離 39 legacy」→ 封閉安全集 34)
+
+依**現行憲章可達性判斷**:以下為「Trinity Core Final v5.5.x」舊子系統層(daily 自動化 / monitor / backtest / training),**未被 charter-core(§3.1/§9.x/§14.7-CY/CZ/DD)遞移 import、憲章 0 引用** → legacy。其角色已被新框架(multi_cycle validators + §14.7-DD from-zero + §14.7-BX `run_weekly_doctrine_recommit`)取代。保留子目錄結構移入。
+
+| 子目錄 | 數 | 內容 |
+|---|---|---|
+| `monitor/` | 11 | action_runner / backtest_audit / dashboard / db_health_check / db_optimize / init_monitoring_schema / log_manager / model_health_check / model_quality_audit / pipeline_monitor / update_daily_status |
+| `training/` | 15 | auto_predict_manager / auto_train_manager / batch_predict_all / batch_tune / check_finmind_token / compute_stock_dynamics / feature_analysis / historical_backfill / parallel_train / path_fix / predict / train_evaluate / train_evaluate_body / tune_hyperparameters / update_feature_store |
+| `pipeline/` | 3 | compute_stock_dynamics / faithful_portfolio_backtest / strategy_tester |
+| `evaluation/` | 3 | faithful_portfolio_backtest / run_batch_backtest / strategy_tester |
+| `utils/` | 2 | feature_selection / model_loader |
+
+**封閉安全集驗證**:對 39 候選跑 transitive-closure —— 集合外**無任何檔 import 集合內** 才移(34 安全)。**5 支排除留下**(有外部 importer,日後與其 importer 一起隔離):`pipeline/data_pipeline`、`inference/signal_filter`、`monitor/data_audit_engine`、`monitor/data_integrity_audit`、`monitor/sync_trinity_db`。移後 import smoke + 關鍵程式 py_compile 全 PASS,**0 breakage**。
+
+> ⚠️ caveat:training/monitor 含 daily-automation CLI,若仍有 cron 排程跑舊 Trinity 自動化,需自 archive 取回(本隔離假設新框架已取代)。
+
 ## 未移(保留待審)
 - **B 層 診斷 CLI**(5):`check_db_locks` / `check_finmind_datalist` / `check_finmind_quota` / `check_finmind_token` / `search_finmind_datasets` —— 獨立診斷工具,可能偶爾手動跑。
 - **C 層 疑似工作流工具**(10):`auto_predict_manager` / `batch_predict_all` / `batch_tune` / `historical_backfill` / `train_evaluate_body` / `update_feature_store` / `parallel_ingestion` / `phase_d_ablation` / `run_batch_backtest` / `top_roi_stocks` —— 須逐個確認用途。
