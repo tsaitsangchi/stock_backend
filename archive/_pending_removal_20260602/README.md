@@ -49,6 +49,22 @@
 
 > ⚠️ caveat:training/monitor 含 daily-automation CLI,若仍有 cron 排程跑舊 Trinity 自動化,需自 archive 取回(本隔離假設新框架已取代)。
 
+## C 群 legacy 大批次(58 檔,2026-06-02 第四批,用戶「C 沒用 → 隔離」)
+
+依現行憲章兩軸判定(有用性 vs 標頭),以下為「沒用(charter 不可達 + 0 憲章引用)」之 legacy,封閉安全集隔離(集合外無人 import):
+
+| 子目錄 | 數 | 內容 |
+|---|---|---|
+| `fetchers/` | 24 | fetch_*_data(18,sovereign_sync_engine §3.1 唯一同步載體取代)+ check_*(3)+ backfill_from_gaps + parallel_fetch + search_finmind_datasets |
+| `ingestion/` | 23 | ingest_*_data(21,同 sovereign 取代)+ parallel_ingestion + search_finmind_datasets |
+| `models/` | 4 | 舊 model 子系統 |
+| `monitor/` | 3 | data_audit_engine / data_integrity_audit / sync_trinity_db(第三批 deferred 之 3,其 importer 此批一起移)|
+| `audit/` `features/` `inference/` `reports/` | 各 1 | phase_d_ablation / run_feature_engineering / (inference orphan) / top_roi_stocks |
+
+**封閉安全集**:對 62 候選跑 transitive-closure,移 59 安全(集合外無人 import;實移 58 + 1 前批已隔離)。**3 排除留下**(`pipeline/data_pipeline`、`pipeline/signal_filter`、`inference/signal_filter`)—— 被 **B 群(已補標頭)pipeline/portfolio backtest** import,須與該 backtest cluster 一起決定(deferred)。移後 import smoke + 全 101 剩餘 scripts/ .py py_compile PASS,**0 breakage**。
+
+**charter 依據**:fetch_*/ingest_* 為 sovereign_sync_engine(§3.1)取代之 per-dataset legacy;其餘為 charter 不可達 orphan/舊子系統。
+
 ## 未移(保留待審)
 - **B 層 診斷 CLI**(5):`check_db_locks` / `check_finmind_datalist` / `check_finmind_quota` / `check_finmind_token` / `search_finmind_datasets` —— 獨立診斷工具,可能偶爾手動跑。
 - **C 層 疑似工作流工具**(10):`auto_predict_manager` / `batch_predict_all` / `batch_tune` / `historical_backfill` / `train_evaluate_body` / `update_feature_store` / `parallel_ingestion` / `phase_d_ablation` / `run_batch_backtest` / `top_roi_stocks` —— 須逐個確認用途。
