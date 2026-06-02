@@ -956,6 +956,55 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **證據基礎(本條入憲)**:用戶 2026-05-31 explicit directive「**康波週期核心思想是指景氣 cycle 及股價的變化 cycle。不是用 40~60 年,可以用週、月、季、年的週期 cycle 來看這個思想**」+「**週(5d)先修憲 §0.3-A + 入憲 → 再改 feature_store_builder.py**」之直接入憲。修憲先行已完成(主憲章 §0.3-A 修正案 L2573 + T_DC-30 L12237 + §0.3-C #2 activation L2662 + §0.3-E gate activation L2689 + 本 §一.15);feature_store_builder.py code 改動為後續 task。**未 commit**(per §二.2 需 explicit 授權)。
 
+### 16. Canonical Panel Source — 驗證窗單一引用源 + 反硬編(§14.7-DE / §0.0-I / 2026-06-02 用戶 explicit directive 入憲)
+
+任何 multi-cycle validator(及任何需決定 panel 日期範圍之模型程式)**不得寫死 panel 日期範圍或 canonical 特徵數**,**必須**透過單一引用源由系統資料(DB)動態判定。
+
+**1. 治權要求(三項)**
+
+- **單一引用源(§0.0-I)**:panel 範圍唯一來源 = `core.db_utils.get_canonical_panel_dates(feature_set_version)`(v2.49 落地)。全部 13 個 `multi_cycle_*_validation.py` 及未來新模型一律 import 此函式,**嚴禁各自定義 `get_panel_dates`**。
+- **反硬編(§一.13 精神延伸)**:起點 / 終點 / canonical 特徵數 **皆由 DB 自動判定**(取「具備最大 distinct 特徵數(= canonical 完整集)之 panels」),嚴禁寫死 `date(2018,6,15)` / `date(2026,4,30)` / `37` 等 magic 值。
+- **自動適應**:raw 來源深度變動(如 BalanceSheet 起始日 → `asset_growth_yoy` 可得時點)時,窗自動調整,無需改 code。
+
+**2. 比較基準可靠性**
+
+所有模型(tree / transformer / foundation / 股票專用)之 multi-cycle 比較**必須用同一 canonical panel 窗**(來自單一 helper);否則跨模型「精準度 / 信任度」比較不可比、不可靠。此為「相同比較基準定義」之 enforcement。
+
+**3. 違反治權**
+
+任一 validator 寫死 panel 日期 / 特徵數 → §14.7-DE + §0.0-I violation;其比較結果 deemed 不可比、不可採信。
+
+**4. 雙層治權鎖(T_DC-6 慣例)**
+
+主憲章 §14.7-DE + 本條 §一.16 同次入憲;helper 落地於 `core/db_utils.py v2.49` 之 `get_canonical_panel_dates()`。任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:2026-06-02 用戶揭露 `multi_cycle_lightgbm_validation.py` 之 `get_panel_dates()` 寫死 `date(2018,6,15)`(即便人工改 2013-06-15 仍為硬編)。改資料驅動後實證:系統自動判定起點為 **2013-05-15**(比人工硬寫之 2013-06 早一個月、更準)→ 證明寫死易錯,應由資料判定。用戶 explicit directive「**所有的模型都要符合 §0.0-I 單一引用源 + 反硬編精神,入憲章**」之直接入憲。**LightGBM 參考模型 3-seed 跑完後切換至 helper;其餘 validator 於各自模型工作時切換 + 最後 sweep 確認全合規。**
+
+### 17. Canonical Horizon Metric SSOT — 跨模型 metric 計算單一引用源(§14.7-DF / §0.0-I / 2026-06-02 用戶 explicit directive 入憲)
+
+任何 multi-cycle validator 之 horizon-summary metric(sharpe / effective_t / IC / win / precision / reliability 等)**不得各自 inline 計算**,**必須**透過單一引用源 `core.db_utils.summarize_horizon_metrics()` 計算。本條為 §14.7-DF 之 CLAUDE.md 雙層治權鎖伙伴(同次入憲);主憲章 §14.7-DF 為治權 SSOT。為 §一.16(panel-date 單一源)之姊妹條 —— §一.16 治「用哪些 panel」、本 §一.17 治「metric 怎麼算」,共同確立「相同比較基準」雙支柱。
+
+**1. 治權要求(三項)**
+
+- **單一引用源(§0.0-I)**:metric 計算唯一來源 = `summarize_horizon_metrics(label, horizon_days, panel_preds_actuals, ...)`(`core/db_utils.py v2.50` 落地)。validator 只產出每 OOS panel 之 `(pred_array, actual_array)`,全部 metric(IC / top-N 選股 / precision / reliability / summary)由 helper 算。
+- **同欄位可比**:全 helper-using 模型輸出同一 metric key 集 → 跨模型精準度 / 信任度可並排比較;否則欄位不齊、不可比。
+- **faithful-reproduction**:helper 公式逐字對齊 canonical 實作;改 helper 後須以 synthetic-data unit test 驗證 bit-identical(隔離 model 訓練非決定性),**非**以 model re-run exact-match(後者受 LGBM `n_jobs=-1` 多執行緒非決定性干擾)。
+
+**2. Scope(誠實界定,per §一.8)**
+
+- ✅ **9 validators 已統一**(LANDED):lightgbm / xgboost / catboost / random_forest / extra_trees / ensemble / xgboost_dedicated / catboost_dedicated / transformer_dedicated(tree-like)。
+- ⏳ **4 torch/foundation 暫不套**(chronos / itransformer / patchtst / tft):具 calibration 導向 `aggregate_horizon` 框架,硬套會遺失校準資訊;各模型 rework 時令其**額外輸出**共同 keys,非強制改用 tree helper。
+
+**3. 違反治權**
+
+任一 helper-using validator 自行 inline 計算 horizon metric → §14.7-DF + §0.0-I violation;其跨模型比較 deemed 不可比。
+
+**4. 雙層治權鎖(T_DC-6 慣例)**
+
+主憲章 §14.7-DF(T_DF-1~4)+ 本條 §一.17 同次入憲;helper 落地 `core/db_utils.py v2.50` `summarize_horizon_metrics()`。任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-06-02 explicit AskUserQuestion 選「**抽共用 metric helper(推薦)**」(回應「6 支 PARTIAL validator 缺 precision+reliability 不可比,如何統一」)之直接入憲。實證:metric-divergence audit(9 FULL / 4 torch);helper 落地 + faithful-reproduction unit test bit-identical(13 keys max|Δ|=0.00);9 validator codemod LANDED(py_compile 13/13 PASS)。揭露 helper-extraction 須以 synthetic unit test 驗證(非 model re-run,因 LGBM `n_jobs=-1` 非決定性)。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)

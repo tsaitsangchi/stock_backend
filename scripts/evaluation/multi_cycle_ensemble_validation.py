@@ -96,7 +96,7 @@ import numpy as np
 import lightgbm as lgb
 import xgboost as xgb
 from catboost import CatBoostRegressor
-from core.db_utils import get_db_conn
+from core.db_utils import get_db_conn, get_canonical_panel_dates, summarize_horizon_metrics
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -125,16 +125,6 @@ SPEC_43 = [
     "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
     # §14.7-DC v0.3 strict: theme_is_semiconductor + fitness_signal_60d + theme_strength all removed (hardcoded knowledge / transitively tainted = AI hallucination)
 ]
-
-
-def get_panel_dates():
-    dates = []
-    current = date(2018, 6, 15)
-    while current <= date(2026, 4, 30):
-        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_5", current))
-        if current.month == 12: current = date(current.year+1, 1, 15)
-        else: current = date(current.year, current.month+1, 15)
-    return dates
 
 
 def load_features(cur, fs_id, universe):
@@ -206,9 +196,7 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
     logger.info(f"  Loaded {len(panel_data)} panels(load: {time.monotonic()-t0:.1f}s)")
 
     panel_keys = sorted(panel_data.keys())
-    panel_ics, panel_top20_rets, panel_univ_rets = [], [], []
-    panel_hit_rates, panel_overlaps, panel_disagrees = [], [], []
-    panel_rmses, panel_maes = [], []
+    panel_pa = []  # §14.7-DF: (pred, actual) per panel → 共用 helper(單一來源)
 
     for i in range(1, len(panel_keys)):
         test_key = panel_keys[i]
@@ -223,109 +211,13 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
         lgb_m, xgb_m, cb_m = train_three(X_tr, y_tr)
         X_te = np.array(X_test)
         ens_pred, disagree = predict_three(lgb_m, xgb_m, cb_m, X_te)
-        ic = spearman_ic(ens_pred, y_test)
+        panel_pa.append((ens_pred, y_test))
+    result = summarize_horizon_metrics(label, horizon_days, panel_pa)  # §14.7-DF Canonical Metric SSOT(單一來源)
+    if result is None:
+        return None
 
-        n_top = min(20, len(ens_pred))
-        top_idx = np.argsort(ens_pred)[-n_top:]
-        actual_top_idx = np.argsort(y_test)[-n_top:]
-        top20_ret = float(np.mean([y_test[k] for k in top_idx]))
-        univ_ret = float(np.mean(y_test))
-
-        # Precision metrics
-        hit_rate = float(np.mean(np.sign(ens_pred) == np.sign(y_test)))
-        overlap = len(set(top_idx.tolist()) & set(actual_top_idx.tolist())) / n_top
-        # RMSE / MAE
-        ens_arr = np.array(ens_pred); y_arr = np.array(y_test)
-        rmse = float(np.sqrt(np.mean((ens_arr - y_arr) ** 2)))
-        mae = float(np.mean(np.abs(ens_arr - y_arr)))
-        # Reliability
-        mean_disagree = float(np.mean(disagree))
-
-        panel_ics.append(ic); panel_top20_rets.append(top20_ret); panel_univ_rets.append(univ_ret)
-        panel_hit_rates.append(hit_rate); panel_overlaps.append(overlap); panel_disagrees.append(mean_disagree)
-        panel_rmses.append(rmse); panel_maes.append(mae)
-
-    if not panel_top20_rets: return None
-
-    # Standard metrics
-    n = len(panel_top20_rets)
-    mean_ret = float(np.mean(panel_top20_rets))
-    std_ret = float(np.std(panel_top20_rets, ddof=1)) if n > 1 else 0
-    sharpe = mean_ret / std_ret * math.sqrt(12) if std_ret > 0 else 0
-    win_rate = sum(1 for r in panel_top20_rets if r > 0) / n
-    alphas = [t - u for t, u in zip(panel_top20_rets, panel_univ_rets)]
-    mean_alpha = float(np.mean(alphas))
-    std_alpha = float(np.std(alphas, ddof=1)) if n > 1 else 0
-    ir = mean_alpha / std_alpha * math.sqrt(12) if std_alpha > 0 else 0
-    t_stat = mean_alpha / (std_alpha / math.sqrt(n)) if std_alpha > 0 else 0
-    running = 0; peak = 0; mdd = 0
-    for r in panel_top20_rets:
-        running += r
-        if running > peak: peak = running
-        if peak - running > mdd: mdd = peak - running
-
-    # Annualization
-    rebals_per_year = 252.0 / horizon_days
-    annualized_log_gross = mean_ret * rebals_per_year
-    annualized_simple_gross = math.exp(annualized_log_gross) - 1
-    cost_per_rebal = 0.006
-    annual_cost_drag = cost_per_rebal * rebals_per_year
-    annualized_simple_net = math.exp(annualized_log_gross - annual_cost_drag) - 1
-
-    # Overlap correction
-    panel_spacing = 30
-    if horizon_days <= panel_spacing:
-        n_eff = float(n); overlap_pct = 0.0
-    else:
-        n_eff = n * (panel_spacing / horizon_days)
-        overlap_pct = (horizon_days - panel_spacing) / horizon_days * 100
-    eff_t_stat = t_stat * math.sqrt(n_eff / n) if n > 0 else 0
-    is_significant = abs(eff_t_stat) > 1.997
-
-    # Precision aggregates
-    mean_hit_rate = float(np.mean(panel_hit_rates))
-    mean_overlap = float(np.mean(panel_overlaps))
-    mean_rmse = float(np.mean(panel_rmses))
-    mean_mae = float(np.mean(panel_maes))
-    # Reliability aggregates
-    mean_disagree = float(np.mean(panel_disagrees))
-    ic_stability = float(np.std(panel_ics, ddof=1) / abs(np.mean(panel_ics))) if np.mean(panel_ics) != 0 else float('inf')
-
-    result = {
-        "horizon": label, "horizon_days": horizon_days, "n_panels": n,
-        "n_effective": n_eff, "overlap_pct": overlap_pct,
-        "rebals_per_year": rebals_per_year,
-        "mean_ret_per_panel": mean_ret, "sharpe": sharpe, "win_rate": win_rate, "mdd_per_panel": mdd,
-        "mean_alpha_per_panel": mean_alpha, "ir": ir, "t_stat": t_stat,
-        "effective_t_stat": eff_t_stat, "is_significant_p05": is_significant,
-        "mean_ic": float(np.mean(panel_ics)),
-        "annualized_simple_gross": annualized_simple_gross,
-        "annual_cost_drag_log": annual_cost_drag,
-        "annualized_simple_net": annualized_simple_net,
-        # 新 precision metrics
-        "precision_directional_hit_rate": mean_hit_rate,
-        "precision_top20_actual_overlap": mean_overlap,
-        "precision_rmse": mean_rmse,
-        "precision_mae": mean_mae,
-        # 新 reliability metrics
-        "reliability_ensemble_disagreement": mean_disagree,
-        "reliability_ic_stability_cov": ic_stability,
-    }
-
-    logger.info(f"\n  Results({label}, {horizon_days}d):")
-    logger.info(f"    OOS panels: {n} | n_eff: {n_eff:.1f}")
-    logger.info(f"    Sharpe: {sharpe:+.4f} | Win: {win_rate*100:.1f}% | α: {mean_alpha*100:+.4f}% | IR: {ir:+.4f}")
-    logger.info(f"    Eff t-stat: {eff_t_stat:+.3f} | Sig p<0.05: {'✅' if is_significant else '❌'}")
-    logger.info(f"    Annualized NET: {annualized_simple_net*100:+.2f}%/yr")
-    logger.info(f"")
-    logger.info(f"    --- Precision ---")
-    logger.info(f"    Directional hit rate: {mean_hit_rate*100:.1f}%(stock-level sign accuracy)")
-    logger.info(f"    Top-20 actual overlap: {mean_overlap*100:.1f}%(top picks match realized top)")
-    logger.info(f"    RMSE: {mean_rmse:.4f} | MAE: {mean_mae:.4f}(magnitude error)")
-    logger.info(f"")
-    logger.info(f"    --- Reliability ---")
-    logger.info(f"    Ensemble disagreement: {mean_disagree:.4f}(三 model 分歧;低 = high confidence)")
-    logger.info(f"    IC stability(std/|mean|): {ic_stability:.4f}(低 = 穩定)")
+    logger.info(f"  {label}({horizon_days}d): Sharpe {result['sharpe']:+.3f} | Eff t {result['effective_t_stat']:+.3f} | Win {result['win_rate']*100:.1f}% | IC {result['mean_ic']:+.4f} | NET {result['annualized_simple_net']*100:+.1f}%/yr")
+    logger.info(f"    precision: hit {result['precision_directional_hit_rate']*100:.1f}% | top-20 overlap {result['precision_top20_actual_overlap']*100:.1f}% | RMSE {result['precision_rmse']:.4f} | reliability IC-CoV {result['reliability_ic_stability_cov']:.4f}")
     return result
 
 
@@ -364,8 +256,8 @@ def main():
         universe = list({r[0] for r in cur.fetchall()})
         logger.info(f"  Universe: {len(universe)} stocks")
 
-        panels = get_panel_dates()
-        logger.info(f"  Panels: {len(panels)}(2018-06-15 ~ 2026-04-15 monthly)")
+        panels = get_canonical_panel_dates("feature_set_v0.5")  # §14.7-DE / §0.0-I 單一引用源
+        logger.info(f"  Panels: {len(panels)} ({panels[0][1]} ~ {panels[-1][1]}, data-driven §14.7-DE)")
 
         results = {}
         t_global = time.monotonic()

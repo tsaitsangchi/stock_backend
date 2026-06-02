@@ -128,6 +128,7 @@ except Exception:  # pragma: no cover
         return False
 load_dotenv(PROJECT_ROOT / ".env")
 import psycopg2
+from core.db_utils import get_canonical_panel_dates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -180,16 +181,6 @@ def get_universe(cur):
                    AND s.snapshot_id=(SELECT snapshot_id FROM core_universe_snapshot
                                       WHERE status='committed' ORDER BY created_at DESC LIMIT 1)""")
     return sorted({r[0] for r in cur.fetchall()})
-
-
-def get_panel_dates():
-    """95 mid-month as_of dates 2018-06-15 .. 2026-04-15 (與 baseline 同 grid)."""
-    dates = []
-    current = date(2018, 6, 15)
-    while current <= date(2026, 4, 30):
-        dates.append(current)
-        current = date(current.year + 1, 1, 15) if current.month == 12 else date(current.year, current.month + 1, 15)
-    return dates
 
 
 def load_forward_returns(cur, as_of, horizon_days):
@@ -378,7 +369,7 @@ def run(args):
     cur = conn.cursor()
     universe = get_universe(cur)
     logger.info(f"Universe: {len(universe)} stocks (v0.18 source-pure INPUT)")
-    panels = get_panel_dates()
+    panels = [d for _fsid, d in get_canonical_panel_dates("feature_set_v0.5")]  # §14.7-DE / §0.0-I 單一引用源
     if args.max_panels:
         panels = panels[:args.max_panels]
     logger.info(f"Panels: {len(panels)} monthly as_of dates")
@@ -459,7 +450,7 @@ def main():
     logger.info("=" * 100)
     logger.info(f"Multi-Cycle Chronos Validation {TOOL_VER} (Amazon Time-Series Foundation Model / 2024)")
     logger.info("  ⚠️  EXTERNAL-PRETRAINED PRIOR — model weights NOT DB-source-pure (user-authorized 2026-05-30, see header §一.2)")
-    logger.info(f"  COMMON COMPARISON BASELINE: universe v0.18 × 95 panels × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
+    logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe × {len(panels)} panels (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
     logger.info(f"  model={args.model_id} seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
 

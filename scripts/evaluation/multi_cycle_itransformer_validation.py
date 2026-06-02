@@ -113,7 +113,7 @@ if str(_base_dir) not in sys.path:
 
 import numpy as np
 import pandas as pd
-from core.db_utils import get_db_conn
+from core.db_utils import get_db_conn, get_canonical_panel_dates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -146,16 +146,6 @@ def get_universe(cur):
                    AND s.snapshot_id=(SELECT snapshot_id FROM core_universe_snapshot
                                       WHERE status='committed' ORDER BY created_at DESC LIMIT 1)""")
     return sorted({r[0] for r in cur.fetchall()})
-
-
-def get_panel_dates():
-    """95 mid-month as_of dates 2018-06-15 .. 2026-04-15 (與 baseline 同 grid)."""
-    dates = []
-    current = date(2018, 6, 15)
-    while current <= date(2026, 4, 30):
-        dates.append(current)
-        current = date(current.year + 1, 1, 15) if current.month == 12 else date(current.year, current.month + 1, 15)
-    return dates
 
 
 def load_forward_returns(cur, as_of, horizon_days):
@@ -413,7 +403,7 @@ def run(args):
     cur = conn.cursor()
     universe = get_universe(cur)
     logger.info(f"Universe: {len(universe)} stocks (v0.18 source-pure)")
-    panels = get_panel_dates()
+    panels = [d for _fsid, d in get_canonical_panel_dates("feature_set_v0.5")]  # §14.7-DE / §0.0-I 單一引用源
     if args.max_panels:
         panels = panels[:args.max_panels]
     logger.info(f"Panels: {len(panels)} monthly as_of dates")
@@ -515,7 +505,7 @@ def main():
 
     logger.info("=" * 100)
     logger.info(f"Multi-Cycle iTransformer Validation {TOOL_VER} (Inverted Transformer / ICLR 2024)")
-    logger.info(f"  COMMON COMPARISON BASELINE: universe v0.18 × 95 panels × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
+    logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe × {len(panels)} panels (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
     logger.info(f"  seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
 
