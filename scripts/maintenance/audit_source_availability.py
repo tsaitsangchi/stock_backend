@@ -5,6 +5,14 @@ audit_source_availability.py v0.7 (Strict Source Availability Audit · §6.8.8-C
 **主權狀態**: ACTIVE (憲法 v6.1.0 §14.7-L 對齊 + §6.8.8-C 時點漂移容忍規則落地 + §14.7-AP 治權閉環 + §6.8.8-D 全市場驗證模式 + §14.7-AQ 範圍對稱性補齊 + §0.4 [Hybrid Observability] 進度心跳 + §6.8.8-E Quota-Error 分類 + §14.7-AR 錯誤分類治權補齊 + §14.7-AS `_is_time_drift_ok` 字串減法 latent bug hotfix + **§6.8.8-E.1 transient timeout retry (`[30s, 300s]` 退避)** + **§3.2A.I parallel workers (`--workers ≤ 4` 平行 audit;預期 8h+ → ~2-3h)** + 對齊 §14.7-AU v6.1.0 升版)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**來源可得性稽核**(§6.8.8):各 dataset 自 API 來源端最早可得日期。
+
+**輸入 → 輸出**:API → 各 dataset 起始日
+
+**為什麼需要它**:決定「全天數」的真實起點。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Strict Source Authority]: 驗證 core+convex 全集(N dynamic per §14.7-BW pure doctrine,無 hardcoded 150)資料是否符合憲章 §14.7-L 之嚴格定義
    — 每一個 FinMind `stock_id + dataset` 必須從 API 最早可得日期完整對齊 DB；

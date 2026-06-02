@@ -5,6 +5,14 @@ feature_store_schema.py v0.1 (Quantum Finance Feature Store Schema Authority)
 **主權狀態**: IMPLEMENTED (憲法 v6.0.0 §8.2 下游治理草案 v0.1 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:建立**特徵庫**的資料表 DDL(feature_values / feature_set)。
+
+**輸入 → 輸出**:(無)→ feature store 表
+
+**為什麼需要它**:特徵計算結果要有地方存,這支建那些表。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Feature Store Schema Authority]: 本工具只建立 §8.2 三張 feature_store_* 表，不管理 raw API schema、不管理 core_universe_* 治理表、不管理 model/prediction 表。
 2. [Downstream Boundary]: 對齊憲章 §8.1 三層職責邊界 — 不得保存 labels、不得保存 model output。

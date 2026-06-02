@@ -5,6 +5,14 @@ model_trainer_random_forest.py v0.1 (Random Forest Tree Production Trainer · §
 **主權狀態**: RANDOM FOREST TREE PRODUCTION + §14.7-CW TREE-FAMILY 第五實作(對標 LGBM/XGBoost/CatBoost/Ensemble)+ §14.7-CS MODEL-TRAINING-LANDING + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 **Random Forest** 訓練股價預測 production 模型(§14.7-CW Tree Family;walk-forward 訓練)。
+
+**輸入 → 輸出**:feature_values(37 特徵)+ 核心股 → Random Forest model artifact + registry 列
+
+**為什麼需要它**:產生實際上線用的模型檔(與 multi_cycle validator 雙軌:trainer 產 artifact、validator 自評)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Real Tree Model Required]** (v0.1, 憲法 §14.7-CW T_CW-1): Random Forest 為 bagging-based tree ensemble(對比 GBT family 之 boosting)。

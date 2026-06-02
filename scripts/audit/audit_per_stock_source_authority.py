@@ -5,6 +5,14 @@ audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority A
 **主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis per-stock byte-level proof + §14.7-CC Source Authority + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:逐股**來源主權**稽核(§14.7-CE):確認每股資料來自授權 API。
+
+**輸入 → 輸出**:DB + 來源標記 → 個股來源合規
+
+**為什麼需要它**:防止非 source-pure 資料混入。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Per-Stock × Per-Source Byte-Level Audit]** (v0.1, §14.7-CE): 對 active core_universe 全 N stocks × 11 raw sources 之逐項 byte-level 驗證。

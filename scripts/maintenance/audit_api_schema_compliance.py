@@ -5,6 +5,14 @@ audit_api_schema_compliance.py v0.6 (Quantum Finance 9-Layer Schema + Data Integ
 **主權狀態**: ACTIVE (憲法 v6.1.0 對齊 + 維運矩陣場景齊全（含 --report-out 自訂路徑）+ **§3.2A.H Layer E/F BERNOULLI 取樣支援（v0.6；對齊 §14.7-AU v6.1.0 升版）**；100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:9-layer schema + 資料完整性稽核(§3.2A.H)。
+
+**輸入 → 輸出**:DB + schema → 9 層合規報告
+
+**為什麼需要它**:確認 DB 結構與資料對齊 schema 主權。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Nine-Layer Audit]: 9 層動態檢驗（A DDL↔DB Physical / B API↔Type / C Length-Precision /
    D NULL Ratio / E PK-Unique / F Duplicate Row / G Date Continuity / H Referential /

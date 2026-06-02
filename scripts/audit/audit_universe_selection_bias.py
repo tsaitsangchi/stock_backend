@@ -5,6 +5,14 @@ audit_universe_selection_bias.py v0.1 (H5 Universe Selection Bias Auditor · §1
 **主權狀態**: ACTIVE (§14.7-CP T_CP-3 H5 audit + §14.7-CS 必要前置 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**選股偏差**稽核(§14.7-CP H5)。
+
+**輸入 → 輸出**:universe 選法 → 選股偏差報告
+
+**為什麼需要它**:確認核心股選拔無前視/選擇偏差。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[H5 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H5 — §14.7-CJ super-strict universe(1,121)是否引入 systematic selection bias。

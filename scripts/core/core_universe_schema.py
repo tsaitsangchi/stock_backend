@@ -5,6 +5,14 @@ core_universe_schema.py v0.3 (Quantum Finance Derived Governance Schema Authorit
 **主權狀態**: IMPLEMENTED (憲法 v6.0.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] + [Historical Reference Authority] 核心定義補入；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:建立**核心股治理**(§6.7)所需的資料表 DDL(snapshot / membership / scores)。
+
+**輸入 → 輸出**:(無)→ universe governance 表
+
+**為什麼需要它**:核心股選拔結果要有地方存,這支建那些表。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Derived Governance Schema Authority]: 本工具只建立核心股治理資料層，不管理 FinMind/FRED raw API schema。
 2. [Raw API Separation]: `data_schema.py` 是 Raw API Schema Authority；本工具不得取代 API contract probe。

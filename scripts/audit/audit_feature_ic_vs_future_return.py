@@ -5,6 +5,14 @@ audit_feature_ic_vs_future_return.py v0.1 (43-Feature Empirical IC Auditor · §
 **主權狀態**: ACTIVE (§14.7-CM Empirical IC Doctrine + §14.7-CL canonical 43-feature + §14.7-CH weekly cron + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:檢驗每個特徵的 cross-sectional IC(對未來報酬的預測力)(§14.7-CM)。
+
+**輸入 → 輸出**:feature_values + 未來報酬 → 各特徵 IC
+
+**為什麼需要它**:訓練前確認特徵真的有預測力。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Empirical IC Quantification]** (v0.1, §14.7-CM): 對 §14.7-CL 43 canonical features 計算 Spearman rank IC vs forward N-day return — 模型訓練有效性量化證據。

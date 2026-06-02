@@ -5,6 +5,14 @@ sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · F
 **主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版**；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**全市場原始資料同步唯一載體**(§3.1):從 FinMind/FRED 抓全市場全歷史資料寫入 DB,內建節流(5500/hr)、三階段退避、斷點續傳、402 cascade 防護、SHMM。
+
+**輸入 → 輸出**:FinMind/FRED API → DB raw 表(~81M rows)
+
+**為什麼需要它**:所有 raw 資料的入口;§14.7-DD PHASE 2/4 的主程式。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Market Universe Seed]: 第 4 步（憲章 §二 Step 4 L2428）取得 `TaiwanStockInfo` 市場個股清單，並同步 FRED 核心宏觀資料。
 2. [Schema Sovereignty]: 所有寫入欄位必須 100% 對齊 `data_schema.py` 當前版本之 `DATASET_REGISTRY`（透過 import；非硬鎖版本）。

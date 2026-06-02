@@ -5,6 +5,14 @@ model_trainer_transformer_dedicated.py v0.1 (FT-Transformer Deep Learning Produc
 **主權狀態**: TRANSFORMER TIME-SERIES PRODUCTION + 10-MODEL CCF 第 10 實作 dedicated(首次非 tree 跨架構)+ §14.7-CS MODEL-TRAINING-LANDING + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 + §一.12 5-MIN-REPORTING-AWARE + CANONICAL COMPARISON FRAMEWORK
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 **FT-Transformer 深度學習** 訓練股價預測 production 模型(§14.7-CW Tree Family;walk-forward 訓練)。
+
+**輸入 → 輸出**:feature_values(37 特徵)+ 核心股 → FT-Transformer 深度學習 model artifact + registry 列
+
+**為什麼需要它**:產生實際上線用的模型檔(與 multi_cycle validator 雙軌:trainer 產 artifact、validator 自評)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Real Deep Learning Model Required]** (v0.1): FT-Transformer(Feature Tokenizer Transformer / Gorishniy et al. NeurIPS 2021 / 學界 tabular SOTA);**multi-head self-attention** 取代 tree splits;**attention-based feature interactions** 為 architectural essence。

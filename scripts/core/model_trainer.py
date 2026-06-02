@@ -5,6 +5,14 @@ model_trainer.py v0.2.4 (Quantum Finance Model Training Authority · §10 Phase 
 主權狀態: IMPLEMENTED (憲法 v6.1.0 §10-A~H formal contract + §14.7-BQ Phase C framework + 4 audit hooks 全 wired + DEFAULT_TRAINING_POLICY + sector-aware load_inputs + sector-balanced Lagrangian adjustment + WalkForwardRunner class + **staged G strict raise (Tier 1 default raise safe / Tier 2-3 opt-in via flags;6 strict_* flags;_handle_audit_result helper)**;milestone #3.5 prediction sync 待)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Model Training Authority
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**模型訓練框架(base)**:建立 model_registry / model_training_run 表 + §10 baseline 訓練;9 family trainer 的共同前置。
+
+**輸入 → 輸出**:feature_values + universe → model artifact + registry 列
+
+**為什麼需要它**:從零序列須先跑它建 registry 表,9 個 family trainer 才能 INSERT。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Model Training Authority]: 對齊憲章 §10-A~H formal contract(§14.7-BQ Phase B 入憲;
    commit `27c1abf`),為 §8.3 Model Registry v0.1 草案之 formal 升版;§2 維運矩陣 Step 10 之執行載體。

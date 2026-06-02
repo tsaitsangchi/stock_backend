@@ -5,6 +5,14 @@ audit_backtest_walk_forward.py v0.1 (Real 8-Panel Walk-Forward Backtest Auditor 
 **主權狀態**: ACTIVE (§14.7-CV Backtest Production Closure + §14.7-CX 8-year extension precursor + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**8-panel walk-forward backtest 稽核**(§14.7-CV production closure)。
+
+**輸入 → 輸出**:model + 特徵 → 8-panel backtest 績效
+
+**為什麼需要它**:驗證 production 模型在真實 walk-forward 下的 backtest 表現。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[8-Panel Walk-Forward Backtest]** (v0.1, §14.7-CV): 對 8 historical snapshots(fs_20260105 → fs_20260415)+ 30d forward returns 跑 real portfolio backtest。

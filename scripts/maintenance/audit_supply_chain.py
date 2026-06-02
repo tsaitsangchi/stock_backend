@@ -5,6 +5,14 @@ audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Ma
 **主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊 + §3.2A 橫切稽核身分自我宣告 + 維運矩陣重組為 5 大功能群視角；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**供應鏈稽核**:schema 後資料供應鏈完整性(§14.7-DD PHASE 4 gate)。
+
+**輸入 → 輸出**:DB raw 表 → PERFECT/WARNING/FAILED
+
+**為什麼需要它**:全市場同步後確認供應鏈無缺。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Post-Schema Audit]: 本工具定位於 `data_schema.py --init --force` 之後（憲章 §二 序列 L2403、Step 3 維運矩陣 L2422-2423），驗收 API + DB + logs 三軸對齊。
 2. [API Contract Reuse]: API 欄位契約以 `data_schema.py` 當前版本之 API-first probe 為權威來源（透過 import `SovereignSchemaManager` / `DATASET_REGISTRY` / `FINMIND_API_TABLES`），不重新定義契約。

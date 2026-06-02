@@ -6,6 +6,14 @@ audit_core_universe.py v0.2 (Quantum Finance Core Universe Audit Authority)
         + v0.6 policy 識別擴張 + FG 11 sub-score / IF 12 sub-score / VC RMS 凸性對齊 score_detail 驗收)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則) — Core Universe Post-Build Verification
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**核心股稽核**:驗證 committed core universe snapshot 的正確性。
+
+**輸入 → 輸出**:core snapshot → PERFECT/WARNING/FAILED
+
+**為什麼需要它**:§14.7-DD PHASE 6 的 audit gate。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Core Universe Audit Authority]: 對齊憲章 §6.7 / §6.8 / §8.8.6，只驗收
    `core_universe_builder.py` 產物，**不重算**核心股名單；本工具不是核心股

@@ -5,6 +5,14 @@ audit_feature_sign_stability.py v0.1 (43-Feature Sign Stability + Literature + T
 **主權狀態**: ACTIVE (§14.7-CO Sign Stability + §14.7-CQ TW Empirical Sign Commitment + §14.7-CR Mathematical Sign Realism + §14.7-CH weekly cron + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:檢驗特徵 IC 符號的跨期穩定性 + 對照文獻方向(§14.7-CO/CQ)。
+
+**輸入 → 輸出**:各特徵跨期 IC → 符號穩定度
+
+**為什麼需要它**:不穩定/與文獻反向的特徵須警示。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Sign Stability Doctrine]** (v0.1, §14.7-CO): 對 43 SPEC features 跨三窗口計算 sign stability(IC 正負相關性正式入治權)。

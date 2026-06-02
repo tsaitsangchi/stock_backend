@@ -5,6 +5,14 @@ audit_feature_data_quality_bias.py v0.1 (H4 Feature Data Quality Bias Auditor ·
 **主權狀態**: ACTIVE (§14.7-CP T_CP-3 H4 audit + §14.7-CS 必要前置 + §8.5 anti-leakage 對齊 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:檢驗特徵的資料品質偏差(imputed/zero-fill/異常)(§14.7-CP H4)。
+
+**輸入 → 輸出**:feature_values → 品質偏差報告
+
+**為什麼需要它**:確保特徵無 source 污染(§一.10)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[H4 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H4 — feature 計算方式是否引入 systematic bias。

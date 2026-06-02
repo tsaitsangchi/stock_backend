@@ -5,6 +5,14 @@ migrate_data_audit_log_dedup_20260525.py v0.1 (Quantum Finance §3.2A.J Migratio
 **主權狀態**: ONE-OFF MIGRATION (憲法 v6.1.0-patch §3.2A.J / §14.7-AY 落地 C 項；對齊 data_schema v2.17 / db_utils v2.48 升版預備)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:一次性 migration:data_audit_log 去重 + 加 UNIQUE constraint(§3.2A.J 配套)。
+
+**輸入 → 輸出**:舊 data_audit_log → 去重後 + constraint
+
+**為什麼需要它**:一次性 schema 修正(已套用)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [One-Off Migration]: 本腳本為一次性 DB schema migration，對齊憲章 §3.2A.J `data_audit_log` 5-tuple UNIQUE constraint 治權契約落地，**執行一次後不再重複**（再執行為 idempotent：dup=0 + constraint 已存在則 NO-OP exit 0）。
 2. [Race-Safe Bridge]: data_schema.py v2.17 已在 DDL 宣告 UNIQUE constraint，但既有 DB 之 `data_audit_log` 表（包含 race-induced dup）需先 dedup 才能 ADD CONSTRAINT；本腳本扮演 schema-state migration bridge 之治權職責。

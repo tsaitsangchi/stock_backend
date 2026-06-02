@@ -5,6 +5,14 @@ initialize_market_data.py v1.21 (Quantum Finance Genesis Edition - Deduplicated)
 **主權狀態**: PERFECT (創世自癒對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**創世**:建立股票名冊表 `stocks` + 雙日誌表(pipeline_execution_log / data_audit_log)。
+
+**輸入 → 輸出**:(無)→ stocks + log 表
+
+**為什麼需要它**:PHASE 2 seed 同步前的前置(名冊與日誌容器);§14.7-DD PHASE 1。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Genesis Sovereignty]: 系統具備從物理真空自發重構的能力，確保 100% 環境自癒。
 2. [Hybrid Observability]: 註冊行為必須遵循「雙軌審計」模式：生命週期紀錄 + 專項審計。

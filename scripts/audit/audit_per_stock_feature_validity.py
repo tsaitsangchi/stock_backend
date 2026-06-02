@@ -5,6 +5,14 @@ audit_per_stock_feature_validity.py v0.1 (Per-Stock × Per-Feature Completeness 
 **主權狀態**: ACTIVE (§14.7-CI Strict Validity + §14.7-CK Effectiveness + §14.7-CL Canonical Scope + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:逐股×逐特徵的完整性+正確性稽核(§14.7-C 系列)。
+
+**輸入 → 輸出**:feature_values → 個股特徵有效性
+
+**為什麼需要它**:確認每支核心股的特徵都完整正確。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Per-Stock × Per-Feature Completeness]** (v0.1, §14.7-CI): 對 v0.15 active universe(N=1,121)× 43 canonical features(§14.7-CL)逐 stock × 逐 feature 之 non-null check。

@@ -5,6 +5,14 @@ run_weekly_doctrine_recommit.py v0.1 (§14.7-BX Phase C-3 — Weekly Doctrine-Dr
 主權狀態: IMPLEMENTED (憲法 v6.1.0 §14.7-BX Phase C-3 落地;Phase D-1 cron 啟動需 Phase C-2 之 M1/M2/M3 sub-option 治權選定後才可)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**週度 doctrine recommit pipeline**(§14.7-BX):每週依 doctrine 重選核心股+重算。
+
+**輸入 → 輸出**:現有 DB → 更新 universe/feature
+
+**為什麼需要它**:維運層:讓系統隨新資料每週更新(不在從零序列)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Weekly Recommit Orchestrator]: 本工具為 §14.7-BX inscribed 之 weekly doctrine recommit pipeline 之 orchestrator;依序執行 fetch FRED → compute K-wave proxies → build doctrine-gate universe(weekly mode)→ audit → drift report 5 步。
 2. [Atomic Supersede]: 透過 build_doctrine_gate_universe.py --weekly-mode 確保 §6.7 SSOT 在過渡期間維持(任一時點 ≤ 1 committed snapshot)。

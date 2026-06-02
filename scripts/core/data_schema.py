@@ -5,6 +5,14 @@ data_schema.py v2.20 (Quantum Finance API-First Schema Sovereignty Edition)
 **主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）+ build_publication_date_gate() helper 升 SSOT（v2.20 Phase 3 配套;兩個 builder 共用）；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:定義並建立本系統**全部原始資料表**(11 張 FinMind 表 + FRED + 基礎設施表)的 DDL,並持有「API 欄位 schema 主權」。
+
+**輸入 → 輸出**:(無)→ DB 內所有 raw 表結構 + DATASET_REGISTRY
+
+**為什麼需要它**:所有資料的容器源頭;同步/特徵/模型都依賴這些表先存在。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [API Contract First]: `--init` 進入 DDL 前必須先詢問 FinMind / FRED API，確認外部欄位契約。
 2. [Absolute Case Sovereignty]: 強制執行雙引號封裝 DDL，確保物理層與 API 原始大小寫 1:1 鏡像。

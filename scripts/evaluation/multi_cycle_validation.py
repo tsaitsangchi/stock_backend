@@ -5,6 +5,14 @@ multi_cycle_validation.py v0.1 (Multi-Cycle LGBM Validation Engine · §14.7-CY 
 **主權狀態**: MULTI-CYCLE 4-HORIZON LGBM VALIDATION + §14.7-CY HORIZON-DOCTRINE 第一實作 + §14.7-CX 8-YEAR OOS EXTENSION + §14.7-CW LGBM-TREE-FAMILY + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 (per CLAUDE.md §一.11)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**LGBM production multi-cycle 驗證**(§14.7-CY 第一實作):4 horizon walk-forward 評估 production LGBM 能否賺錢。
+
+**輸入 → 輸出**:feature_values + 股價 → 各週期 Sharpe/Eff t/Win 等 metric
+
+**為什麼需要它**:production 模型的多週期實證裁判;dedicated validators 的母本。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Multi-Cycle Horizon Coverage]** (v0.1, 憲法 §14.7-CY T_CY-2): 至少 ≥ 3 horizons;預設 4(weekly 5d / monthly 20d / quarterly 60d / annual 252d)。

@@ -5,6 +5,14 @@ audit_downstream_readiness.py v0.2 (Quantum Finance §8 Promotion Readiness Audi
 主權狀態: IMPLEMENTED (憲法 v6.0.0 §8.8.6 / §8.8.9 升版 readiness 稽核 + §9.1 horizon=30 預備)
 最高原則: Downstream Promotion Readiness Authority
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**§8 promotion readiness 稽核**:下游(模型/投組)是否就緒。
+
+**輸入 → 輸出**:universe/feature/model 狀態 → readiness 報告
+
+**為什麼需要它**:確認可進入下游階段。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Promotion Readiness Authority]: 對齊憲章 §8.8.6 / §8.8.9，作為 §8 升至強制契約之
    readiness 稽核總工具；不取代 `audit_leakage.py`，而是彙總 DDL、clean historical

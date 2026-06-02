@@ -5,6 +5,14 @@ model_trainer_lightgbm.py v0.1 (LightGBM Tree Production Trainer · §14.7-CW Tr
 **主權狀態**: LIGHTGBM TREE PRODUCTION + §14.7-CW TREE-FAMILY 第七實作(dedicated alongside LGBM v0.2 production)+ §14.7-CS MODEL-TRAINING-LANDING + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 + CANONICAL COMPARISON FRAMEWORK
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 **LightGBM** 訓練股價預測 production 模型(§14.7-CW Tree Family;walk-forward 訓練)。
+
+**輸入 → 輸出**:feature_values(37 特徵)+ 核心股 → LightGBM model artifact + registry 列
+
+**為什麼需要它**:產生實際上線用的模型檔(與 multi_cycle validator 雙軌:trainer 產 artifact、validator 自評)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Real Tree Model Required]** (v0.1, 憲法 §14.7-CW T_CW-1): LightGBM(Microsoft 2017)為 leaf-wise growth GBT(對比 XGBoost level-wise + CatBoost ordered boosting);histogram-based + GOSS(Gradient-based One-Side Sampling)為 speed essence。

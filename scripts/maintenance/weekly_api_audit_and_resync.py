@@ -5,6 +5,14 @@ weekly_api_audit_and_resync.py v0.1 (§14.7-CE Weekly Automation Wrapper · per 
 **主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis weekly automation + §14.7-CH 配套 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**週度 API 稽核+resync wrapper**(§14.7-CE)。
+
+**輸入 → 輸出**:DB + API → 對帳 + 補同步
+
+**為什麼需要它**:維運層:每週校正 DB 與 API 的差異。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Weekly DB ≡ API Invariant]** (v0.1, §14.7-CE): 「Weekly assured: DB ≡ FinMind/FRED API at byte-level」之 weekly enforcement。

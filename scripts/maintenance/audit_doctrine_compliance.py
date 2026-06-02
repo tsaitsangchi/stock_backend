@@ -13,6 +13,14 @@ audit_doctrine_compliance.py v0.4 (Quantum Finance §0 Supreme Doctrine Complian
 | v0.4 | 2026-05-23 | Codex | **§14.7-AV dual-track promotion gate 落地**:對齊憲章 v6.1.0 §9.5 升版路徑表雙軌制(Operations Reality vs §8/§9 promotion)。新增 `OPERATIONS_TRACK_VERSIONS = {"v6.1.0"}` 與 `DOWNSTREAM_TRACK_VERSIONS = {"v6.1.1", "v6.2.0", ...}` 模組常數;`audit_for_promotion()` 依 target 分流走 Operations 軌道(檢 §0.0-I.9 跨平台前置)或 §8 軌道(檢 §8 schema + production-current model)。未知 target 走嚴格 §8 fallback。Smoke 驗證:`--for-promotion v6.1.0` → promotion_gate PASS;`--for-promotion v6.1.1` → promotion_gate FAIL(time-gated)。CONSTITUTION_VER v6.0.0 → v6.1.0 + TOOL_VER v0.3 → v0.4。對應 §14.7-AV 治權記述(audit_doctrine v0.3 之 promotion gate 不分流軌道之缺口)。 | **ACTIVE** |
 | v0.3 | 2026-05-19 | Codex | (前版基線) | SUPERSEDED |
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**§0 最高 doctrine 合規稽核**(§14.7-AV 雙軌):掃 code 是否違反 AI 幻像值等禁令。
+
+**輸入 → 輸出**:全 scripts → doctrine 違規報告
+
+**為什麼需要它**:守 §一.10/§14.7-DC 等治權禁令。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Supreme Doctrine Authority]: 對齊憲章 §0.7 升版規則「v6.x.0 與 v7.0.0 之任何升版
    提案，皆必須附 §0 四大支柱之治理檢驗報告；若無法明示新條款對映至本章某一支柱

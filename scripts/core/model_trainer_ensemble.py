@@ -5,6 +5,14 @@ model_trainer_ensemble.py v0.1 (Tree Family Ensemble Trainer · LGBM+XGBoost+Cat
 **主權狀態**: TREE FAMILY ENSEMBLE + §14.7-CW 第四實作(三 tree base 模型 mean prediction)+ §14.7-CS MODEL-TRAINING-LANDING + §14.7-CL 43-FEATURE CANONICAL + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 **三樹集成(LGBM+XGBoost+CatBoost)** 訓練股價預測 production 模型(§14.7-CW Tree Family;walk-forward 訓練)。
+
+**輸入 → 輸出**:feature_values(37 特徵)+ 核心股 → 三樹集成(LGBM+XGBoost+CatBoost) model artifact + registry 列
+
+**為什麼需要它**:產生實際上線用的模型檔(與 multi_cycle validator 雙軌:trainer 產 artifact、validator 自評)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[Tree Family Ensemble Authority]** (v0.1, §14.7-CW Tree Family extension): 本程式為 LGBM v0.2 + XGBoost v0.1 + CatBoost v0.1 之 ensemble mean prediction;預期 sharper + 較單模型 robust(消 stochasticity)。

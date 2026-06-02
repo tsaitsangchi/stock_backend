@@ -5,6 +5,14 @@ path_setup.py v4.48 (Quantum Finance Bootstrap-Aligned Path SSOT Edition · §0.
 **主權狀態**: PERFECT (憲法 v6.1.0 對齊 + [Zero Hardcoded Verdict] + [Sovereignty Declaration] 核心定義補入 + **§0.0-I.10 跨平台路徑解析 (v4.47 os.path.realpath() 解 symlink 後比對；對齊 §14.7-AU v6.1.0 升版)** + **v4.48 `ensure_scripts_on_path()` 函式補入 (§14.7-BR Phase C-1 配套；治本 6 fetchers + maintenance scripts 之 entry-point 引導 import error)**；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**路徑主權 SSOT**:由 .env 錨定 PROJECT_ROOT,推導 25 維專案路徑,跨平台(realpath 解 symlink)。
+
+**輸入 → 輸出**:PROJECT_ROOT → 25 維路徑接口
+
+**為什麼需要它**:~111 支程式開頭 import 它設好路徑;憲章 §20 重建序列第一步。絕不可移除。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Path Sovereignty]: 確立絕對物理基準 (PROJECT_ROOT)，所有子路徑接口必須以此為唯一根節點擴展。
 2. [Self-Healing Mechanism]: 具備自動化目錄重建與權限修正能力，確保系統環境「零配置」主權啟動。

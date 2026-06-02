@@ -5,6 +5,14 @@ finmind_client.py v4.46 (Quantum Finance Supply Chain Sovereign Edition)
 **主權狀態**: ACTIVE (憲法 v6.0.0 對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**FinMind API 客戶端**:認證、查 user_info/配額、API 連線診斷。
+
+**輸入 → 輸出**:FINMIND_TOKEN → API 連線 / 配額狀態
+
+**為什麼需要它**:同步資料前確認 FinMind 帳號/配額可用;§7 速率主權的基礎。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Supply Chain Observability]: 具備外部數據源之通訊感測與配額監測能力，確保供應鏈穩定。
 2. [Endpoint Sovereignty]: 配額稽核必須指向正確的物理座標 (api.web.finmindtrade.com)。

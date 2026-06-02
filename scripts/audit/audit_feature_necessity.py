@@ -5,6 +5,14 @@ audit_feature_necessity.py v0.1 (43-Feature 4-Path Necessity Auditor · §14.7-C
 **主權狀態**: ACTIVE (§14.7-CN Feature Necessity Doctrine + §14.7-CL canonical 43-feature + §14.7-CH weekly cron + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:用 4-path ablation 檢驗每個特徵的必要性(§14.7-CN)。
+
+**輸入 → 輸出**:特徵集 → 移除各特徵之影響
+
+**為什麼需要它**:確認特徵不是冗餘/有害。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[4-Path Necessity Verdict]** (v0.1, §14.7-CN): 對 43 canonical features 之 4-path 必要性檢驗。

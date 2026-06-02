@@ -5,6 +5,14 @@ universe_completeness_schema.py v0.1 (§14.7-BU Phase C+D — Cross-Layer × Cro
 主權狀態: IMPLEMENTED (憲法 v6.1.0 §14.7-BU Phase C+D 落地 / §0.4 數位孿生完整性 implicit→explicit / §8 Prediction Layer 0% gap closure / Path C hybrid)
 最高原則: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:建立**跨層×跨支柱 universe 完整度閘門**(§14.7-BU)的快照表 DDL。
+
+**輸入 → 輸出**:(無)→ universe_completeness_snapshot 表
+
+**為什麼需要它**:feature_store_builder 寫此表;從零重建須先建它(否則 panel BUILD-FAILED)。
+
 ## 📜 一、核心定義說明 (Core Definitions)
 1. [Universe Completeness Schema Authority]: 本工具只建立 §14.7-BU Path C 之 3 new tables + 1 materialized view（prediction_run / predictions / universe_completeness_snapshot / universe_completeness_matrix_current）;不管理 raw API schema、不管理 core_universe_* 治理表（由 core_universe_schema.py 主管）、不管理 feature_store_* 表（由 feature_store_schema.py 主管）、不管理 model_registry（由 data_schema.py 主管）。
 2. [Cross-Layer SSOT Boundary]: universe_completeness_snapshot 為 trinity × layer 跨層完整性唯一查詢入口;但既有 28 tables 之 layer authority 紀律維持 — 每層 builder 仍主管自己 audit（fetch_log / data_audit_log / feature_store_* / model_*）,不破。

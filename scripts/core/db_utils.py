@@ -5,6 +5,14 @@ db_utils.py v2.50 (Quantum Finance Infrastructure Sovereign Edition)
 **主權狀態**: GOVERNANCE SYNC (憲法 v6.1.0 對齊 + §14.7-DE Canonical Panel Source `get_canonical_panel_dates()` + §14.7-DF Canonical Horizon Metric SSOT `summarize_horizon_metrics()` 單一引用源 helper 落地 + §3.2A.J `write_data_audit_log` race-safe ON CONFLICT DO NOTHING；維運矩陣重組為 6 大功能群視角；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:資料庫**基礎設施橫切 library**:DB 連線、§6.7 核心股查詢 SQL、雙日誌、**兩個單一引用源 helper**(`get_canonical_panel_dates` 取驗證窗 / `summarize_horizon_metrics` 算 metric)。
+
+**輸入 → 輸出**:DB 連線參數 → 連線 / 查詢結果 / metric dict
+
+**為什麼需要它**:幾乎每支程式都 import 它取得 DB 連線與共用工具;是系統的基礎設施中樞。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Infrastructure Resilience]: 提供具備自動重連與健康診斷的資料庫通訊介面，確保 24/7 治權連通性。
 2. [Asset Sovereignty]: 核心股名單必須透過 `core_universe_membership` JOIN `core_universe_snapshot` 取得，嚴禁回查 v5.2 時代 `stocks` 表。

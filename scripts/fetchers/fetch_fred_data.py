@@ -5,6 +5,14 @@ fetch_fred_data.py v3.2 (FRED 全球宏觀資料 Fetcher · §0.3 K-wave indicat
 **主權狀態**: ACTIVE (§0.3 K-wave 13 indicators + §14.7-BY/BZ doctrine purity + §14.7-BG/BH 配套 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**FRED 全球宏觀資料抓取**(§0.3 康波週期指標):從 FRED API 抓 macro series 寫入 `fred_series`。
+
+**輸入 → 輸出**:FRED API → fred_series(24 series 含 13 KWAVE)
+
+**為什麼需要它**:核心股選拔的 K-wave gate 需要 fred_series;§14.7-DD PHASE 2b 前置。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[FRED Macro Data Authority]** (v3.2, §0.3 K-wave): 對齊憲章 §0.3 康波週期 13 indicators 之唯一 FRED API fetch 載體。

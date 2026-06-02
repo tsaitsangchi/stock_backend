@@ -5,6 +5,14 @@ audit_survivorship_bias.py v0.1 (H8 Survivorship Bias Auditor · §14.7-CP T_CP-
 **主權狀態**: ACTIVE (§14.7-CP T_CP-3 H8 audit + §14.7-CS Model Training Landing 必要前置 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**倖存者偏差**稽核(§14.7-CP H8)。
+
+**輸入 → 輸出**:universe + 下市股 → 倖存者偏差報告
+
+**為什麼需要它**:避免只看活下來的股票而高估績效。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[H8 Hypothesis Test]** (v0.1, §14.7-CP T_CP-3): H8 — 歷史 vs 當前 universe survivorship bias 檢驗。

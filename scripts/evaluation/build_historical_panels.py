@@ -5,6 +5,14 @@ build_historical_panels.py v0.1 (Historical Monthly Panel Builder · §14.7-CX 8
 **主權狀態**: 95-MONTHLY-PANEL HISTORICAL FEATURE BUILDER + §14.7-CX 8-YEAR-OOS 配套 + §14.7-CY MULTI-CYCLE 配套 + §14.7-CL 43-FEATURE CANONICAL + §8.5 ANTI-LEAKAGE INHERITED + §一.10 SOURCE-TRACEABLE + §一.11 三段式合規 (per CLAUDE.md §一.11)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**建歷史 panel**:產生 95 個月度歷史特徵 panel(§14.7-CX 8-year OOS 配套)。
+
+**輸入 → 輸出**:raw 資料 → 95 historical monthly feature panels
+
+**為什麼需要它**:walk-forward 驗證需要跨年的歷史 panel;§14.7-DD PHASE 7。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
 1. **[95-Panel Monthly Span]** (v0.1, 憲法 §14.7-CX): 自 2018-06-15 至 2026-04-15 mid-month 15th 共 95 monthly panels;對映 8 年 historical OOS validation。

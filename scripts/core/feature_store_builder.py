@@ -7,6 +7,14 @@ feature_store_builder.py v0.5 (Quantum Finance Feature Store Build Authority)
 
 **[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CA/CL): 本程式為 **§8.2 Feature Store + §14.7-CL canonical 43-feature 唯一治權載體**(§3.1 序列模組第 7/9 員;對應 §二 維運矩陣 Step 9)。**治權邊界**:(a) §3.1 序列 feature computation 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) **§8.5 anti-leakage 之 publication_date_strategy enforcement 為核心職責**(per data_schema.PUBLICATION_DATE_STRATEGY_REGISTRY);(e) **不選股**(由 core_universe_builder.py 負責);(f) **不訓練 model**(由 model_trainer 負責);(g) **不修改 raw API tables**(read-only from data_schema-aligned tables);(h) 唯一職責:依 §14.7-CL 43-feature canonical 從 raw + universe 計算 features + 寫入 feature_store_snapshot / feature_values / feature_definition 三 governance tables。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**特徵計算**:對核心股計算 37 個 source-pure 特徵(估值/動能/籌碼/財務,全來自真實 API 數學轉換),寫入特徵庫。
+
+**輸入 → 輸出**:raw 資料 → feature_values(feature_set_v0.5,37 特徵)
+
+**為什麼需要它**:模型的輸入特徵由它產生;只用真實 API 來源、無 AI 補值。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Feature Store Build Authority]: 對齊憲章 §8.2 Feature Store v0.1 草案，
    作為 §2 維運矩陣 Step 9 之執行載體（§8.7 矩陣延伸）；從 raw + universe

@@ -5,6 +5,14 @@ model_metadata.py v2.91 (Quantum Finance Model Sovereign Edition)
 **主權狀態**: PERFECT (全譜治權對齊)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**模型元資料管理**:model artifact 的 metadata 讀寫 / registry 介面。
+
+**輸入 → 輸出**:model 資訊 → metadata 記錄
+
+**為什麼需要它**:訓練/預測時記錄與查詢模型版本、特徵集、訓練窗等。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Model Sovereignty]: 確立模型元數據為預測系統的唯一「權威標籤」，嚴禁未註冊模型進入推論環節。
 2. [Version Auditing]: 透過生命週期紀錄強制追蹤模型的每一次訓練、更新與棄置行為。

@@ -7,6 +7,14 @@ audit_leakage.py v0.2 (Quantum Finance Anti-Leakage Audit Authority)
 
 **[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.2 橫切 audit / §8.5): 本程式為 **§8.5 Anti-Leakage 唯一治權載體**(§3.2 橫切 audit 模組)。**治權邊界**:(a) §3.2 橫切 audit;(b) **不修改** features / model_registry(read-only);(c) **唯一檢驗** feature_values 是否含 forward-looking 資料;(d) **唯一檢驗** publication_date_strategy 是否被 feature_store_builder 正確 enforce;(e) **不選股 / 不訓練 model**;(f) 唯一職責:scan feature_store_snapshot + feature_values → 驗證 anti-leakage 19 條 rules → 產出 leakage audit report。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**anti-leakage 稽核**(§8.5):檢查時間邊界、防未來資料洩漏。
+
+**輸入 → 輸出**:訓練/驗證資料 → 洩漏風險報告
+
+**為什麼需要它**:確保 walk-forward 不偷看未來。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Anti-Leakage Authority]: 對齊憲章 §8.5「Data Leakage 防禦規則」之 8 條 anti-leakage 規則，
    掃描 `feature_store_builder.py` / `model_trainer.py` / `prediction_engine.py` 之

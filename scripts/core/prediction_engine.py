@@ -7,6 +7,14 @@ prediction_engine.py v0.3 (Quantum Finance Prediction Authority · §10 Phase C 
 
 **[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CT): 本程式為 **§9.1 prediction_engine + §14.7-CT Production Closure 唯一治權載體**(§3.1 序列模組第 8/9 員)。**治權邊界**:(a) §3.1 序列 prediction 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 已 handle by feature_store_builder;(e) **不訓練 model**(load committed model from model_registry);(f) **不算 features**(讀取 feature_values);(g) **不持有 portfolio sizing**(由 portfolio_sizer 負責);(h) 唯一職責:load committed model + 對 latest feature_values 預測 + 寫入 prediction_run governance table。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**預測**:載入訓練好的 model,對核心股產生 30 日機率預測(§9.1)。
+
+**輸入 → 輸出**:model artifact + 最新特徵 → 各股 30 日預測機率
+
+**為什麼需要它**:把訓練成果轉成可用的預測訊號,供 portfolio sizing。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Prediction Authority]: 對齊憲章 §8.4 Prediction Table v0.1 草案，
    作為 §2 維運矩陣 Step 11 之執行載體（§8.7 矩陣延伸）；載入 model artifact +

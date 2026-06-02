@@ -7,6 +7,14 @@ portfolio_sizer.py v0.3 (Quantum Finance Portfolio Sizing Authority)
 
 **[Sovereignty Declaration]** (2026-05-29 §一.11 補入,憲法 §3.1 序列模組 / §14.7-CU): 本程式為 **§9.2 portfolio_sizer + §14.7-CU Production Closure 唯一治權載體**(§3.1 序列模組第 9/9 員)。**治權邊界**:(a) §3.1 序列 portfolio sizing 模組;(b) 五套禁令不涉;(c) T1-T3 不分層;(d) §8.5 不處理;(e) **不訓練 model**;(f) **不預測**(讀取 prediction_run 結果);(g) **不執行交易**;(h) 唯一職責:從 prediction_run 取 top stocks + 依 §9.2 barbell 計算 sizing → portfolio_proposal markdown 輸出。
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**部位配置**:依預測 + 風控做槓鈴式部位大小(§9.2)。
+
+**輸入 → 輸出**:預測訊號 → 各股部位權重
+
+**為什麼需要它**:把預測轉成實際可執行的投組配置。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Sizing Authority]: 對齊憲章 §0.0-A.5 第五個轉換器裁決——本程式為「formal
    prediction → allocation proposal / position weights」的工程轉換器；不重選

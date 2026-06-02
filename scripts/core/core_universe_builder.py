@@ -15,6 +15,14 @@ v0.12 五層 CoreScore 評分公式(§14.7-DC v0.9 MVP v0.21 Step C land):
    hardcoded knowledge dict 違反 §一.10 source-pure doctrine + §一.13 doctrine;
    原 15% 重分配為 DQ +5 / LM +5 / IF +5;v0.2-v0.11 era CoreScore 六層為歷史記述)
 
+## 🎯 零、這支程式在做什麼(白話說明,給人看的)
+
+**一句話**:**核心股選拔**:用 CoreScore 五層評分(資料品質/流動性/基本面/籌碼/波動)+ source-pure gate,從全市場挑出乾淨的核心股 universe。
+
+**輸入 → 輸出**:全市場 raw 資料 → committed core_universe snapshot(現 v0.18/397 核心股)
+
+**為什麼需要它**:決定「哪些股票進模型」;source-pure gate 排除任何含 imputed 特徵的股票(§14.7-DC)。
+
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Core Universe Selection Authority]: 對齊憲章 §6.1〜§6.6，作為 CoreScore
    v0.2 六層正式評分之唯一授權載體；DB-driven、可評分、可重算、可回測、
