@@ -96,7 +96,7 @@
 
 **`系統核心完整度評估報告.md`(CLAUDE.md §六 引用,保留)之 stale 連結處理**:該報告為 2026-05-19 快照(基準 v6.0.0),§1.1 文件清單以歷史目錄列此 6 檔。已於報告頂部置入 **§一.11 SUPERSEDED banner**,聲明其為 5/19 快照且清單中多份已於 2026-06-02 隔離 → **保留歷史目錄完整,不逐行破壞記錄**。故該報告仍 textually 提及此 6 檔名(intentional 歷史目錄,banner 已註),**非斷裂連結**。
 
-> 仍未解除之 23 阻擋餘 16(被其他活躍 research/sync/handoff 檔引用,非本 2 索引檔)— deferred。
+> 仍未解除之 23 阻擋餘 ~16(被其他活躍 research/sync/handoff 檔引用,非本 2 索引檔)。**逐一追查結論見 `reports/reports_md_residual_blocked_load_bearing_analysis_20260602.md`:0 個可乾淨清除 —— 皆 load-bearing**(類別 A=baseline_v1 為現行 torch 報告事實基準;類別 B=憲章 T2 §14 audit-trail allowlist 證據鏈)。唯一自然退場 = torch 模型在新宇宙 397/37 重跑後 baseline_v1 + 4 torch 報告一起退役。**建議停在此處**,不強行清除(避免竄改 §一.10 / 弱化 §14 審計軌跡)。
 
 ## 未移(保留待審)
 - **B 層 診斷 CLI**(5):`check_db_locks` / `check_finmind_datalist` / `check_finmind_quota` / `check_finmind_token` / `search_finmind_datasets` —— 獨立診斷工具,可能偶爾手動跑。
