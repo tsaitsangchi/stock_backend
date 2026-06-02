@@ -87,6 +87,7 @@ reports/*
 !reports/xgboost_dedicated_validation_report_*.md
 !reports/catboost_dedicated_validation_report_*.md
 !reports/reports_md_residual_blocked_load_bearing_analysis_*.md
+!reports/full_market_incremental_sync_design_proposal_*.md
 !reports/tree_family_9_model_master_summary_*.md
 !reports/tree_family_10_model_*.md
 !reports/multi_cycle_*_clean910_*.json

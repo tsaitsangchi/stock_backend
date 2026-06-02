@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation 落地)
+sovereign_sync_engine.py v1.23 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation · §6.8.7 第 (5) 條 全市場增量維運)
 ================================================================================
-**最後更新日期**: 2026-05-23
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版**；8 項標頭強制檢驗 100% 合規)
+**最後更新日期**: 2026-06-02
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版** + **§6.8.7 第 (5) 條 FULL-MARKET INCREMENTAL MAINTENANCE (v1.23：--incremental 抑制 auto-strict + 保留 §7.5 resume / --roster TaiwanStockInfo 全名冊解析；市場級一律留 audit)**；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -83,6 +83,14 @@ sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · F
     分支寫 audit log；(f) CLI 新增 `--disable-402-cascade-mitigation` flag 完整相容 v1.21；
     (g) `report_results` 印出 `triggers` / `cascade_skipped` 統計。**single worker (`--workers 1`) 行為與 v1.21 完全相同**
     （cool-down 仍會設但無 sibling worker 撞）。對齊憲章 §7.4 既有 single-retry 精神（per-worker 仍只 retry 一次）。
+17. **[§6.8.7 第 (5) 條 Full-Market Incremental Maintenance]** (v1.23, 憲法 v6.1.0 §6.8.7 第 (5) 條；2026-06-02 入憲)：
+    `--universe full --incremental` 為與第 (4) 條（全歷史例外）並列之 sanctioned 增量模式 — main() preflight 於 `--incremental`
+    present 時 **抑制 v1.14 auto-strict-source-history**，改走 resume-aware 增量（`start_date=today-days` + 保留 §7.5 L3 resume），
+    避免僅補近日缺口卻全歷史重抓（1990→今）之過度成本；`--roster` 令 `_resolve_stocks` 自 `TaiwanStockInfo` 全名冊（~2,798）
+    解析標的而非 committed membership（~1,127），補齊未進 membership 之全市場個股。**市場級一律留 audit**：增量模式 **仍強制**
+    `--special-full-market-reason ≥12 字`（與第 (4) 條一致 ethos）。**治權邊界**：(a) `--incremental` / `--roster` 僅與 `--universe full`
+    併用，`--roster` 須與 `--incremental` 併用；(b) 第 (4) 條 `--universe full`（無 `--incremental`）行為完全不變（向後相容）；
+    (c) `run()` 引擎核心 / UNIVERSE_TIERS / 節流 / 退避 / §7.4-A / §7.5 語意全不動，僅 CLI preflight 加 `not incremental` 閘門 + `_resolve_stocks` roster 分支。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
@@ -123,8 +131,9 @@ sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · F
 | D.4 reason 寫入 lifecycle context + 終端報表 | audit trail | §0.4 可觀察性 |
 | D.5 五類合法情境 | DB rebuild / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件 | §6.8.7 第 (4) 條 |
 | D.6 「從零 → 全市場全天數」**4 步序列**之第 III 步 | Step 4 → **Step 4B bootstrap_init** → **Step 4F (本群組)** → Step 4B bootstrap_final → Step 8 optional | §14.7-AM 補強 (2026-05-21) |
-| **D.7 ⚠️ 雞與蛋 precondition**：必須先有 `core_universe_membership` committed | `_resolve_stocks()` L767-776 之 `--universe full` 查詢 committed snapshot；空 DB 情境必須先跑 Step 4B `core_universe_builder --commit --special-rebalance-reason "..."`（`latest_registry_fallback` mode） | §14.7-AM 雞與蛋實證 (2026-05-21) |
-| 對應 CLI | `--universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"` | §二 Step 4F L2434 |
+| **D.7 ⚠️ 雞與蛋 precondition**：必須先有 `core_universe_membership` committed | `_resolve_stocks()` 之 `--universe full` 查詢 committed snapshot；空 DB 情境必須先跑 Step 4B `core_universe_builder --commit --special-rebalance-reason "..."`（`latest_registry_fallback` mode） | §14.7-AM 雞與蛋實證 (2026-05-21) |
+| **D.8 全市場增量維運 (v1.23)**：`--universe full --incremental [--roster]` 抑制 auto-strict、resume-aware 增量（補近日缺口非全歷史）；`--roster` 自 `TaiwanStockInfo` 全名冊（~2,798）解析非 membership（~1,127）；仍強制 reason | preflight `not incremental` 閘門 + `_resolve_stocks(roster=...)` | §6.8.7 第 (5) 條 (2026-06-02) |
+| 對應 CLI | 全歷史例外：`--universe full --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"`；**增量維運 (v1.23)**：`--universe full --incremental [--roster] --all --dataset-batched --workers 4 --dynamic-quota --special-full-market-reason "<≥12 字>"` | §二 Step 4F L2434 / §6.8.7 第 (4)/(5) 條 |
 
 ### Group E. 核心股全天數補刷 (Core Full-History Mode) — `--full-history` / `--strict-source-history`
 | 子項 | 對應方法 / 行為 | 治權契約 |
@@ -214,7 +223,8 @@ sovereign_sync_engine.py v1.22 (Quantum Finance Market Universe Seed Engine · F
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.22** | 2026-05-23 | Codex | **§7.4-A Multi-Worker 402 Cascade Mitigation 落地（憲章 v6.1.0 §7.4-A + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §7.4-A（2026-05-23 入憲）落地 multi-worker 402 cascade 防護機制。**Root cause 實證**：2026-05-23 from-zero rebuild Step 4F (`--workers 4`) 揭露兩輪 402 cascade（stock 3388-3402 / stock 6715-6720），4 worker 各自進入 1800s sleep → CPU=0% 集體停擺 30 分 × 2 = ~60min 浪費（占 Step 4F 總耗 7h54m 之 ~13%）。**功能變更 7 點**：(a) 新增 `Paywall402Cascade(requests.HTTPError)` exception class；(b) 新增 `GLOBAL_402_COOLDOWN_BUFFER_SEC = 30` 模組常數；(c) `FinMindThrottle.__init__` 新增 `cascade_402_enabled` 參數（預設 True）+ `global_402_cooldown_until` / `cascade_402_skipped` / `cascade_402_triggers` 屬性；(d) 新增 `set_402_cooldown(duration_seconds=1800)` 方法 + `_check_402_cooldown_unlocked()` 方法；(e) `acquire()` 進入 lock 後第一行 check cool-down（unlocked，呼叫者已持鎖）；(f) `fetch_with_retry()` 於 402 retry 時呼叫 `set_402_cooldown(wait)` + permanent 402 raise 前也呼叫 `set_402_cooldown(RETRY_BACKOFF_402[0])`；(g) `sync_finmind` 加 `except Paywall402Cascade:` 分支 `mark_skipped` + 寫 `data_audit_log` op_type=`CASCADE_402_SKIPPED`。**SovereignSyncEngine.__init__** 新增 `cascade_402_enabled` 參數傳遞至 FinMindThrottle。**CLI 新增 flag**：`--disable-402-cascade-mitigation`（預設 false；true=回退 v1.21 per-worker × 1800s 行為，除錯/對齊 v1.21 audit 用）。**report_results 新增**：`§7.4-A 402 Cascade Mitigation : enabled=... / triggers=... / cascade_skipped=...` 統計行。**標頭變更**：(h) 副標補入「§7.4-A Multi-Worker 402 Cascade Mitigation 落地」；(i) 主權狀態行補入 §7.4-A v1.22 落地 + 憲法 v6.0.0-FINAL → v6.1.0；(j) 核心定義 15 條 → 16 條：新增 [§7.4-A Multi-Worker 402 Cascade Mitigation] (v1.22)；(k) TOOL_VER v1.21 → v1.22 + CONSTITUTION_VER v6.0.0 → v6.1.0；(l) 最後更新日期 2026-05-22 → 2026-05-23；(m) v1.21 SUPERSEDED + 新 v1.22 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` / `--strict-source-history` / `--full-history` / `--special-full-market-reason` 語意**不變**；§7.4 既有 single-retry 精神保留（per-worker 仍只 retry 一次）；§7.3 三階段退避不變；single worker (`--workers 1`) 行為與 v1.21 完全相同（cool-down 仍會設但無 sibling worker 撞）；**不**改 schema、upsert 邏輯、§7.6 A1-A5 行為、§6.8.7 第 (4) 條治理例外、§14.7-AP §7.5 strict resume mode、§14.7-AM 4 步序列範本。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之首個落地（per `reports/系統架構大憲章_v6.1.0.md` §14.7-AU C 表）。**§0.0-G 第 19 次跑通延伸落地**（首次落地式跑通，前 18 次為治權契約入憲）。 | **ACTIVE** |
+| **v1.23** | 2026-06-02 | Codex | **§6.8.7 第 (5) 條 全市場增量維運入憲對應之單程式升版（`--incremental` / `--roster`）**：依憲章 v6.1.0-patch §6.8.7 第 (5) 條（2026-06-02 入憲）落地「全市場增量維運」sanctioned 模式，補齊「全市場增量補近日缺口」在第 (4) 條全歷史例外之外原無 sanctioned 路徑之缺口（committed membership 僅 397 core + 730 quarantine、research/convex tier 空 → 第 (1) 條 tier-scoped 增量實際只達核心股）。**功能變更 5 點**：(a) argparse 新增 `--incremental`（store_true）+ `--roster`（store_true）；(b) main() preflight：`--universe full` 下若 `--incremental` present 則**抑制 v1.14 auto-strict-source-history**（保留 §7.5 resume + `start_date=today-days`），否則維持 v1.14 全歷史行為；reason 對增量模式**亦強制**（市場級一律留 audit）；(c) preflight 新增驗證 `--roster` 須與 `--incremental` 併用、`--incremental`/`--roster` 僅與 `--universe full` 併用；(d) `_resolve_stocks` 新增 `roster` 參數 + 分支：roster 時自 `TaiwanStockInfo` 全名冊（`get_db_stock_ids()` ~2,798）解析而非 committed membership；(e) `run()` 新增 `roster` 參數傳遞至 `_resolve_stocks`。**標頭變更**：(f) 副標 v1.22 → v1.23；(g) 主權狀態行補 v1.23 摘要；(h) 核心定義 16 → 17 條：新增 [§6.8.7 第 (5) 條 Full-Market Incremental Maintenance]；(i) Group D 新增 D.8 + 對應 CLI 補增量變體；(j) TOOL_VER v1.22 → v1.23；(k) 最後更新日期 2026-05-23 → 2026-06-02；(l) v1.22 SUPERSEDED + 新 v1.23 ACTIVE。**治權邊界嚴守**：第 (4) 條 `--universe full`（無 `--incremental`）行為**完全不變**（向後相容，零破壞）；`run()` 引擎核心 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / §7.4-A / §7.5 resume / verdict 邏輯**全不動**；僅 CLI preflight 加 `not incremental` 閘門 + `_resolve_stocks` roster 分支。**典型耗時誠實揭露**：membership ~1,127 ≈ ~2hr / roster ~2,798 ≈ ~5hr（call-bound 受 §7 5500/hr 節流；增量省資料量非 call 數），仍 ≥30min 長跑（§6.8.7-B + §一.12）。 | **ACTIVE** |
+| **v1.22** | 2026-05-23 | Codex | **§7.4-A Multi-Worker 402 Cascade Mitigation 落地（憲章 v6.1.0 §7.4-A + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §7.4-A（2026-05-23 入憲）落地 multi-worker 402 cascade 防護機制。**Root cause 實證**：2026-05-23 from-zero rebuild Step 4F (`--workers 4`) 揭露兩輪 402 cascade（stock 3388-3402 / stock 6715-6720），4 worker 各自進入 1800s sleep → CPU=0% 集體停擺 30 分 × 2 = ~60min 浪費（占 Step 4F 總耗 7h54m 之 ~13%）。**功能變更 7 點**：(a) 新增 `Paywall402Cascade(requests.HTTPError)` exception class；(b) 新增 `GLOBAL_402_COOLDOWN_BUFFER_SEC = 30` 模組常數；(c) `FinMindThrottle.__init__` 新增 `cascade_402_enabled` 參數（預設 True）+ `global_402_cooldown_until` / `cascade_402_skipped` / `cascade_402_triggers` 屬性；(d) 新增 `set_402_cooldown(duration_seconds=1800)` 方法 + `_check_402_cooldown_unlocked()` 方法；(e) `acquire()` 進入 lock 後第一行 check cool-down（unlocked，呼叫者已持鎖）；(f) `fetch_with_retry()` 於 402 retry 時呼叫 `set_402_cooldown(wait)` + permanent 402 raise 前也呼叫 `set_402_cooldown(RETRY_BACKOFF_402[0])`；(g) `sync_finmind` 加 `except Paywall402Cascade:` 分支 `mark_skipped` + 寫 `data_audit_log` op_type=`CASCADE_402_SKIPPED`。**SovereignSyncEngine.__init__** 新增 `cascade_402_enabled` 參數傳遞至 FinMindThrottle。**CLI 新增 flag**：`--disable-402-cascade-mitigation`（預設 false；true=回退 v1.21 per-worker × 1800s 行為，除錯/對齊 v1.21 audit 用）。**report_results 新增**：`§7.4-A 402 Cascade Mitigation : enabled=... / triggers=... / cascade_skipped=...` 統計行。**標頭變更**：(h) 副標補入「§7.4-A Multi-Worker 402 Cascade Mitigation 落地」；(i) 主權狀態行補入 §7.4-A v1.22 落地 + 憲法 v6.0.0-FINAL → v6.1.0；(j) 核心定義 15 條 → 16 條：新增 [§7.4-A Multi-Worker 402 Cascade Mitigation] (v1.22)；(k) TOOL_VER v1.21 → v1.22 + CONSTITUTION_VER v6.0.0 → v6.1.0；(l) 最後更新日期 2026-05-22 → 2026-05-23；(m) v1.21 SUPERSEDED + 新 v1.22 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` / `--strict-source-history` / `--full-history` / `--special-full-market-reason` 語意**不變**；§7.4 既有 single-retry 精神保留（per-worker 仍只 retry 一次）；§7.3 三階段退避不變；single worker (`--workers 1`) 行為與 v1.21 完全相同（cool-down 仍會設但無 sibling worker 撞）；**不**改 schema、upsert 邏輯、§7.6 A1-A5 行為、§6.8.7 第 (4) 條治理例外、§14.7-AP §7.5 strict resume mode、§14.7-AM 4 步序列範本。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之首個落地（per `reports/系統架構大憲章_v6.1.0.md` §14.7-AU C 表）。**§0.0-G 第 19 次跑通延伸落地**（首次落地式跑通，前 18 次為治權契約入憲）。 | SUPERSEDED |
 | v1.21 | 2026-05-22 | Codex | **§14.7-AP §7.5 升級配套落地：strict resume mode (DB max_date ≥ today-N days)**：依憲章 v6.0.0-patch §6.8.8-C + §7.5 升級註記 + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）將 §7.5 L3 DB-driven resume 從 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定，升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，自動消解 partial DB 漏抓 trade-off。**功能變更 5 點**：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；(b) `SovereignSyncEngine.__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 邏輯改查 `MAX(date)` + cutoff = today - N days；(d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3，0 = 嚴格只跳今天）；(e) `report_results()` 印出 drift_tolerance + skipped 訊息改為「DB max_date ≥ today-Nd」。**標頭變更**：(f) 副標補入「§14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地」；(g) 主權狀態行補入「§14.7-AP §7.5 STRICT RESUME MODE」+ 「§6.8.8-C audit 時點漂移容忍」+ §14.7-AP 治權閉環延伸；(h) 核心定義 14 條 → 15 條：新增 [§7.5 Strict Resume Mode] (v1.21)；(i) Group G G.3 升級描述 + 新增 G.3a `--resume-drift-tolerance N`；(j) 對應 CLI 補入新 flag；(k) TOOL_VER v1.20 → v1.21；(l) 最後更新日期 2026-05-21 → 2026-05-22；(m) v1.20 SUPERSEDED + 新 v1.21 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` 與 `--strict-source-history` 之 resume 停用語意**不變**；strict mode 僅改判定條件，不改 schema、upsert 或 §7.6 A1-A5 行為。**對應 audit_source_availability v0.2 之 TIME_DRIFT_OK 雙向治權閉環**：audit 側容忍時間漂移 + sync 側日常增量自動消解；雙修並進完成 §14.7-AP 完整治權閉環。**§0.0-G 第 14 次跑通延伸實證**（首例「§14.7-AO 治權閉環完成後當日延伸至 audit_source_availability 雙源比對 → 揭露時間漂移 → 雙修並進落地」）。 | SUPERSEDED |
 | v1.20 | 2026-05-21 | Codex | **§14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + cross-ref 第 3 次校準（16 處）**：依憲章 v6.0.0-patch §14.7-AM 雞與蛋缺陷補強（commit `fea89bf`；2026-05-21 入憲）將「從零 → 全市場全天數」**3 步序列 → 4 步序列**之治權正解寫入標頭。**補正內容 8 項**：(a) L2 header v1.19 → v1.20 + 副標補入「§14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3」；(b) L5 主權狀態補入 v1.20 修補摘要（含 3 次行號校準累計）；(c) [Sovereignty Declaration] 補入「§14.7-AM 雞與蛋缺陷實證 + 4 步序列治權範本」關聯 + 雞與蛋實證明文（`_resolve_stocks()` L767-776 查詢 committed snapshot 之 chicken-and-egg）；(d) Group D 新增 D.6 「4 步序列之第 III 步」+ D.7 「⚠️ 雞與蛋 precondition」兩條目；(e) 治權範本 sub-section **3 步序列 (I/II/III) → 4 步序列 (I/II/III/IV) + V optional**：新增 Step 4B bootstrap_init (II) + Step 4B bootstrap_final (IV) 兩個外部 core_universe_builder 階段；(f) 16 處 cross-ref 行號 +1 校準（憲章 v6.0.0-patch §14.7-AM 補強 commit `fea89bf` 之修訂歷程頂部 +1 entry 造成）；(g) TOOL_VER v1.19 → v1.20；(h) 修訂歷程 v1.19 → SUPERSEDED + 新 v1.20 ACTIVE entry。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留；本程式自身**不處理 bootstrap commit**（屬 `core_universe_builder.py` v0.2 之 `--special-rebalance-reason` + `latest_registry_fallback` mode 治權）。**本日第 3 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 10 處）→ v1.18→v1.19（§14.7-AM #1 15 處 + 雙 ACTIVE 修正）→ v1.20（§14.7-AM 雞與蛋補強 16 處）；累計 41 處校準 + 1 治權違規修正 + 4 步序列治權範本明文化；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.19 | 2026-05-21 | Codex | **§14.7-AM 入憲後 cross-ref 行號第 2 次校準（15 處；本日第 2 次治權邊界相對性循環）**：依憲章 v6.0.0-patch §14.7-AM（commit `17b3c69`；2026-05-21 入憲）之修訂歷程頂部新增 +1 entry 造成 §二 維運矩陣行號 +1 偏移（Step 4 額外 +1，總 +2），本標頭 v1.18 之 15 處 cross-ref 行號漂移已校準：(a) [Market Universe Seed] Step 4 L2425 → L2427；(b) [Full-Market Restricted] Step 4F L2432 → L2433；(c) [Core Full-History] Step 4G L2433 → L2434；(d) [Sovereignty Declaration] §3.1 子表 L2455 → L2458；(e) [Sovereignty Declaration] Step 4-8 範圍 L2425/L2430-2437 → L2427/L2431-2438；(f) [Historical Reference Authority] §3.1 子表 L2455 → L2458；(g) 維運矩陣 sub-title L2425, L2430-2437 → L2427, L2431-2438；(h) 功能群 A.1 Step 4 L2425 → L2427；(i) 功能群 B.1/B.2 Step 5/6 L2434/L2435 → L2435/L2436；(j) 功能群 C.1/C.2/C.3/C.4 L2430/L2431/L2436/L2436 → L2431/L2432/L2437/L2437；(k) 功能群 D 對應 CLI Step 4F L2432 → L2433；(l) 功能群 E 對應 CLI Step 4G L2433 → L2434；(m) 功能群 F.1/對應 CLI Step 8 L2437 → L2438；(n) 維運矩陣場景索引 9 行 L2425/L2430-2437 → L2427/L2431-2438；(o) 治權範本 sub-section Step 引用 L2425/L2432/L2437 → L2427/L2433/L2438。**TOOL_VER v1.18 → v1.19；主權狀態行補入「+ §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2」摘要**。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留。**本日第 2 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 入憲後 15 處校準）→ v1.18→v1.19（§14.7-AM 入憲後 15 處再校準），共 30 處校準；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
@@ -269,7 +279,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v1.22"
+TOOL_VER = "v1.23"
 
 # v1.21 §7.5 升級配套（§6.8.8-C / §14.7-AP 入憲；2026-05-22）
 # L3 resume 升級為「DB max_date >= (today - N days) 才跳過」嚴格判定；
@@ -879,9 +889,21 @@ class SovereignSyncEngine:
 
     # ---------- universe / dataset resolution ----------
 
-    def _resolve_stocks(self, stock_id, universe):
+    def _resolve_stocks(self, stock_id, universe, roster=False):
         if stock_id:
             return [stock_id]
+        if roster:
+            # v1.23 §6.8.7 第 (5) 條 全市場增量 roster 模式：自 TaiwanStockInfo 全名冊解析（~2,798），
+            # 而非 committed membership；用於補齊未進 membership 之全市場個股近日缺口。
+            try:
+                from core.db_utils import get_db_stock_ids
+                stocks = get_db_stock_ids()
+            except Exception as exc:
+                self._detail("failed", f"roster 名冊讀取失敗: {type(exc).__name__}: {exc}")
+                return []
+            if not stocks:
+                self._detail("warning", "TaiwanStockInfo roster 無標的")
+            return stocks
         if universe in UNIVERSE_TIERS:
             try:
                 stocks = get_core_stocks_from_db(tiers=UNIVERSE_TIERS[universe])
@@ -966,7 +988,7 @@ class SovereignSyncEngine:
                 self._detail("warning", f"§7.6 A4 quota flush failed for {dataset}: {type(exc).__name__}: {exc}")
 
     def run(self, stock_id=None, universe=None, source=None, dataset=None, days=30, seed=False, all_datasets=False,
-            strict_source_history=False, special_full_market_reason=None):
+            strict_source_history=False, special_full_market_reason=None, roster=False):
         start_time = time.time()
         if strict_source_history:
             start_date = STRICT_SOURCE_HISTORY_START_DATE
@@ -978,8 +1000,10 @@ class SovereignSyncEngine:
         self._phase_appropriate_hint(stock_id, universe, days, dataset, seed, all_datasets)
 
         if universe == FULL_MARKET_REQUIRED_UNIVERSE and special_full_market_reason:
-            # §6.8.7 第 (4) 條：full-market reason 必須留 audit trail
-            print(f"⚠️ [§6.8.7 第 (4) 條] 全市場全天數例外觸發 — reason: {special_full_market_reason}")
+            # §6.8.7 第 (4)/(5) 條：full-market reason 必須留 audit trail
+            # strict_source_history=True → 第 (4) 條全歷史例外；False → 第 (5) 條增量維運 (v1.23)
+            _clause = "第 (4) 條 全市場全天數例外" if strict_source_history else "第 (5) 條 全市場增量維運"
+            print(f"⚠️ [§6.8.7 {_clause}] 觸發 — reason: {special_full_market_reason}")
             print(f"   完成後必須執行：audit_supply_chain.py --include-logs + audit_source_availability.py --strict")
             print(f"   並提交 reports/full_market_sync_<YYYYMMDD_HHMM>.md 實證報告")
 
@@ -993,7 +1017,7 @@ class SovereignSyncEngine:
                     # TaiwanStockInfo 為市場級表，單次呼叫；不走平行
                     self.sync_finmind("", "TaiwanStockInfo", start_date)
 
-                stocks = self._resolve_stocks(stock_id, universe)
+                stocks = self._resolve_stocks(stock_id, universe, roster=roster)
                 datasets = [ds for ds in self._target_datasets(dataset, all_datasets) if ds != "TaiwanStockInfo"]
                 pairs = list(self._iter_sync_pairs(stocks, datasets))
                 if pairs:
@@ -1113,33 +1137,57 @@ if __name__ == "__main__":
     parser.add_argument("--special-full-market-reason", type=str, default=None,
                         help=f"(v1.13 §6.8.7 第 (4) 條) 全市場全天數 sync 之治理理由 — 必須 ≥ {FULL_MARKET_REASON_MIN_CHARS} 字元；"
                              "僅在 --universe full 時生效；缺 reason 或字數不足即 exit 1")
+    parser.add_argument("--incremental", action="store_true",
+                        help="(v1.23 §6.8.7 第 (5) 條) 全市場增量維運：僅與 --universe full 併用；"
+                             "抑制 v1.14 auto-strict-source-history，改 resume-aware 增量（start_date=today-days + §7.5 resume）；"
+                             "仍須 --special-full-market-reason（市場級一律留 audit）")
+    parser.add_argument("--roster", action="store_true",
+                        help="(v1.23 §6.8.7 第 (5) 條) 全市場增量時自 TaiwanStockInfo 全名冊（~2,798）解析標的，"
+                             "而非 committed membership；僅與 --universe full --incremental 併用")
     parser.add_argument("--disable-402-cascade-mitigation", action="store_true",
                         help="(v1.22 §7.4-A) 停用 multi-worker 402 cascade mitigation；"
                              "回退 v1.21 行為（per-worker × 1800s sleep）；除錯 / 對齊 v1.21 audit 用，正式運行不建議")
     args = parser.parse_args()
 
-    # v1.13 §6.8.7 第 (4) 條 preflight 治權檢查
+    # v1.23 §6.8.7 第 (5) 條：--roster 須與 --incremental 併用（全歷史 roster 不在第 (5) 條範圍）
+    if args.roster and not args.incremental:
+        print("❌ [§6.8.7 第 (5) 條] --roster 須與 --incremental 併用（全歷史 roster 仍走第 (4) 條 committed membership）")
+        sys.exit(1)
+
+    # v1.13 §6.8.7 第 (4) 條 + v1.23 第 (5) 條 preflight 治權檢查
     if args.universe == FULL_MARKET_REQUIRED_UNIVERSE:
         reason = (args.special_full_market_reason or "").strip()
         if not reason:
-            print("❌ [§6.8.7 第 (4) 條] --universe full 必須附 --special-full-market-reason \"<≥12 字理由>\"")
+            tag = "第 (5) 條" if args.incremental else "第 (4) 條"
+            print(f"❌ [§6.8.7 {tag}] --universe full 必須附 --special-full-market-reason \"<≥12 字理由>\"（市場級一律留 audit）")
             print("   合法情境：DB rebuild bootstrap / Sovereign rebuild / pre-annual audit / 資料源治權變更 / 合規事件")
             sys.exit(1)
         if len(reason) < FULL_MARKET_REASON_MIN_CHARS:
-            print(f"❌ [§6.8.7 第 (4) 條] --special-full-market-reason 長度 {len(reason)} < {FULL_MARKET_REASON_MIN_CHARS} 字元下限")
+            print(f"❌ [§6.8.7] --special-full-market-reason 長度 {len(reason)} < {FULL_MARKET_REASON_MIN_CHARS} 字元下限")
             sys.exit(1)
+        if args.incremental:
+            # v1.23 §6.8.7 第 (5) 條 全市場增量維運：抑制 auto-strict，保留 §7.5 resume + start_date=today-days
+            src = "TaiwanStockInfo 全名冊 (roster ~2,798)" if args.roster else "committed membership"
+            print(f"ℹ️ [§6.8.7 第 (5) 條] --universe full --incremental 全市場增量維運模式：")
+            print(f"   resume-aware 增量（start_date=today-{args.days}d，§7.5 L3 resume 保留），不重抓全史。")
+            print(f"   標的來源：{src}；reason: {reason}")
         # v1.14 §6.8.7 第 (4) 條「全天數」定義落地：--universe full 自動啟用 strict-source-history
         # 「全天數」= 每 (stock_id, dataset) 自 API 最早可得日期 → 最新交易日；不可由 --days 決定
-        if not args.strict_source_history:
+        elif not args.strict_source_history:
             args.strict_source_history = True
             print(f"ℹ️ [§6.8.7 第 (4) 條] --universe full 觸發「全天數」語意：")
             print(f"   自動啟用 --strict-source-history（start_date={STRICT_SOURCE_HISTORY_START_DATE}, "
                   f"§7.5 L3 resume 停用），每支個股自 FinMind/FRED API 最早可得日期同步至最新交易日。")
             print(f"   --days={args.days} 退為 safety floor，不限制實際同步起點。")
-    elif args.special_full_market_reason:
-        print(f"❌ [§6.8.7 第 (4) 條] --special-full-market-reason 僅在 --universe full 時生效；"
-              f"目前 --universe={args.universe or 'None'}，拒絕執行")
-        sys.exit(1)
+    else:
+        if args.special_full_market_reason:
+            print(f"❌ [§6.8.7 第 (4)/(5) 條] --special-full-market-reason 僅在 --universe full 時生效；"
+                  f"目前 --universe={args.universe or 'None'}，拒絕執行")
+            sys.exit(1)
+        if args.incremental:
+            print(f"❌ [§6.8.7 第 (5) 條] --incremental 僅與 --universe full 併用；"
+                  f"目前 --universe={args.universe or 'None'}（tier-scoped 增量請用 --universe core/research/convex）")
+            sys.exit(1)
 
     engine = SovereignSyncEngine(
         throttle_per_hour=args.throttle,
@@ -1161,5 +1209,6 @@ if __name__ == "__main__":
         all_datasets=args.all,
         strict_source_history=args.strict_source_history,
         special_full_market_reason=args.special_full_market_reason,
+        roster=args.roster,
     )
     sys.exit(0 if ok else 1)
