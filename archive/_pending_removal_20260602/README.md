@@ -65,6 +65,25 @@
 
 **charter 依據**:fetch_*/ingest_* 為 sovereign_sync_engine(§3.1)取代之 per-dataset legacy;其餘為 charter 不可達 orphan/舊子系統。
 
+## reports/ 沒用 .md 大批次(89 檔,2026-06-02 第五批,用戶「reports 沒用 .md 依最新憲章判斷」+ AskUserQuestion「Tier 1 + Tier 2」)
+
+依**引用可達性 + 取代軸**判定(265 .md 中 96 受憲章/CLAUDE/memory 引用 = 受保護必留)。對 0-引用候選套「系列內是否被更新版取代」+ **封閉安全集固定點**(只移「無未隔離活躍檔引用」者)後,移入 `reports_md/`(平面化 basename,無碰撞)。移後活躍引用斷裂 = **0**。
+
+| 群 | 數 | 棄置理由(憲章) |
+|---|---|---|
+| 自動產生稽核快照(api_schema 14 / source_avail 14 / core_universe 10 / compliance 7 / doctrine 7 / db_vs_api 2)| **54** | 稽核程式可隨時重生;SSOT 為活 DB/API(§一.10);各系列**最新 1 份留在 reports/**,舊快照冗餘 |
+| 被取代 handoff(留最新 `cross_machine_handoff_20260601_v6_26_1`)| 13 | session 歷程中間態,被最新封存點取代 |
+| 05-29 舊模型產物(base 報告 7 / master summary 5 / dedicated 2)| 14 | 今天 06-02 已在重建後 397 核心 × 37 特徵 × §0.0-I 單一源重跑;06-02 為當前 SSOT |
+| v6.0.0-era 報告 | 3 | v6.1.0 為憲章 SSOT;v6.0.0 final audit/runbook 被取代 |
+| 舊版憲章/架構副本(系統架構大憲章 v5.4.19/20/21)| 3 | v6.1.0 為 SSOT;v5.x 全被取代 |
+| 其他一次性 log/draft(rebuild_execution / v03_draft 等)| 2 | 一次性執行紀錄/草稿 |
+
+**23 檔阻擋未移**(被未隔離之活躍檔引用 → 留以維持連結一致性,0 breakage):
+- `Quantum_Finance v5.1/Asset_Matrix/Roadmap`(3,反憲章 §0.1-A 物理隱喻,但被 `reports/project_structure.md` 連結)
+- `系統架構_v5.2 / 系統架構大憲章_v5.4.18 / 系統架構設計報告`(3,被活躍 `系統核心完整度評估報告.md` 連結,CLAUDE.md §六)
+- 部分稽核快照 + handoff(被活躍 research/sync/handoff 檔連結);`common_model_comparison_baseline_v1`(被 chronos/itransformer 報告連結)
+> 若日後一併處理 `project_structure.md` / `系統核心完整度評估報告.md` 之 stale 連結,可解除這批阻擋。
+
 ## 未移(保留待審)
 - **B 層 診斷 CLI**(5):`check_db_locks` / `check_finmind_datalist` / `check_finmind_quota` / `check_finmind_token` / `search_finmind_datasets` —— 獨立診斷工具,可能偶爾手動跑。
 - **C 層 疑似工作流工具**(10):`auto_predict_manager` / `batch_predict_all` / `batch_tune` / `historical_backfill` / `train_evaluate_body` / `update_feature_store` / `parallel_ingestion` / `phase_d_ablation` / `run_batch_backtest` / `top_roi_stocks` —— 須逐個確認用途。
