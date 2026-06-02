@@ -215,6 +215,7 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
 
     panel_keys = sorted(panel_data.keys())
     panel_pa = []  # §14.7-DF: (pred, actual) per panel → 共用 helper(單一來源)
+    panel_disagrees = []  # ensemble 獨有:三模型 prediction 分歧度(common keys 之外保留)
 
     for i in range(1, len(panel_keys)):
         test_key = panel_keys[i]
@@ -229,10 +230,11 @@ def evaluate_horizon(cur, panels, horizon_days, universe, label):
         lgb_m, xgb_m, cb_m = train_three(X_tr, y_tr)
         X_te = np.array(X_test)
         ens_pred, disagree = predict_three(lgb_m, xgb_m, cb_m, X_te)
-        panel_pa.append((ens_pred, y_test))
+        panel_pa.append((ens_pred, y_test)); panel_disagrees.append(float(np.mean(disagree)))  # disagree 為 per-stock std 陣列 → 先 reduce 成 panel 純量
     result = summarize_horizon_metrics(label, horizon_days, panel_pa)  # §14.7-DF Canonical Metric SSOT(單一來源)
     if result is None:
         return None
+    result["reliability_ensemble_disagreement"] = float(np.mean(panel_disagrees)) if panel_disagrees else 0.0  # ensemble 獨有 extra metric(common keys 之外保留)
 
     logger.info(f"  {label}({horizon_days}d): Sharpe {result['sharpe']:+.3f} | Eff t {result['effective_t_stat']:+.3f} | Win {result['win_rate']*100:.1f}% | IC {result['mean_ic']:+.4f} | NET {result['annualized_simple_net']*100:+.1f}%/yr")
     logger.info(f"    precision: hit {result['precision_directional_hit_rate']*100:.1f}% | top-20 overlap {result['precision_top20_actual_overlap']*100:.1f}% | RMSE {result['precision_rmse']:.4f} | reliability IC-CoV {result['reliability_ic_stability_cov']:.4f}")
