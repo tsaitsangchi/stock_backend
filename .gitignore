@@ -228,3 +228,4 @@ archive/*
 !archive/_pending_removal_*/README.md
 .pytest_cache/
 stock_backend/
+!reports/model_validation_queue_*.md
