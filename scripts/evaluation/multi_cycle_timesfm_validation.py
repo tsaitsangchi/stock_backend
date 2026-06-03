@@ -13,7 +13,7 @@ multi_cycle_timesfm_validation.py v0.1 (TimesFM · Google Zero-Shot Time-Series 
    (e) **不訓練 production model**(zero-shot,完全不更新權重,不寫 model_registry);(f) **read-only**(不改 feature_values / TaiwanStockPriceAdj / universe);
    (g) 唯一職責:TimesFM zero-shot 4-horizon walk-forward 預測 + 共同比較基準 metrics + JSON 持久化。
 2. **[Common Comparison Baseline]** (v0.1, reports/model_comparison_baseline_spec_20260601.md §七): 本程式為共同比較基準之**第六實作**(前五:TFT / iTransformer / PatchTST / Stockformer / HIST)—
-   最新 committed source-pure universe × 95 monthly panels × 真實 forward log returns(TaiwanStockPriceAdj)× 4 horizons(5/20/60/252d)×
+   最新 committed source-pure universe × canonical monthly panels(§14.7-DE 資料驅動)× 真實 forward log returns(TaiwanStockPriceAdj)× 4 horizons(5/20/60/252d)×
    top-20 equal-weight long × 0.6% cost × {Sharpe, Win, Eff-t, T_CZ-6 gate}。與全 tree / TFT / iTransformer / PatchTST / Stockformer / HIST / Chronos 套用**完全相同** protocol +
    **完全相同** realized targets → 精準度(precision)/ 信任度(trust)比較 apples-to-apples。模型用各自 natural representation
    (tree=37 cross-sectional features;**TimesFM=每股 weekly close 序列 → 預訓練 decoder-only foundation model zero-shot 外推 → 隱含 horizon close → log-return score**),比較點在 OUTPUT 預測之品質,非 input。
@@ -44,7 +44,7 @@ multi_cycle_timesfm_validation.py v0.1 (TimesFM · Google Zero-Shot Time-Series 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
 | A.1 Universe | get_universe() → 最新 committed snapshot core_tier='core_universe'(914)| 最新 committed |
-| A.2 Panels | get_panel_dates() → 95 monthly mid-month(2018-06-15~2026-04-15)| 與 baseline 同 grid |
+| A.2 Panels | get_canonical_panel_dates("feature_set_v0.5") → 資料驅動 canonical panels(§14.7-DE / §0.0-I 單一引用源)| 與 baseline 同 grid |
 | A.3 Forward returns | load_forward_returns() → 真實 log return(TaiwanStockPriceAdj)| §一.10 (b) DB |
 | A.4 Portfolio | top-20 equal-weight long(np.argsort[-20:])| 與 baseline 同 |
 | A.5 Profitability | aggregate_horizon():sharpe / win / mdd / eff_t / annualized_net / T_CZ-6 | §14.7-CY / §14.7-CZ |
@@ -109,7 +109,7 @@ if str(_base_dir) not in sys.path:
 
 import numpy as np
 import pandas as pd
-from core.db_utils import get_db_conn
+from core.db_utils import get_db_conn, get_canonical_panel_dates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -143,16 +143,6 @@ def get_universe(cur):
                    AND s.snapshot_id=(SELECT snapshot_id FROM core_universe_snapshot
                                       WHERE status='committed' ORDER BY created_at DESC LIMIT 1)""")
     return sorted({r[0] for r in cur.fetchall()})
-
-
-def get_panel_dates():
-    """95 mid-month as_of dates 2018-06-15 .. 2026-04-15 (與 baseline 同 grid)."""
-    dates = []
-    current = date(2018, 6, 15)
-    while current <= date(2026, 4, 30):
-        dates.append(current)
-        current = date(current.year + 1, 1, 15) if current.month == 12 else date(current.year, current.month + 1, 15)
-    return dates
 
 
 def load_forward_returns(cur, as_of, horizon_days):
@@ -342,7 +332,7 @@ def run(args):
     cur = conn.cursor()
     universe = get_universe(cur)
     logger.info(f"Universe: {len(universe)} stocks (latest committed source-pure)")
-    panels = get_panel_dates()
+    panels = [d for _fsid, d in get_canonical_panel_dates("feature_set_v0.5")]  # §14.7-DE / §0.0-I 單一引用源(資料驅動、反硬編)
     if args.max_panels:
         panels = panels[:args.max_panels]
     logger.info(f"Panels: {len(panels)} monthly as_of dates")
@@ -419,7 +409,7 @@ def main():
 
     logger.info("=" * 100)
     logger.info(f"Multi-Cycle TimesFM Zero-Shot Validation {TOOL_VER} (Google foundation model · transformers-native)")
-    logger.info(f"  COMMON COMPARISON BASELINE: universe latest-committed × 95 panels × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
+    logger.info(f"  COMMON COMPARISON BASELINE: universe latest-committed × canonical panels(§14.7-DE 資料驅動)× 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
     logger.info(f"  checkpoint={args.checkpoint} context={args.context_weeks}wk smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
 
