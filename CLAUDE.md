@@ -1027,6 +1027,28 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **證據基礎(本條入憲)**:用戶 2026-06-03 explicit directive「以後與我的所有對話用繁體中文寫入 claude.md」+「專案檔 stock_backend/CLAUDE.md 也加入」之直接入憲;全域已先寫入 `~/.claude/CLAUDE.md §0`,本條為專案層對應補入。
 
+### 19. 核心股 Pan-Historical Source-Pure + Quality-over-Quantity + Regime-Risk/擇時揭露(§14.7-DC v0.17 / §14.7-DG / 2026-06-03~04 用戶 explicit directive 入憲)
+
+本條為主憲章 **§14.7-DC v0.17**(pan-historical source-pure + quality-over-quantity)+ **§14.7-DG**(regime-risk / long-only / bear-timing / 最佳操作週期 / common baseline)之 CLAUDE.md 雙層治權鎖伙伴(同次入憲)。
+
+**1. Pan-Historical Source-Pure Gate(§14.7-DC v0.17)**:source-pure gate 必須檢查 walk-forward 窗內**全部同版面板**(`feature_set_id LIKE 'fs_%_<version>'`),任一面板任一 feature `is_null_imputed=TRUE` → 該股排除核心。**不得僅查最新 panel**。實證(2026-06-03 DB READ-ONLY):舊 committed 914 核心因 gate 僅查最新 panel(fs_20260601=0 imputed)而過,但歷史面板(fs_20251015~fs_20260415)各含 55-102 支 imputed 核心股(主因 `margin_ratio_60d`);雖 10 trainer + 9 tree validator 載入皆有 `is_null_imputed IS NOT TRUE` 防禦過濾(未餵 imputed 入模型),membership 仍違 doctrine。修正:doctrine-native `_apply_source_pure_gate`(全面板)+ `--with-reasonableness-gate` 重建 → **397 核心(0 imputed-at-any-panel,DB-verified;= 憲章本意 398)**。
+
+**2. Quality-over-Quantity 核心股原則(用戶 directive)**:「**要的不是核心股多,是資料正確且精準;可以變少,但資料要對**」。核心股 selection 以資料正確性(source-pure)+ 精準度(reasonableness,排離群/錯誤值)為最高判準,**不以數量為目標**;914→397(−56%)即此原則落實(用戶 explicit 否決「修 margin_ratio 留更多股」選項)。
+
+**3. Long-Only / Regime-Risk 揭露(§14.7-DG)**:現有全部比較模型皆 **long-only top-N、無空頭保護**(持續空頭中絕對報酬必負)。高回測報酬 = 多頭 beta + alpha(實證 xgboost annual:beta 32% / alpha 68%)。任何模型比較報告**必須揭露**:(a) beta/alpha 拆解;(b) regime-conditional 下跌子期間(2018-Q4/2020/2022)alpha 是否撐住;(c) MDD;(d) 未測情境(2008/長空不在 2018-2026 panel 窗)。**不得僅以多頭期回測宣稱「能賺錢」**。
+
+**4. Market-Regime / Bear-Probability 模型(§14.7-DG,新模型類型)**:橫斷面選股 ≠ 市場擇時。新增 `market_regime_timing_validation.py`(macro VIX/殖利率曲線 1992-2026 + 台股 regime → P(bear);anti-leakage walk-forward;經濟價值 = 擇時 vs buy-hold MaxDD/Calmar + 逐空頭 2000/2008/2020/2022)。誠實 doctrine:市場擇時極難(smoke OOS AUC<0.5);**唯經濟價值檢驗(真降 MaxDD / 升 Calmar)通過方可宣稱保本**,否則須誠實標「此擇時不可靠」。
+
+**5. Multi-Cycle 最佳操作週期 / Cost-Drag(§14.7-DG,延伸 §14.7-CY)**:淨報酬隨持有期拉長上升(短週期 rebalance 頻繁 → 0.6%×N 成本拖累;週度多模型淨報酬近零/負)。操作週期建議須以「**淨報酬 × 信任度(Eff-t)× 穩健度(有效樣本)× 風險(MDD)**」綜合準則,**非裸追最高淨報酬**(年度淨報酬最高但有效樣本最少 ~7;季度常 Eff-t 最高=最可信)。
+
+**6. Common Comparison Baseline 擴充(§14.7-DG)**:模型庫擴至 27+(production 11 + A-E 16 + regime),全用同一比較基準(同 397 核心 × canonical panels × top-20 × 0.6% 成本 × T_CZ-6 × 逐字相同 `aggregate_horizon`)→ 精準度/信任度 apples-to-apples。
+
+**§一.10 / AP-3 caveat(results pending)**:本條入憲者為 **doctrine + 已驗證事實**(397 DB-verified / gate fix / beta-alpha 實證 / 方法論);**33-模型在 397 之完整比較結果 + regime 經濟價值裁決仍在跑,未完成 → 不入憲(避免 AP-3 aspirational inscription)**,待跑完以 source-traceable 數據補入。
+
+**雙層治權鎖**:主憲章 §14.7-DC v0.17 + §14.7-DG + 本條 §一.19 同次入憲(per T_DC-6);任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-06-03~04 explicit directives(「資料要對且精準、可變少」/「市場轉空能否預警保本」/「以上對話非常重要,請優化對話後再加入憲章」)+ AskUserQuestion(「現在先入 doctrine,結果待跑完補」)之直接入憲。DB-verified:914→397 pan-historical 重建(候選 2774→完整度移 34→reasonableness 移 420→source-pure 隔離 728→核心 397 / 0 imputed-at-any-panel);xgboost annual beta 32%/alpha 68%;regime smoke OOS AUC<0.5(誠實揭露擇時難)。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)
