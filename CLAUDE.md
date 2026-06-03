@@ -1017,6 +1017,16 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **證據基礎(本條入憲)**:用戶 2026-06-02 explicit AskUserQuestion 選「**抽共用 metric helper(推薦)**」(回應「6 支 PARTIAL validator 缺 precision+reliability 不可比,如何統一」)之直接入憲。實證:metric-divergence audit(9 FULL / 4 torch);helper 落地 + faithful-reproduction unit test bit-identical(13 keys max|Δ|=0.00);9 validator codemod LANDED(py_compile 13/13 PASS)。揭露 helper-extraction 須以 synthetic unit test 驗證(非 model re-run,因 LGBM `n_jobs=-1` 非決定性)。
 
+### 18. 對話語言:繁體中文(2026-06-03 用戶 explicit directive 入憲)
+
+與用戶之**所有對話一律使用繁體中文**(回應 / 報告 / 進度 / 說明 / 提問皆然)。
+
+- 技術術語 / 程式碼 / 檔名 / 指令 / 識別碼 / 既有英文專有名詞(model 名、§代號、SHMM、validator 等)**可保留原文**,不強制翻譯;敘述性文字一律繁體中文。
+- **與全域偏好之關係**:本條為全域 `~/.claude/CLAUDE.md §0` 之專案層對應;全域為跨專案 SSOT,本條為 stock_backend 專案層強調,兩者一致(任一側更新另側宜同步)。
+- **位階**:屬 §五 協作慣例層(工具層),per §五「工具升級或團隊協作慣例變更時更新本檔,不需動憲章」+「不需通過 §6.8 同步治權審計」;故**無雙層治權鎖、無 §14.7 對應**(與 §一.13~§一.17 之治權條不同層級)。
+
+**證據基礎(本條入憲)**:用戶 2026-06-03 explicit directive「以後與我的所有對話用繁體中文寫入 claude.md」+「專案檔 stock_backend/CLAUDE.md 也加入」之直接入憲;全域已先寫入 `~/.claude/CLAUDE.md §0`,本條為專案層對應補入。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)

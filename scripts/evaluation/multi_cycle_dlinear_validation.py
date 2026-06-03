@@ -1,13 +1,13 @@
 """
-multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transformer · ICLR 2024 / Liu et al. · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
+multi_cycle_dlinear_validation.py v0.1 (DLinear / NLinear · Decomposition & Normalization Linear · AAAI 2023 / Zeng et al. · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
 ================================================================================
 **最後更新日期**: 2026-06-02
-**主權狀態**: iTRANSFORMER(INVERTED TRANSFORMER / ICLR 2024)4-HORIZON WALK-FORWARD VALIDATION + §14.7-CY HORIZON-DOCTRINE 第二族(neural)+ §14.7-DC v0.18 SOURCE-PURE UNIVERSE + §一.10 SOURCE-TRACEABLE(全 DB)+ §一.10 #3 MULTI-RUN + 共同比較基準(COMMON COMPARISON BASELINE)第二實作 + §一.11 三段式合規 + §14.7-DE §0.0-I panel-date helper 切換(2026-06-02)
+**主權狀態**: DLinear/NLinear(DECOMPOSITION / NORMALIZATION LINEAR / AAAI 2023)4-HORIZON WALK-FORWARD VALIDATION + §14.7-CY HORIZON-DOCTRINE 第二族(neural)+ §14.7-DC v0.18 SOURCE-PURE UNIVERSE + §一.10 SOURCE-TRACEABLE(全 DB)+ §一.10 #3 MULTI-RUN + 共同比較基準(COMMON COMPARISON BASELINE)新增實作 + §一.11 三段式合規 + §14.7-DE §0.0-I panel-date helper
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
 
-**一句話**:用 iTransformer(倒置 Transformer 序列模型) 序列模型,吃每支股票的「歷史價格序列」,預測未來報酬,評估「靠它選股能不能賺錢、準不準、可不可信」。
+**一句話**:用 DLinear(超簡單的「拆解 + 線性」時序模型) 序列模型,吃每支股票的「歷史價格序列」,預測未來報酬,評估「靠它選股能不能賺錢、準不準、可不可信」。
 
 **它怎麼做(步驟)**:
 1. 取 397 支「乾淨核心股」,載入每支的歷史價格序列(序列模型看時間走勢,非橫斷面特徵)。
@@ -18,9 +18,11 @@ multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transforme
 6. 算成績:報酬率、Sharpe、勝率,加上**排序 IC、淨 Sharpe、機率校準覆蓋率**(此類序列模型用自有 calibration 導向 `aggregate_horizon`;§14.7-DF 註明 torch 暫不套樹模型 metric helper,各模型 rework 時再對齊共同欄位後與樹模型並比)。
 7. 判定這模型在哪個週期「真的能賺錢且可信」。
 
+**DLinear 的特別之處**:它**不用 Transformer**,只用「移動平均拆出趨勢 + 殘差季節」再各接一個線性層(channel-independent,每支股票共用同一組權重)。AAAI 2023 論文證明這種極簡模型在許多時序預測上反而打敗 Transformer。
+
 **輸入**:資料庫(股價序列)。**輸出**:JSON(各週期成績)+ log。
 **它不做的事**:不改資料庫(純讀取評估;§3.1 evaluation 角色)。
-**為什麼需要它**:序列/基礎模型路線的實證裁判,與樹模型並列比較(共同欄位對齊後)。
+**為什麼需要它**:序列/基礎模型路線的實證裁判,與樹模型並列比較(共同欄位對齊後);提供「極簡線性 baseline」對照 Transformer 系列。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
@@ -28,35 +30,36 @@ multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transforme
    **治權邊界**:(a) §3.2 evaluation 模組;(b) 不涉五套禁令(§0.1/§0.2/§0.3);(c) T1-T3 不分層;
    (d) §8.5 anti-leakage:lookback window 僅含 as_of 之前(含)之 weekly bars,forecast 之 target weeks 全在 as_of 之後 → 結構性無洩漏;
    (e) **不訓練 production model**(不寫 model_registry);(f) **read-only**(不改 feature_values / TaiwanStockPriceAdj / universe);
-   (g) 唯一職責:iTransformer 4-horizon walk-forward 預測 + 共同比較基準 metrics + JSON 持久化。
-2. **[Common Comparison Baseline]** (v0.1, reports/common_model_comparison_baseline_v1.md): 本程式為共同比較基準之**第二實作**(第一為 multi_cycle_tft_validation.py)—
+   (g) 唯一職責:DLinear/NLinear 4-horizon walk-forward 預測 + 共同比較基準 metrics + JSON 持久化。
+2. **[Common Comparison Baseline]** (v0.1, reports/common_model_comparison_baseline_v1.md): 本程式為共同比較基準之**新增實作 (DLinear)** —
    universe v0.18(398 source-pure)× 95 monthly panels × 真實 forward log returns(TaiwanStockPriceAdj)× 4 horizons(5/20/60/252d)×
-   top-20 equal-weight long × 0.6% cost × {Sharpe, Win, Eff-t, T_CZ-6 gate}。與 TFT / 全 tree 模型套用**完全相同** protocol +
+   top-20 equal-weight long × 0.6% cost × {Sharpe, Win, Eff-t, T_CZ-6 gate}。與 TFT / iTransformer / 全 tree 模型套用**完全相同** protocol +
    **完全相同** realized targets → 精準度(precision)/ 信任度(trust)比較 apples-to-apples。模型用各自 natural representation
-   (tree=38 cross-sectional features;TFT=每股 weekly 序列 + GroupNormalizer pooled;iTransformer=**跨股多變量 weekly return matrix**),
+   (tree=38 cross-sectional features;TFT=每股 weekly 序列 + GroupNormalizer pooled;DLinear=**channel-independent 每股 weekly return 序列**),
    比較點在 OUTPUT 預測之品質,非 input。
 3. **[Source Traceability]** (v0.1, CLAUDE.md §一.10): 全數據 (b) DB query(TaiwanStockPriceAdj close + core_universe_*)+ (a) program output(本 JSON / log);
    **0 AI memory reuse**;weekly returns 全為 close 之 source-pure mathematical transform(calendar-week resample → log return),
    **無 imputed / 無 forward-fill / 無 hardcoded knowledge / 無 §一.13 第四類幻像值**;calendar-week gap 之 stock 於該 window 直接排除(不補值)。
 4. **[Longest-Available Per-Stock History]** (v0.1, 用戶 2026-05-30 directive): 每股取其在 DB 之最長 daily 歷史(calendar-week resample → weekly return)。
    共同 weekly grid(全股 ISO-week union,回溯至 1992),各股缺週為 NaN;歷史愈長之股 → 進入愈多 training window(自然偏好長歷史)。
-5. **[Real iTransformer — Inverted Architecture]** (v0.1, Liu/Wang/Wu/Hu/Dong/Long, ICLR 2024 "iTransformer: Inverted Transformers
-   Are Effective for Time Series Forecasting"): 核心「倒置」= 將 **每個 variate(此處 = 每支股票)之整段 lookback return 序列 embed 為一個 token**,
-   self-attention 跨 **variate-token**(= 跨股相關性,paper 之核心貢獻),FFN 於 token 之 representation 維度運作 → project 至未來 S weeks。
-   非 surrogate;從頭以 torch.nn 實作(embed Linear + nn.TransformerEncoder + project Linear),與 multi_cycle_transformer_dedicated_validation.py 同慣例。
-   variable-#variates 由 src_key_padding_mask 處理(iTransformer 結構天然容許不定 variate 數)。
-6. **[Point-Forecast → Calibration N/A]** (v0.1): iTransformer 原始為 point forecast(MSE loss),非 quantile 模型 →
+5. **[Real DLinear/NLinear — Decomposition/Normalization Linear]** (v0.1, Zeng/Chen/Zhang/Xu, AAAI 2023 "Are Transformers
+   Effective for Time Series Forecasting?"): **channel-independent** — 同一組 linear 權重套用於每支股票之 length-L 序列。
+   **DLinear(default)**:每段 L 序列以 moving-average(avg_pool1d, kernel=kernel_size, edge-pad 保長 L)分解為 trend + seasonal(=series−trend),
+   兩個獨立 Linear(L→S),output = trend_linear(trend) + seasonal_linear(seasonal);**NLinear(--variant nlinear)**:減去序列最後一個 lookback 值,
+   單一 Linear(L→S),再加回最後值 → 對 distribution shift 穩健。非 surrogate;從頭以 torch.nn 實作,與 multi_cycle_itransformer_validation.py 同慣例。
+   padded/NaN 之 stock 於 loss masking 處理(模組本身可忽略 key_padding_mask)。
+6. **[Point-Forecast → Calibration N/A]** (v0.1): DLinear/NLinear 原始為 point forecast(MSE loss),非 quantile 模型 →
    **calibration_p10_p90_coverage = None**(per baseline §2.3「僅 quantile 模型如 TFT 有」)。信任度 = Eff-t significance + 多 seed 穩定度(§一.10 #3)。
 7. **[Precision / Trust / Profitability 三分]** (v0.1): 精準度(rank-IC / directional accuracy / RMSE / MAE / R²)、
    信任度(Eff-t significance / 多 seed 穩定度 / calibration[N/A])、賺錢能力(net-of-cost Sharpe / Eff-t / Win / annualized net / T_CZ-6 gate)
    分開報告 → 回答「真的能賺錢嗎?」。
 8. **[Zero Hardcoded Verdict]** (v0.1, 憲法 §5.6.3): significance 動態(abs(eff_t) > 1.997);T_CZ-6 gate(4.20/2.40/0.79)
    為 charter-mandated reference threshold(Tier 3 transparent disclosure,非 feature data,非硬編 verdict)。
-9. **[§一.10 #3 Multi-Run]** (v0.1): stochastic(torch init / dropout / sgd shuffle)→ 須 ≥3 seeds {5422,7331,1009};
+9. **[§一.10 #3 Multi-Run]** (v0.1): stochastic(torch init / sgd shuffle)→ 須 ≥3 seeds {5422,7331,1009};
    single-run 不得作為 deterministic charter fact;median 為 inscription central estimate(由 _aggregate.py 跨 seed 聚合)。
-10. **[Schema-Compatible Output]** (v0.1): per-horizon JSON keys 與 multi_cycle_validation.py / multi_cycle_tft_validation.py 對齊 → _aggregate.py 可直接 roll up。
+10. **[Schema-Compatible Output]** (v0.1): per-horizon JSON keys 與 multi_cycle_validation.py / multi_cycle_itransformer_validation.py 對齊 → _aggregate.py 可直接 roll up。
 11. **[Historical Reference Authority]** (v0.1): TOOL_VER = "v0.1" 為記述性快照,非權威來源。
-12. **[Idempotency]** (v0.1): 不寫 DB(--output 寫 JSON);可重跑;refit cadence / model size / epochs / lookback 全可配置 → 跑期可控。
+12. **[Idempotency]** (v0.1): 不寫 DB(--output 寫 JSON);可重跑;refit cadence / kernel size / variant / epochs / lookback 全可配置 → 跑期可控。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
@@ -65,18 +68,18 @@ multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transforme
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
 | A.1 Universe | get_universe() → 最新 committed snapshot core_tier='core_universe'(398 v0.18)| §14.7-DC v0.18 |
-| A.2 Panels | get_panel_dates() → 95 monthly mid-month(2018-06-15~2026-04-15)| 與 baseline 同 grid |
+| A.2 Panels | get_canonical_panel_dates() → data-driven monthly mid-month| §14.7-DE / §0.0-I 單一引用源 |
 | A.3 Forward returns | load_forward_returns() → 真實 log return(TaiwanStockPriceAdj)| §一.10 (b) DB |
 | A.4 Portfolio | top-20 equal-weight long(np.argsort[-20:])| 與 baseline 同 |
 | A.5 Profitability | aggregate_horizon():sharpe / win / mdd / eff_t / annualized_net / T_CZ-6 | §14.7-CY / §14.7-CZ |
 
-### Group B. iTransformer Model(跨股多變量 weekly return matrix → forecast)
+### Group B. DLinear/NLinear Model(channel-independent 每股 weekly return 序列 → forecast)
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
 | B.1 Return matrix | load_return_matrix() → daily close → calendar-week → log-return matrix[week × stock]| §一.10 / §一.13 source-pure |
-| B.2 Model | ITransformer:embed(L→d) + TransformerEncoder(跨 variate attention)+ project(d→S)| Liu et al. ICLR 2024 |
-| B.3 Train | train_itransformer() → Adam + MSE(masked)+ grad-clip(CPU)| 倒置 multivariate |
+| B.2 Model | DLinear:moving-avg decompose(trend+seasonal)→ 兩 Linear(L→S);NLinear:last-value norm + 單 Linear(L→S)| Zeng et al. AAAI 2023 |
+| B.3 Train | train_dlinear() → Adam + MSE(masked)+ grad-clip(CPU)| channel-independent linear |
 | B.4 Predict | predict_forward() → forecast 未來 S weekly returns → cumsum → 4-horizon scores | §8.5 leakage-safe |
 | B.5 Walk-forward refit | --refit-every N panels(default annual≈12)| expanding window |
 
@@ -92,15 +95,15 @@ multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transforme
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| D.1 JSON | --output reports/itransformer_v0/<...>.json(schema-compatible + precision/trust)| §一.10 / §二.4 |
+| D.1 JSON | --output reports/dlinear_v0/<...>.json(schema-compatible + precision/trust)| §一.10 / §二.4 |
 | D.2 stdout | cross-cycle comparison matrix + precision/trust 摘要 | §一.12 進度 |
 
 ### 對齊憲章 §二 維運矩陣
 
 | 場景 | 命令 |
 | :--- | :--- |
-| Smoke(plumbing 驗證)| `python scripts/evaluation/multi_cycle_itransformer_validation.py --smoke --output reports/itransformer_v0/_smoke.json` |
-| 完整單 seed | `... --seed 5422 --output reports/itransformer_v0/itr_s5422.json` |
+| Smoke(plumbing 驗證)| `python scripts/evaluation/multi_cycle_dlinear_validation.py --smoke --output reports/dlinear_v0/_smoke.json` |
+| 完整單 seed | `... --seed 5422 --output reports/dlinear_v0/dl_s5422.json` |
 | 3-run 教義全合規 | 對 {5422,7331,1009} 各跑一次 → _aggregate.py |
 
 ### 不提供之旗標 (Intentionally Omitted)
@@ -113,8 +116,7 @@ multi_cycle_itransformer_validation.py v0.2 (iTransformer · Inverted Transforme
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.2 | 2026-06-02 | Codex | **§0.0-I panel-date helper 切換(§14.7-DE)**:panel 窗改用 `get_canonical_panel_dates()`(§14.7-DE 單一引用源,移除寫死 date(2018,6,15) → 資料驅動 157 panels)+ 修正 stale log 字串(2018-2026/95→data-driven)。metric 仍用自有 `aggregate_horizon`(calibration 框架,§14.7-DF deferred,各模型 rework 時對齊)。**未改模型、未 retrain**。 | **ACTIVE** |
-| v0.1 | 2026-05-30 | Claude | **首版**:iTransformer(Inverted Transformer / ICLR 2024 / Liu et al.)multi-cycle 股價預測驗證 + 共同比較基準第二實作。跨股多變量 weekly return matrix → 倒置 embed(每股序列為 token)→ 跨 variate(跨股)self-attention → project 未來 S weeks → 4-horizon cumsum scores。與 baseline 同 universe(v0.18/398)/ panels(95)/ forward returns(TaiwanStockPriceAdj)/ portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。precision(rank-IC / dir-acc / RMSE / MAE / R²)+ trust(Eff-t / 多 seed;calibration N/A 因 point-forecast)。§一.10 全 DB source-traceable;§一.10 #3 multi-seed;§8.5 leakage-safe by lookback/forecast split;§一.11 三段式合規。 | SUPERSEDED |
+| v0.1 | 2026-06-02 | Codex | **首版**:DLinear/NLinear(Decomposition/Normalization Linear / AAAI 2023 / Zeng et al.)multi-cycle 股價預測驗證 + 共同比較基準新增實作。channel-independent 每股 weekly return 序列 → DLinear(moving-avg 分解 trend+seasonal → 兩獨立 Linear)或 NLinear(last-value 正規化 + 單 Linear)→ project 未來 S weeks → 4-horizon cumsum scores。與 baseline 同 universe(v0.18/398)/ panels(data-driven §14.7-DE)/ forward returns(TaiwanStockPriceAdj)/ portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。precision(rank-IC / dir-acc / RMSE / MAE / R²)+ trust(Eff-t / 多 seed;calibration N/A 因 point-forecast)。§一.10 全 DB source-traceable;§一.10 #3 multi-seed;§8.5 leakage-safe by lookback/forecast split;§一.11 三段式合規。 | ACTIVE |
 """
 from __future__ import annotations
 import warnings
@@ -138,7 +140,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"
+TOOL_VER = "v0.1"
 
 # ── Common Comparison Baseline constants (FIXED — 不可變更,否則破壞跨模型比較) ──
 HORIZONS = [("weekly", 5), ("monthly", 20), ("quarterly", 60), ("annual", 252)]
@@ -148,8 +150,8 @@ PANEL_SPACING = 30         # monthly grid (for overlap-corrected n_eff)
 GATE = {"effective_t_stat": 4.20, "sharpe": 2.40, "win_rate": 0.79}  # §14.7-CZ T_CZ-6 annual
 CRIT_T = 1.997             # p<0.05 large-df
 
-# ── iTransformer / weekly constants ──
-LOOKBACK_WEEKS = 104       # variate-token lookback (~2 yr)
+# ── DLinear / weekly constants ──
+LOOKBACK_WEEKS = 104       # per-stock lookback (~2 yr)
 PRED_WEEKS = 52            # forecast horizon (covers annual 252d ≈ 50 wk)
 HORIZON_STEPS = {5: 1, 20: 4, 60: 12, 252: 50}  # trading days → weekly forecast step index
 
@@ -184,7 +186,7 @@ def load_forward_returns(cur, as_of, horizon_days):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Group B — iTransformer return-matrix construction (variates = stocks)
+# Group B — DLinear return-matrix construction (channel-independent per-stock series)
 # ════════════════════════════════════════════════════════════════════════════
 def load_return_matrix(cur, universe, max_stocks=None):
     """每股最長 daily 歷史 → calendar-week resample → 跨股 log-return matrix.
@@ -229,34 +231,50 @@ def load_return_matrix(cur, universe, max_stocks=None):
     return ret_mat, cols, week_date
 
 
-# ── iTransformer architecture (from-scratch torch.nn; faithful inversion) ──
-def _build_model(L, S, d_model, n_heads, n_layers, dropout):
+# ── DLinear/NLinear architecture (from-scratch torch.nn; channel-independent linear) ──
+def _build_model(L, S, kernel_size, variant):
+    import torch
     import torch.nn as nn
+    import torch.nn.functional as F
 
-    class ITransformer(nn.Module):
+    class DLinear(nn.Module):
+        """Decomposition Linear (Zeng et al., AAAI 2023). Channel-independent:
+        same weights across every stock's length-L series. forward(x:[B,N,L])."""
         def __init__(self):
             super().__init__()
-            self.embed = nn.Linear(L, d_model)               # invert: each variate's L-series → token
-            layer = nn.TransformerEncoderLayer(
-                d_model, n_heads, dim_feedforward=4 * d_model,
-                dropout=dropout, batch_first=True, activation="gelu",
-            )
-            self.encoder = nn.TransformerEncoder(layer, n_layers)
-            self.norm = nn.LayerNorm(d_model)
-            self.head = nn.Linear(d_model, S)                # token → future S weekly returns
+            self.variant = variant
+            self.kernel_size = kernel_size
+            if variant == "nlinear":
+                self.linear = nn.Linear(L, S)
+            else:
+                self.trend_linear = nn.Linear(L, S)
+                self.seasonal_linear = nn.Linear(L, S)
 
-        def forward(self, x, key_padding_mask=None):         # x:[B,N,L]  mask:[B,N] True=ignore
-            h = self.embed(x)                                # [B,N,d_model]
-            h = self.encoder(h, src_key_padding_mask=key_padding_mask)  # attention across variates(stocks)
-            h = self.norm(h)
-            return self.head(h)                              # [B,N,S]
+        def _moving_avg(self, x):                            # x:[*, L] → trend:[*, L]
+            pad_left = (self.kernel_size - 1) // 2
+            pad_right = self.kernel_size - 1 - pad_left
+            xp = F.pad(x.unsqueeze(1), (pad_left, pad_right), mode="replicate")  # edge-pad keeps length L
+            trend = F.avg_pool1d(xp, kernel_size=self.kernel_size, stride=1)     # [*,1,L]
+            return trend.squeeze(1)
 
-    return ITransformer()
+        def forward(self, x, key_padding_mask=None):         # x:[B,N,L]  mask ignored (loss-masked upstream)
+            B, N, L = x.shape
+            xf = x.reshape(B * N, L)                          # channel-independent: each (b,n) series
+            if self.variant == "nlinear":
+                last = xf[:, -1:]                             # [B*N,1]
+                out = self.linear(xf - last) + last          # subtract/add last lookback value
+            else:
+                trend = self._moving_avg(xf)                  # [B*N,L]
+                seasonal = xf - trend
+                out = self.trend_linear(trend) + self.seasonal_linear(seasonal)
+            return out.reshape(B, N, -1)                      # [B,N,S]
+
+    return DLinear()
 
 
-def train_itransformer(ret_mat, week_cut, L, S, seed, epochs, lr, d_model, n_heads, n_layers,
-                       batch_size, dropout, min_valid=N_TOP + 5):
-    """Train iTransformer on all windows whose lookback+target ∈ weeks ≤ week_cut (leakage-safe).
+def train_dlinear(ret_mat, week_cut, L, S, seed, epochs, lr, kernel_size, variant,
+                  batch_size, min_valid=N_TOP + 5):
+    """Train DLinear/NLinear on all windows whose lookback+target ∈ weeks ≤ week_cut (leakage-safe).
 
     Returns (model, mu, sigma) — global standardization stats from past returns; None if insufficient data."""
     import torch
@@ -273,7 +291,7 @@ def train_itransformer(ret_mat, week_cut, L, S, seed, epochs, lr, d_model, n_hea
 
     # valid training end-weeks: lookback [we-L+1..we] real, target [we+1..we+S] ≤ week_cut
     ends = [we for we in range(L, week_cut - S + 1)]
-    # keep only windows with ≥ min_valid stocks having complete lookback (else attention degenerate)
+    # keep only windows with ≥ min_valid stocks having complete lookback (else degenerate batch)
     usable = []
     for we in ends:
         lb = ret_mat[we - L + 1:we + 1]
@@ -282,7 +300,7 @@ def train_itransformer(ret_mat, week_cut, L, S, seed, epochs, lr, d_model, n_hea
     if len(usable) < 5:
         return None
 
-    model = _build_model(L, S, d_model, n_heads, n_layers, dropout)
+    model = _build_model(L, S, kernel_size, variant)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     lossf = nn.MSELoss(reduction="none")
     model.train()
@@ -303,9 +321,9 @@ def train_itransformer(ret_mat, week_cut, L, S, seed, epochs, lr, d_model, n_hea
             Y = torch.tensor(np.stack(Yb), dtype=torch.float32)    # [B,N,S]
             lbv = torch.tensor(np.stack(LBV))                      # [B,N] bool
             tgv = torch.tensor(np.stack(TGV))
-            kpm = ~lbv                                             # True = padded variate (ignore in attention)
+            kpm = ~lbv                                             # True = padded stock (loss-masked)
             pred = model(X, key_padding_mask=kpm)                  # [B,N,S]
-            w = (lbv & tgv).unsqueeze(-1).float()                  # only complete-lookback & complete-target tokens
+            w = (lbv & tgv).unsqueeze(-1).float()                  # only complete-lookback & complete-target stocks
             l = lossf(pred, Y) * w
             loss = l.sum() / w.sum().clamp(min=1.0)
             opt.zero_grad(); loss.backward()
@@ -409,7 +427,7 @@ def aggregate_horizon(label, horizon_days, panel_top_rets, panel_univ_rets,
         "directional_accuracy": float(np.mean(panel_diracc)) if panel_diracc else None,
         "rmse": rmse, "mae": mae, "r2": r2,
         # ── standardized TRUST block ──
-        "calibration_p10_p90_coverage": calib_cov,  # None for iTransformer (point forecast, non-quantile)
+        "calibration_p10_p90_coverage": calib_cov,  # None for DLinear (point forecast, non-quantile)
     }
 
 
@@ -441,8 +459,8 @@ def run(args):
 
     refit_every = args.refit_every
     refit_points = list(range(len(panels)))[::refit_every] if refit_every > 0 else [0]
-    logger.info(f"iTransformer refit at panel indices {refit_points} (every {refit_every}); "
-                f"L={L}wk S={S}wk d_model={args.d_model} heads={args.n_heads} layers={args.n_layers} "
+    logger.info(f"DLinear refit at panel indices {refit_points} (every {refit_every}); "
+                f"L={L}wk S={S}wk variant={args.variant} kernel={args.kernel_size} "
                 f"epochs={args.epochs} seed={args.seed}")
 
     acc = {h: {"top": [], "univ": [], "ic": [], "diracc": [], "pred": [], "real": []} for _, h in HORIZONS}
@@ -455,8 +473,8 @@ def run(args):
             continue
         if pi in refit_points or model is None:
             tr0 = time.monotonic()
-            res = train_itransformer(ret_mat, wc, L, S, args.seed, args.epochs, args.lr,
-                                     args.d_model, args.n_heads, args.n_layers, args.batch_size, args.dropout)
+            res = train_dlinear(ret_mat, wc, L, S, args.seed, args.epochs, args.lr,
+                                args.kernel_size, args.variant, args.batch_size)
             if res is None:
                 logger.warning(f"  panel {pi} {as_of}: insufficient training windows, skip refit")
                 continue
@@ -494,17 +512,16 @@ def run(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=f"Multi-Cycle iTransformer Validation {TOOL_VER}")
+    ap = argparse.ArgumentParser(description=f"Multi-Cycle DLinear Validation {TOOL_VER}")
     ap.add_argument("--seed", type=int, default=5422)
     ap.add_argument("--output", type=str, default=None)
     ap.add_argument("--refit-every", type=int, default=12, help="refit every N monthly panels (default annual≈12)")
     ap.add_argument("--epochs", type=int, default=20)
-    ap.add_argument("--d-model", type=int, default=64)
-    ap.add_argument("--n-heads", type=int, default=4)
-    ap.add_argument("--n-layers", type=int, default=2)
+    ap.add_argument("--kernel-size", type=int, default=25, help="moving-average kernel for DLinear decomposition")
+    ap.add_argument("--variant", type=str, default="dlinear", choices=["dlinear", "nlinear"],
+                    help="dlinear=moving-avg decompose; nlinear=last-value normalization")
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch-size", type=int, default=32)
-    ap.add_argument("--dropout", type=float, default=0.1)
     ap.add_argument("--lookback", type=int, default=LOOKBACK_WEEKS)
     ap.add_argument("--horizon-weeks", type=int, default=PRED_WEEKS)
     ap.add_argument("--max-stocks", type=int, default=None, help="limit universe for smoke")
@@ -517,12 +534,10 @@ def main():
         args.epochs = 2
         args.refit_every = 0
         args.batch_size = 16
-        args.d_model = 32
-        args.n_heads = 2
-        args.n_layers = 1
+        args.kernel_size = 9
 
     logger.info("=" * 100)
-    logger.info(f"Multi-Cycle iTransformer Validation {TOOL_VER} (Inverted Transformer / ICLR 2024)")
+    logger.info(f"Multi-Cycle DLinear Validation {TOOL_VER} (Decomposition/Normalization Linear / AAAI 2023)")
     logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
     logger.info(f"  seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
@@ -530,7 +545,7 @@ def main():
     t_global = time.monotonic()
     results, universe, panels, cols, ret_mat = run(args)
 
-    logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix (iTransformer)\n{'='*100}")
+    logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix (DLinear)\n{'='*100}")
     logger.info(f"  {'Horizon':10} {'N':>4} {'Eff t':>7} {'Sig':>4} {'Sharpe':>7} {'Win':>6} {'NetAnn':>9} "
                 f"{'rankIC':>7} {'DirAcc':>7}")
     for label, r in results.items():
@@ -550,16 +565,16 @@ def main():
     if args.output:
         out = {label: r for label, r in results.items()}
         out["_meta"] = {
-            "tool": "multi_cycle_itransformer_validation.py", "tool_ver": TOOL_VER,
-            "model": "iTransformer (Inverted Transformer, ICLR 2024, from-scratch torch.nn)",
+            "tool": "multi_cycle_dlinear_validation.py", "tool_ver": TOOL_VER,
+            "model": "DLinear/NLinear (Decomposition/Normalization Linear, AAAI 2023, from-scratch torch.nn)",
             "run_at": datetime.now().isoformat(), "constitution_ver": CONSTITUTION_VER,
             "seed": args.seed, "horizons": [h for _, h in HORIZONS],
             "n_universe": len(universe), "n_stocks_with_series": len(cols),
             "n_weeks": int(ret_mat.shape[0]), "n_panels_input": len(panels),
             "lookback_weeks": args.lookback, "pred_weeks": args.horizon_weeks,
-            "d_model": args.d_model, "n_heads": args.n_heads, "n_layers": args.n_layers,
+            "variant": args.variant, "kernel_size": args.kernel_size,
             "refit_every": args.refit_every, "epochs": args.epochs, "smoke": args.smoke,
-            "variates": "stocks (cross-sectional multivariate, inverted)",
+            "channels": "stocks (channel-independent linear)",
             "common_baseline": f"universe v0.18 × {len(panels)} panels × {HORIZONS} × top-{N_TOP} × cost {COST_PER_REBAL} × T_CZ-6",
             "source_traceability": "per CLAUDE.md §一.10 — all data from (b) DB query TaiwanStockPriceAdj/core_universe_*",
         }

@@ -524,7 +524,7 @@ def main():
 
     logger.info("=" * 100)
     logger.info(f"Multi-Cycle TFT Validation {TOOL_VER} (Temporal Fusion Transformer / Google)")
-    logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe × {len(panels)} panels (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
+    logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
     logger.info(f"  seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
 

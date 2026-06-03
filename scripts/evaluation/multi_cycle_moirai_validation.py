@@ -1,26 +1,27 @@
 """
-multi_cycle_chronos_validation.py v0.2 (Chronos · Amazon 時序基礎模型 Foundation Model · 2024 / Ansari et al. "Chronos: Learning the Language of Time Series" · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
+multi_cycle_moirai_validation.py v0.1 (Moirai / Moirai-MoE · Salesforce 通用時序基礎模型 Universal Forecaster · 2024 / Woo et al. "Unified Training of Universal Time Series Forecasting Transformers" · Multi-Cycle Stock-Price Validation · per CLAUDE.md §一.11 三段式)
 ================================================================================
-**最後更新日期**: 2026-06-02
-**主權狀態**: CHRONOS(AMAZON 時序基礎模型 / 2024)ZERO-SHOT 4-HORIZON WALK-FORWARD VALIDATION + ⚠️ EXTERNAL-PRETRAINED PRIOR(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權)+ §14.7-DC v0.18 SOURCE-PURE *INPUT* UNIVERSE + §一.10 INPUT SOURCE-TRACEABLE(全 DB)+ 共同比較基準(COMMON COMPARISON BASELINE)第四實作 + §一.11 三段式合規 + §14.7-DE §0.0-I panel-date helper 切換(2026-06-02)
+**最後更新日期**: 2026-06-03
+**主權狀態**: MOIRAI / MOIRAI-MoE(SALESFORCE 通用時序基礎模型 / 2024)ZERO-SHOT 4-HORIZON WALK-FORWARD VALIDATION + ⚠️ EXTERNAL-PRETRAINED PRIOR(模型權重非 DB-source-pure;同 Chronos 之 external-prior caveat 治權)+ §14.7-DC v0.18 SOURCE-PURE *INPUT* UNIVERSE + §一.10 INPUT SOURCE-TRACEABLE(全 DB)+ 共同比較基準(COMMON COMPARISON BASELINE)第五實作 + §一.11 三段式合規 + §14.7-DE §0.0-I panel-date helper
+
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
 
-**一句話**:用 Chronos(時間序列基礎模型 foundation model) 序列模型,吃每支股票的「歷史價格序列」,預測未來報酬,評估「靠它選股能不能賺錢、準不準、可不可信」。
+**一句話**:用 Moirai / Moirai-MoE(Salesforce 的通用時間序列基礎模型 foundation model) 序列模型,吃每支股票的「歷史價格序列」,預測未來報酬,評估「靠它選股能不能賺錢、準不準、可不可信」。
 
 **它怎麼做(步驟)**:
 1. 取 397 支「乾淨核心股」,載入每支的歷史價格序列(序列模型看時間走勢,非橫斷面特徵)。
 2. 把 2013-05 ~ 2026-06 切成月度時間點(panel)。
-3. **逐點往前走(walk-forward)**:每點只用那之前的序列訓練,預測之後報酬,不偷看未來(防洩漏)。
+3. **逐點往前走(walk-forward)**:每點只用那之前的序列做預測,預測之後報酬,不偷看未來(防洩漏)。Moirai 是「零樣本」模型——不在本資料上訓練,直接用 Salesforce 預訓練好的權重做預測。
 4. 依預測挑最看好的股票做多,跟全市場平均比,算賺賠。
 5. 在 **4 種持有期**各做一遍:週(5 天)/ 月(20 天)/ 季(60 天)/ 年(252 天)。
-6. 算成績:報酬率、Sharpe、勝率,加上**排序 IC、淨 Sharpe、機率校準覆蓋率**(此類序列模型用自有 calibration 導向 `aggregate_horizon`;§14.7-DF 註明 torch 暫不套樹模型 metric helper,各模型 rework 時再對齊共同欄位後與樹模型並比)。
+6. 算成績:報酬率、Sharpe、勝率,加上**排序 IC、淨 Sharpe、機率校準覆蓋率**(此類序列模型用自有 calibration 導向 `aggregate_horizon`;§14.7-DF 註明 torch/foundation 暫不套樹模型 metric helper,各模型 rework 時再對齊共同欄位後與樹模型並比)。
 7. 判定這模型在哪個週期「真的能賺錢且可信」。
 
 **輸入**:資料庫(股價序列)。**輸出**:JSON(各週期成績)+ log。
-**它不做的事**:不改資料庫(純讀取評估;§3.1 evaluation 角色)。
-**為什麼需要它**:序列/基礎模型路線的實證裁判,與樹模型並列比較(共同欄位對齊後)。
+**它不做的事**:不改資料庫(純讀取評估;§3.1 evaluation 角色);不訓練(zero-shot)。
+**為什麼需要它**:序列/基礎模型路線的實證裁判,與 Chronos / 樹模型並列比較(共同欄位對齊後)。Moirai 與 Moirai-MoE 由 `--variant` 同支驗證器涵蓋。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 
@@ -28,43 +29,42 @@ multi_cycle_chronos_validation.py v0.2 (Chronos · Amazon 時序基礎模型 Fou
    **治權邊界**:(a) §3.2 evaluation 模組;(b) 不涉五套禁令(§0.1/§0.2/§0.3);(c) T1-T3 不分層;
    (d) §8.5 anti-leakage:context 序列僅含 as_of 之前(含)之 weekly close,forecast target weeks 全在 as_of 之後 → 結構性無洩漏;
    (e) **不訓練 production model**(不寫 model_registry);(f) **read-only**(不改 feature_values / TaiwanStockPriceAdj / universe);
-   (g) 唯一職責:Chronos zero-shot 4-horizon walk-forward 預測 + 共同比較基準 metrics + JSON 持久化。
-2. **[⚠️ External-Pretrained Prior — Source-Purity Caveat]** (v0.1, 用戶 2026-05-30 explicit decision「Real Chronos + disclose caveat」):
+   (g) 唯一職責:Moirai / Moirai-MoE zero-shot 4-horizon walk-forward 預測 + 共同比較基準 metrics + JSON 持久化。
+2. **[⚠️ External-Pretrained Prior — Source-Purity Caveat]** (v0.1, 同 Chronos 之 external-prior 治權):
    ⚠️ **本模型與從頭訓練之 TFT / iTransformer / PatchTST 在治權上有本質差異,必須醒目(PROMINENT)揭露**:
-   - Chronos 為 Amazon 之**預訓練時序基礎模型**(T5 backbone,pretrained on 天量 EXTERNAL 真實+合成時序語料,**NOT in this DB**);
+   - Moirai / Moirai-MoE 為 Salesforce 之**預訓練通用時序基礎模型**(masked-encoder + any-variate / mixture-of-experts,pretrained on LOTSA 天量 EXTERNAL 真實時序語料,**NOT in this DB**);
    - **INPUT context 序列 100% DB-source-pure**(TaiwanStockPriceAdj weekly close,§一.10 (b) DB query);
    - **但 MODEL WEIGHTS 編碼來自本 DB 之外之知識** → 此 predictive prior **非 §一.10 (a)(b)(c) 可 trace 至 DB / FinMind / FRED**,
      屬「外部預訓練先驗」之**新 source 類別**(與 from-scratch 模型「只從本 DB 學」**本質不同**);
-   - 用戶 explicit 授權使用此 external prior,**授權條件 = 本 caveat 須於程式標頭 + 驗證報告醒目揭露**(本條 + report §三);
-   - 本程式為**真正之 Amazon Chronos**(非 from-scratch surrogate);**真正之 Google TimesFM 無法在本機安裝**
-     (`timesfm==1.0.0` 依賴 `paxml→lingvo==0.12.7`,僅 Linux wheel;本機 Intel Mac x86_64 `from versions: none`)→
-     Chronos 為「時序基礎模型(foundation model)族」之**代表實作**,同時回應用戶之 Foundation Models + TimesFM 兩請求。
-3. **[Common Comparison Baseline]** (v0.1, reports/common_model_comparison_baseline_v1.md): 本程式為共同比較基準之**第四實作**
-   (第一 TFT,第二 iTransformer,第三 PatchTST)— universe v0.18(398 source-pure)× 95 monthly panels ×
+   - 使用此 external prior 之**授權條件 = 本 caveat 須於程式標頭 + 驗證報告醒目揭露**(本條 + report §三),與 Chronos 同治權;
+   - 本程式為**真正之 Salesforce Moirai / Moirai-MoE**(非 from-scratch surrogate);與 Chronos 同屬「時序基礎模型(foundation model)族」之代表實作。
+3. **[Common Comparison Baseline]** (v0.1, reports/common_model_comparison_baseline_v1.md): 本程式為共同比較基準之**第五實作**
+   (第一 TFT,第二 iTransformer,第三 PatchTST,第四 Chronos)— universe v0.18(source-pure)× canonical monthly panels(§14.7-DE)×
    真實 forward log returns(TaiwanStockPriceAdj)× 4 horizons(5/20/60/252d)× top-20 equal-weight long × 0.6% cost ×
    {Sharpe, Win, Eff-t, T_CZ-6 gate}。**評估協定與 realized targets 與全模型完全相同** → 精準度 / 信任度比較 apples-to-apples;
-   模型用各自 natural representation(Chronos = 每股 zero-shot 單變量 weekly close 序列),比較點在 OUTPUT 預測品質。
+   模型用各自 natural representation(Moirai = 每股 zero-shot 單變量 weekly close 序列),比較點在 OUTPUT 預測品質。
 4. **[Input Source Traceability]** (v0.1, CLAUDE.md §一.10): **INPUT 全數據** (b) DB query(TaiwanStockPriceAdj close + core_universe_*)+
    (a) program output(本 JSON / log);weekly close 全為 source-pure DB 觀測值(calendar-week last close);
    **無 imputed / 無 forward-fill / 無 hardcoded knowledge**;calendar-week gap 不補值(僅取真實觀測週)。
    ⚠️ **唯一 exception = model prior(見 §一.2 caveat)**。
 5. **[Longest-Available Per-Stock History]** (v0.1, 用戶 2026-05-30 directive): 每股取其在 DB 之最長 daily 歷史
    (calendar-week resample → weekly close),context 取最近 --context-weeks 個**真實觀測週**(歷史愈長之股 → context 愈完整)。
-6. **[Real Chronos — Zero-Shot Probabilistic Forecasting]** (v0.1, Ansari et al. 2024): Chronos 將時序 tokenize(scaling + quantization)
-   後以語言模型方式預測;**zero-shot**(不在本 DB fine-tune),以每股 context 直接 forecast 未來 --pred-weeks 週之 price path 之
-   **機率分位數**(predict_quantiles)。score = ln(median_forecast_price[horizon] / last_close)= 預測 forward log return。
-7. **[Probabilistic → Calibration AVAILABLE]** (v0.1): Chronos 為機率預測 → 可輸出 P10/P90 → **calibration_p10_p90_coverage 可計算**
-   (與 TFT 同;unlike iTransformer / PatchTST 之 point-forecast calibration N/A)。coverage = realized return ∈ [r_P10, r_P90] 之比率(理想≈0.80)。
+6. **[Real Moirai — Zero-Shot Probabilistic Forecasting]** (v0.1, Woo et al. 2024 "Moirai: Unified Training of Universal Time Series
+   Forecasting Transformers"): Moirai 以 masked-encoder Transformer(any-variate attention + multi-patch projection);Moirai-MoE 為其
+   mixture-of-experts 變體;**zero-shot**(不在本 DB fine-tune),以每股 context 直接 forecast 未來 --pred-weeks 週之 price path 之
+   **機率樣本**(MoiraiForecast.forward → [B, num_samples, pred_weeks])。score = ln(median_forecast_price[horizon] / last_close)= 預測 forward log return。
+7. **[Probabilistic → Calibration AVAILABLE]** (v0.1): Moirai forecast 為機率樣本 → 可取 P10/P90 分位 → **calibration_p10_p90_coverage 可計算**
+   (與 Chronos / TFT 同;unlike iTransformer / PatchTST 之 point-forecast calibration N/A)。coverage = realized return ∈ [r_P10, r_P90] 之比率(理想≈0.80)。
 8. **[Precision / Trust / Profitability 三分]** (v0.1): 精準度(rank-IC / dir-acc / RMSE / MAE / R²)、信任度(Eff-t significance /
    多 seed 穩定度 / **calibration available**)、賺錢能力(net-of-cost Sharpe / Eff-t / Win / annualized net / T_CZ-6 gate)分開報告。
 9. **[Zero Hardcoded Verdict]** (v0.1, 憲法 §5.6.3): significance 動態(abs(eff_t) > 1.997);T_CZ-6 gate(4.20/2.40/0.79)
    為 charter-mandated reference threshold(Tier 3 transparent disclosure,非 feature data,非硬編 verdict)。
 10. **[§一.10 #3 Multi-Run]** (v0.1): 跑 ≥3 seeds {5422,7331,1009} 以 protocol-consistency;
-    ⚠️ **Chronos-Bolt zero-shot 為 ~deterministic(直接分位輸出,無 autoregressive sampling)→ 跨 seed spread ≈ 0**;
-    此 determinism 本身為一 trust 觀察(無 seed 變異),報告須誠實揭露(非以 spread 假裝 stochastic 穩定度)。
-11. **[Schema-Compatible Output]** (v0.1): per-horizon JSON keys 與 multi_cycle_validation.py / tft / itransformer / patchtst 對齊 → _aggregate.py 可直接 roll up。
+    ⚠️ **Moirai forward 以 num_samples 取樣 → 有 stochastic sampling 變異;但 seed 固定 → reproducible**;
+    跨 seed spread 為 trust 觀察之一(報告須誠實揭露 sampling variance,非以 spread 假裝零變異 deterministic)。
+11. **[Schema-Compatible Output]** (v0.1): per-horizon JSON keys 與 multi_cycle_validation.py / tft / itransformer / patchtst / chronos 對齊 → _aggregate.py 可直接 roll up。
 12. **[Historical Reference Authority]** (v0.1): TOOL_VER = "v0.1" 為記述性快照,非權威來源。
-13. **[Idempotency]** (v0.1): 不寫 DB(--output 寫 JSON);checkpoint 快取於 .hf_cache;可重跑;model / context / horizon 全可配置。
+13. **[Idempotency]** (v0.1): 不寫 DB(--output 寫 JSON);checkpoint 快取於 .hf_cache;可重跑;variant / model / context / horizon 全可配置。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
 
@@ -72,20 +72,20 @@ multi_cycle_chronos_validation.py v0.2 (Chronos · Amazon 時序基礎模型 Fou
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| A.1 Universe | get_universe() → 最新 committed snapshot core_tier='core_universe'(398 v0.18)| §14.7-DC v0.18 |
-| A.2 Panels | get_panel_dates() → 95 monthly mid-month(2018-06-15~2026-04-15)| 與 baseline 同 grid |
+| A.1 Universe | get_universe() → 最新 committed snapshot core_tier='core_universe'(v0.18)| §14.7-DC v0.18 |
+| A.2 Panels | get_canonical_panel_dates() → canonical monthly mid-month(§14.7-DE 單一引用源)| 與 baseline 同 grid |
 | A.3 Forward returns | load_forward_returns() → 真實 log return(TaiwanStockPriceAdj)| §一.10 (b) DB |
 | A.4 Portfolio | top-20 equal-weight long(np.argsort[-20:])| 與 baseline 同 |
 | A.5 Profitability | aggregate_horizon():sharpe / win / mdd / eff_t / annualized_net / T_CZ-6 | §14.7-CY / §14.7-CZ |
 
-### Group B. Chronos Foundation Model(zero-shot 每股單變量 weekly close → 機率 forecast)
+### Group B. Moirai / Moirai-MoE Foundation Model(zero-shot 每股單變量 weekly close → 機率 forecast)
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
 | B.1 Close matrix | load_close_matrix() → daily close → calendar-week last close → matrix[week × stock]| §一.10 source-pure INPUT |
-| B.2 Pipeline | load_pipeline() → BaseChronosPipeline.from_pretrained(amazon/chronos-bolt-*)(⚠️ external-pretrained,見 §一.2)| Ansari et al. 2024 |
-| B.3 Predict | predict_panel() → 每股 context(最近 N 真實觀測週)→ predict_quantiles → P10/P50/P90 price path | §8.5 leakage-safe(context ≤ as_of)|
-| B.4 Score | score = ln(median_price[horizon]/last_close);calibration = realized ∈ [r10,r90]| 機率預測契約 |
+| B.2 Forecaster | load_forecaster() → MoiraiForecast / MoiraiMoEForecast.from_pretrained(Salesforce/moirai-*)(⚠️ external-pretrained,見 §一.2)| Woo et al. 2024 |
+| B.3 Predict | predict_panel() → 每股 context(最近 N 真實觀測週)→ forward → [B, num_samples, pred_weeks] 機率樣本 | §8.5 leakage-safe(context ≤ as_of)|
+| B.4 Score | score = ln(median_sample_price[horizon]/last_close);calibration = realized ∈ [P10,P90]| 機率預測契約 |
 | B.5 Walk-forward | zero-shot → 無 refit / 無 training(基礎模型先驗固定)| 基礎模型特性 |
 
 ### Group C. Precision / Trust(標準化 block — 全模型共用定義)
@@ -94,36 +94,36 @@ multi_cycle_chronos_validation.py v0.2 (Chronos · Amazon 時序基礎模型 Fou
 | :--- | :--- | :--- |
 | C.1 Precision | rank_ic / directional_accuracy / rmse / mae / r2(pred vs 真實 realized)| 共同基準 |
 | C.2 Trust | effective_t_stat / is_significant_p05 / **calibration_p10_p90_coverage(available)**| 共同基準 + §9.1 |
-| C.3 Multi-seed | --seed {5422,7331,1009} → _aggregate.py(⚠️ Bolt deterministic → spread≈0,誠實揭露)| §一.10 #3 |
+| C.3 Multi-seed | --seed {5422,7331,1009} → _aggregate.py(sampling variance 誠實揭露)| §一.10 #3 |
 
 ### Group D. Persistence
 
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
-| D.1 JSON | --output reports/chronos_v0/<...>.json(schema-compatible + precision/trust + external_prior caveat in _meta)| §一.10 / §二.4 |
+| D.1 JSON | --output reports/moirai_v0/<...>.json(schema-compatible + precision/trust + external_prior caveat in _meta)| §一.10 / §二.4 |
 | D.2 stdout | cross-cycle comparison matrix + calibration line + 進度回報 | §一.12 進度 |
 
 ### 對齊憲章 §二 維運矩陣
 
-| 場景 | 命令(⚠️ 須用 venv_fm — 隔離 torch 2.2.2 + chronos,主 venv 保持 pristine)|
+| 場景 | 命令(本機主 venv ./venv — uni2ts / torch 已安裝)|
 | :--- | :--- |
-| Smoke(plumbing 驗證)| `venv_fm/bin/python scripts/evaluation/multi_cycle_chronos_validation.py --smoke --output reports/chronos_v0/_smoke.json` |
-| 完整單 seed | `venv_fm/bin/python ... --seed 5422 --output reports/chronos_v0/chronos_s5422.json` |
-| 3-run 教義 | 對 {5422,7331,1009} 各跑 → _aggregate.py(注意 Bolt determinism)|
+| Smoke(plumbing 驗證)| `./venv/bin/python scripts/evaluation/multi_cycle_moirai_validation.py --smoke --output reports/moirai_v0/_smoke.json` |
+| 完整單 seed(Moirai)| `./venv/bin/python ... --variant moirai --seed 5422 --output reports/moirai_v0/moirai_s5422.json` |
+| 完整單 seed(Moirai-MoE)| `./venv/bin/python ... --variant moirai_moe --seed 5422 --output reports/moirai_v0/moirai_moe_s5422.json` |
+| 3-run 教義 | 對 {5422,7331,1009} 各跑 → _aggregate.py |
 
 ### 不提供之旗標 (Intentionally Omitted)
 
 - `--commit`:本工具不寫 evaluation_log / model_registry(§3.2 橫切只讀)。
 - `--cost-per-rebal`:0.6% standard per §14.7-CY T_CY-5(與 baseline 對齊,不可變更否則破壞比較基準)。
 - `--horizons`:固定 5/20/60/252(共同比較基準定義之一部分,不可變更)。
-- `--refit-every` / `--epochs`:Chronos zero-shot 無訓練(基礎模型先驗固定),刻意省略。
+- `--refit-every` / `--epochs`:Moirai zero-shot 無訓練(基礎模型先驗固定),刻意省略。
 
 ## 📜 三、全修訂歷程 (Full Revision History)
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.2 | 2026-06-02 | Codex | **§0.0-I panel-date helper 切換(§14.7-DE)**:panel 窗改用 `get_canonical_panel_dates()`(§14.7-DE 單一引用源,移除寫死 date(2018,6,15) → 資料驅動 157 panels)+ 修正 stale log 字串(2018-2026/95→data-driven)。metric 仍用自有 `aggregate_horizon`(calibration 框架,§14.7-DF deferred,各模型 rework 時對齊)。**未改模型、未 retrain**。 | **ACTIVE** |
-| v0.1 | 2026-05-30 | Claude | **首版**:Chronos(Amazon 時序基礎模型 / 2024 / Ansari et al.)zero-shot multi-cycle 股價預測驗證 + 共同比較基準第四實作。每股最長 weekly close 序列 → BaseChronosPipeline.predict_quantiles → P10/P50/P90 price path → score=ln(median/last_close)→ 4-horizon。⚠️ **external-pretrained prior**(模型權重非 DB-source-pure;用戶 2026-05-30 explicit「Real Chronos + disclose caveat」授權,醒目揭露於 §一.2)。INPUT 全 DB source-pure(TaiwanStockPriceAdj weekly close,無 imputed/forward-fill)。calibration AVAILABLE(機率模型,與 TFT 同)。與 baseline 同 universe(v0.18/398)/ panels(95)/ forward returns / portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。真正 Google TimesFM 無法安裝(lingvo Linux-only)→ Chronos 為基礎模型族代表。§一.10 #3 multi-seed(Bolt deterministic → spread≈0,誠實揭露)。§8.5 leakage-safe(context ≤ as_of)。§一.11 三段式合規。 | SUPERSEDED |
+| v0.1 | 2026-06-03 | Codex | **首版**:Moirai / Moirai-MoE(Salesforce 通用時序基礎模型 / 2024 / Woo et al.)zero-shot multi-cycle 股價預測驗證 + 共同比較基準第五實作。`--variant {moirai,moirai_moe}` 同支涵蓋兩變體。每股最長 weekly close 序列 → MoiraiForecast/MoiraiMoEForecast.forward → [B, num_samples, pred_weeks] 機率樣本 → median price path → score=ln(median/last_close)→ 4-horizon。⚠️ **external-pretrained prior**(模型權重非 DB-source-pure,醒目揭露於 §一.2,同 Chronos 治權)。INPUT 全 DB source-pure(TaiwanStockPriceAdj weekly close,無 imputed/forward-fill)。calibration AVAILABLE(機率模型,P10/P90 樣本分位)。與 baseline 同 universe(v0.18)/ panels(§14.7-DE canonical)/ forward returns / portfolio(top-20)/ cost(0.6%)/ gate(T_CZ-6)。§一.10 #3 multi-seed(sampling variance 誠實揭露)。§8.5 leakage-safe(context ≤ as_of)。§一.11 三段式合規。 | **ACTIVE** |
 """
 from __future__ import annotations
 import warnings
@@ -139,6 +139,10 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent  # stock_backend/
 os.environ.setdefault("HF_HOME", str(PROJECT_ROOT / ".hf_cache"))  # contain checkpoint cache locally
 
+_base_dir = Path(__file__).resolve().parent.parent  # scripts/ (hosts the `core` package)
+if str(_base_dir) not in sys.path:
+    sys.path.insert(0, str(_base_dir))
+
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover
@@ -153,7 +157,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.2"
+TOOL_VER = "v0.1"
 
 # ── Common Comparison Baseline constants (FIXED — 不可變更,否則破壞跨模型比較) ──
 HORIZONS = [("weekly", 5), ("monthly", 20), ("quarterly", 60), ("annual", 252)]
@@ -163,19 +167,20 @@ PANEL_SPACING = 30         # monthly grid (for overlap-corrected n_eff)
 GATE = {"effective_t_stat": 4.20, "sharpe": 2.40, "win_rate": 0.79}  # §14.7-CZ T_CZ-6 annual
 CRIT_T = 1.997             # p<0.05 large-df
 
-# ── Chronos / weekly constants ──
+# ── Moirai / weekly constants ──
 CONTEXT_WEEKS = 256        # per-stock zero-shot context (~5 yr of real observed weeks)
 MIN_CONTEXT_WEEKS = 60     # minimum observed weeks to include a stock
-PRED_WEEKS = 52            # forecast horizon (covers annual 252d ≈ 50 wk; ≤ Bolt native 64)
+PRED_WEEKS = 52            # forecast horizon (covers annual 252d ≈ 50 wk)
 HORIZON_STEPS = {5: 1, 20: 4, 60: 12, 252: 50}  # trading days → weekly forecast step index
 QUANTILE_LEVELS = [0.1, 0.5, 0.9]               # P10 / median / P90 (calibration + score)
-DEFAULT_MODEL = "amazon/chronos-bolt-small"
-SMOKE_MODEL = "amazon/chronos-bolt-tiny"
+NUM_SAMPLES = 100          # probabilistic samples per stock (forecast distribution)
+PATCH_SIZE = {"moirai": 32, "moirai_moe": 16}   # fixed patch (Moirai 'auto' loop misaligns batched forward; MoE int-only)
+DEFAULT_MODEL = {"moirai": "Salesforce/moirai-1.1-R-small",
+                 "moirai_moe": "Salesforce/moirai-moe-1.0-R-small"}
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# DB connection (inline replica of core.db_utils.get_db_connection — keeps venv_fm
-#   dependency surface minimal: no full `core` import chain, only psycopg2 + dotenv)
+# DB connection (inline replica of core.db_utils.get_db_connection — minimal dependency surface)
 # ════════════════════════════════════════════════════════════════════════════
 def get_db_conn():
     required = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
@@ -190,7 +195,7 @@ def get_db_conn():
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Group A — Common Comparison Baseline DB loaders (與 baseline / TFT / iTransformer / PatchTST 逐字相同)
+# Group A — Common Comparison Baseline DB loaders (與 baseline / chronos / iTransformer 逐字相同)
 # ════════════════════════════════════════════════════════════════════════════
 def get_universe(cur):
     cur.execute("""SELECT m.stock_id FROM core_universe_membership m
@@ -219,7 +224,7 @@ def load_forward_returns(cur, as_of, horizon_days):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Group B — Chronos close-matrix construction + zero-shot forecast
+# Group B — Moirai close-matrix construction + zero-shot forecast
 # ════════════════════════════════════════════════════════════════════════════
 def load_close_matrix(cur, universe, max_stocks=None):
     """每股最長 daily 歷史 → calendar-week last close → matrix[week × stock] (source-pure 觀測值,無補值)."""
@@ -254,19 +259,36 @@ def load_close_matrix(cur, universe, max_stocks=None):
     return close_mat, cols, week_date
 
 
-def load_pipeline(model_id, seed):
-    """Load REAL pretrained Amazon Chronos pipeline (⚠️ external-pretrained prior — §一.2 caveat)."""
+def load_forecaster(variant, model_id, context_weeks, pred_weeks, num_samples, seed):
+    """Load REAL pretrained Salesforce Moirai / Moirai-MoE forecaster (⚠️ external-pretrained prior — §一.2 caveat).
+
+    Uses a FIXED patch_size (Moirai 'auto' loop misaligns the batched direct-forward path; MoiraiMoE accepts int only)."""
     import torch
-    from chronos import BaseChronosPipeline
     torch.manual_seed(seed)
     np.random.seed(seed)
-    return BaseChronosPipeline.from_pretrained(model_id, device_map="cpu", torch_dtype=torch.float32)
+    patch = PATCH_SIZE[variant]
+    if variant == "moirai_moe":
+        from uni2ts.model.moirai_moe import MoiraiMoEForecast, MoiraiMoEModule
+        module = MoiraiMoEModule.from_pretrained(model_id)
+        fc = MoiraiMoEForecast(
+            prediction_length=pred_weeks, context_length=context_weeks, target_dim=1,
+            feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,
+            module=module, patch_size=patch, num_samples=num_samples)
+    else:
+        from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
+        module = MoiraiModule.from_pretrained(model_id)
+        fc = MoiraiForecast(
+            prediction_length=pred_weeks, context_length=context_weeks, target_dim=1,
+            feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,
+            module=module, patch_size=patch, num_samples=num_samples)
+    fc.eval()
+    return fc
 
 
-def predict_panel(pipeline, close_mat, week_cut, cols, context_weeks, pred_weeks, batch_size):
+def predict_panel(forecaster, close_mat, week_cut, cols, context_weeks, pred_weeks, batch_size):
     """Zero-shot forecast next `pred_weeks` weekly closes per stock from observed context ending ≤ week_cut.
     Returns (fwd_med, fwd_q10, fwd_q90): per-horizon dict sid -> predicted forward LOG RETURN
-    (median / P10 / P90). Probabilistic → q10/q90 enable calibration. §8.5 leakage-safe (context ≤ as_of)."""
+    (median / P10 / P90). Probabilistic samples → q10/q90 enable calibration. §8.5 leakage-safe (context ≤ as_of)."""
     import torch
     fwd = {h: {} for _, h in HORIZONS}
     q10 = {h: {} for _, h in HORIZONS}
@@ -279,18 +301,27 @@ def predict_panel(pipeline, close_mat, week_cut, cols, context_weeks, pred_weeks
         if obs.size < MIN_CONTEXT_WEEKS:
             continue
         ctx = obs[-context_weeks:]
-        contexts.append(torch.tensor(ctx, dtype=torch.float32))
+        # left-pad to fixed context_weeks so the batch tensor is rectangular (pad mask zeroes synthetic weeks)
+        pad = context_weeks - ctx.size
+        padded = np.concatenate([np.full(pad, ctx[0], dtype=np.float64), ctx]) if pad > 0 else ctx
+        is_pad = np.zeros(context_weeks, dtype=bool)
+        if pad > 0:
+            is_pad[:pad] = True
+        contexts.append((padded, is_pad))
         sids.append(sid)
         last_close.append(float(ctx[-1]))
     if len(sids) < N_TOP + 5:
         return fwd, q10, q90
-    j10, j50, j90 = QUANTILE_LEVELS.index(0.1), QUANTILE_LEVELS.index(0.5), QUANTILE_LEVELS.index(0.9)
     for b in range(0, len(sids), batch_size):
         cb = contexts[b:b + batch_size]
+        pt = torch.tensor(np.stack([c for c, _ in cb]), dtype=torch.float32).unsqueeze(-1)  # [B, ctx, 1]
+        pis = torch.tensor(np.stack([m for _, m in cb]))                                    # [B, ctx] bool (True=pad)
+        po = (~pis).unsqueeze(-1)                                                           # [B, ctx, 1] observed
         with torch.no_grad():
-            qt, _mean = pipeline.predict_quantiles(
-                cb, prediction_length=pred_weeks, quantile_levels=QUANTILE_LEVELS)
-        qt = qt.cpu().numpy()                      # [B, pred_weeks, n_quantiles]
+            out = forecaster(past_target=pt, past_observed_target=po, past_is_pad=pis)      # [B, num_samples, pred_weeks]
+        samp = out.cpu().numpy()
+        qs = np.quantile(samp, QUANTILE_LEVELS, axis=1)   # [3, B, pred_weeks] → P10 / median / P90 price paths
+        p10_path, pm_path, p90_path = qs[0], qs[1], qs[2]
         for k in range(len(cb)):
             lc = last_close[b + k]
             if lc <= 0:
@@ -298,11 +329,11 @@ def predict_panel(pipeline, close_mat, week_cut, cols, context_weeks, pred_weeks
             sid = sids[b + k]
             for _, h in HORIZONS:
                 step = HORIZON_STEPS[h]
-                if step > qt.shape[1]:
+                if step > samp.shape[2]:
                     continue
-                pm = max(float(qt[k, step - 1, j50]), 1e-6)
-                p10 = max(float(qt[k, step - 1, j10]), 1e-6)
-                p90 = max(float(qt[k, step - 1, j90]), 1e-6)
+                pm = max(float(pm_path[k, step - 1]), 1e-6)
+                p10 = max(float(p10_path[k, step - 1]), 1e-6)
+                p90 = max(float(p90_path[k, step - 1]), 1e-6)
                 fwd[h][sid] = float(np.log(pm / lc))
                 q10[h][sid] = float(np.log(p10 / lc))
                 q90[h][sid] = float(np.log(p90 / lc))
@@ -310,7 +341,7 @@ def predict_panel(pipeline, close_mat, week_cut, cols, context_weeks, pred_weeks
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Group A/C — metrics (portfolio + precision + trust) — 與 baseline / TFT / iTransformer / PatchTST 逐字相同
+# Group A/C — metrics (portfolio + precision + trust) — 與 baseline / chronos / iTransformer 逐字相同
 # ════════════════════════════════════════════════════════════════════════════
 def spearman_ic(pred, y):
     pred = np.asarray(pred); y = np.asarray(y)
@@ -375,7 +406,7 @@ def aggregate_horizon(label, horizon_days, panel_top_rets, panel_univ_rets,
         "directional_accuracy": float(np.mean(panel_diracc)) if panel_diracc else None,
         "rmse": rmse, "mae": mae, "r2": r2,
         # ── standardized TRUST block ──
-        "calibration_p10_p90_coverage": calib_cov,  # AVAILABLE for Chronos (probabilistic model)
+        "calibration_p10_p90_coverage": calib_cov,  # AVAILABLE for Moirai (probabilistic samples)
     }
 
 
@@ -396,10 +427,12 @@ def run(args):
     close_mat, cols, week_date = load_close_matrix(cur, universe, max_stocks=args.max_stocks)
     logger.info(f"Close matrix: {len(cols)} stocks × {close_mat.shape[0]} calendar-weeks (load {time.monotonic()-t0:.1f}s)")
 
-    logger.info(f"Loading Chronos pipeline '{args.model_id}' (⚠️ EXTERNAL-PRETRAINED prior — §一.2 caveat; first run downloads checkpoint)...")
+    logger.info(f"Loading {args.variant} forecaster '{args.model_id}' (⚠️ EXTERNAL-PRETRAINED prior — §一.2 caveat; first run downloads checkpoint)...")
     tp = time.monotonic()
-    pipeline = load_pipeline(args.model_id, args.seed)
-    logger.info(f"  pipeline ready in {time.monotonic()-tp:.1f}s | context={args.context_weeks}wk pred={args.pred_weeks}wk batch={args.batch_size} seed={args.seed}")
+    forecaster = load_forecaster(args.variant, args.model_id, args.context_weeks,
+                                 args.pred_weeks, args.num_samples, args.seed)
+    logger.info(f"  forecaster ready in {time.monotonic()-tp:.1f}s | context={args.context_weeks}wk pred={args.pred_weeks}wk "
+                f"samples={args.num_samples} batch={args.batch_size} seed={args.seed}")
 
     week_ord = np.array([d.toordinal() if d else -1 for d in week_date])
 
@@ -414,7 +447,7 @@ def run(args):
         wc = week_cut_for(as_of)
         if wc is None or wc < MIN_CONTEXT_WEEKS:
             continue
-        fwd, q10, q90 = predict_panel(pipeline, close_mat, wc, cols,
+        fwd, q10, q90 = predict_panel(forecaster, close_mat, wc, cols,
                                       args.context_weeks, args.pred_weeks, args.batch_size)
         for label, h in HORIZONS:
             real, _ = load_forward_returns(cur, as_of, h)
@@ -448,34 +481,39 @@ def run(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=f"Multi-Cycle Chronos (Amazon foundation model) Validation {TOOL_VER}")
+    ap = argparse.ArgumentParser(description=f"Multi-Cycle Moirai / Moirai-MoE (Salesforce foundation model) Validation {TOOL_VER}")
     ap.add_argument("--seed", type=int, default=5422)
     ap.add_argument("--output", type=str, default=None)
-    ap.add_argument("--model-id", type=str, default=DEFAULT_MODEL, help="HF model id (amazon/chronos-bolt-{tiny,mini,small,base} or chronos-t5-*)")
+    ap.add_argument("--variant", type=str, default="moirai", choices=["moirai", "moirai_moe"],
+                    help="MoiraiForecast (zero-shot) vs MoiraiMoEForecast (mixture-of-experts)")
+    ap.add_argument("--model-id", type=str, default=None, help="HF model id (default per --variant: Salesforce/moirai-1.1-R-small or moirai-moe-1.0-R-small)")
     ap.add_argument("--context-weeks", type=int, default=CONTEXT_WEEKS)
     ap.add_argument("--pred-weeks", type=int, default=PRED_WEEKS)
+    ap.add_argument("--num-samples", type=int, default=NUM_SAMPLES, help="probabilistic forecast samples per stock")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--max-stocks", type=int, default=None, help="limit universe for smoke")
     ap.add_argument("--max-panels", type=int, default=None, help="limit #panels for smoke")
-    ap.add_argument("--smoke", action="store_true", help="tiny config: bolt-tiny, 40 stocks, 6 panels")
+    ap.add_argument("--smoke", action="store_true", help="tiny config: 40 stocks, 6 panels, small num_samples")
     args = ap.parse_args()
+    if args.model_id is None:
+        args.model_id = DEFAULT_MODEL[args.variant]
     if args.smoke:
-        args.model_id = SMOKE_MODEL if args.model_id == DEFAULT_MODEL else args.model_id
         args.max_stocks = args.max_stocks or 40
         args.max_panels = args.max_panels or 6
+        args.num_samples = min(args.num_samples, 20)
         args.batch_size = min(args.batch_size, 16)
 
     logger.info("=" * 100)
-    logger.info(f"Multi-Cycle Chronos Validation {TOOL_VER} (Amazon Time-Series Foundation Model / 2024)")
-    logger.info("  ⚠️  EXTERNAL-PRETRAINED PRIOR — model weights NOT DB-source-pure (user-authorized 2026-05-30, see header §一.2)")
+    logger.info(f"Multi-Cycle Moirai / Moirai-MoE Validation {TOOL_VER} (Salesforce Universal Time-Series Foundation Model / 2024)")
+    logger.info("  ⚠️  EXTERNAL-PRETRAINED PRIOR — model weights NOT DB-source-pure (same caveat as Chronos, see header §一.2)")
     logger.info(f"  COMMON COMPARISON BASELINE: source-pure universe (data-driven §14.7-DE) × 4 horizons × top-{N_TOP} × cost {COST_PER_REBAL}")
-    logger.info(f"  model={args.model_id} seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
+    logger.info(f"  variant={args.variant} model={args.model_id} seed={args.seed} smoke={args.smoke} max_stocks={args.max_stocks}")
     logger.info("=" * 100)
 
     t_global = time.monotonic()
     results, universe, panels, cols, close_mat = run(args)
 
-    logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix (Chronos · zero-shot)\n{'='*100}")
+    logger.info(f"\n{'='*100}\nCross-Cycle Comparison Matrix ({args.variant} · zero-shot)\n{'='*100}")
     logger.info(f"  {'Horizon':10} {'N':>4} {'Eff t':>7} {'Sig':>4} {'Sharpe':>7} {'Win':>6} {'NetAnn':>9} "
                 f"{'rankIC':>7} {'DirAcc':>7} {'Calib':>7}")
     for label, r in results.items():
@@ -498,20 +536,22 @@ def main():
     if args.output:
         out = {label: r for label, r in results.items()}
         out["_meta"] = {
-            "tool": "multi_cycle_chronos_validation.py", "tool_ver": TOOL_VER,
-            "model": f"Chronos (Amazon time-series foundation model, 2024, zero-shot pretrained: {args.model_id})",
+            "tool": "multi_cycle_moirai_validation.py", "tool_ver": TOOL_VER,
+            "model": f"Moirai / Moirai-MoE (Salesforce, 2024, external pretrained, zero-shot: {args.variant} / {args.model_id})",
+            "variant": args.variant,
             "run_at": datetime.now().isoformat(), "constitution_ver": CONSTITUTION_VER,
             "seed": args.seed, "horizons": [h for _, h in HORIZONS],
             "n_universe": len(universe), "n_stocks_with_series": len(cols),
             "n_weeks": int(close_mat.shape[0]), "n_panels_input": len(panels),
-            "context_weeks": args.context_weeks, "pred_weeks": args.pred_weeks, "batch_size": args.batch_size,
+            "context_weeks": args.context_weeks, "pred_weeks": args.pred_weeks,
+            "num_samples": args.num_samples, "patch_size": PATCH_SIZE[args.variant], "batch_size": args.batch_size,
             "variates": "per-stock univariate weekly close (zero-shot; foundation model)",
             "is_foundation_model": True, "zero_shot": True, "calibration_available": True,
             "external_pretrained_prior": True,
             "source_purity_caveat": ("⚠️ INPUT series 100% DB-source-pure (TaiwanStockPriceAdj weekly close, §一.10 (b)); "
-                                     "BUT model weights are EXTERNAL-PRETRAINED on non-DB corpora — predictive prior NOT "
-                                     "DB/FinMind/FRED-traceable. User explicitly authorized 2026-05-30 ('Real Chronos + "
-                                     "disclose caveat'). Real Google TimesFM unavailable on this Intel Mac (lingvo Linux-only)."),
+                                     "BUT model weights are EXTERNAL-PRETRAINED on non-DB corpora (Salesforce LOTSA) — predictive "
+                                     "prior NOT DB/FinMind/FRED-traceable. Same external-prior caveat as Chronos. Moirai / Moirai-MoE "
+                                     "are real Salesforce universal forecasters (not from-scratch surrogates)."),
             "common_baseline": f"universe v0.18 × {len(panels)} panels × {HORIZONS} × top-{N_TOP} × cost {COST_PER_REBAL} × T_CZ-6",
             "source_traceability": "per CLAUDE.md §一.10 — INPUT from (b) DB query TaiwanStockPriceAdj/core_universe_*; model prior external (see caveat)",
         }
