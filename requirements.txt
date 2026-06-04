@@ -102,3 +102,9 @@ python-dotenv>=1.0.0
 fsspec>=2024.2.0
 s3fs>=2024.2.0
 gcsfs>=2024.2.0
+
+# ── 跨模型比較 validator 額外依賴 (v5.4, 2026-06-04;用戶授權安裝) ──────────
+ngboost>=0.5.10          # 機率型 GBM — multi_cycle_ngboost_validation
+pytorch-tabnet>=4.1.0    # TabNet 表格注意力 — multi_cycle_tabnet_validation
+tabpfn>=6.4.1            # TabPFN 表格 foundation (in-context) — multi_cycle_tabpfn_validation
+# 註:FT-Transformer (multi_cycle_ftransformer) 為自寫 torch 實作(rtdl 安裝依賴衝突,未採用)
