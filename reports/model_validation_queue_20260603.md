@@ -42,7 +42,7 @@
 | 階段 | 進度 |
 |---|---|
 | 0. 前置 td s7331 | 🔄 td s1009 annual 中 → s7331 待(~1+ 天)|
-| 1. Cat 1 重跑 | ⏳ 待 rework(可於 td 跑時先準備 code)|
+| 1. Cat 1 重跑 | ✅ **code rework 完成**(2026-06-03,趁 td 跑時備好):4 支(tft/itransformer/patchtst/chronos)補共用 metric keys(collect per-panel (p,y)→`summarize_horizon_metrics`→merge canonical keys);universe 確認已 397(get_universe SQL)/ panels 已 canonical helper;4/4 py_compile PASS。**待**:chronos `pip install chronos-forecasting transformers`(chronos 輪到時)+ **端到端 smoke 待實跑驗證**(rework 為 additive 低風險,但 torch 模型路徑須實跑才算驗證,§一.10)。td 完即可循序跑。|
 | 2. Cat 3 deep | ⏳ 未開始 |
 | 3. Cat 2 foundation | ⏳ 未開始(CPU-risky)|
 

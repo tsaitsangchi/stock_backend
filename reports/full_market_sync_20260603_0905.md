@@ -46,3 +46,25 @@
 ⚠️ **雙稽核 deferred**：full-market `audit_source_availability --strict` 為 ~8hr 級重稽核（per §14.7-AT 實證），且目前背景 torch（transformer_dedicated）+ inv_vol 重驗在跑，三方 CPU/quota 競爭 → **暫緩**，待背景任務收斂後另行執行。本報告先留 sync 實證（rows/verdict/DB），雙稽核補做後追記。
 
 **證據基礎**：執行摘要出自 `/tmp/full_market_incr.log`（程式 stdout）；DB 數字出自 isolated venv live query（§一.10 (a)(b)）；無 AI 幻像。
+
+---
+
+## 四、午場追補 → 06-03（2026-06-03 16:10 起，~5.6hr;§6.8.7 第(5)條第二次實跑）
+
+早場(09:05)補到 06-02 後,16:00 探測確認 **06-03 EOD 已發布**(2330 抓到 06-03)→ 16:10 以 `--resume-drift-tolerance 0`(強制抓 06-03,非預設 drift 3)再跑全市場增補。
+
+**執行摘要**(`/tmp/full_market_incr2.log` stdout):
+| 項 | 值 |
+|---|---|
+| 成功同步 | 14,676 |
+| **失敗** | **0** ✅ |
+| 跳過(resume)| 833 |
+| 總寫入 | **573,744 rows** |
+| 耗時 | 20,133s(~5.6hr,workers=2)|
+| **主權判定** | **WARNING** |
+
+**WARNING 判讀**:(a) §7.4-A `TaiwanStockDividend` cascade-skip(402 paywall → 依 §7.4-A 跳過,非失敗);(b) §7.6 A5 throttle 自動暫停(全市場觸 5500/hr)。**失敗 = 0**。
+
+**DB 驗證(全市場 06-03)**:`TaiwanStockPrice` / `PriceAdj` max=**2026-06-03 / 2,806 股** ✅;`InstitutionalInvestorsBuySell` 06-03 / 2,762;日頻表全市場補至最新交易日 06-03。
+
+→ **全市場全個股已補至 06-03**(最新交易日)。雙稽核仍 deferred(同 §三,待 torch td 收斂後執行)。

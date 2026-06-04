@@ -146,7 +146,7 @@ except Exception:  # pragma: no cover
         return False
 load_dotenv(PROJECT_ROOT / ".env")
 import psycopg2
-from core.db_utils import get_canonical_panel_dates
+from core.db_utils import get_canonical_panel_dates, summarize_horizon_metrics
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -408,7 +408,7 @@ def run(args):
         idx = np.where(week_ord <= ao)[0]
         return int(idx[-1]) if len(idx) else None
 
-    acc = {h: {"top": [], "univ": [], "ic": [], "diracc": [], "pred": [], "real": [], "cover": []} for _, h in HORIZONS}
+    acc = {h: {"top": [], "univ": [], "ic": [], "diracc": [], "pred": [], "real": [], "cover": [], "pa": []} for _, h in HORIZONS}
     n_pred_panels = 0
     for pi, as_of in enumerate(panels):
         wc = week_cut_for(as_of)
@@ -429,6 +429,7 @@ def run(args):
             acc[h]["ic"].append(spearman_ic(p, y))
             acc[h]["diracc"].append(float(np.mean(np.sign(p) == np.sign(y))))
             acc[h]["pred"].extend(p.tolist()); acc[h]["real"].extend(y.tolist())
+            acc[h]["pa"].append((p, y))  # §14.7-DF per-panel (pred,actual)
             for s in common:                       # calibration: realized ∈ [P10, P90]
                 acc[h]["cover"].append(1.0 if (q10[h][s] <= real[s] <= q90[h][s]) else 0.0)
         n_pred_panels += 1
@@ -441,6 +442,11 @@ def run(args):
         calib = float(np.mean(a["cover"])) if a["cover"] else None
         r = aggregate_horizon(label, h, a["top"], a["univ"], a["ic"], a["diracc"], a["pred"], a["real"], calib)
         if r:
+            # §14.7-DF 補共用 canonical metric keys(單一計算源 summarize_horizon_metrics)
+            # → 與 6 樹 + FT-Transformer 同 metric 碼可比;本模型自有 calibration/r2 等 extra 保留
+            s = summarize_horizon_metrics(label, h, a["pa"])
+            if s:
+                r.update(s)
             results[label] = r
 
     conn.close()

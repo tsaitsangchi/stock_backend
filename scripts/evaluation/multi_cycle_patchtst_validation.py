@@ -133,7 +133,7 @@ if str(_base_dir) not in sys.path:
 
 import numpy as np
 import pandas as pd
-from core.db_utils import get_db_conn, get_canonical_panel_dates
+from core.db_utils import get_db_conn, get_canonical_panel_dates, summarize_horizon_metrics
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -462,7 +462,7 @@ def run(args):
                 f"L={L}wk S={S}wk patch={args.patch_len}/{args.stride} d_model={args.d_model} "
                 f"heads={args.n_heads} layers={args.n_layers} epochs={args.epochs} seed={args.seed}")
 
-    acc = {h: {"top": [], "univ": [], "ic": [], "diracc": [], "pred": [], "real": []} for _, h in HORIZONS}
+    acc = {h: {"top": [], "univ": [], "ic": [], "diracc": [], "pred": [], "real": [], "pa": []} for _, h in HORIZONS}
     model = None
     n_pred_panels = 0
 
@@ -495,6 +495,7 @@ def run(args):
             acc[h]["ic"].append(spearman_ic(p, y))
             acc[h]["diracc"].append(float(np.mean(np.sign(p) == np.sign(y))))
             acc[h]["pred"].extend(p.tolist()); acc[h]["real"].extend(y.tolist())
+            acc[h]["pa"].append((p, y))  # §14.7-DF per-panel (pred,actual)
         n_pred_panels += 1
         if n_pred_panels % 6 == 0:
             logger.info(f"  predicted {n_pred_panels} panels (latest as_of={as_of}, elapsed {time.monotonic()-t0:.0f}s)")
@@ -504,6 +505,11 @@ def run(args):
         a = acc[h]
         r = aggregate_horizon(label, h, a["top"], a["univ"], a["ic"], a["diracc"], a["pred"], a["real"], None)
         if r:
+            # §14.7-DF 補共用 canonical metric keys(單一計算源 summarize_horizon_metrics)
+            # → 與 6 樹 + FT-Transformer 同 metric 碼可比;本模型自有 calibration/r2 等 extra 保留
+            s = summarize_horizon_metrics(label, h, a["pa"])
+            if s:
+                r.update(s)
             results[label] = r
 
     conn.close()
