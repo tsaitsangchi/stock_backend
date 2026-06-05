@@ -1085,6 +1085,12 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 4. **Self-healing protocol**:任何 wake event 觸發時必須執行 (a) 更新 sentinel (b) `ps` 驗證 SHMM 對應 shell 存活 (c) 重掛任何死亡 Monitor (d) 報告 workflow 狀態 (e) watchdog 警報則完整健康診斷
 5. **`CronCreate` 不得作為**唯一觸發機制(REPL idle 才 fire,long-running workflow 中經常 miss);Monitor sleep loop 為主軸
 6. **User manual ping 為最後底線**,不依賴用戶記憶觸發
+7. **機器睡眠防護(caffeinate)— SHMM 防 agent 靜默死,但防不了「機器睡眠死」(2026-06-05 實證入憲,以後不可再發生)**:任何 estimated runtime ≥ 30 min(尤其過夜 / 多小時)之 AI 觸發 long-running workflow(model training / multi-cycle validation / from-zero rebuild / 大規模 batch)**必須**以 `caffeinate` 包裹啟動,防 macOS 進入睡眠而殺光所有背景進程(runner / 模型 / SHMM 監看 mesh)。
+   - **啟動式**:`caffeinate -dimsu bash <script>`(或 `caffeinate -i <command>` 防 idle sleep;過夜跑加 `-s` 防系統睡眠)。背景啟動可 `caffeinate -dimsu nohup bash <script> &` 或經 run_in_background 包 caffeinate。
+   - **前置**:啟動前驗證 AC 電源(`pmset -g batt`),**強烈建議插電**(電池模式即使 caffeinate 也可能因低電量或闔蓋而睡)。
+   - **理由**:SHMM(point 1-6)防「agent 靜默死」,但 **SHMM 自身亦跑於該機器** → 機器睡眠時 runner / 模型 / 監看 / agent 喚醒鏈**全部一起死**,連 watchdog 都救不了,只剩用戶手動 ping(point 6)為唯一恢復路徑。caffeinate 為唯一可堵此 gap 之機制。
+   - **違反治權**:任何 ≥ 30 min workflow 未用 caffeinate 啟動 → 機器睡眠時全 workflow 死 = §二.6 結構性 violation。
+   - **證據基礎**:2026-06-05 實證 —— Mac 整夜睡眠,致 43-模型跨機比較跑(28/42 完成後停在 timesnet/tft/ngboost 半途)+ 全 SHMM 監看 mesh 死亡約 10 小時,用戶手動 ping 才發現並恢復。此前 SHMM 諸條(N≥3 heartbeat / watchdog / sentinel)全數失效,因其皆隨機器睡眠而死。
 
 ### 7. 跨平台環境前置（憲章 v6.1.0 §0.0-I.9 / §0.0-I.10 / §14.7-AU）
 - AI 協作工具於首次 setup 時須執行下列檢查:
