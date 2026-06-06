@@ -103,7 +103,7 @@ if str(_base_dir) not in sys.path:
 
 import numpy as np
 import lightgbm as lgb
-from core.db_utils import get_db_conn
+from core.db_utils import get_db_conn, get_canonical_panel_dates
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
@@ -144,14 +144,10 @@ SPEC_43 = [
 
 
 def get_panel_dates():
-    """Generate 95 mid-month dates 2018-06-15 to 2026-04-15"""
-    dates = []
-    current = date(2018, 6, 15)
-    while current <= date(2026, 4, 30):
-        dates.append((f"fs_{current.strftime('%Y%m%d')}_feature_set_v0_5", current))
-        if current.month == 12: current = date(current.year+1, 1, 15)
-        else: current = date(current.year, current.month+1, 15)
-    return dates
+    """§14.7-DE / §一.16 反硬編:panel 窗由單一引用源 get_canonical_panel_dates() 資料驅動判定,
+    嚴禁寫死日期(原 date(2018,6,15)→date(2026,4,30) / 95 panels 硬編已移除;§一.16 最終 sweep 2026-06-06)。
+    回傳 [(feature_set_id, as_of_date), ...](與既有呼叫端介面一致)。"""
+    return get_canonical_panel_dates("feature_set_v0.5")
 
 
 def load_features(cur, fs_id, universe):

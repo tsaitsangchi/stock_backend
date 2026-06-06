@@ -1049,6 +1049,28 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **證據基礎(本條入憲)**:用戶 2026-06-03~04 explicit directives(「資料要對且精準、可變少」/「市場轉空能否預警保本」/「以上對話非常重要,請優化對話後再加入憲章」)+ AskUserQuestion(「現在先入 doctrine,結果待跑完補」)之直接入憲。DB-verified:914→397 pan-historical 重建(候選 2774→完整度移 34→reasonableness 移 420→source-pure 隔離 728→核心 397 / 0 imputed-at-any-panel);xgboost annual beta 32%/alpha 68%;regime smoke OOS AUC<0.5(誠實揭露擇時難)。
 
+### 20. 空頭防護:風控 Overlay 為主、Regime 預測為輔(§14.7-DH / 2026-06-06 用戶 explicit directive 入憲)
+
+本條為主憲章 **§14.7-DH**(Risk-Overlay-First Bear-Protection Doctrine)之 CLAUDE.md 雙層治權鎖伙伴(同次入憲);主憲章 §14.7-DH 為治權 SSOT,本條為 AI 工具 enforcement。為 §一.19(§14.7-DG regime-risk)之深化——回答「空頭防護該怎麼做最佳」。
+
+**1. 風控 overlay 是 sizing 橫切層,非選股模型(T_DH-1)**:vol-target / 趨勢 / regime 曝險縮放屬 §3.2 橫切 / §9.2 sizing;**不入 model-zoo IC/eff_t 比較、不寫 model_registry、禁止 per-model 增殖 validator**;橫切特性 → 一次整合(`portfolio_sizer.py`)惠及所有模型。AI 收到「空頭防護 / 擇時」需求時,**先問「規則地板做了沒」**,不反射性再做一支比較 validator。
+
+**2. 規則地板優先、預測為輔((B)>(A),T_DH-2)**:空頭防護**必先建規則型風控地板**(vol-target × 趨勢,不需預測);regime 預測(LightGBM/HMM)**只當可選增強層、不可當主角**。實證:地板獨力 MaxDD 0.911→0.291、勝過 LightGBM 擇時(0.569)、4 空頭全降回撤;HMM 增強僅邊際(全史 ΔMaxDD −0.032、≥2010 ≈0)。**不得把 regime 預測當主防護而略過規則地板**。
+
+**3. 經濟價值判定、非準確率(T_DH-3)**:overlay/擇時以 walk-forward MaxDD/Calmar/Sharpe + 逐空頭子期 + **分層歸因(floor vs floor×regime 增量)**判定;增強層須證在地板**之上**有增量(ΔMaxDD<0 ∧ ΔCalmar>0)否則標「冗餘」;**不以 AUC 宣稱有效**。
+
+**4. 不宣稱預測閃崩(T_DH-4)**:**禁止宣稱任何模型「預測」單日外生閃崩**(如 6/5 SOX −10.26%);overlay 是「波動噴出後減碼、限制傷害」非「躲過第一天」,報告須誠實標此邊界。
+
+**5. anti-leakage / source-pure / 可重現(T_DH-5)**:overlay/HMM 全 ≤t 設定、t+1 套用、HMM 末點後驗、isotonic 校準只用已觀測標籤(s+H≤t)、price→math transform 無 impute、HMM 固定 `random_state` 可重現。
+
+**6. production 整合須治權程序**:overlay 進 `portfolio_sizer.py`(§9.2)gross-exposure 層須 treaty + 用戶授權 + 重 backtest;不可貿然改 production 鏈。
+
+**工具 / 產物**:`scripts/evaluation/risk_overlay_timing_validation.py`(Phase 1)+ `risk_overlay_hmm_validation.py`(Phase 2,`hmmlearn>=0.3.3`)+ 報告 `reports/risk_overlay_timing_research_20260606.md` + Step 1/1b 工具 `risk_overlay_strategy_validation.py` / `risk_overlay_tuning_validation.py`;commit `d9b5c55`(Phase 1/2,master,**未 push**)。**Step 1/1b 已驗證(2026-06-06)→ 負結果**:真實 top-20 策略 RAW MaxDD 0.264/Calmar 0.97,**無任一 overlay config 能降 MaxDD 又不傷 Calmar**(市場 proxy 之神效為假象)→ **不進 Step 2、production 不變、未 retrain**(誠實負結果,closure per §一.8/AP-3)。
+
+**位階 / 雙層鎖**:主憲章 §14.7-DH + 本條 §一.20 同次入憲(per T_DC-6);任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-06-06 explicit「以上的對話很重要,請優化後寫入憲章」之直接入憲。source-traceable(§一.10):Phase 1/2 數字自 `reports/risk_overlay_*_20260606_*.json`(全史 MaxDD 0.911→0.291 / 逐空頭 2000-2022 全降 / HMM 增量全史 YES 邊際·≥2010 NO·hmm_only 0.842 差)。precedent:首次確立「規則風控地板 > regime 預測」+「overlay 非選股模型」之 AI 工具 enforcement;深化 §一.19/§14.7-DG「擇時須經濟價值」為「防護優先用不需預測的規則地板、預測信號須證增量否則冗餘」。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)
