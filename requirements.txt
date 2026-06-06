@@ -108,3 +108,6 @@ ngboost>=0.5.10          # 機率型 GBM — multi_cycle_ngboost_validation
 pytorch-tabnet>=4.1.0    # TabNet 表格注意力 — multi_cycle_tabnet_validation
 tabpfn>=6.4.1            # TabPFN 表格 foundation (in-context) — multi_cycle_tabpfn_validation
 # 註:FT-Transformer (multi_cycle_ftransformer) 為自寫 torch 實作(rtdl 安裝依賴衝突,未採用)
+
+# ── 空頭風控 overlay 額外依賴 (v5.5, 2026-06-06;用戶授權安裝) ──────────
+hmmlearn>=0.3.3          # Gaussian-HMM regime 訊號 — risk_overlay_hmm_validation (Phase 2 風控增強層)
