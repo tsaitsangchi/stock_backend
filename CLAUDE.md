@@ -1071,6 +1071,24 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **證據基礎(本條入憲)**:用戶 2026-06-06 explicit「以上的對話很重要,請優化後寫入憲章」之直接入憲。source-traceable(§一.10):Phase 1/2 數字自 `reports/risk_overlay_*_20260606_*.json`(全史 MaxDD 0.911→0.291 / 逐空頭 2000-2022 全降 / HMM 增量全史 YES 邊際·≥2010 NO·hmm_only 0.842 差)。precedent:首次確立「規則風控地板 > regime 預測」+「overlay 非選股模型」之 AI 工具 enforcement;深化 §一.19/§14.7-DG「擇時須經濟價值」為「防護優先用不需預測的規則地板、預測信號須證增量否則冗餘」。
 
+### 21. 五鏡特徵治理協定 + Purged-CV 洩漏揭露(§14.7-DI / §8.5 / 2026-06-07 用戶 explicit directive 入憲)
+
+本條為主憲章 **§14.7-DI** 之 CLAUDE.md 雙層治權鎖伙伴(同次入憲);主憲章 §14.7-DI 為治權 SSOT,本條為 AI 工具 enforcement。
+
+**1. 五鏡特徵分診(T_DI-1/2)**:AI 判斷特徵存廢**不得單一指標**(尤其**不得單看 gain importance**),必須五鏡合看:(1) 有號 IC + sign 穩定;(2) 特徵間 |rank-corr|≥0.9 共線群;(3) leave-one-out 必要性;(4) ensemble SHAP(三樹原生 pred_contrib 平均,免裝 shap 套件);(5) purged-CV。分三類:**真有值 / 共線冗餘(留 1)/ 真噪音**。實證:`preferential_attachment_60d` gain=0 但季 IC −0.0393 顯著(= 共線冗餘**非**噪音);`trust_net_20d/60d` = 真噪音(IC≈0 / sign~50%);4 共線群 13 特徵(留 4 砍 9)。
+
+**2. Purged-CV 強制(T_DI-3,對齊 §8.5)**:任何 horizon H>1 之 walk-forward IC 宣稱**必須附 purged 口徑**(embargo 剔除 label 窗與 test 重疊之訓練 panel),與 raw 並列;**單報 raw = §一.8 violation**(用了決策當下尚未實現之 label = 樂觀偏誤)。實證膨脹:**季 57%(0.1036→0.0446)/ 年 67%(0.2780→0.0913)**。
+
+**3. 模型比較榜 caveat(T_DI-4)**:引用 §一.19/§14.7-DG 模型比較榜之**絕對** IC/Sharpe/報酬時,**必須標註「raw walk-forward 樂觀偏誤、絕對數字須 purged 口徑解讀」**(偏誤橫切所有模型 → 相對排名可用)。annual 受創最重 → 量化了「annual 不可單獨採信」。
+
+**4. SHAP 條件價值揭露(T_DI-5)**:ensemble SHAP 揭露單變量 IC 漏掉之條件/交互價值;**sign 背離須揭露**(實證 `max_drawdown_252d` 單變量 IC −0.063 但 SHAP +0.79 = 模型當反轉訊號用)。
+
+**5. scope 誠實(§一.8)**:五鏡為**判斷工具**;實際移除特徵須另經 §14.7-DC T_DC-28 + 授權 + rebuild + retrain。本次**未 retrain、未改 SPEC、未寫 DB、未 commit**;5 支 harness(`feature_signed_ic_panel_audit` / `dead_weight_feature_ablation` / `feature_shap_purged_audit` / `risk_factor_ic_gate_ablation` / `kwave_ic_gate_ablation`)未 commit。
+
+**雙層治權鎖**:主憲章 §14.7-DI + 本條 §一.21 同次入憲(per T_DC-6);任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-06-07 explicit「把(1)五鏡法 +(2)purged 洩漏揭露 寫成憲章子節 + CLAUDE.md」之直接入憲。source-traceable(§一.10):`reports/feature_signed_ic_20260607.json` + `dead_weight_feature_ablation_20260607.json` + `feature_shap_purged_audit_20260607.json`(quarterly 0.1036→0.0446 / annual 0.2780→0.0913)。**precedent**:首次確立「特徵存廢須五鏡合看(非單一指標)」+「walk-forward IC 須附 purged 口徑」+「模型比較榜絕對數字樂觀偏誤」之 AI 工具 enforcement。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)

@@ -1,0 +1,803 @@
+{
+  "quarterly_raw": {
+    "horizon": "quarterly",
+    "horizon_days": 60,
+    "mode": "\u975epurged",
+    "mean_ic": 0.10361503406318834,
+    "n_panels": 64,
+    "n_purged": 0,
+    "shap_ranking": [
+      {
+        "feature": "max_drawdown_252d",
+        "mean_abs_shap": 0.01059829035118913,
+        "signed_direction": 0.8090017068417933
+      },
+      {
+        "feature": "convexity_60d",
+        "mean_abs_shap": 0.009081252958629911,
+        "signed_direction": -0.7692981322343491
+      },
+      {
+        "feature": "avg_daily_value_log_252d",
+        "mean_abs_shap": 0.0074500640609104635,
+        "signed_direction": -0.8371187444633325
+      },
+      {
+        "feature": "volatility_252d",
+        "mean_abs_shap": 0.0071851048149987155,
+        "signed_direction": -0.7243879629783121
+      },
+      {
+        "feature": "downside_volatility_60d",
+        "mean_abs_shap": 0.006861464195215258,
+        "signed_direction": 0.7530509130358657
+      },
+      {
+        "feature": "log_return_252d",
+        "mean_abs_shap": 0.006834177835902249,
+        "signed_direction": -0.5606226267720762
+      },
+      {
+        "feature": "log_return_60d",
+        "mean_abs_shap": 0.006431763580245597,
+        "signed_direction": 0.4931575995237758
+      },
+      {
+        "feature": "operating_margin_ttm",
+        "mean_abs_shap": 0.004586452229519733,
+        "signed_direction": 0.05179880247951241
+      },
+      {
+        "feature": "log_return_20d",
+        "mean_abs_shap": 0.004278916116641807,
+        "signed_direction": -0.49198653994923264
+      },
+      {
+        "feature": "ma_ratio_20",
+        "mean_abs_shap": 0.004076236996351973,
+        "signed_direction": 0.6614457584787491
+      },
+      {
+        "feature": "right_tail_returns_skew_252d",
+        "mean_abs_shap": 0.003975167969470728,
+        "signed_direction": 0.6626064467705619
+      },
+      {
+        "feature": "ma_ratio_60",
+        "mean_abs_shap": 0.0039590366885756964,
+        "signed_direction": 0.48968081788731027
+      },
+      {
+        "feature": "asset_growth_yoy",
+        "mean_abs_shap": 0.003899733358809697,
+        "signed_direction": -0.7259657465870746
+      },
+      {
+        "feature": "pb_ratio",
+        "mean_abs_shap": 0.0037010233499954535,
+        "signed_direction": -0.41204462232563055
+      },
+      {
+        "feature": "dividend_yield",
+        "mean_abs_shap": 0.003678510534369806,
+        "signed_direction": 0.6853143497699087
+      },
+      {
+        "feature": "revenue_yoy_3m_log",
+        "mean_abs_shap": 0.0032927256321905354,
+        "signed_direction": 0.6706928517383275
+      },
+      {
+        "feature": "margin_ratio_60d",
+        "mean_abs_shap": 0.003264427079156124,
+        "signed_direction": -0.13706525153745658
+      },
+      {
+        "feature": "avg_daily_value_log_60d",
+        "mean_abs_shap": 0.0032430359927842897,
+        "signed_direction": -0.36378912469637986
+      },
+      {
+        "feature": "revenue_yoy_12m",
+        "mean_abs_shap": 0.0031083864526886104,
+        "signed_direction": -0.3068862689973893
+      },
+      {
+        "feature": "roe_ttm",
+        "mean_abs_shap": 0.0030656700623577986,
+        "signed_direction": 0.07739979234093032
+      },
+      {
+        "feature": "size_log_zscore_sector",
+        "mean_abs_shap": 0.0024198599013092554,
+        "signed_direction": 0.4680640375970983
+      },
+      {
+        "feature": "liquidity_rank_pct_sector_60d",
+        "mean_abs_shap": 0.0024165536386802043,
+        "signed_direction": 0.49578070315235107
+      },
+      {
+        "feature": "foreign_net_60d",
+        "mean_abs_shap": 0.002340067022987891,
+        "signed_direction": -0.38637468739082215
+      },
+      {
+        "feature": "downside_capture_60d",
+        "mean_abs_shap": 0.002300218377352582,
+        "signed_direction": 0.4591873536363934
+      },
+      {
+        "feature": "trust_net_60d",
+        "mean_abs_shap": 0.001852646843312946,
+        "signed_direction": 0.03981529729788755
+      },
+      {
+        "feature": "foreign_net_20d",
+        "mean_abs_shap": 0.0017850486703892433,
+        "signed_direction": 0.002100510764970826
+      },
+      {
+        "feature": "volatility_60d",
+        "mean_abs_shap": 0.0017654954119703627,
+        "signed_direction": 0.41843498478739083
+      },
+      {
+        "feature": "eps_sum_4q",
+        "mean_abs_shap": 0.001746293298014429,
+        "signed_direction": -0.19783557050020295
+      },
+      {
+        "feature": "upside_capture_60d",
+        "mean_abs_shap": 0.0017427489037644718,
+        "signed_direction": 0.20057984461263045
+      },
+      {
+        "feature": "turnover_mean_60d",
+        "mean_abs_shap": 0.001689461459031187,
+        "signed_direction": 0.25137417461839995
+      },
+      {
+        "feature": "upside_volatility_60d",
+        "mean_abs_shap": 0.0016766669949509054,
+        "signed_direction": -0.37494920075179644
+      },
+      {
+        "feature": "pe_ratio",
+        "mean_abs_shap": 0.001570607698162044,
+        "signed_direction": 0.04294446495446248
+      },
+      {
+        "feature": "preferential_attachment_60d",
+        "mean_abs_shap": 0.0011494516077981607,
+        "signed_direction": -0.42386535489054544
+      },
+      {
+        "feature": "revenue_yoy_3m",
+        "mean_abs_shap": 0.001115003937449287,
+        "signed_direction": 0.1498189392874083
+      },
+      {
+        "feature": "trust_net_20d",
+        "mean_abs_shap": 0.0010708905278229936,
+        "signed_direction": -0.045386669696593086
+      },
+      {
+        "feature": "net_income_positive_ratio_8q",
+        "mean_abs_shap": 0.0007528375282890636,
+        "signed_direction": 0.3112150785859055
+      },
+      {
+        "feature": "zero_volume_ratio_252d",
+        "mean_abs_shap": 4.249939908875567e-05,
+        "signed_direction": 0.09873850328876697
+      }
+    ]
+  },
+  "quarterly_purged": {
+    "horizon": "quarterly",
+    "horizon_days": 60,
+    "mode": "purged(embargo=5d)",
+    "mean_ic": 0.044554860433111104,
+    "n_panels": 63,
+    "n_purged": 132,
+    "shap_ranking": [
+      {
+        "feature": "max_drawdown_252d",
+        "mean_abs_shap": 0.010659122586369993,
+        "signed_direction": 0.7856969735843838
+      },
+      {
+        "feature": "convexity_60d",
+        "mean_abs_shap": 0.009393910556157896,
+        "signed_direction": -0.7467569252744515
+      },
+      {
+        "feature": "volatility_252d",
+        "mean_abs_shap": 0.008050478759109699,
+        "signed_direction": -0.7033396719909004
+      },
+      {
+        "feature": "log_return_252d",
+        "mean_abs_shap": 0.0077424065596851735,
+        "signed_direction": -0.5798586862448744
+      },
+      {
+        "feature": "avg_daily_value_log_252d",
+        "mean_abs_shap": 0.007475456348758933,
+        "signed_direction": -0.838967821129207
+      },
+      {
+        "feature": "downside_volatility_60d",
+        "mean_abs_shap": 0.007067531751655715,
+        "signed_direction": 0.7772583190683019
+      },
+      {
+        "feature": "log_return_60d",
+        "mean_abs_shap": 0.00654406749847223,
+        "signed_direction": 0.44402454001753894
+      },
+      {
+        "feature": "operating_margin_ttm",
+        "mean_abs_shap": 0.004614910661542517,
+        "signed_direction": 0.056458619129848085
+      },
+      {
+        "feature": "log_return_20d",
+        "mean_abs_shap": 0.0040820304491386815,
+        "signed_direction": -0.5770030863824304
+      },
+      {
+        "feature": "right_tail_returns_skew_252d",
+        "mean_abs_shap": 0.003987381751110768,
+        "signed_direction": 0.6610003465972726
+      },
+      {
+        "feature": "asset_growth_yoy",
+        "mean_abs_shap": 0.003957537748478421,
+        "signed_direction": -0.7128526597620329
+      },
+      {
+        "feature": "dividend_yield",
+        "mean_abs_shap": 0.003907606907780572,
+        "signed_direction": 0.7169046591276323
+      },
+      {
+        "feature": "ma_ratio_20",
+        "mean_abs_shap": 0.0038583299755028514,
+        "signed_direction": 0.6499367197119738
+      },
+      {
+        "feature": "pb_ratio",
+        "mean_abs_shap": 0.0037773057360582017,
+        "signed_direction": -0.4144794086573785
+      },
+      {
+        "feature": "ma_ratio_60",
+        "mean_abs_shap": 0.003708166835151066,
+        "signed_direction": 0.4755981200763605
+      },
+      {
+        "feature": "revenue_yoy_3m_log",
+        "mean_abs_shap": 0.0033225693547242648,
+        "signed_direction": 0.6701625266037624
+      },
+      {
+        "feature": "avg_daily_value_log_60d",
+        "mean_abs_shap": 0.0032607919121900248,
+        "signed_direction": -0.356418787053452
+      },
+      {
+        "feature": "roe_ttm",
+        "mean_abs_shap": 0.003178265232848506,
+        "signed_direction": 0.09756942736016583
+      },
+      {
+        "feature": "revenue_yoy_12m",
+        "mean_abs_shap": 0.003043024597576041,
+        "signed_direction": -0.28079744534286327
+      },
+      {
+        "feature": "margin_ratio_60d",
+        "mean_abs_shap": 0.0029054084858705924,
+        "signed_direction": -0.14387346767683132
+      },
+      {
+        "feature": "size_log_zscore_sector",
+        "mean_abs_shap": 0.0024655908915443723,
+        "signed_direction": 0.45279166580681485
+      },
+      {
+        "feature": "foreign_net_60d",
+        "mean_abs_shap": 0.002438721003883349,
+        "signed_direction": -0.3976478765403874
+      },
+      {
+        "feature": "liquidity_rank_pct_sector_60d",
+        "mean_abs_shap": 0.0024232557894092945,
+        "signed_direction": 0.49222533175772537
+      },
+      {
+        "feature": "downside_capture_60d",
+        "mean_abs_shap": 0.002421279488467225,
+        "signed_direction": 0.3735217695330581
+      },
+      {
+        "feature": "upside_capture_60d",
+        "mean_abs_shap": 0.001961931702919987,
+        "signed_direction": 0.10389188337676138
+      },
+      {
+        "feature": "trust_net_60d",
+        "mean_abs_shap": 0.001916310127183823,
+        "signed_direction": 0.016425240659273085
+      },
+      {
+        "feature": "foreign_net_20d",
+        "mean_abs_shap": 0.0018632288313312122,
+        "signed_direction": -0.005447609604395451
+      },
+      {
+        "feature": "upside_volatility_60d",
+        "mean_abs_shap": 0.0018199742618392252,
+        "signed_direction": -0.42599472116865433
+      },
+      {
+        "feature": "volatility_60d",
+        "mean_abs_shap": 0.0018163290232328655,
+        "signed_direction": 0.3145242386301268
+      },
+      {
+        "feature": "eps_sum_4q",
+        "mean_abs_shap": 0.0017426564527209002,
+        "signed_direction": -0.22695378946894867
+      },
+      {
+        "feature": "turnover_mean_60d",
+        "mean_abs_shap": 0.001682492143066084,
+        "signed_direction": 0.23582958468304024
+      },
+      {
+        "feature": "pe_ratio",
+        "mean_abs_shap": 0.0016623951150110806,
+        "signed_direction": 0.0642693548585227
+      },
+      {
+        "feature": "trust_net_20d",
+        "mean_abs_shap": 0.0012443137944894934,
+        "signed_direction": -0.06316109959635269
+      },
+      {
+        "feature": "preferential_attachment_60d",
+        "mean_abs_shap": 0.0011456729608144052,
+        "signed_direction": -0.39470989663922357
+      },
+      {
+        "feature": "revenue_yoy_3m",
+        "mean_abs_shap": 0.0011279333668980922,
+        "signed_direction": 0.15115098214678113
+      },
+      {
+        "feature": "net_income_positive_ratio_8q",
+        "mean_abs_shap": 0.0007531646154991222,
+        "signed_direction": 0.3190230157792207
+      },
+      {
+        "feature": "zero_volume_ratio_252d",
+        "mean_abs_shap": 4.091164641121759e-05,
+        "signed_direction": -0.07470284869507864
+      }
+    ]
+  },
+  "annual_raw": {
+    "horizon": "annual",
+    "horizon_days": 252,
+    "mode": "\u975epurged",
+    "mean_ic": 0.2779608873772366,
+    "n_panels": 61,
+    "n_purged": 0,
+    "shap_ranking": [
+      {
+        "feature": "max_drawdown_252d",
+        "mean_abs_shap": 0.022154738906435177,
+        "signed_direction": 0.7833728035107923
+      },
+      {
+        "feature": "avg_daily_value_log_252d",
+        "mean_abs_shap": 0.020755695717465956,
+        "signed_direction": -0.8086322504097014
+      },
+      {
+        "feature": "volatility_252d",
+        "mean_abs_shap": 0.0192863580263191,
+        "signed_direction": -0.7989655741101845
+      },
+      {
+        "feature": "log_return_60d",
+        "mean_abs_shap": 0.01594706989617498,
+        "signed_direction": 0.8005570369977093
+      },
+      {
+        "feature": "dividend_yield",
+        "mean_abs_shap": 0.015571633802051357,
+        "signed_direction": 0.7867573675493684
+      },
+      {
+        "feature": "downside_volatility_60d",
+        "mean_abs_shap": 0.014494284700704725,
+        "signed_direction": 0.7933323589240524
+      },
+      {
+        "feature": "log_return_252d",
+        "mean_abs_shap": 0.013544085761858789,
+        "signed_direction": -0.46938469425976803
+      },
+      {
+        "feature": "asset_growth_yoy",
+        "mean_abs_shap": 0.013217568952214185,
+        "signed_direction": -0.7473920465363897
+      },
+      {
+        "feature": "right_tail_returns_skew_252d",
+        "mean_abs_shap": 0.011005911044295852,
+        "signed_direction": 0.7382420239342128
+      },
+      {
+        "feature": "revenue_yoy_12m",
+        "mean_abs_shap": 0.010906491603124575,
+        "signed_direction": -0.5498768842843872
+      },
+      {
+        "feature": "operating_margin_ttm",
+        "mean_abs_shap": 0.008942426815155363,
+        "signed_direction": 0.03314761979784653
+      },
+      {
+        "feature": "liquidity_rank_pct_sector_60d",
+        "mean_abs_shap": 0.008069081149479686,
+        "signed_direction": -0.29391013849588304
+      },
+      {
+        "feature": "revenue_yoy_3m_log",
+        "mean_abs_shap": 0.007870649027151445,
+        "signed_direction": 0.6887827885628416
+      },
+      {
+        "feature": "eps_sum_4q",
+        "mean_abs_shap": 0.0077049622138647845,
+        "signed_direction": -0.23378055638018946
+      },
+      {
+        "feature": "margin_ratio_60d",
+        "mean_abs_shap": 0.007676794460040135,
+        "signed_direction": -0.14552609535889122
+      },
+      {
+        "feature": "roe_ttm",
+        "mean_abs_shap": 0.007371502909714246,
+        "signed_direction": -0.08670925278311933
+      },
+      {
+        "feature": "size_log_zscore_sector",
+        "mean_abs_shap": 0.007335700499142396,
+        "signed_direction": -0.10191914086030704
+      },
+      {
+        "feature": "pb_ratio",
+        "mean_abs_shap": 0.0073031636912406425,
+        "signed_direction": -0.3857249203613292
+      },
+      {
+        "feature": "upside_capture_60d",
+        "mean_abs_shap": 0.006378443839427152,
+        "signed_direction": 0.6073395843024525
+      },
+      {
+        "feature": "convexity_60d",
+        "mean_abs_shap": 0.006309595328789464,
+        "signed_direction": -0.7611895427811555
+      },
+      {
+        "feature": "log_return_20d",
+        "mean_abs_shap": 0.006280162747088708,
+        "signed_direction": -0.3791783163908364
+      },
+      {
+        "feature": "ma_ratio_20",
+        "mean_abs_shap": 0.006076269153761,
+        "signed_direction": 0.5663330171122231
+      },
+      {
+        "feature": "trust_net_20d",
+        "mean_abs_shap": 0.005941207963523187,
+        "signed_direction": -0.0572077364238571
+      },
+      {
+        "feature": "trust_net_60d",
+        "mean_abs_shap": 0.00555864033529968,
+        "signed_direction": 0.01824603830294314
+      },
+      {
+        "feature": "turnover_mean_60d",
+        "mean_abs_shap": 0.005330645959886751,
+        "signed_direction": 0.2822827673706708
+      },
+      {
+        "feature": "pe_ratio",
+        "mean_abs_shap": 0.005309333970115191,
+        "signed_direction": -0.002233666504456954
+      },
+      {
+        "feature": "volatility_60d",
+        "mean_abs_shap": 0.004851536583937465,
+        "signed_direction": 0.7624519880531446
+      },
+      {
+        "feature": "ma_ratio_60",
+        "mean_abs_shap": 0.004419206018387524,
+        "signed_direction": -0.4899393678382561
+      },
+      {
+        "feature": "avg_daily_value_log_60d",
+        "mean_abs_shap": 0.004198655117251175,
+        "signed_direction": -0.05828555022821689
+      },
+      {
+        "feature": "foreign_net_60d",
+        "mean_abs_shap": 0.003948163364136461,
+        "signed_direction": -0.3894186976185834
+      },
+      {
+        "feature": "downside_capture_60d",
+        "mean_abs_shap": 0.00348974859978005,
+        "signed_direction": 0.6316324173493384
+      },
+      {
+        "feature": "upside_volatility_60d",
+        "mean_abs_shap": 0.0034555188364764635,
+        "signed_direction": 0.0012501900872219829
+      },
+      {
+        "feature": "foreign_net_20d",
+        "mean_abs_shap": 0.0031885654430689725,
+        "signed_direction": -0.19622999888186174
+      },
+      {
+        "feature": "revenue_yoy_3m",
+        "mean_abs_shap": 0.0026876336316909817,
+        "signed_direction": 0.13406653845596378
+      },
+      {
+        "feature": "net_income_positive_ratio_8q",
+        "mean_abs_shap": 0.002072769455896797,
+        "signed_direction": -0.18917820996000653
+      },
+      {
+        "feature": "preferential_attachment_60d",
+        "mean_abs_shap": 0.001623271568128664,
+        "signed_direction": -0.11694857149819357
+      },
+      {
+        "feature": "zero_volume_ratio_252d",
+        "mean_abs_shap": 0.00015619666124329189,
+        "signed_direction": 0.22991038364801308
+      }
+    ]
+  },
+  "annual_purged": {
+    "horizon": "annual",
+    "horizon_days": 252,
+    "mode": "purged(embargo=5d)",
+    "mean_ic": 0.09126867252947099,
+    "n_panels": 53,
+    "n_purged": 480,
+    "shap_ranking": [
+      {
+        "feature": "max_drawdown_252d",
+        "mean_abs_shap": 0.021991389226197654,
+        "signed_direction": 0.7811331317349299
+      },
+      {
+        "feature": "volatility_252d",
+        "mean_abs_shap": 0.021472824150207088,
+        "signed_direction": -0.8404380870563068
+      },
+      {
+        "feature": "avg_daily_value_log_252d",
+        "mean_abs_shap": 0.018596111631171232,
+        "signed_direction": -0.7708674590730735
+      },
+      {
+        "feature": "log_return_252d",
+        "mean_abs_shap": 0.017625422832210393,
+        "signed_direction": -0.558279025137697
+      },
+      {
+        "feature": "downside_volatility_60d",
+        "mean_abs_shap": 0.015610196570305433,
+        "signed_direction": 0.8308984883399247
+      },
+      {
+        "feature": "log_return_60d",
+        "mean_abs_shap": 0.015230130894261742,
+        "signed_direction": 0.7661502467039634
+      },
+      {
+        "feature": "dividend_yield",
+        "mean_abs_shap": 0.014201859941207174,
+        "signed_direction": 0.7702791262837831
+      },
+      {
+        "feature": "asset_growth_yoy",
+        "mean_abs_shap": 0.01310373621787441,
+        "signed_direction": -0.744267572518655
+      },
+      {
+        "feature": "right_tail_returns_skew_252d",
+        "mean_abs_shap": 0.012178123017514378,
+        "signed_direction": 0.7584181997721269
+      },
+      {
+        "feature": "revenue_yoy_12m",
+        "mean_abs_shap": 0.010950754347007896,
+        "signed_direction": -0.5171347103381704
+      },
+      {
+        "feature": "operating_margin_ttm",
+        "mean_abs_shap": 0.00917461635238591,
+        "signed_direction": 0.05416453966582058
+      },
+      {
+        "feature": "revenue_yoy_3m_log",
+        "mean_abs_shap": 0.009144238489489823,
+        "signed_direction": 0.6973714340612385
+      },
+      {
+        "feature": "eps_sum_4q",
+        "mean_abs_shap": 0.00847384108066703,
+        "signed_direction": -0.3174699810862553
+      },
+      {
+        "feature": "liquidity_rank_pct_sector_60d",
+        "mean_abs_shap": 0.00824944399623465,
+        "signed_direction": -0.4013000297696792
+      },
+      {
+        "feature": "margin_ratio_60d",
+        "mean_abs_shap": 0.00824777817667452,
+        "signed_direction": -0.10358132487728929
+      },
+      {
+        "feature": "size_log_zscore_sector",
+        "mean_abs_shap": 0.007828173570533717,
+        "signed_direction": -0.25664794033369026
+      },
+      {
+        "feature": "upside_capture_60d",
+        "mean_abs_shap": 0.006792559638847394,
+        "signed_direction": 0.5786464951440586
+      },
+      {
+        "feature": "log_return_20d",
+        "mean_abs_shap": 0.0067715757595239855,
+        "signed_direction": -0.4990032180423095
+      },
+      {
+        "feature": "roe_ttm",
+        "mean_abs_shap": 0.0067346510196122315,
+        "signed_direction": -0.056942951131359235
+      },
+      {
+        "feature": "pb_ratio",
+        "mean_abs_shap": 0.0066869424521820075,
+        "signed_direction": -0.39577251354665816
+      },
+      {
+        "feature": "trust_net_20d",
+        "mean_abs_shap": 0.006584487768311688,
+        "signed_direction": 0.00033196450652339947
+      },
+      {
+        "feature": "trust_net_60d",
+        "mean_abs_shap": 0.006367940526979872,
+        "signed_direction": 0.07089730953989852
+      },
+      {
+        "feature": "convexity_60d",
+        "mean_abs_shap": 0.006054374236340819,
+        "signed_direction": -0.6967794924125429
+      },
+      {
+        "feature": "ma_ratio_20",
+        "mean_abs_shap": 0.005313884910615058,
+        "signed_direction": 0.6099615339926837
+      },
+      {
+        "feature": "turnover_mean_60d",
+        "mean_abs_shap": 0.005235045040353362,
+        "signed_direction": 0.3089061012771643
+      },
+      {
+        "feature": "volatility_60d",
+        "mean_abs_shap": 0.005030021762012321,
+        "signed_direction": 0.713609210943492
+      },
+      {
+        "feature": "pe_ratio",
+        "mean_abs_shap": 0.004779339254924489,
+        "signed_direction": 0.07422873095772088
+      },
+      {
+        "feature": "foreign_net_60d",
+        "mean_abs_shap": 0.00436933851676354,
+        "signed_direction": -0.36722275038778585
+      },
+      {
+        "feature": "ma_ratio_60",
+        "mean_abs_shap": 0.004111955363809794,
+        "signed_direction": -0.4823246365316064
+      },
+      {
+        "feature": "avg_daily_value_log_60d",
+        "mean_abs_shap": 0.00408926798350755,
+        "signed_direction": 0.14421391803941264
+      },
+      {
+        "feature": "upside_volatility_60d",
+        "mean_abs_shap": 0.004047312035558179,
+        "signed_direction": -0.03156914163938325
+      },
+      {
+        "feature": "foreign_net_20d",
+        "mean_abs_shap": 0.00370838503892928,
+        "signed_direction": -0.2142068491545405
+      },
+      {
+        "feature": "downside_capture_60d",
+        "mean_abs_shap": 0.003662709607214595,
+        "signed_direction": 0.6428936598540644
+      },
+      {
+        "feature": "revenue_yoy_3m",
+        "mean_abs_shap": 0.003104583719081256,
+        "signed_direction": 0.14042043206104635
+      },
+      {
+        "feature": "net_income_positive_ratio_8q",
+        "mean_abs_shap": 0.002128461061596358,
+        "signed_direction": -0.22799218301191213
+      },
+      {
+        "feature": "preferential_attachment_60d",
+        "mean_abs_shap": 0.0015949841915345203,
+        "signed_direction": 0.04874613669243984
+      },
+      {
+        "feature": "zero_volume_ratio_252d",
+        "mean_abs_shap": 0.00014903483371883394,
+        "signed_direction": 0.06108111566583969
+      }
+    ]
+  },
+  "_meta": {
+    "tool": "feature_shap_purged_audit.py",
+    "tool_ver": "v0.1",
+    "ensemble": [
+      "lgbm",
+      "xgboost",
+      "catboost"
+    ],
+    "embargo_days": 5,
+    "run_at": "2026-06-07T16:36:11.130874",
+    "constitution_ver": "v6.1.0",
+    "seed": 5422,
+    "horizons": [
+      60,
+      252
+    ],
+    "n_universe": 397,
+    "n_panels": 96,
+    "source_traceability": "per \u00a7\u4e00.10 (b) DB query + native TreeSHAP",
+    "governance": "research-mode; no DB write; no commit (\u00a73.1)"
+  }
+}

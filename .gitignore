@@ -119,6 +119,12 @@ reports/*
 !reports/multi_cycle_stockformer_*.json
 !reports/multi_cycle_hist_*.json
 !reports/multi_cycle_tft_*.json
+# 五鏡特徵治理 audit JSON(§14.7-DI / §一.21 證據,source-traceable §一.10)
+!reports/feature_signed_ic_*.json
+!reports/dead_weight_feature_ablation_*.json
+!reports/feature_shap_purged_audit_*.json
+!reports/risk_factor_ic_gate_ablation_*.json
+!reports/kwave_ic_gate_ablation_*.json
 # Milestone reports(per Phase G milestone closure)
 !reports/milestone_v*.md
 # Audit evidence reports(自動產生 / 治權 audit trail)
