@@ -1,0 +1,145 @@
+{
+  "weekly": {
+    "horizon": "weekly",
+    "horizon_days": 5,
+    "n_panels": 65,
+    "full_37_ic": -0.00648791693601616,
+    "variants": {
+      "pruned_25": {
+        "ic": -0.0010469492839147699,
+        "delta_vs_full": 0.00544096765210139,
+        "paired_t": 1.239950613910476,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      },
+      "noise_drop_34": {
+        "ic": -0.008509980481943694,
+        "delta_vs_full": -0.0020220635459275334,
+        "paired_t": -0.5137094516961033,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      },
+      "collinear_drop_28": {
+        "ic": -0.004285828659812621,
+        "delta_vs_full": 0.002202088276203539,
+        "paired_t": 0.5288305068216895,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      }
+    }
+  },
+  "monthly": {
+    "horizon": "monthly",
+    "horizon_days": 20,
+    "n_panels": 65,
+    "full_37_ic": 0.02098929912861389,
+    "variants": {
+      "pruned_25": {
+        "ic": 0.016708817415042914,
+        "delta_vs_full": -0.004280481713570976,
+        "paired_t": -0.9951283129189172,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      },
+      "noise_drop_34": {
+        "ic": 0.014057496141113525,
+        "delta_vs_full": -0.006931802987500365,
+        "paired_t": -1.8324960429840729,
+        "verdict": "\u26a0\ufe0f \u908a\u754c"
+      },
+      "collinear_drop_28": {
+        "ic": 0.018703068282865314,
+        "delta_vs_full": -0.0022862308457485755,
+        "paired_t": -0.6195927751452004,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      }
+    }
+  },
+  "quarterly": {
+    "horizon": "quarterly",
+    "horizon_days": 60,
+    "n_panels": 64,
+    "full_37_ic": 0.10304658756647304,
+    "variants": {
+      "pruned_25": {
+        "ic": 0.0970671845225313,
+        "delta_vs_full": -0.005979403043941747,
+        "paired_t": -1.6381100703539115,
+        "verdict": "\u26a0\ufe0f \u908a\u754c"
+      },
+      "noise_drop_34": {
+        "ic": 0.1081742205613128,
+        "delta_vs_full": 0.005127632994839759,
+        "paired_t": 1.7836838190742872,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      },
+      "collinear_drop_28": {
+        "ic": 0.09962318104410428,
+        "delta_vs_full": -0.003423406522368763,
+        "paired_t": -0.7960487829614792,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      }
+    }
+  },
+  "annual": {
+    "horizon": "annual",
+    "horizon_days": 252,
+    "n_panels": 61,
+    "full_37_ic": 0.2715605111438039,
+    "variants": {
+      "pruned_25": {
+        "ic": 0.2598198827250089,
+        "delta_vs_full": -0.01174062841879503,
+        "paired_t": -3.4802409129890157,
+        "verdict": "\u274c \u6709\u640d\u4fdd\u7559"
+      },
+      "noise_drop_34": {
+        "ic": 0.27602861551663976,
+        "delta_vs_full": 0.004468104372835846,
+        "paired_t": 1.7954456399442216,
+        "verdict": "\u2705 \u4e0d\u50b7\u53ef\u780d"
+      },
+      "collinear_drop_28": {
+        "ic": 0.26130116048763996,
+        "delta_vs_full": -0.010259350656163957,
+        "paired_t": -3.8218489694246274,
+        "verdict": "\u274c \u6709\u640d\u4fdd\u7559"
+      }
+    }
+  },
+  "_meta": {
+    "tool": "feature_pruning_ablation.py",
+    "tool_ver": "v0.1",
+    "full_n": 37,
+    "pruned_n": 25,
+    "drop_noise": [
+      "trust_net_20d",
+      "trust_net_60d",
+      "net_income_positive_ratio_8q"
+    ],
+    "drop_collinear": [
+      "avg_daily_value_log_252d",
+      "turnover_mean_60d",
+      "preferential_attachment_60d",
+      "liquidity_rank_pct_sector_60d",
+      "size_log_zscore_sector",
+      "upside_volatility_60d",
+      "upside_capture_60d",
+      "downside_capture_60d",
+      "revenue_yoy_3m"
+    ],
+    "nondegrade_thresh": -0.005,
+    "probe": "lgbm",
+    "threads": 3,
+    "run_at": "2026-06-07T19:00:36.959815",
+    "constitution_ver": "v6.1.0",
+    "seed": 5422,
+    "horizons": [
+      5,
+      20,
+      60,
+      252
+    ],
+    "n_universe": 397,
+    "n_panels": 96,
+    "robust_pruned_ok": false,
+    "source_traceability": "per \u00a7\u4e00.10 (b) DB query",
+    "governance": "research-mode; no DB write; no commit (\u00a73.1)"
+  }
+}
