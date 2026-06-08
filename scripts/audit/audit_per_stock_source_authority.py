@@ -1,8 +1,8 @@
 """
-audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority Auditor · per CLAUDE.md §一.11 三段式入憲)
+audit_per_stock_source_authority.py v0.2 (§14.7-CE Per-Stock Source Authority Auditor · §14.7-DJ Pure-Generic Schema Source · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v0.1 邏輯 2026-05-28 入)
-**主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis per-stock byte-level proof + §14.7-CC Source Authority + §一.11 三段式合規)
+**最後更新日期**: 2026-06-08(§14.7-DJ Pure-Generic schema 來源對齊;原 v0.1 邏輯 2026-05-28 入)
+**主權狀態**: ACTIVE (§14.7-CE Empirical-Verification-axis per-stock byte-level proof + §14.7-CC Source Authority + §14.7-DJ Pure-Generic schema 來源 `get_dataset_columns` + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -21,7 +21,7 @@ audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority A
 4. **[Source Traceability]** (v0.1, §一.10): 全 (b) DB query;0 AI memory。
 5. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): per-stock × per-source 100% match → PASS;任一不 match → ALERT/FAIL。
 6. **[Sovereignty Declaration]** (v0.1, §3.2 橫切 audit / §14.7-CE): 本程式為 **§14.7-CE Per-Stock Empirical Verification 唯一 audit 載體**(§3.2 橫切)。**治權邊界**:(a) §3.2 橫切;(b) read-only;(c) **不 sync data**(只驗證);(d) 唯一職責:scan core_universe × 11 raw tables → empirical proof report。
-7. **[Historical Reference Authority]** (v0.1): `TOOL_VER = "v0.1"` 為記述快照。
+7. **[Historical Reference Authority]** (v0.2): `TOOL_VER = "v0.2"` 為記述快照。
 8. **[Idempotency]** (v0.1): pure read-only。
 
 ## 📊 二、全量功能群矩陣 (The Ultimate Functional Group Matrix)
@@ -35,7 +35,7 @@ audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority A
 ### Group B. Source Origin Attestation
 | 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
-| B.1 Schema attestation | data_schema.py DATASET_REGISTRY check | §14.7-CC |
+| B.1 Schema attestation | §14.7-DJ：表 schema 來源 `get_dataset_columns()`（DB 即真理，generic auto-schema）；非空即視為已建 | §14.7-CC |
 | B.2 Value pattern check | API-typical patterns(date format / precision)| empirical proof |
 
 ### Group C. NO Synthetic / NO System-Computed
@@ -56,7 +56,8 @@ audit_per_stock_source_authority.py v0.1 (§14.7-CE Per-Stock Source Authority A
 
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | **ACTIVE** |
+| v0.2 | 2026-06-08 | Codex | **§14.7-DJ Pure-Generic：schema 來源改 `get_dataset_columns`**。FinMind 原始表退役 `DATASET_REGISTRY` schema 白名單(改 generic auto-schema,DB 即真理)。本程式無 code-level `DATASET_REGISTRY` 引用(逐股 audit 走自有 `FINMIND_TABLES` dict + 直接 DB row-existence query),僅 B.1 矩陣標籤「DATASET_REGISTRY check」改述為「`get_dataset_columns()` 非空即視為已建」+ L2/L5 補 §14.7-DJ 摘要。**邏輯不變**。 | **ACTIVE** |
+| v0.1 | 2026-05-29 | Codex | **§一.11 三段式標頭補正**。原 v0.1 邏輯不變(2026-05-28 入)。 | SUPERSEDED |
 | v0.1(pre-§一.11)| 2026-05-28 | Codex | **首版:§14.7-CE Per-Stock Source Authority**。3-check workflow(row existence / source origin / no synthetic)。Per active N stocks × 11 sources。 | ARCHIVED(標頭格式)|
 
 ## 附錄 一、11 Raw Sources

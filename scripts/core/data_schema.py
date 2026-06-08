@@ -1,8 +1,8 @@
 """
-data_schema.py v2.20 (Quantum Finance API-First Schema Sovereignty Edition)
+data_schema.py v2.22 (Quantum Finance API-First Schema Sovereignty Edition · §14.7-DJ Pure-Generic Ingestion Retire)
 ================================================================================
-**最後更新日期**: 2026-05-25
-**主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）+ build_publication_date_gate() helper 升 SSOT（v2.20 Phase 3 配套;兩個 builder 共用）；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
+**最後更新日期**: 2026-06-08
+**主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）+ build_publication_date_gate() helper 升 SSOT（v2.20 Phase 3 配套;兩個 builder 共用）+ **§14.7-DJ Pure-Generic：DATASET_REGISTRY 退役 10 FinMind 原始表（改 generic auto-schema）僅留 2 infra + FredData；新增 get_dataset_columns/get_dataset_keys SSOT helper（DB information_schema 推導）；FINMIND_API_TABLES → FINMIND_PIPELINE_DATASETS；移除 _probe_finmind_contract（v2.22）**；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -32,7 +32,8 @@ data_schema.py v2.20 (Quantum Finance API-First Schema Sovereignty Edition)
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v2.20** | 2026-05-25 | Codex | **`build_publication_date_gate()` helper 升至 data_schema SSOT(Phase 3 配套;helper 從 feature_store_builder v0.4 之 local def 移至 data_schema 模組級;對齊 §0.0-I 單一引用源原則)**:依憲章 §8.5-9 之 Phase 3 落地(core_universe_builder v0.3 → v0.4 之 SQL gate 升版),為避免 helper 在 feature_store_builder + core_universe_builder 重複定義(違 DRY/SSOT),將 helper 從 `feature_store_builder.py v0.4` 之 local `_publication_date_gate()` 升至 `data_schema.py` 模組級 `build_publication_date_gate()`(rename 反映 utility 性質,移除 private underscore prefix)。**設計合理性**:helper 為 `PUBLICATION_DATE_STRATEGY_REGISTRY` 之直接衍生(讀 strategy → 構造 SQL clause 字串),屬同治權位階(data_schema = Raw API Schema + metadata SSOT;helper 為 metadata 之衍生工具,**不執行 SQL,只構造字串**;未違反 data_schema [Sovereignty Declaration] 之治權邊界);對齊既有 `INFRA_TABLES` set 之模組級 utility 慣例。**補正內容**:(I) 新增模組級函式 `build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s") -> tuple[str, int]`(從 feature_store_builder v0.4 之 `_publication_date_gate` 完整移入,介面零變動);(II) TOOL_VER v2.19 → v2.20;(III) 主權狀態行加「build_publication_date_gate() helper 升 SSOT(v2.20 Phase 3 配套;兩個 builder 共用)」;(IV) 維運矩陣 3 場景 cosmetic v2.19 → v2.20。**邏輯動量**:`PUBLICATION_DATE_STRATEGY_REGISTRY` 13 entries 不變(v2.19 之 FRED transitional 追溯維持);`PUBLICATION_DATE_ENFORCEMENT_TYPES` 5 種不變;13 張 DATASET_REGISTRY 不變;API contract probe / CLI / verdict 邏輯不變;helper 介面與行為與 feature_store_builder v0.4 之 local 版本**完全一致**(僅位置移轉)。**對下游 builder 影響**:`feature_store_builder v0.5` 刪 local def 改 `from core.data_schema import build_publication_date_gate`;`core_universe_builder v0.4` 加同 import,12 處 SQL gate 透過 helper 升版;**兩個 builder 共用單一 SSOT helper**。**對既有 DB / snapshot 影響**:**零**(本版純為 helper 位置移轉,無 DDL 變更;builder 升版另案落地)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改 PUBLICATION_DATE_STRATEGY_REGISTRY、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict、**不**修改既有任何函式介面(僅新增 1 個 module-level helper)。同步配套:`feature_store_builder.py v0.4 → v0.5`(刪 local;import)+ `core_universe_builder.py v0.3 → v0.4`(import + SQL gate 升版,Phase 3 落地)。 | **ACTIVE** |
+| **v2.22** | 2026-06-08 | Claude | **§14.7-DJ Pure-Generic Ingestion 落地（退役 DATASET_REGISTRY FinMind schema 白名單）**：依用戶 2026-06-08 directive「不應存在 sync 引擎只認 11 註冊表,全部的表都應是通用 ingester 建的」+ AskUserQuestion 選「純通用·registry 完全退役」。**功能變更**:(a) `DATASET_REGISTRY` 移除 10 個 FinMind 原始表 + TaiwanStockInfo（改 generic auto-schema 自動建表;`core/generic_schema.py v1.0` + `sovereign_sync_engine._generic_ingest`），僅保留 2 infra（pipeline_execution_log/data_audit_log,系統內部寫入非 API）+ FredData（FRED 單表多 series、series_id local-derived → generic 無法推導 key,須明確 DDL）;(b) `FINMIND_API_TABLES` dict → `FINMIND_PIPELINE_DATASETS` list（10 表營運範圍,非 schema 白名單）+ `FINMIND_ROSTER_DATASET`;(c) 新增 §0.0-I SSOT helper `get_dataset_columns(table)` / `get_dataset_keys(table)`（infra+FRED 用宣告;FinMind generic 表即時查 DB information_schema → 下游 feature_store_schema/core_universe_schema 欄位繼承 + 稽核工具 + core_universe_builder 改呼叫,不再 index DATASET_REGISTRY[t]）;(d) 移除 `_probe_finmind_contract`（FinMind 退役明確契約,改 §14.7-CE DB-vs-API 對帳驗證）;`_api_tables_for_target`/`probe_api_contracts` 僅留 FredData;`init_tables` 迭代 slim registry → 只建 infra+FRED。**治權邊界**:`PUBLICATION_DATE_STRATEGY_REGISTRY`/`build_publication_date_gate`/`INFRA_TABLES`/`LOCAL_DERIVED_COLUMNS`/`_probe_fred_contract` 全保留;verdict/CLI 不變。同步配套:`sovereign_sync_engine v1.24` + `core/generic_schema.py v1.0` + 4 稽核工具 + 主憲章 §14.7-DJ + CLAUDE.md。 | **ACTIVE** |
+| v2.20 | 2026-05-25 | Codex | **`build_publication_date_gate()` helper 升至 data_schema SSOT(Phase 3 配套;helper 從 feature_store_builder v0.4 之 local def 移至 data_schema 模組級;對齊 §0.0-I 單一引用源原則)**:依憲章 §8.5-9 之 Phase 3 落地(core_universe_builder v0.3 → v0.4 之 SQL gate 升版),為避免 helper 在 feature_store_builder + core_universe_builder 重複定義(違 DRY/SSOT),將 helper 從 `feature_store_builder.py v0.4` 之 local `_publication_date_gate()` 升至 `data_schema.py` 模組級 `build_publication_date_gate()`(rename 反映 utility 性質,移除 private underscore prefix)。**設計合理性**:helper 為 `PUBLICATION_DATE_STRATEGY_REGISTRY` 之直接衍生(讀 strategy → 構造 SQL clause 字串),屬同治權位階(data_schema = Raw API Schema + metadata SSOT;helper 為 metadata 之衍生工具,**不執行 SQL,只構造字串**;未違反 data_schema [Sovereignty Declaration] 之治權邊界);對齊既有 `INFRA_TABLES` set 之模組級 utility 慣例。**補正內容**:(I) 新增模組級函式 `build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s") -> tuple[str, int]`(從 feature_store_builder v0.4 之 `_publication_date_gate` 完整移入,介面零變動);(II) TOOL_VER v2.19 → v2.20;(III) 主權狀態行加「build_publication_date_gate() helper 升 SSOT(v2.20 Phase 3 配套;兩個 builder 共用)」;(IV) 維運矩陣 3 場景 cosmetic v2.19 → v2.20。**邏輯動量**:`PUBLICATION_DATE_STRATEGY_REGISTRY` 13 entries 不變(v2.19 之 FRED transitional 追溯維持);`PUBLICATION_DATE_ENFORCEMENT_TYPES` 5 種不變;13 張 DATASET_REGISTRY 不變;API contract probe / CLI / verdict 邏輯不變;helper 介面與行為與 feature_store_builder v0.4 之 local 版本**完全一致**(僅位置移轉)。**對下游 builder 影響**:`feature_store_builder v0.5` 刪 local def 改 `from core.data_schema import build_publication_date_gate`;`core_universe_builder v0.4` 加同 import,12 處 SQL gate 透過 helper 升版;**兩個 builder 共用單一 SSOT helper**。**對既有 DB / snapshot 影響**:**零**(本版純為 helper 位置移轉,無 DDL 變更;builder 升版另案落地)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改 PUBLICATION_DATE_STRATEGY_REGISTRY、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict、**不**修改既有任何函式介面(僅新增 1 個 module-level helper)。同步配套:`feature_store_builder.py v0.4 → v0.5`(刪 local;import)+ `core_universe_builder.py v0.3 → v0.4`(import + SQL gate 升版,Phase 3 落地)。 | SUPERSEDED |
 | v2.19 | 2026-05-25 | Codex | **PUBLICATION_DATE_STRATEGY_REGISTRY['FredData'] 追溯修正 strict → transitional(憲章 §14.7-BB Phase 2 dry-run 揭露驅動;v6.1.0-patch 第五輪 charter 同次配套程式)**:依憲章 v6.1.0-patch §14.7-BB(2026-05-25 夜深入憲),基於 Phase 2 dry-run 實證:5 個 historical as_of_date × 4 FRED series 之 strict vintage gate(`realtime_start <= as_of_date`)**100% loss**。**Root cause**:DB 內 `FredData.realtime_start` 為 ingest 日期(2026-05-21~22 從零重建)非真實 ALFRED vintage。**追溯修正 PUBLICATION_DATE_STRATEGY_REGISTRY['FredData']**:(I) enforcement: `strict` → **`transitional`**(對齊 Shareholding 過渡分類);(II) source: `fred_vintage_start` → **`fred_vintage_pending_alfred`**;(III) column: `realtime_start` → **`date`**(暫維持,同 Shareholding);(IV) description 補入 Phase 2 dry-run 揭露;(V) TOOL_VER v2.18 → v2.19;(VI) 主權狀態行加「FredData strict → transitional 追溯修正(v2.19 §14.7-BB)」;(VII) 維運矩陣 cosmetic v2.18 → v2.19。**邏輯動量**:13 張 DATASET_REGISTRY 不變;PUBLICATION_DATE_STRATEGY_REGISTRY 13 entries 不變(僅 FredData 單筆內容追溯);PUBLICATION_DATE_ENFORCEMENT_TYPES 5 種不變;API contract probe / CLI / verdict 邏輯不變。**對既有 DB 影響**:**零**(本版純為 metadata 註冊追溯,無 DDL 變更)。**對下游 builder/audit 影響(配套 Phase 2 落地之 feature_store_builder v0.4)**:讀此 metadata 時 FRED 走 transitional 路徑(SQL gate 維持 `date <= as_of_date`),與其他 native_aligned 表行為相同。**「資料現實裁決」第三次跑通**(對映 §14.7-AX):2026-05-24 §0.1.3-A.1 ROE → 2026-05-25 §14.7-BA 5 欄位 → **2026-05-25 §14.7-BB FRED**。**追溯適用**:既有 audit / feature_set / model / prediction **皆不受影響**(metadata-only;v2.18 入憲後 builder 尚未實際讀取 strategy,追溯無 builder 副作用)。本版**不**修改 DATASET_REGISTRY 任何內容、**不**改其他 12 表之 publication_date_strategy(僅 FredData 追溯)、**不**改 PUBLICATION_DATE_ENFORCEMENT_TYPES、**不**改 INFRA_TABLES、**不**改 API contract probe / DDL / CLI / verdict。同步入憲:憲章 §14.7-BB(新建子節) / §8.5-9 4 處追溯修正 / 修訂歷程 v6.1.0-patch 2026-05-25 第五輪 entry。 | SUPERSEDED |
 | v2.18 | 2026-05-25 | Codex | **§8.5 第 9 條 Publication-date Discipline Phase 1 落地（v6.1.0-patch §8.5-9 / §14.7-BA 程式預備升版 A;commit `669b5c8` 入憲後第一支程式落地）**：依憲章 v6.1.0-patch（commit `669b5c8`,2026-05-25 夜）新入憲之 §8.5 第 9 條 Publication-date Discipline 強制契約 + §8.5-9 子節 8 個子子節 + §14.7-BA 治權閉環,本版落地 Phase 1（per §8.5-9.7 升版觸發表）:**PUBLICATION_DATE_STRATEGY_REGISTRY 模組級獨立 dict,對齊 §8.5-9.2 分派表（11 業務+metadata 表 + 2 infra 表 = 13）**。**5 種 enforcement 類別**:(1) `strict`（直接用 publication-date column）:`TaiwanStockDividend.AnnouncementDate` / `FredData.realtime_start`;(2) `hardcoded_conservative`（法定截止日推算）:`TaiwanStockMonthRevenue date + 10 天` / `TaiwanStockFinancialStatements date + 45 天 (Q1-Q3) / 90 天 (Q4)`;(3) `transitional`（暫維持 `date`,待研究升版）:`TaiwanStockShareholding`（`RecentlyDeclareDate` 語意不明,§14.7-BA §3.3 揭露;D2.1 研究方向）;(4) `native_aligned`（`date` = trading day,本就無 publication delay）:`TaiwanStockPrice / PriceAdj / PER / Margin / InstitutionalInvestorsBuySell / TaiwanStockInfo`(InstitutionalInvestorsBuySell 之 T 日 17:30 cron 對齊已於 §6.8.7-A 涵蓋);(5) `infrastructure`（infra 觀測表不適用 publication-date）:`pipeline_execution_log` / `data_audit_log`。**補正內容**:(I) `PUBLICATION_DATE_STRATEGY_REGISTRY` 模組級獨立 dict 涵蓋 13 表項目(source / column / offset_days / enforcement / description 5 鍵);(II) 核心定義新增第 7 條 [Publication-date Strategy SSOT] 顯式宣告 PUBLICATION_DATE_STRATEGY_REGISTRY 為憲章 §8.5-9 之 per-dataset metadata SSOT(對齊 §0.0-I 單一引用源原則);(III) 核心定義第 6 條 [Sovereignty Declaration] 補入「為 §8.5 anti-leakage 8 條 + 第 9 條提供 SSOT metadata 但不執行」之治權邊界明示;(IV) TOOL_VER v2.17 → v2.18;(V) 主權狀態行加「§8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）」;(VI) CONSTITUTION_VER 維持 v6.1.0(主版號,patch 為修訂歷程記述);(VII) 維運矩陣 3 場景之 cosmetic v2.17 → v2.18。**邏輯動量**:13 張 DATASET_REGISTRY 數量不變;12 業務 + infra 表之 columns / unique_constraints / DDL 邏輯不變;API contract probe 邏輯不變;--init / --force / --table / --skip-api-contract CLI 介面不變;verdict 動態計算邏輯不變;§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 DB 影響**:**零**(本版純為 metadata 註冊,無 DDL 變更);既有 snapshot / feature_set / model / prediction 全部不受影響;`--init --force` 之 DROP + CREATE 行為不變。**對下游 builder/audit 影響(待 Phase 2-5)**:`feature_store_builder v0.4` 升 SQL 時可讀此 metadata 取得 effective_publication_date gate 規則;`audit_leakage v0.3` 之 rule 19 publication_date_check 透過此 metadata 驗收。**Phase 1 完成 → Phase 2 預備**:feature_store_builder v0.3 → v0.4 之 SQL gate 升版(讀 PUBLICATION_DATE_STRATEGY_REGISTRY[t])。**追溯適用**:既有 audit 報告 / feature_set v0.1-v0.3 / model_registry / prediction_run **皆不受影響**(本版為 metadata-only 升版;builder 邏輯升 v0.4 後新 snapshot 起適用)。本版**不**修改其他 12 表之 columns / unique_constraints、**不**改 `pipeline_execution_log` / `data_audit_log` DDL、**不**改 13 表之 API contract probe 邏輯、**不**改 CLI 介面、**不**改 verdict 計算邏輯。同步入憲:憲章 §8.5 第 9 條(L4292) / §8.5-9 子節 8 個子子節(L4296-4392) / §14.7-BA(L7844-7928) / 修訂歷程 v6.1.0-patch 2026-05-25 第三輪 entry(L66);程式落地序列 §8.5-9.7 之 Phase 1(本版)。 | SUPERSEDED |
 | v2.17 | 2026-05-25 | Codex | **§3.2A.J `data_audit_log` 5-tuple UNIQUE constraint 落地（v6.1.0-patch §3.2A.J / §14.7-AY 程式預備升版 A）**：依憲章 v6.1.0-patch（commit `4da2450`，2026-05-25）新入憲之 §3.2A.J `db_utils.write_data_audit_log` Audit Log Write-Safe 治權契約（憲章 L2722-2745）+ §14.7-AY §7.4-A 姊妹缺陷補完入憲（憲章 L7480-7568），本版落地裁決第 1 條「`data_schema.py v2.16 → v2.17`：`data_audit_log.unique_constraints` 從 `[]` 改為 5-tuple」。**Root cause（2026-05-24 Audit 2 揭露）**：Step 4F 啟動 ~65 秒兩個 sync_engine worker 並發寫入 `data_audit_log` 撞同 microsecond + 同 5-tuple → race-induced duplicate row 1 個 → Audit 2 verdict=FAILED（業務 dataset 全 PASS，唯一 FAIL 在 infra 觀測表）。**補正內容**：(I) `DATASET_REGISTRY["data_audit_log"]["unique_constraints"]`: `[]` → `["table_name", "stock_id", "data_date", "action_type", "timestamp"]`（5-tuple，timestamp 為 microsecond 精度作 race boundary）；(II) TOOL_VER v2.16 → v2.17；(III) CONSTITUTION_VER v6.0.0 → v6.1.0（對齊現行憲章 v6.1.0-patch）；(IV) 主權狀態行加「§3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地」；(V) 維運矩陣 3 場景之 cosmetic v2.16 → v2.17；(VI) report header v2.16 → v2.17。**邏輯動量**：13 張 DATASET_REGISTRY 數量不變；其他 12 表 unique_constraints 不變；API contract probe 邏輯不變；--init / --force / --table / --skip-api-contract CLI 介面不變；verdict 動態計算邏輯不變；§5.6.3 + §0.4 + §0.0-G + §0.0-I 全部不違反。**對既有 DB 影響**：既存 `data_audit_log` 表若有 race-induced dup（如 2026-05-24 從零驗證留下之 1 個 dup），`--init --force` DROP + CREATE 會清空；非 force 模式需透過 `scripts/maintenance/migrate_data_audit_log_dedup_20260525.py v0.1`（同次入憲之 §14.7-AY 落地 C 項）執行 dedup + ALTER TABLE ADD CONSTRAINT。**db_utils.py 配套升版**：v2.47 → v2.48 之 `write_data_audit_log()` 加 ON CONFLICT DO NOTHING（落地裁決第 2 條，另一支同次升版）。**追溯適用**：v0.1-v0.6 之 `audit_api_schema_compliance` Layer F 對 `data_audit_log` 之 dup>0 記錄重新詮釋為 race-induced artifact；v2.17 / db_utils v2.48 + migration 落地後自動消解。本版**不**修改其他 12 張 dataset 之 unique_constraints、**不**改 `pipeline_execution_log` DDL（其 SERIAL id 自然 unique 不需新約束）、**不**擴張至業務 dataset（已有業務鍵 UNIQUE）。同步入憲：憲章 §3.2A.J（L2722-2745）/ §14.7-AY（L7480-7568）/ 修訂歷程 v6.1.0-patch entry（L66）。 | SUPERSEDED |
@@ -61,7 +62,7 @@ import argparse
 # 治權常數 (Constitution Constants) — v2.12 新增（憲章 L26 / Step 1.1.2 補正）
 # ──────────────────────────────────────────────────────────────────────────────
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v2.21"
+TOOL_VER = "v2.22"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # §8.5-9 Publication-date Discipline Strategy Enforcement Enum
@@ -88,7 +89,10 @@ except ImportError:
     print("❌ 核心組件導入失敗，請確認 db_utils.py")
     sys.exit(1)
 
-# 🏛️ 13 張全譜數據契約註冊表 (2 infra + 10 FinMind raw + 1 FRED；1:1 API 鏡像，嚴格遵循大小寫)
+# 🏛️ 明確 DDL 註冊表 (2 infra + 1 FRED)。§14.7-DJ (pure-generic):FinMind 10 原始資料表已退役本 registry,
+# 改由 generic auto-schema 自動建表(core/generic_schema.py)。本 dict 僅保留「非 FinMind 個股 dataset」之
+# 系統內部表(pipeline_execution_log / data_audit_log,非 API 抓取)+ FredData(FRED API,單表多 series、
+# series_id 為 local-derived 不在 API 回應內 → 須明確 [date, series_id] key,generic 無法推導)。
 DATASET_REGISTRY = {
     # --- Infrastructure (治權基礎設施 - 優先建立) ---
     "pipeline_execution_log": {
@@ -113,108 +117,6 @@ DATASET_REGISTRY = {
         "unique_constraints": ["table_name", "stock_id", "data_date", "action_type", "timestamp"]
     },
 
-    # --- Technical (技術面) ---
-    "TaiwanStockPrice": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
-            "Trading_Volume": "NUMERIC(20, 6)", "Trading_money": "NUMERIC(20, 6)",
-            "open": "NUMERIC(20, 6)", "max": "NUMERIC(20, 6)", "min": "NUMERIC(20, 6)", "close": "NUMERIC(20, 6)",
-            "spread": "NUMERIC(20, 6)", "Trading_turnover": "NUMERIC(20, 6)"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-    "TaiwanStockPriceAdj": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
-            "Trading_Volume": "NUMERIC(20, 6)", "Trading_money": "NUMERIC(20, 6)",
-            "open": "NUMERIC(20, 6)", "max": "NUMERIC(20, 6)", "min": "NUMERIC(20, 6)", "close": "NUMERIC(20, 6)",
-            "spread": "NUMERIC(20, 6)", "Trading_turnover": "NUMERIC(20, 6)"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-    "TaiwanStockPER": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
-            "dividend_yield": "NUMERIC(20, 6)", "PER": "NUMERIC(20, 6)", "PBR": "NUMERIC(20, 6)"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-    
-    # --- Chip (籌碼面) ---
-    "TaiwanStockInstitutionalInvestorsBuySell": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
-            "buy": "NUMERIC(20, 6)", "name": "VARCHAR(255)", "sell": "NUMERIC(20, 6)"
-        },
-        "unique_constraints": ["date", "stock_id", "name"]
-    },
-    "TaiwanStockMarginPurchaseShortSale": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)",
-            "MarginPurchaseBuy": "NUMERIC(20, 6)", "MarginPurchaseSell": "NUMERIC(20, 6)",
-            "MarginPurchaseCashRepayment": "NUMERIC(20, 6)", "MarginPurchaseLimit": "NUMERIC(20, 6)",
-            "MarginPurchaseTodayBalance": "NUMERIC(20, 6)", "MarginPurchaseYesterdayBalance": "NUMERIC(20, 6)",
-            "ShortSaleBuy": "NUMERIC(20, 6)", "ShortSaleSell": "NUMERIC(20, 6)",
-            "ShortSaleCashRepayment": "NUMERIC(20, 6)", "ShortSaleLimit": "NUMERIC(20, 6)",
-            "ShortSaleTodayBalance": "NUMERIC(20, 6)", "ShortSaleYesterdayBalance": "NUMERIC(20, 6)",
-            "OffsetLoanAndShort": "NUMERIC(20, 6)", "Note": "VARCHAR(255)"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-    "TaiwanStockShareholding": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", "stock_name": "VARCHAR(255)",
-            "InternationalCode": "VARCHAR(255)", "ForeignInvestmentRemainingShares": "NUMERIC(20, 6)",
-            "ForeignInvestmentShares": "NUMERIC(20, 6)", "ForeignInvestmentRemainRatio": "NUMERIC(20, 6)",
-            "ForeignInvestmentSharesRatio": "NUMERIC(20, 6)", "NumberOfSharesIssued": "NUMERIC(20, 6)",
-            "ForeignInvestmentUpperLimitRatio": "NUMERIC(20, 6)", "ChineseInvestmentUpperLimitRatio": "NUMERIC(20, 6)",
-            "RecentlyDeclareDate": "DATE", "note": "VARCHAR(255)"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-
-    # --- Fundamental (基本面) ---
-    "TaiwanStockFinancialStatements": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)",
-            "type": "VARCHAR(255)", "value": "NUMERIC(20, 6)", "origin_name": "VARCHAR(255)"
-        },
-        "unique_constraints": ["date", "stock_id", "type", "origin_name"]
-    },
-    "TaiwanStockBalanceSheet": {
-        # v2.21 (2026-05-25): §14.7-BI ROE 解鎖 — FinStmt 之姊妹表,提供真權益 (Equity / EquityAttributableToOwnersOfParent / CapitalStock / RetainedEarnings 等 101 types)
-        # 同 FinStmt schema (date, stock_id, type, value, origin_name);quarterly;2011-12-01 ~ now
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)",
-            "type": "VARCHAR(255)", "value": "NUMERIC(20, 6)", "origin_name": "VARCHAR(255)"
-        },
-        "unique_constraints": ["date", "stock_id", "type", "origin_name"]
-    },
-    "TaiwanStockMonthRevenue": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", 
-            "country": "VARCHAR(255)", "revenue": "NUMERIC(20, 6)", 
-            "revenue_month": "NUMERIC(20, 6)", "revenue_year": "NUMERIC(20, 6)", "create_time": "DATE"
-        },
-        "unique_constraints": ["date", "stock_id"]
-    },
-    "TaiwanStockDividend": {
-        "columns": {
-            "date": "DATE", "stock_id": "VARCHAR(255)", "year": "VARCHAR(255)",
-            "StockEarningsDistribution": "NUMERIC(20, 6)", "StockStatutorySurplus": "NUMERIC(20, 6)",
-            "CashEarningsDistribution": "NUMERIC(20, 6)", "CashStatutorySurplus": "NUMERIC(20, 6)",
-            "AnnouncementDate": "DATE", "AnnouncementTime": "VARCHAR(255)",
-            "CashDividendPaymentDate": "DATE", "CashExDividendTradingDate": "DATE",
-            "CashIncreaseSubscriptionRate": "NUMERIC(20, 6)", "CashIncreaseSubscriptionpRrice": "NUMERIC(20, 6)",
-            "ParticipateDistributionOfTotalShares": "NUMERIC(20, 6)", "RatioOfEmployeeStockDividend": "NUMERIC(20, 6)",
-            "RatioOfEmployeeStockDividendOfTotal": "NUMERIC(20, 6)", "RemunerationOfDirectorsAndSupervisors": "NUMERIC(20, 6)",
-            "StockExDividendTradingDate": "DATE", "TotalEmployeeCashDividend": "NUMERIC(20, 6)",
-            "TotalEmployeeStockDividend": "NUMERIC(20, 6)", "TotalEmployeeStockDividendAmount": "NUMERIC(20, 6)",
-            "TotalNumberOfCashCapitalIncrease": "NUMERIC(20, 6)"
-        },
-        "unique_constraints": ["date", "stock_id", "year"]
-    },
-
     # --- Macro (FRED 宏觀主權；單表多 series_id，預設核心序列 DFF/UNRATE/T10Y2Y/VIXCLS) ---
     "FredData": {
         "columns": {
@@ -223,29 +125,24 @@ DATASET_REGISTRY = {
         },
         "unique_constraints": ["date", "series_id"]
     },
-    
-    # --- Market (市場總覽) ---
-    "TaiwanStockInfo": {
-        "columns": {
-            "stock_id": "VARCHAR(255)", "stock_name": "VARCHAR(255)", 
-            "industry_category": "VARCHAR(255)", "type": "VARCHAR(255)", "date": "DATE"
-        },
-        "unique_constraints": ["stock_id"]
-    }
 }
-FINMIND_API_TABLES = {
-    "TaiwanStockPrice": {"dataset": "TaiwanStockPrice", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockPriceAdj": {"dataset": "TaiwanStockPriceAdj", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockPER": {"dataset": "TaiwanStockPER", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockInstitutionalInvestorsBuySell": {"dataset": "TaiwanStockInstitutionalInvestorsBuySell", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockMarginPurchaseShortSale": {"dataset": "TaiwanStockMarginPurchaseShortSale", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockShareholding": {"dataset": "TaiwanStockShareholding", "data_id": "2330", "start_date": "2024-05-01"},
-    "TaiwanStockFinancialStatements": {"dataset": "TaiwanStockFinancialStatements", "data_id": "2330", "start_date": "2024-01-01"},
-    "TaiwanStockBalanceSheet": {"dataset": "TaiwanStockBalanceSheet", "data_id": "2330", "start_date": "2024-01-01"},
-    "TaiwanStockMonthRevenue": {"dataset": "TaiwanStockMonthRevenue", "data_id": "2330", "start_date": "2024-01-01"},
-    "TaiwanStockDividend": {"dataset": "TaiwanStockDividend", "data_id": "2330", "start_date": "2020-01-01"},
-    "TaiwanStockInfo": {"dataset": "TaiwanStockInfo", "data_id": "", "start_date": "2024-01-01"},
-}
+# §14.7-DJ (pure-generic):FinMind 原始資料表已退役 DATASET_REGISTRY schema 白名單,改由 generic auto-schema
+# (core/generic_schema.py + sovereign_sync_engine._generic_ingest)自動建表。以下僅為「核心特徵 pipeline
+# 預設 dataset 範圍」(10 張餵特徵庫之 per-stock 原始表)——非 schema 定義、非建表閘;任意 FinMind dataset 皆可
+# 經 sovereign_sync_engine --dataset / finmind_generic_ingest 同步(generic 建表)。供 engine --all + 稽核工具引用(§0.0-I)。
+FINMIND_PIPELINE_DATASETS = [
+    "TaiwanStockPrice",
+    "TaiwanStockPriceAdj",
+    "TaiwanStockPER",
+    "TaiwanStockInstitutionalInvestorsBuySell",
+    "TaiwanStockMarginPurchaseShortSale",
+    "TaiwanStockShareholding",
+    "TaiwanStockFinancialStatements",
+    "TaiwanStockBalanceSheet",
+    "TaiwanStockMonthRevenue",
+    "TaiwanStockDividend",
+]
+FINMIND_ROSTER_DATASET = "TaiwanStockInfo"  # 市場級資產名冊(seed);亦走 generic 自動建表
 
 FRED_CONTRACT_SERIES = "DFF"
 LOCAL_DERIVED_COLUMNS = {"FredData": {"series_id"}}
@@ -430,6 +327,91 @@ def build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s")
     raise ValueError(f"unknown enforcement {enforcement!r} for table {table!r}")
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# §14.7-DJ (pure-generic) 表 schema 單一引用源 helper
+# DATASET_REGISTRY 退役 FinMind 表後,下游(feature_store_schema / core_universe_schema 欄位繼承、
+# core_universe_builder、稽核工具)不得再直接 index DATASET_REGISTRY[table]["columns"];
+# 一律改呼叫以下 helper:infra+FredData 用宣告 schema;其餘(FinMind generic 表)即時查 DB information_schema。
+# 此即用戶選定「由 DB information_schema 推導 expected-schema」之 §0.0-I 落地。
+# ──────────────────────────────────────────────────────────────────────────────
+_DB_SCHEMA_CACHE = {}
+
+
+def _pg_type_str(dtype, clen, nprec, nscale):
+    d = (dtype or "").lower()
+    if d in ("character varying", "varchar"):
+        return f"VARCHAR({clen})" if clen else "VARCHAR"
+    if d == "character":
+        return f"CHAR({clen})" if clen else "CHAR"
+    if d == "text":
+        return "TEXT"
+    if d == "numeric":
+        if nprec is not None and nscale is not None:
+            return f"NUMERIC({nprec},{nscale})"
+        return "NUMERIC"
+    if d == "date":
+        return "DATE"
+    if d.startswith("timestamp"):
+        return "TIMESTAMP"
+    if d == "integer":
+        return "INTEGER"
+    if d == "bigint":
+        return "BIGINT"
+    if d == "boolean":
+        return "BOOLEAN"
+    if d == "double precision":
+        return "DOUBLE PRECISION"
+    return (dtype or "").upper()
+
+
+def _db_columns_with_types(table):
+    """查 DB information_schema 回傳 {col: sql_type_str}(依 ordinal_position);表不存在 → {}。"""
+    if table in _DB_SCHEMA_CACHE:
+        return dict(_DB_SCHEMA_CACHE[table])
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT column_name, data_type, character_maximum_length, numeric_precision, numeric_scale "
+            "FROM information_schema.columns WHERE table_name=%s ORDER BY ordinal_position",
+            (table,),
+        )
+        out = {}
+        for name, dtype, clen, nprec, nscale in cur.fetchall():
+            out[name] = _pg_type_str(dtype, clen, nprec, nscale)
+        cur.close()
+    finally:
+        conn.close()
+    if out:
+        _DB_SCHEMA_CACHE[table] = dict(out)
+    return out
+
+
+def get_dataset_columns(table):
+    """§0.0-I 表欄位型別 SSOT。回傳 {col: sql_type_str}。
+    infra+FredData → 宣告 schema(DATASET_REGISTRY);FinMind generic 表 → 即時查 DB information_schema。
+    表尚未建立(空 DB)→ {}(呼叫端須容忍,如 builder 前置在 sync 後執行)。"""
+    if table in DATASET_REGISTRY:
+        return dict(DATASET_REGISTRY[table]["columns"])
+    return _db_columns_with_types(table)
+
+
+def get_dataset_keys(table):
+    """§0.0-I 表 unique-key SSOT。回傳 key 欄 list。
+    infra+FredData → 宣告 unique_constraints;FinMind generic 表 → 讀 DB 實際 PRIMARY KEY。"""
+    if table in DATASET_REGISTRY:
+        return list(DATASET_REGISTRY[table].get("unique_constraints", []))
+    from core.generic_schema import existing_pk
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        pk = existing_pk(cur, table)
+        cur.close()
+    finally:
+        conn.close()
+    return pk
+
+
 class SovereignSchemaManager:
     def __init__(self):
         self.stats = {"success": 0, "failed": 0, "details": []}
@@ -442,11 +424,14 @@ class SovereignSchemaManager:
         self.contract_stats["details"].append(f"{icon} [API-{status.upper()}] {item} - {detail}")
 
     def _api_tables_for_target(self, target_table):
+        # §14.7-DJ:FinMind 表退役明確契約(generic auto-schema)→ 僅 FredData 仍有 API contract probe。
         if target_table:
             if target_table in INFRA_TABLES:
                 return []
-            return [target_table]
-        return list(FINMIND_API_TABLES.keys()) + ["FredData"]
+            if target_table in DATASET_REGISTRY:   # 現僅 FredData
+                return [target_table]
+            return []  # FinMind 表為 generic auto-schema(無明確契約;不在此 probe;由 §14.7-CE DB-vs-API 對帳驗證)
+        return ["FredData"]
 
     def _compare_columns(self, table_name, api_columns):
         schema_columns = set(DATASET_REGISTRY[table_name]["columns"].keys())
@@ -456,38 +441,9 @@ class SovereignSchemaManager:
         missing_from_schema = sorted(api_columns - schema_columns)
         return missing_from_api, missing_from_schema
 
-    def _probe_finmind_contract(self, table_name):
-        probe = FINMIND_API_TABLES[table_name]
-        client = FinMindClient()
-        params = {
-            "dataset": probe["dataset"],
-            "start_date": probe["start_date"],
-        }
-        if probe.get("data_id") is not None:
-            params["data_id"] = probe.get("data_id", "")
-        if client.token:
-            params["token"] = client.token
-
-        res = requests.get(client.api_url, params=params, headers=client.headers, timeout=30)
-        res.raise_for_status()
-        payload = res.json()
-        if payload.get("msg") not in (None, "success"):
-            raise RuntimeError(payload.get("msg"))
-        data = payload.get("data", [])
-        if not data:
-            self._record_contract("warn", table_name, "API reachable but returned empty sample; DDL will use local registry")
-            return
-
-        missing_from_api, missing_from_schema = self._compare_columns(table_name, data[0].keys())
-        if missing_from_api or missing_from_schema:
-            problems = []
-            if missing_from_api:
-                problems.append(f"schema-only={missing_from_api}")
-            if missing_from_schema:
-                problems.append(f"api-only={missing_from_schema}")
-            self._record_contract("failed", table_name, "; ".join(problems))
-        else:
-            self._record_contract("pass", table_name, f"{len(data[0].keys())} columns matched")
+    # §14.7-DJ (pure-generic):`_probe_finmind_contract` 已移除 —— FinMind 表退役明確 schema 契約,
+    # 改 generic auto-schema 自動建表;其正確性由 §14.7-CE DB-vs-API 逐股對帳(audit_full_db_vs_api_reconcile)驗證,
+    # 不再以「宣告 schema vs API 欄位」之 pre-DDL 契約 probe 把關。FRED 仍保留 _probe_fred_contract。
 
     def _probe_fred_contract(self):
         api_key = os.getenv("FRED_API_KEY")
@@ -524,13 +480,12 @@ class SovereignSchemaManager:
         print(f"🔎 正在執行 API-first 契約探測 ({self.constitution_ver})...")
         for table_name in targets:
             if table_name not in DATASET_REGISTRY:
-                self._record_contract("failed", table_name, "table is not registered in DATASET_REGISTRY")
+                # §14.7-DJ:FinMind 表退役明確契約(generic auto-schema);非錯誤,跳過 probe
+                self._record_contract("pass", table_name, "generic auto-schema (no pre-DDL contract; verified by §14.7-CE DB↔API reconcile)")
                 continue
             try:
                 if table_name == "FredData":
                     self._probe_fred_contract()
-                else:
-                    self._probe_finmind_contract(table_name)
             except Exception as e:
                 self._record_contract("failed", table_name, f"{type(e).__name__}: {e}")
 

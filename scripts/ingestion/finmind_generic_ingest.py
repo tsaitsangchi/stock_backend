@@ -1,5 +1,5 @@
 """
-finmind_generic_ingest.py v0.1 (Generic Schema-Inferring FinMind Ingester · 任意 dataset 自動建表)
+finmind_generic_ingest.py v0.2 (Generic Schema-Inferring FinMind Ingester · 任意 dataset 自動建表)
 ================================================================================
 **最後更新日期**: 2026-06-08
 **主權狀態**: GENERIC AUTO-SCHEMA INGESTION(從 FinMind 回應自動推導欄位/型別 + 自動建表)+ 不需 DATASET_REGISTRY 預定義 + §一.10 source-traceable(全資料來自 FinMind API)+ 與核心 11 表嚴格路徑(sovereign_sync_engine + DATASET_REGISTRY)隔離並存
@@ -44,20 +44,22 @@ finmind_generic_ingest.py v0.1 (Generic Schema-Inferring FinMind Ingester · 任
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| v0.1 | 2026-06-08 | Claude | 首版:通用 auto-schema FinMind ingester(從回應推導型別 + 自動建表 + upsert);字串≥VARCHAR(100)/數字≥NUMERIC(20,6);與核心 11 表嚴格路徑隔離並存。對映用戶 directive「取消 DEFAULT_FINMIND_DATASETS 寫死清單,不要在此系統設限制」。 | **ACTIVE** |
+| v0.1 | 2026-06-08 | Claude | 首版:通用 auto-schema FinMind ingester(從回應推導型別 + 自動建表 + upsert);字串≥VARCHAR(100)/數字≥NUMERIC(20,6);與核心 11 表嚴格路徑隔離並存。對映用戶 directive「取消 DEFAULT_FINMIND_DATASETS 寫死清單,不要在此系統設限制」。 | SUPERSEDED |
+| v0.2 | 2026-06-08 | Claude | **去重至 §0.0-I 共用 SSOT**:infer_schema/detect_keys/ensure_table/upsert 移至 `core/generic_schema.py v1.0`,本檔改 `from core.generic_schema import ...`(不再持本地拷貝);commit 路徑改呼叫 `provision_and_upsert`(含 [Key Stability] 重用既有 PK + DATE 自動偵測 + NUMERIC 精確 cast 強化)。對映用戶 directive「全部的表都應是通用 ingester 建的」之共用機制提升。 | **ACTIVE** |
 """
 
 from __future__ import annotations
 import argparse
 import logging
 import os
-import re
 import sys
-from datetime import datetime
 
 import psycopg2
 import requests
-from psycopg2.extras import execute_values
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# §0.0-I 單一引用源:schema 推導/建表/upsert 共用 core.generic_schema(不在此檔複製)
+from core.generic_schema import infer_schema, detect_keys, provision_and_upsert  # noqa: E402
 
 try:
     from dotenv import load_dotenv
@@ -70,15 +72,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 FINMIND_URL = "https://api.finmindtrade.com/api/v4/data"
-MIN_VARCHAR = 100          # 用戶 directive:字串至少 VARCHAR(100)
-NUM_PRECISION_MIN = 20     # 用戶 directive:數字至少 NUMERIC(20,6)
-NUM_SCALE_MIN = 6
-TEXT_THRESHOLD = 4000      # 觀測字串超過此長度改用 TEXT
-# 主鍵候選欄(依優先序;挑出能唯一識別列之最小組合)
-KEY_CANDIDATES = ["stock_id", "securities_trader_id", "date", "Time", "time",
-                  "type", "name", "industry_category", "origin_name", "item"]
-# 強制字串欄(數值樣貌但屬識別碼,須保留前導零)
-FORCE_STR = {"stock_id", "securities_trader_id"}
 # Intraday / 日以下 dataset —— 本系統以「日」為最小單位,intraday raw 不進入(用戶 2026-06-08 directive)。
 # 此類 source 若有日級可用值(如 5 秒委託統計之收盤累積 → 每日大盤買均/賣均),須另以「日級 derive」儲存,
 # 不存 intraday raw。預設拒絕;--allow-intraday 為明示例外。
@@ -107,117 +100,6 @@ def fetch(dataset, data_id, start, end, token, date=None, securities_trader_id=N
     if j.get("status") != 200:
         raise RuntimeError(f"FinMind API status={j.get('status')} msg={j.get('msg')}")
     return j.get("data", [])
-
-
-_NUM_RE = re.compile(r"^-?\d+(\.\d+)?([eE][+-]?\d+)?$")
-
-
-def _is_num(v):
-    if isinstance(v, bool):
-        return False
-    if isinstance(v, (int, float)):
-        return True
-    if isinstance(v, str) and _NUM_RE.match(v.strip()):
-        return True
-    return False
-
-
-def _num_digits(v):
-    """回傳 (整數位數, 小數位數)。"""
-    s = repr(float(v)) if not isinstance(v, str) else v.strip()
-    if "e" in s.lower():
-        s = format(float(s), "f")
-    s = s.lstrip("-")
-    intp, _, decp = s.partition(".")
-    return len(intp.lstrip("0") or "0"), len(decp.rstrip("0"))
-
-
-def infer_schema(rows):
-    """回傳 {col: sql_type_str}。"""
-    cols = []
-    for r in rows:
-        for c in r.keys():
-            if c not in cols:
-                cols.append(c)
-    schema = {}
-    for c in cols:
-        vals = [r.get(c) for r in rows if r.get(c) is not None and r.get(c) != ""]
-        if c == "date":
-            schema[c] = "DATE"
-            continue
-        if c in ("Time", "time") or c in FORCE_STR:
-            maxlen = max((len(str(v)) for v in vals), default=0)
-            schema[c] = f"VARCHAR({max(MIN_VARCHAR, maxlen + 20)})"
-            continue
-        if vals and all(_is_num(v) for v in vals):
-            max_int = max_dec = 0
-            for v in vals:
-                i, d = _num_digits(v)
-                max_int = max(max_int, i); max_dec = max(max_dec, d)
-            scale = max(NUM_SCALE_MIN, min(max_dec, 12))
-            precision = max(NUM_PRECISION_MIN, max_int + scale + 4)
-            schema[c] = f"NUMERIC({precision},{scale})"
-        else:
-            maxlen = max((len(str(v)) for v in vals), default=0)
-            schema[c] = "TEXT" if maxlen > TEXT_THRESHOLD else f"VARCHAR({max(MIN_VARCHAR, maxlen + 20)})"
-    return schema
-
-
-def detect_keys(rows, schema):
-    """從候選欄貪婪挑出能唯一識別 sample 列之最小組合;不行則退回非空非 TEXT 欄。
-    PK 欄不可為 NULL → 只用「sample 中全部非空」之欄(nonnull)。"""
-    cols = list(schema.keys())
-    nonnull = {c for c in cols if all(r.get(c) not in (None, "") for r in rows)}
-    cands = [c for c in KEY_CANDIDATES if c in cols and c in nonnull]
-    chosen = []
-    for c in cands:
-        chosen.append(c)
-        seen = set(); uniq = True
-        for r in rows:
-            k = tuple(r.get(x) for x in chosen)
-            if k in seen:
-                uniq = False; break
-            seen.add(k)
-        if uniq:
-            return chosen
-    # fallback:非空 + 非 TEXT 欄(PK 不可空、不對 TEXT 建索引)
-    fb = [c for c in cols if c in nonnull and schema[c] != "TEXT"]
-    return fb or [c for c in cols if c in nonnull] or cols
-
-
-def ensure_table(cur, table, schema, keys):
-    coldefs = ", ".join(f'"{c}" {t}' for c, t in schema.items())
-    pk = ", ".join(f'"{c}"' for c in keys)
-    cur.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({coldefs}, '
-                f'CONSTRAINT "{table}_pk" PRIMARY KEY ({pk}))')
-    # 若表已存在但缺欄,補欄(idempotent 擴充)
-    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name=%s", (table,))
-    have = {r[0] for r in cur.fetchall()}
-    for c, t in schema.items():
-        if c not in have:
-            cur.execute(f'ALTER TABLE "{table}" ADD COLUMN "{c}" {t}')
-
-
-def upsert(cur, table, rows, schema, keys):
-    cols = list(schema.keys())
-    def conv(c, v):
-        if v is None or (isinstance(v, str) and v.strip().lower() in ("", "none", "null", "nan", "nat")):
-            return None
-        if schema[c].startswith("NUMERIC"):
-            try:
-                return float(v)
-            except Exception:
-                return None
-        return v
-    data = [tuple(conv(c, r.get(c)) for c in cols) for r in rows]
-    collist = ", ".join(f'"{c}"' for c in cols)
-    updates = ", ".join(f'"{c}"=EXCLUDED."{c}"' for c in cols if c not in keys)
-    conflict = ", ".join(f'"{c}"' for c in keys)
-    on_conflict = f"DO UPDATE SET {updates}" if updates else "DO NOTHING"
-    execute_values(cur,
-        f'INSERT INTO "{table}" ({collist}) VALUES %s '
-        f'ON CONFLICT ({conflict}) {on_conflict}', data, page_size=1000)
-    return len(data)
 
 
 def main():
@@ -266,10 +148,9 @@ def main():
                             password=os.getenv("DB_PASSWORD"))
     try:
         cur = conn.cursor()
-        ensure_table(cur, args.dataset, schema, keys)
-        n = upsert(cur, args.dataset, rows, schema, keys)
+        n, _schema, eff_keys = provision_and_upsert(cur, args.dataset, rows)
         conn.commit()
-        logger.info(f"  ✅ 已 upsert {n} 列 → 表 \"{args.dataset}\"")
+        logger.info(f"  ✅ 已 upsert {n} 列 → 表 \"{args.dataset}\"(主鍵={eff_keys})")
     except Exception as e:
         conn.rollback(); logger.error(f"  ❌ 失敗(已 rollback): {e}"); raise
     finally:

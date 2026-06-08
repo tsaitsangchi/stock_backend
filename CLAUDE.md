@@ -1105,6 +1105,24 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 **T_DI-8(56-dataset 補抓三步序列 + API 權威;2026-06-08 用戶 explicit「56 個可補的逐一檢核没問題後再建立對應 table 再抓,請寫入憲章」入憲)**:AI 補抓 FinMind 資料時,依逐一實證稽核(12 已抓/56 可補/10 intraday/1 tier-排除/FRED 0 缺),56 可補 dataset 必依**三步序列**:(a) **逐一檢核**(actual API probe 確認可存取 + 正確參數,per §一.9 非預估);(b) **建表**(generic ingester auto-schema,**名稱/欄位以 API 回應為權威**,§二 Step 2.5 + §14.7-CC/CE;**嚴禁文件 casing**[實證 FinMind 文件 `Taiwanstock` typo,API 為 `TaiwanStock`];字串≥VARCHAR(100)/數字≥NUMERIC(20,6));(c) **再抓**。**禁令**:抓 intraday(10)/ 抓 tier-排除之 `TaiwanStockTradingDailyReportSecIdAgg` / 用文件 casing / 讓補抓資料未過 §14.7-DC source-pure gate 即進特徵/選股。**honest scope(§一.8)**:56 補抓為 in-progress,完成狀態以實際 DB table+rows 為準(避免 AP-3)。**雙層治權鎖**:主憲章 §14.7-DI T_DI-8 + 本條同次。**【執行完成 2026-06-08,DB-verified】**:Taiwan 表 11→66(+55);✅54 已抓 / 🔁1 reclassify→intraday(VariousIndicators5Seconds 實為 5 秒)/ ❌**2 tier-restricted**(SecIdAgg + **WarrantTradingDailyReport**;精確化由 1→2,Warrant 執行時新發現)→ 54/55 fetchable 全落地;ingester 強化 `--date`/`--securities-trader-id`/None→NULL/可空欄不入 PK。
 
+### 22. Pure-Generic Ingestion 退役 DATASET_REGISTRY 白名單 + 通用 Ingester 資料表完整字典(§14.7-DJ / 2026-06-08 用戶 explicit directive 入憲)
+
+本條為主憲章 **§14.7-DJ** 之 CLAUDE.md 雙層治權鎖伙伴(同次入憲);主憲章 §14.7-DJ 為治權 SSOT(含完整資料字典 §二),本條為 AI 工具 enforcement。
+
+**1. Pure-Generic Build(T_DJ-1)**:FinMind 原始資料表一律 generic auto-schema(`core/generic_schema.py v1.0` + `sovereign_sync_engine._generic_ingest`);**禁止**任何「只認 N 註冊表」之 schema 白名單閘(原 `_align_to_schema` 對未註冊表 raise「憲章未定義表名」已移除);任意 FinMind dataset 皆可經 `--dataset X` 同步,正確性由 §14.7-CE DB↔API 對帳保證(非 pre-DDL 契約 probe)。
+
+**2. DB-Derived Schema SSOT(T_DJ-2/3)**:下游(builder/schema/audit)取 FinMind 表 schema 一律經 `data_schema.get_dataset_columns/get_dataset_keys`(查 DB `information_schema` = generic 所建),**不得**直接 index 退役之 `DATASET_REGISTRY[finmind_table]`。`DATASET_REGISTRY` 僅留 2 infra(`pipeline_execution_log`/`data_audit_log`)+ FredData(FRED local-derived key generic 不可推導,explicit-DDL 例外);**不得**擴張回 FinMind 表。
+
+**3. Data Dictionary Authority(T_DJ-4)**:通用 ingester 建之 **12 feature-input 表**(10 per-stock FinMind + TaiwanStockInfo 名冊 + FredData)完整字典已入主憲章 §14.7-DJ §二 + companion `reports/generic_ingester_data_dictionary_20260608.md`;column 定義權威 = **API 欄位名 + `origin_name`(中文,長表)+ DB-verified 型別/樣本**,非 AI 臆測(§一.10);型別由實際值推導(generic 自動加寬)。任何特徵須以本字典理解 raw 來源意義。
+
+**4. No-Hallucination Preserved(T_DJ-5)**:`audit_full_db_vs_api_reconcile v0.2` 改 DB-derived schema(`_table_spec`)仍 byte-level 對帳(實證 2330 PER 0 value_mismatch/0 extra_in_db);過窄 PK 之列丟失由 api_rows(raw)vs matched 落差浮現。
+
+**5. honest scope(§一.8)**:全市場全史 sync **為 in-progress**(本入憲時 seed + 2330 樣本 + 4 核心 FRED;FRED 24 series 後續全抓);字典記述**結構**(非 per-stock 全市場完整度);54 探索 extras 非特徵輸入,不在字典。揭露 generic 首跑 from-zero 之 `TaiwanStockInfo` 指數列 `date='None'` 致 `_is_null` 統一 bug 並修正。
+
+**雙層治權鎖**:主憲章 §14.7-DJ(T_DJ-1~5)+ 本條 §一.22 同次入憲(per T_DC-6);配套 `core/generic_schema.py v1.0` + `sovereign_sync_engine.py v1.24` + `data_schema.py v2.22` + `audit_full_db_vs_api_reconcile.py v0.2`(+ 3 稽核工具)。任一側更新另側未對齊 → 結構性 violation。
+
+**證據基礎(本條入憲)**:用戶 2026-06-08 explicit「**不應該存在所謂的 sync 引擎只認 11 註冊表(DATASET_REGISTRY),全部的表都應是通用 ingester 建的**」+ AskUserQuestion(「純通用·registry 完全退役」)+「**請列出...通用 ingester 建的...table...欄位...定義...完整且詳細的寫入憲章**」之直接入憲。source-traceable(§一.10):12 表欄位/型別 = DB `information_schema`(2330 樣本 sync 後);FinStmt 17 型 + BalanceSheet ~100 型 `origin_name` = FinMind API;FRED 24 series = `fetch_fred_data.DEFAULT_FRED_SERIES`。**precedent**:首次「pure-generic 退役 schema 白名單 + DB-derived schema SSOT + 資料字典入憲」。
+
 ---
 
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)

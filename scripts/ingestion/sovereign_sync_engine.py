@@ -1,8 +1,8 @@
 """
-sovereign_sync_engine.py v1.23 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation · §6.8.7 第 (5) 條 全市場增量維運)
+sovereign_sync_engine.py v1.24 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation · §6.8.7 第 (5) 條 全市場增量維運 · §14.7-DJ Pure-Generic Ingestion)
 ================================================================================
-**最後更新日期**: 2026-06-02
-**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版** + **§6.8.7 第 (5) 條 FULL-MARKET INCREMENTAL MAINTENANCE (v1.23：--incremental 抑制 auto-strict + 保留 §7.5 resume / --roster TaiwanStockInfo 全名冊解析；市場級一律留 audit)**；8 項標頭強制檢驗 100% 合規)
+**最後更新日期**: 2026-06-08
+**主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版** + **§6.8.7 第 (5) 條 FULL-MARKET INCREMENTAL MAINTENANCE (v1.23：--incremental 抑制 auto-strict + 保留 §7.5 resume / --roster TaiwanStockInfo 全名冊解析；市場級一律留 audit)** + **§14.7-DJ PURE-GENERIC INGESTION (v1.24：FinMind 原始表退役 DATASET_REGISTRY → generic auto-schema 自動建表;_generic_ingest + CORE_PIPELINE_DATASETS;任意 dataset 可同步)**；8 項標頭強制檢驗 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -56,7 +56,7 @@ sovereign_sync_engine.py v1.23 (Quantum Finance Market Universe Seed Engine · F
     （hub 屬 §3.2 橫切；本程式屬 §3.1 序列）。
     **v6.0.0-patch §14.7-AM（2026-05-21 入憲；同日雞與蛋缺陷補強為 4 步序列）關聯**：本程式為「從零 → 全市場全天數 + FRED 全歷史」**4 步序列**治權範本之**唯一執行載體**（Step 4 `--seed` → **Step 4B bootstrap_init `core_universe_builder --commit --special-rebalance-reason "..."`** → Step 4F `--universe full --all --special-full-market-reason "<≥12 字>"` → **Step 4B bootstrap_final** → Step 8 optional `--source fred`）；
     **⚠️ 雞與蛋缺陷實證**：本程式 `_resolve_stocks()` L767-776 之 `--universe full` 查詢 `core_universe_membership` committed snapshot，故**必須先執行 Step 4B bootstrap_init**（以 `latest_registry_fallback` mode 強制 commit）才能 Step 4F；本日實證揭露 → 同日入憲補強（首例「實證即補強」治權閉環）。
-    FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋**——`--universe full --all` 僅同步 `FINMIND_API_TABLES`（10 raw tables），不觸及 FRED；必須依 4 步序列執行（詳見 Group D + Group F + 治權範本子節）。
+    FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋**——`--universe full --all` 僅同步 `CORE_PIPELINE_DATASETS`（10 raw tables；generic auto-schema 自動建表），不觸及 FRED；必須依 4 步序列執行（詳見 Group D + Group F + 治權範本子節）。
     治權邊界：(a) §3.1 序列模組執行 ingestion；(b) 五套禁令（§0.1-A / §0.2-A / §0.3-A / §0.0-E.4 / §6.8）不涉；
     (c) **T1-T3 不分層**；(d) **§8.5 anti-leakage 不處理**（由 `audit_leakage.py` 負責）；
     (e) **不選股不評分**（由 `core_universe_builder.py` 負責）；(f) **不持有 Raw API Schema**（由 `data_schema.py` 持有）；
@@ -210,7 +210,7 @@ sovereign_sync_engine.py v1.23 (Quantum Finance Market Universe Seed Engine · F
 | **V. Step 8** (optional) | `python scripts/ingestion/sovereign_sync_engine.py --source fred` | FRED 4 序列 × 各自最早可得日期 → 今天（**無需 reason**；已被 Step I + III 自動觸發；獨立執行屬 idempotent）| **F** + H | §二 L2439 / §6.8.8 |
 
 **治權邊界 4 點**：
-- (a) FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋兩者**——`--universe full --all` 僅同步 `FINMIND_API_TABLES`（10 raw tables），不觸及 FRED；必須分別執行 Step 4F + Step 8
+- (a) FinMind 與 FRED 屬不同來源，**無單一指令可同時涵蓋兩者**——`--universe full --all` 僅同步 `CORE_PIPELINE_DATASETS`（10 raw tables；generic auto-schema），不觸及 FRED；必須分別執行 Step 4F + Step 8
 - (b) Step 4F 需 `--special-full-market-reason ≥ 12 字`；Step 8 無需 reason（FRED 全歷史屬預設行為）
 - (c) Step 4F 完成後依 §6.8.7-B 強制長跑持久化規範（`tmux` / `systemd-run --user`）與 30 分鐘監控回報
 - (d) Step 4F + Step 8 兩者完成後必須執行雙稽核（`audit_supply_chain.py` + `audit_api_schema_compliance.py --include-fred`）並留 `reports/full_market_sync_*.md` 實證
@@ -223,7 +223,8 @@ sovereign_sync_engine.py v1.23 (Quantum Finance Market Universe Seed Engine · F
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.23** | 2026-06-02 | Codex | **§6.8.7 第 (5) 條 全市場增量維運入憲對應之單程式升版（`--incremental` / `--roster`）**：依憲章 v6.1.0-patch §6.8.7 第 (5) 條（2026-06-02 入憲）落地「全市場增量維運」sanctioned 模式，補齊「全市場增量補近日缺口」在第 (4) 條全歷史例外之外原無 sanctioned 路徑之缺口（committed membership 僅 397 core + 730 quarantine、research/convex tier 空 → 第 (1) 條 tier-scoped 增量實際只達核心股）。**功能變更 5 點**：(a) argparse 新增 `--incremental`（store_true）+ `--roster`（store_true）；(b) main() preflight：`--universe full` 下若 `--incremental` present 則**抑制 v1.14 auto-strict-source-history**（保留 §7.5 resume + `start_date=today-days`），否則維持 v1.14 全歷史行為；reason 對增量模式**亦強制**（市場級一律留 audit）；(c) preflight 新增驗證 `--roster` 須與 `--incremental` 併用、`--incremental`/`--roster` 僅與 `--universe full` 併用；(d) `_resolve_stocks` 新增 `roster` 參數 + 分支：roster 時自 `TaiwanStockInfo` 全名冊（`get_db_stock_ids()` ~2,798）解析而非 committed membership；(e) `run()` 新增 `roster` 參數傳遞至 `_resolve_stocks`。**標頭變更**：(f) 副標 v1.22 → v1.23；(g) 主權狀態行補 v1.23 摘要；(h) 核心定義 16 → 17 條：新增 [§6.8.7 第 (5) 條 Full-Market Incremental Maintenance]；(i) Group D 新增 D.8 + 對應 CLI 補增量變體；(j) TOOL_VER v1.22 → v1.23；(k) 最後更新日期 2026-05-23 → 2026-06-02；(l) v1.22 SUPERSEDED + 新 v1.23 ACTIVE。**治權邊界嚴守**：第 (4) 條 `--universe full`（無 `--incremental`）行為**完全不變**（向後相容，零破壞）；`run()` 引擎核心 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / §7.4-A / §7.5 resume / verdict 邏輯**全不動**；僅 CLI preflight 加 `not incremental` 閘門 + `_resolve_stocks` roster 分支。**典型耗時誠實揭露**：membership ~1,127 ≈ ~2hr / roster ~2,798 ≈ ~5hr（call-bound 受 §7 5500/hr 節流；增量省資料量非 call 數），仍 ≥30min 長跑（§6.8.7-B + §一.12）。 | **ACTIVE** |
+| **v1.24** | 2026-06-08 | Claude | **§14.7-DJ Pure-Generic Ingestion 落地（退役 DATASET_REGISTRY FinMind schema 白名單）**：FinMind 原始資料表改 generic auto-schema（`core/generic_schema.py v1.0` 為 §0.0-I SSOT）。**功能變更**：(a) import 改 `from core.generic_schema import provision_and_upsert`、移除 `FINMIND_API_TABLES`（DATASET_REGISTRY 僅保留供 FredData）；(b) 新增 `_generic_ingest()` 方法（infer_schema → ensure_table[重用既有 PK] → upsert + 保留 §0.4 audit log）；(c) `sync_finmind` 改呼叫 `_generic_ingest`（不再經 `_align_to_schema`/`_upsert_to_db` registry 嚴格路徑，該路徑現僅服務 FredData）；(d) 新增 `CORE_PIPELINE_DATASETS`（10 表營運預設範圍，**非 schema 白名單**——任意 dataset 可經 `--dataset` 同步，generic 自動建表，無「憲章未定義表名」封鎖）；`_target_datasets(--all)` 改用之。**治權邊界嚴守**：§7 節流 / §7.3 退避 / §7.4-A 402 cascade / §7.5 resume / §7.6 配額 / FRED pagination（仍走 `_align_to_schema("FredData")` registry 路徑）/ UNIVERSE_TIERS / verdict 全不動。對映用戶 2026-06-08 directive「不應存在 sync 引擎只認 11 註冊表，全部的表都應是通用 ingester 建的」。同步配套：`data_schema.py`（退役 FinMind DATASET_REGISTRY 條目）+ 4 稽核工具改 DB/API 推導 + 主憲章 §14.7-DJ + CLAUDE.md。 | **ACTIVE** |
+| **v1.23** | 2026-06-02 | Codex | **§6.8.7 第 (5) 條 全市場增量維運入憲對應之單程式升版（`--incremental` / `--roster`）**：依憲章 v6.1.0-patch §6.8.7 第 (5) 條（2026-06-02 入憲）落地「全市場增量維運」sanctioned 模式，補齊「全市場增量補近日缺口」在第 (4) 條全歷史例外之外原無 sanctioned 路徑之缺口（committed membership 僅 397 core + 730 quarantine、research/convex tier 空 → 第 (1) 條 tier-scoped 增量實際只達核心股）。**功能變更 5 點**：(a) argparse 新增 `--incremental`（store_true）+ `--roster`（store_true）；(b) main() preflight：`--universe full` 下若 `--incremental` present 則**抑制 v1.14 auto-strict-source-history**（保留 §7.5 resume + `start_date=today-days`），否則維持 v1.14 全歷史行為；reason 對增量模式**亦強制**（市場級一律留 audit）；(c) preflight 新增驗證 `--roster` 須與 `--incremental` 併用、`--incremental`/`--roster` 僅與 `--universe full` 併用；(d) `_resolve_stocks` 新增 `roster` 參數 + 分支：roster 時自 `TaiwanStockInfo` 全名冊（`get_db_stock_ids()` ~2,798）解析而非 committed membership；(e) `run()` 新增 `roster` 參數傳遞至 `_resolve_stocks`。**標頭變更**：(f) 副標 v1.22 → v1.23；(g) 主權狀態行補 v1.23 摘要；(h) 核心定義 16 → 17 條：新增 [§6.8.7 第 (5) 條 Full-Market Incremental Maintenance]；(i) Group D 新增 D.8 + 對應 CLI 補增量變體；(j) TOOL_VER v1.22 → v1.23；(k) 最後更新日期 2026-05-23 → 2026-06-02；(l) v1.22 SUPERSEDED + 新 v1.23 ACTIVE。**治權邊界嚴守**：第 (4) 條 `--universe full`（無 `--incremental`）行為**完全不變**（向後相容，零破壞）；`run()` 引擎核心 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / §7.4-A / §7.5 resume / verdict 邏輯**全不動**；僅 CLI preflight 加 `not incremental` 閘門 + `_resolve_stocks` roster 分支。**典型耗時誠實揭露**：membership ~1,127 ≈ ~2hr / roster ~2,798 ≈ ~5hr（call-bound 受 §7 5500/hr 節流；增量省資料量非 call 數），仍 ≥30min 長跑（§6.8.7-B + §一.12）。 | SUPERSEDED |
 | **v1.22** | 2026-05-23 | Codex | **§7.4-A Multi-Worker 402 Cascade Mitigation 落地（憲章 v6.1.0 §7.4-A + §14.7-AU 入憲對應之單程式升版）**：依憲章 v6.1.0 §7.4-A（2026-05-23 入憲）落地 multi-worker 402 cascade 防護機制。**Root cause 實證**：2026-05-23 from-zero rebuild Step 4F (`--workers 4`) 揭露兩輪 402 cascade（stock 3388-3402 / stock 6715-6720），4 worker 各自進入 1800s sleep → CPU=0% 集體停擺 30 分 × 2 = ~60min 浪費（占 Step 4F 總耗 7h54m 之 ~13%）。**功能變更 7 點**：(a) 新增 `Paywall402Cascade(requests.HTTPError)` exception class；(b) 新增 `GLOBAL_402_COOLDOWN_BUFFER_SEC = 30` 模組常數；(c) `FinMindThrottle.__init__` 新增 `cascade_402_enabled` 參數（預設 True）+ `global_402_cooldown_until` / `cascade_402_skipped` / `cascade_402_triggers` 屬性；(d) 新增 `set_402_cooldown(duration_seconds=1800)` 方法 + `_check_402_cooldown_unlocked()` 方法；(e) `acquire()` 進入 lock 後第一行 check cool-down（unlocked，呼叫者已持鎖）；(f) `fetch_with_retry()` 於 402 retry 時呼叫 `set_402_cooldown(wait)` + permanent 402 raise 前也呼叫 `set_402_cooldown(RETRY_BACKOFF_402[0])`；(g) `sync_finmind` 加 `except Paywall402Cascade:` 分支 `mark_skipped` + 寫 `data_audit_log` op_type=`CASCADE_402_SKIPPED`。**SovereignSyncEngine.__init__** 新增 `cascade_402_enabled` 參數傳遞至 FinMindThrottle。**CLI 新增 flag**：`--disable-402-cascade-mitigation`（預設 false；true=回退 v1.21 per-worker × 1800s 行為，除錯/對齊 v1.21 audit 用）。**report_results 新增**：`§7.4-A 402 Cascade Mitigation : enabled=... / triggers=... / cascade_skipped=...` 統計行。**標頭變更**：(h) 副標補入「§7.4-A Multi-Worker 402 Cascade Mitigation 落地」；(i) 主權狀態行補入 §7.4-A v1.22 落地 + 憲法 v6.0.0-FINAL → v6.1.0；(j) 核心定義 15 條 → 16 條：新增 [§7.4-A Multi-Worker 402 Cascade Mitigation] (v1.22)；(k) TOOL_VER v1.21 → v1.22 + CONSTITUTION_VER v6.0.0 → v6.1.0；(l) 最後更新日期 2026-05-22 → 2026-05-23；(m) v1.21 SUPERSEDED + 新 v1.22 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` / `--strict-source-history` / `--full-history` / `--special-full-market-reason` 語意**不變**；§7.4 既有 single-retry 精神保留（per-worker 仍只 retry 一次）；§7.3 三階段退避不變；single worker (`--workers 1`) 行為與 v1.21 完全相同（cool-down 仍會設但無 sibling worker 撞）；**不**改 schema、upsert 邏輯、§7.6 A1-A5 行為、§6.8.7 第 (4) 條治理例外、§14.7-AP §7.5 strict resume mode、§14.7-AM 4 步序列範本。**對應憲章 v6.0.0 → v6.1.0 升版**：本程式為 §14.7-AU 預備 7 程式之首個落地（per `reports/系統架構大憲章_v6.1.0.md` §14.7-AU C 表）。**§0.0-G 第 19 次跑通延伸落地**（首次落地式跑通，前 18 次為治權契約入憲）。 | SUPERSEDED |
 | v1.21 | 2026-05-22 | Codex | **§14.7-AP §7.5 升級配套落地：strict resume mode (DB max_date ≥ today-N days)**：依憲章 v6.0.0-patch §6.8.8-C + §7.5 升級註記 + §14.7-AP（commit `4d990d0`；2026-05-22 入憲）將 §7.5 L3 DB-driven resume 從 v1.10/v1.20 之「DB 有 ≥ start_date 任一筆即跳過」過度積極判定，升級為「**DB max_date ≥ (today - resume_drift_tolerance days) 才跳過**」嚴格判定，自動消解 partial DB 漏抓 trade-off。**功能變更 5 點**：(a) 新增 `RESUME_DRIFT_TOLERANCE_DEFAULT = 3` 模組常數；(b) `SovereignSyncEngine.__init__` 新增 `resume_drift_tolerance` 參數；(c) `is_already_synced()` 邏輯改查 `MAX(date)` + cutoff = today - N days；(d) CLI 新增 `--resume-drift-tolerance N` flag（預設 3，0 = 嚴格只跳今天）；(e) `report_results()` 印出 drift_tolerance + skipped 訊息改為「DB max_date ≥ today-Nd」。**標頭變更**：(f) 副標補入「§14.7-AP §7.5 Strict Resume Mode + §6.8.8-C 升級配套落地」；(g) 主權狀態行補入「§14.7-AP §7.5 STRICT RESUME MODE」+ 「§6.8.8-C audit 時點漂移容忍」+ §14.7-AP 治權閉環延伸；(h) 核心定義 14 條 → 15 條：新增 [§7.5 Strict Resume Mode] (v1.21)；(i) Group G G.3 升級描述 + 新增 G.3a `--resume-drift-tolerance N`；(j) 對應 CLI 補入新 flag；(k) TOOL_VER v1.20 → v1.21；(l) 最後更新日期 2026-05-21 → 2026-05-22；(m) v1.20 SUPERSEDED + 新 v1.21 ACTIVE entry。**治權邊界嚴守**：所有既有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯**全保留**；`--no-resume` 與 `--strict-source-history` 之 resume 停用語意**不變**；strict mode 僅改判定條件，不改 schema、upsert 或 §7.6 A1-A5 行為。**對應 audit_source_availability v0.2 之 TIME_DRIFT_OK 雙向治權閉環**：audit 側容忍時間漂移 + sync 側日常增量自動消解；雙修並進完成 §14.7-AP 完整治權閉環。**§0.0-G 第 14 次跑通延伸實證**（首例「§14.7-AO 治權閉環完成後當日延伸至 audit_source_availability 雙源比對 → 揭露時間漂移 → 雙修並進落地」）。 | SUPERSEDED |
 | v1.20 | 2026-05-21 | Codex | **§14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + cross-ref 第 3 次校準（16 處）**：依憲章 v6.0.0-patch §14.7-AM 雞與蛋缺陷補強（commit `fea89bf`；2026-05-21 入憲）將「從零 → 全市場全天數」**3 步序列 → 4 步序列**之治權正解寫入標頭。**補正內容 8 項**：(a) L2 header v1.19 → v1.20 + 副標補入「§14.7-AM 雞與蛋缺陷補強：4 步序列 + Cross-ref Calibration #3」；(b) L5 主權狀態補入 v1.20 修補摘要（含 3 次行號校準累計）；(c) [Sovereignty Declaration] 補入「§14.7-AM 雞與蛋缺陷實證 + 4 步序列治權範本」關聯 + 雞與蛋實證明文（`_resolve_stocks()` L767-776 查詢 committed snapshot 之 chicken-and-egg）；(d) Group D 新增 D.6 「4 步序列之第 III 步」+ D.7 「⚠️ 雞與蛋 precondition」兩條目；(e) 治權範本 sub-section **3 步序列 (I/II/III) → 4 步序列 (I/II/III/IV) + V optional**：新增 Step 4B bootstrap_init (II) + Step 4B bootstrap_final (IV) 兩個外部 core_universe_builder 階段；(f) 16 處 cross-ref 行號 +1 校準（憲章 v6.0.0-patch §14.7-AM 補強 commit `fea89bf` 之修訂歷程頂部 +1 entry 造成）；(g) TOOL_VER v1.19 → v1.20；(h) 修訂歷程 v1.19 → SUPERSEDED + 新 v1.20 ACTIVE entry。**介面零變動**：所有 CLI flag / preflight 邏輯 / UNIVERSE_TIERS / 節流 / 退避 / FRED pagination / verdict 邏輯全保留；本程式自身**不處理 bootstrap commit**（屬 `core_universe_builder.py` v0.2 之 `--special-rebalance-reason` + `latest_registry_fallback` mode 治權）。**本日第 3 次治權邊界相對性循環實證**：v1.16→v1.17（§14.7-AL 10 處）→ v1.18→v1.19（§14.7-AM #1 15 處 + 雙 ACTIVE 修正）→ v1.20（§14.7-AM 雞與蛋補強 16 處）；累計 41 處校準 + 1 治權違規修正 + 4 步序列治權範本明文化；對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
@@ -271,7 +272,8 @@ try:
         write_data_audit_log,
         get_core_stocks_from_db,
     )
-    from core.data_schema import DATASET_REGISTRY, FINMIND_API_TABLES
+    from core.data_schema import DATASET_REGISTRY, get_dataset_columns  # 僅 FredData + infra 仍持明確 schema
+    from core.generic_schema import provision_and_upsert  # §0.0-I FinMind 通用自動建表 SSOT
     from core.finmind_client import FinMindClient
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
@@ -279,7 +281,7 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v1.23"
+TOOL_VER = "v1.24"
 
 # v1.21 §7.5 升級配套（§6.8.8-C / §14.7-AP 入憲；2026-05-22）
 # L3 resume 升級為「DB max_date >= (today - N days) 才跳過」嚴格判定；
@@ -493,6 +495,22 @@ class SovereignSyncEngine:
         "TaiwanStockMarginPurchaseShortSale",
         "TaiwanStockPER",
     ]
+    # §14.7-DJ (pure-generic):核心特徵 pipeline 之預設 dataset 範圍(`--all` 全市場用)。
+    # ⚠️ 此為「營運預設範圍」非 schema 白名單 —— 任意 FinMind dataset 皆可經 `--dataset X`
+    # 直接同步(generic auto-schema 自動建表,不需預註冊;退役 DATASET_REGISTRY 後無「未定義表名」封鎖)。
+    # 本清單僅定義例行 feature pipeline 之抓取對象(10 張餵特徵庫之原始資料表)。
+    CORE_PIPELINE_DATASETS = [
+        "TaiwanStockPrice",
+        "TaiwanStockPriceAdj",
+        "TaiwanStockPER",
+        "TaiwanStockInstitutionalInvestorsBuySell",
+        "TaiwanStockMarginPurchaseShortSale",
+        "TaiwanStockShareholding",
+        "TaiwanStockFinancialStatements",
+        "TaiwanStockBalanceSheet",
+        "TaiwanStockMonthRevenue",
+        "TaiwanStockDividend",
+    ]
 
     def __init__(self, throttle_per_hour=DEFAULT_THROTTLE_PER_HOUR, resume_enabled=True,
                  workers=1, dataset_batched=False, dynamic_quota=False,
@@ -599,10 +617,9 @@ class SovereignSyncEngine:
             return False
         if not stock_id:
             return False
-        config = DATASET_REGISTRY.get(dataset_name)
-        if not config:
-            return False
-        columns = config.get("columns", {})
+        # §14.7-DJ:改 get_dataset_columns(infra+FRED 用宣告;FinMind generic 表查 DB information_schema);
+        # 表尚未建立(空 DB 首股)→ {} → 視為未同步(return False)→ 正常進 sync 建表。
+        columns = get_dataset_columns(dataset_name)
         if "stock_id" not in columns or "date" not in columns:
             return False
 
@@ -788,6 +805,28 @@ class SovereignSyncEngine:
             cur.close()
             conn.close()
 
+    def _generic_ingest(self, table, data_rows):
+        """§14.7-DJ (pure-generic):任意 FinMind dataset → generic auto-schema 自動建表 + 冪等 upsert。
+        委派 core.generic_schema.provision_and_upsert(infer_schema → ensure_table[重用既有 PK] → upsert);
+        保留 §0.4 audit log 寫入。回傳寫入列數。FRED/infra 表不走此路徑(仍由 _upsert_to_db / 明確 DDL)。"""
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            rows, _schema, _keys = provision_and_upsert(cur, table, data_rows)
+            conn.commit()
+            try:
+                audit_date = data_rows[0].get("date", datetime.now().date()) if data_rows else datetime.now().date()
+                write_data_audit_log(table, "SYNC", audit_date, "UPSERT", rows)
+            except Exception:
+                pass
+            return rows
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cur.close()
+            conn.close()
+
     # ---------- v1.10 重寫的 sync_finmind ----------
 
     def sync_finmind(self, stock_id, dataset_name, start_date):
@@ -816,14 +855,15 @@ class SovereignSyncEngine:
                 self._detail("warning", f"{dataset_name} ({stock_id or 'MARKET'}): API 回傳 0 筆")
                 return
 
-            df = self._align_to_schema(dataset_name, pd.DataFrame(data))
-            rows = self._upsert_to_db(dataset_name, df)
+            # §14.7-DJ (pure-generic):FinMind 原始資料表改 generic auto-schema(自動建表 + 重用既有 PK)
+            # 取代退役之 DATASET_REGISTRY `_align_to_schema`/`_upsert_to_db` 嚴格路徑(該路徑現僅服務 FredData)。
+            rows = self._generic_ingest(dataset_name, data)
             self._add_rows(rows)
 
             if recovered_402:
                 # §7.4: 寫入 audit log 標籤
                 try:
-                    audit_date = df.iloc[0].get("date", datetime.now().date()) if hasattr(df.iloc[0], "get") else datetime.now().date()
+                    audit_date = data[0].get("date", datetime.now().date()) if data else datetime.now().date()
                     write_data_audit_log(dataset_name, "SYNC", audit_date, "RETRY_402_RECOVERED", rows)
                 except Exception:
                     pass
@@ -919,7 +959,7 @@ class SovereignSyncEngine:
         if dataset:
             return [dataset]
         if all_datasets:
-            return [name for name in FINMIND_API_TABLES if name != "TaiwanStockInfo"]
+            return list(self.CORE_PIPELINE_DATASETS)
         return self.DEFAULT_FINMIND_DATASETS
 
     def _apply_lifecycle_verdict(self, lifecycle):
@@ -1108,7 +1148,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", action="store_true",
                         help="種子灌溉模式（同步 TaiwanStockInfo 全市場資產名冊）")
     parser.add_argument("--all", action="store_true",
-                        help="使用 FINMIND_API_TABLES 全表 (除 TaiwanStockInfo) 取代 DEFAULT_FINMIND_DATASETS")
+                        help="使用 CORE_PIPELINE_DATASETS 核心特徵 pipeline 10 表取代 DEFAULT_FINMIND_DATASETS（generic auto-schema 自動建表；非 schema 白名單，任意 dataset 可經 --dataset 同步）")
     parser.add_argument("--days", type=int, default=30,
                         help="同步天數 (預設 30；選股 phase 建議 730)")
     # v1.10 新增（非破壞性）

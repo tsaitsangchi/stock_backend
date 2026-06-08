@@ -61,7 +61,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
-    from core.data_schema import DATASET_REGISTRY
+    from core.data_schema import DATASET_REGISTRY, get_dataset_columns  # §14.7-DJ:FinMind raw 型別改查 DB
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
@@ -385,7 +385,7 @@ class CoreUniverseSchemaManager:
                 continue
             for derived_col, (raw_table, raw_col) in mappings.items():
                 derived_type = table_config["columns"].get(derived_col)
-                raw_type = DATASET_REGISTRY.get(raw_table, {}).get("columns", {}).get(raw_col)
+                raw_type = get_dataset_columns(raw_table).get(raw_col)  # §14.7-DJ:FinMind 表查 DB information_schema
                 if not derived_type:
                     self._preflight_detail("failed", f"{table_name}.{derived_col} missing; expected to inherit {raw_table}.{raw_col}")
                     continue

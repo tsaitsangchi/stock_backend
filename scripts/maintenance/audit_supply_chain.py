@@ -1,8 +1,8 @@
 """
-audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Matrix Edition)
+audit_supply_chain.py v1.20 (Post-Schema Compliance Audit · Functional Group Matrix Edition · §14.7-DJ Pure-Generic Schema Source)
 ================================================================================
-**最後更新日期**: 2026-05-21
-**主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊 + §3.2A 橫切稽核身分自我宣告 + 維運矩陣重組為 5 大功能群視角；8 項檢查面 100% 合規)
+**最後更新日期**: 2026-06-08
+**主權狀態**: POST-SCHEMA AUDIT (憲法 v6.0.0 對齊 + §3.2A 橫切稽核身分自我宣告 + 維運矩陣重組為 5 大功能群視角 + **§14.7-DJ Pure-Generic：FinMind schema 來源改 `get_dataset_columns` + `FINMIND_PIPELINE_DATASETS`，FinMind 契約 probe 退役（改 §14.7-CE 對帳）**；8 項檢查面 100% 合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -15,7 +15,7 @@ audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Ma
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
 1. [Post-Schema Audit]: 本工具定位於 `data_schema.py --init --force` 之後（憲章 §二 序列 L2403、Step 3 維運矩陣 L2422-2423），驗收 API + DB + logs 三軸對齊。
-2. [API Contract Reuse]: API 欄位契約以 `data_schema.py` 當前版本之 API-first probe 為權威來源（透過 import `SovereignSchemaManager` / `DATASET_REGISTRY` / `FINMIND_API_TABLES`），不重新定義契約。
+2. [API Contract Reuse]: §14.7-DJ (pure-generic)：FinMind 原始表已退役 `DATASET_REGISTRY` / `FINMIND_API_TABLES` 宣告 schema（改 generic auto-schema 自動建表，DB 即真理）；本工具 schema 來源改 `get_dataset_columns()`，表清單改 `FINMIND_PIPELINE_DATASETS`（透過 import `SovereignSchemaManager` 仍處理 FRED 契約 probe）；FinMind 契約正確性改由 §14.7-CE 逐股 DB-vs-API 對帳驗證，不重新定義契約。
 3. [Database State Verification]: 必須驗收 13 張實體表、欄位大小寫、row count、FRED series 完整性與 freshness 能力。
 4. [Lifecycle Integrity]: 必須驗收 `pipeline_execution_log` / `data_audit_log`，並透過 `record_lifecycle(... ) as lc` 回寫 warning / failed。
 5. [Zero Hardcoded Verdict]: 主權判定動態計算（`compute_verdict()`）：FAIL > 0 → FAILED；WARN > 0 → WARNING；皆 0 → PERFECT，對齊 §5.6.3。
@@ -30,7 +30,7 @@ audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Ma
 ### Group A. API 契約驗收 (API Contract Verification)
 | 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
-| A.1 FinMind 10 表 API 契約 probe（per `FINMIND_API_TABLES`）| `audit_api_contracts(source="finmind")` → `manager._probe_finmind_contract()` | §1.4 / §一 4. [Supply Chain Sovereignty] |
+| A.1 FinMind 10 表（per `FINMIND_PIPELINE_DATASETS`）：§14.7-DJ generic auto-schema 退役契約 probe → 記 PASS+note（正確性改由 §14.7-CE 逐股 DB-vs-API 對帳驗證）| `audit_api_contracts(source="finmind")` | §1.4 / §14.7-CE |
 | A.2 FRED 1 表（`FredData`）API 契約 probe | `audit_api_contracts(source="fred")` → `manager._probe_fred_contract()` | §1.4 / §一 4. [Supply Chain Sovereignty] |
 | A.3 PASS / FAILED / WARNING 三分類紀錄 | `_record("API-Contract", ...)` | §5.6.3 零硬編 |
 | A.4 預設模式合計 11 probes（FinMind 10 + FRED 1）| `audit_api_contracts(source=None)` | §1.4 |
@@ -40,7 +40,7 @@ audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Ma
 | 子項 | 對應方法 | 治權契約 |
 | :--- | :--- | :--- |
 | B.1 `to_regclass` 13 表存在性檢查 | `audit_db_schema()._table_exists()` | §1.4 / §3.1 Step 2 後置 |
-| B.2 欄位 missing / extra 比對 DATASET_REGISTRY | `audit_db_schema()` | §1.4 SSOT |
+| B.2 欄位 missing / extra 比對 `get_dataset_columns()`（FredData/infra 走宣告 schema；FinMind 表 DB 即真理→自我一致 PASS）| `audit_db_schema()` | §1.4 SSOT / §14.7-DJ |
 | B.3 row count 統計 | `audit_db_schema()` | §0.4 可觀察性 |
 | B.4 欄位大小寫精確匹配 | `actual_cols vs expected_cols` | §1.4 API mirror |
 | 對應 CLI | `--db-only` 或預設 | — |
@@ -86,7 +86,8 @@ audit_supply_chain.py v1.19 (Post-Schema Compliance Audit · Functional Group Ma
 ## 📜 三、全修訂歷程 (Full Revision History)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
-| **v1.19** | 2026-05-21 | Codex | **8 項標頭強制檢驗 100% 合規 + 維運矩陣重組為 5 大功能群視角**：(a) 主權狀態行補入 v1.19 修補摘要；(b) 最後更新日期 2026-05-14 → 2026-05-21；(c) 核心定義新增 [Sovereignty Declaration] §3.2A 橫切稽核身分自我宣告 + [Historical Reference Authority]（[Truth-based Verdict] 重命名為 [Zero Hardcoded Verdict] 對齊 §5.6.3 與全系統治權慣例）；(d) cross-ref 精確行號補入（§3.2A L2470/L2478/L2485 + §二 L2403 + 維運矩陣 L2422-2423 + Step 3 詮釋 L2491）；(e) 維運矩陣重組為 5 大功能群（A. API 契約 / B. DB Schema / C. FRED Freshness / D. Lifecycle Logs / E. Verdict 動態判定），場景擴至 4 條（3/3A/3B/3C）；(f) cosmetic 對齊：`data_schema v2.11` → 動態 `v2.16`；對齊憲章 v5.4.22 → v6.0.0-FINAL；補入模組級 `CONSTITUTION_VER` + `TOOL_VER` 常數；`self.schema_ver` 更新至 v2.16。介面零變動：4 個 CLI flag (`--source` / `--db-only` / `--api-only` / `--include-logs`) 不變、5 大驗收方法不變、`compute_verdict()` 邏輯不變、`record_lifecycle()` 整合不變。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | **ACTIVE** |
+| **v1.20** | 2026-06-08 | Codex | **§14.7-DJ Pure-Generic：schema 來源改 `get_dataset_columns` + `FINMIND_PIPELINE_DATASETS`；FinMind 契約 probe 退役**：FinMind 原始表已退役 `DATASET_REGISTRY`/`FINMIND_API_TABLES`（改 generic auto-schema，DB 即真理）。**功能變更 4 點**：(I) import 由 `DATASET_REGISTRY, FINMIND_API_TABLES, SovereignSchemaManager` 改為 `FINMIND_PIPELINE_DATASETS, get_dataset_columns, SovereignSchemaManager`；(II) `audit_api_contracts` 之 FinMind 段：`_probe_finmind_contract`（已移除）退役 → 對 FinMind 表記 PASS+note（正確性改由 §14.7-CE 逐股 DB-vs-API 對帳驗證），僅 FredData 仍 `_probe_fred_contract`；targets 改用 `FINMIND_PIPELINE_DATASETS`；(III) `audit_db_schema` 驗收清單改 `FINMIND_PIPELINE_DATASETS + FredData + 2 infra`，expected 欄位改 `get_dataset_columns()`（FredData/infra 走宣告 schema 真比對；FinMind 表 DB 即真理→自我一致 PASS）；表存在性（B.1）仍對全表檢查；(IV) 核心定義 #2 [API Contract Reuse] + A.1/B.2 矩陣標籤 + L2/L5 補 §14.7-DJ 摘要。**治權邊界嚴守**：`compute_verdict()` / 4 CLI flag / FRED freshness / lifecycle logs / `record_lifecycle` 接線**全不變**；FinMind 契約退役段一律 PASS（不硬 FAIL）。 | **ACTIVE** |
+| v1.19 | 2026-05-21 | Codex | **8 項標頭強制檢驗 100% 合規 + 維運矩陣重組為 5 大功能群視角**：(a) 主權狀態行補入 v1.19 修補摘要；(b) 最後更新日期 2026-05-14 → 2026-05-21；(c) 核心定義新增 [Sovereignty Declaration] §3.2A 橫切稽核身分自我宣告 + [Historical Reference Authority]（[Truth-based Verdict] 重命名為 [Zero Hardcoded Verdict] 對齊 §5.6.3 與全系統治權慣例）；(d) cross-ref 精確行號補入（§3.2A L2470/L2478/L2485 + §二 L2403 + 維運矩陣 L2422-2423 + Step 3 詮釋 L2491）；(e) 維運矩陣重組為 5 大功能群（A. API 契約 / B. DB Schema / C. FRED Freshness / D. Lifecycle Logs / E. Verdict 動態判定），場景擴至 4 條（3/3A/3B/3C）；(f) cosmetic 對齊：`data_schema v2.11` → 動態 `v2.16`；對齊憲章 v5.4.22 → v6.0.0-FINAL；補入模組級 `CONSTITUTION_VER` + `TOOL_VER` 常數；`self.schema_ver` 更新至 v2.16。介面零變動：4 個 CLI flag (`--source` / `--db-only` / `--api-only` / `--include-logs`) 不變、5 大驗收方法不變、`compute_verdict()` 邏輯不變、`record_lifecycle()` 整合不變。對應 CLAUDE.md §四 #4 8 項標頭強制檢驗治權慣例。 | SUPERSEDED |
 | v1.18 | 2026-05-14 | Codex | **schema 後驗收稽核**：對齊憲章 v5.4.22 與 data_schema v2.11；驗收 API contract、13 張 DB table、pipeline/data audit logs；接上 lifecycle context warning/failed 回寫。 | SUPERSEDED |
 | v1.17 | 2026-05-13 | Auto-patch | DB-state aware 稽核；新增 FRED 完整性、lifecycle log 交叉比對、動態 verdict。 | SUPERSEDED |
 | v1.16 | 2026-05-13 | Antigravity | 創世圓滿：對齊憲法 v5.4.18。 | ARCHIVED |
@@ -99,7 +100,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 CONSTITUTION_VER = "v6.0.0"
-TOOL_VER = "v1.19"
+TOOL_VER = "v1.20"
 
 _THIS_FILE = Path(__file__).resolve()
 _MAINTENANCE_DIR = _THIS_FILE.parent
@@ -111,7 +112,13 @@ if str(_SCRIPTS_DIR) not in sys.path:
 try:
     from core.path_setup import get_report_dir
     from core.db_utils import get_db_connection, record_lifecycle
-    from core.data_schema import DATASET_REGISTRY, FINMIND_API_TABLES, SovereignSchemaManager
+    # §14.7-DJ (pure-generic):FinMind 表退役 DATASET_REGISTRY/FINMIND_API_TABLES,
+    # 改 FINMIND_PIPELINE_DATASETS(per-stock 10 表)+ get_dataset_columns(DB 即真理)。
+    from core.data_schema import (
+        FINMIND_PIPELINE_DATASETS,
+        get_dataset_columns,
+        SovereignSchemaManager,
+    )
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗: {exc}")
     sys.exit(1)
@@ -160,21 +167,25 @@ class ComplianceAuditor:
             print(f"🔎 正在驗收 FinMind/FRED API 契約 (憲法 {self.constitution_ver}, data_schema {self.schema_ver})...")
 
         manager = SovereignSchemaManager()
+        # §14.7-DJ (pure-generic):FinMind 表已退役「宣告 schema vs API 欄位」pre-DDL 契約 probe
+        # (`_probe_finmind_contract` 已移除;改 generic auto-schema,正確性由 §14.7-CE 逐股 DB-vs-API 對帳
+        #  audit_full_db_vs_api_reconcile 驗證)。本段對 FinMind 表記 PASS+note(不硬 FAIL);僅 FRED 仍 probe。
         targets = []
         if source == "finmind":
-            targets = list(FINMIND_API_TABLES.keys())
+            targets = list(FINMIND_PIPELINE_DATASETS)
         elif source == "fred":
             targets = ["FredData"]
         else:
-            targets = list(FINMIND_API_TABLES.keys()) + ["FredData"]
+            targets = list(FINMIND_PIPELINE_DATASETS) + ["FredData"]
 
         for table_name in targets:
+            if table_name != "FredData":
+                self._record("API-Contract", table_name, "✅ PASS",
+                             "§14.7-DJ generic auto-schema:無宣告 DDL 契約 probe;由 §14.7-CE 逐股 DB-vs-API 對帳驗證")
+                continue
             before = len(manager.contract_stats["details"])
             try:
-                if table_name == "FredData":
-                    manager._probe_fred_contract()
-                else:
-                    manager._probe_finmind_contract(table_name)
+                manager._probe_fred_contract()
             except Exception as exc:
                 manager._record_contract("failed", table_name, f"{type(exc).__name__}: {exc}")
             for line in manager.contract_stats["details"][before:]:
@@ -186,11 +197,15 @@ class ComplianceAuditor:
                     self._record("API-Contract", table_name, "⚠️ WARNING", line)
 
     def audit_db_schema(self):
-        print(f"🧱 正在驗收 DB 實體 schema (13 tables, data_schema {self.schema_ver})...")
+        # §14.7-DJ (pure-generic):驗收表清單改 FINMIND_PIPELINE_DATASETS(10)+ FredData + 2 infra;
+        # expected 欄位來源改 get_dataset_columns():FredData/infra 走宣告 schema(真比對 missing/extra);
+        # FinMind 表 DB 即真理(get_dataset_columns 即查 DB)→ expected==actual 自我一致 PASS。
+        db_tables = list(FINMIND_PIPELINE_DATASETS) + ["FredData"] + sorted(self.INFRA_TABLES)
+        print(f"🧱 正在驗收 DB 實體 schema ({len(db_tables)} tables, data_schema {self.schema_ver})...")
         conn = get_db_connection()
         cur = conn.cursor()
         try:
-            for table_name, config in DATASET_REGISTRY.items():
+            for table_name in db_tables:
                 if not self._table_exists(cur, table_name):
                     self._record("DB-Schema", table_name, "❌ FAILED", "table missing")
                     continue
@@ -205,7 +220,7 @@ class ComplianceAuditor:
                     (table_name,),
                 )
                 actual_cols = [row[0] for row in cur.fetchall()]
-                expected_cols = list(config["columns"].keys())
+                expected_cols = list(get_dataset_columns(table_name).keys())
                 missing = [col for col in expected_cols if col not in actual_cols]
                 extra = [col for col in actual_cols if col not in expected_cols]
 

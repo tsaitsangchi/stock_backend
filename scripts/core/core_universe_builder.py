@@ -97,7 +97,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
-    from core.data_schema import DATASET_REGISTRY, build_publication_date_gate
+    from core.data_schema import DATASET_REGISTRY, build_publication_date_gate, get_dataset_columns  # §14.7-DJ
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
@@ -426,7 +426,8 @@ class CoreUniverseBuilder:
         )
 
     def _table_profile(self, cur, table_name):
-        registry_columns = DATASET_REGISTRY.get(table_name, {}).get("columns", {})
+        # §14.7-DJ:FinMind 表退役 DATASET_REGISTRY → 改 get_dataset_columns(查 DB information_schema)
+        registry_columns = get_dataset_columns(table_name)
         has_stock = "stock_id" in registry_columns
         has_series = "series_id" in registry_columns
         cur.execute(
