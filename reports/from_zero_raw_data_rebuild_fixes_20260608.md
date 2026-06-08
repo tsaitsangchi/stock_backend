@@ -44,6 +44,16 @@
 - **釐清**：`max_connections=100`、實際僅 **10 連線**(非耗盡);sync workers=4 高頻開關連線 → 新連線間歇被拒(15× retry 才連上)。**sync 自身連線正常、健康寫入**。
 - **修法（監看腳本,非 production）**：進度改 **log 解析**(`/tmp/fullsync_*.log` 之 `FinMind: <stock> / <dataset>` 行 → 當前 dataset + 已完成 distinct 股數)為主,DB rows 改 best-effort 12× retry。
 
+### 問題 6：全量 sync 期間 FinMind 速率節流之 burst→cooldown 循環（實跑觀察,2026-06-09）
+- **現象**：`--workers 4 --dynamic-quota` 高速衝刺 → 約 10-30 分鐘內填滿 FinMind ~6000/hr 滑動視窗 → 進入 **~33 分鐘 cooldown**(進程 `STAT=S` 受控 `time.sleep`、cpu 0%、log 靜止;**非卡死、非失敗**)→ 視窗內早期 call 老化釋放後**自動恢復** → 重複。
+- **實證(source = 5-min HB `log_idle` + log 行)**：
+  - cooldown1 ~33min:dataset 2 `TaiwanStockPriceAdj` 卡股 8121,`idle` 爬至 ~1850s+ 後恢復。
+  - cooldown2 ~33min:dataset 4 `TaiwanStockInstitutionalInvestorsBuySell` 卡股 2384(last=7711),`idle` 爬至 ~1971s 後於 ~02:01 恢復 → 越過卡點續抓 2384→2592 → dataset 4 完成 → 進 dataset 5。
+- **根因**:`dynamic-quota` + `workers=4` 之 burst vs FinMind ~6000/hr 上限;burst 先衝滿視窗、再等老化。
+- **評估(§一.10 誠實)**:完成總時間**受 FinMind ~6000/hr 上限約束**,burst-vs-穩定跑 ~相同(burst 不會更快,只是先衝再等);cooldown 為 §7.x 受控暫停(非 crash);**riding 策略每次都自恢復**(cooldown1/2 皆然,無需重啟)。
+- **可選緩解(未執行)**:溫和重啟 `--workers 2` 無 `--dynamic-quota`(穩定 ≤6000/hr、避免 402 懲罰 overhead)+ §7.5 resume 跳過已抓 → 但**無速度增益**(總量受同一上限),故續 ride 不重啟。
+- **異常門檻**:單次 cooldown `idle` 若顯著超過第一次之 ~2000s(如 >2400s/~40min)仍不前進 → 才屬真異常(402 懲罰疊加 / backoff 連環)→ 屆時 `tail` log 診斷 + 考慮重啟。
+
 ---
 
 ## §2 修正後「從零 → 全量 raw data」可行序列（已實跑驗證至 sync 啟動）
@@ -93,7 +103,7 @@ caffeinate -dimsu ./venv/bin/python scripts/ingestion/sovereign_sync_engine.py \
 ## §4 長跑治權（本次落實）
 
 - **caffeinate**：`caffeinate -dimsu` 包裹;實測 `pmset -g assertions` = `PreventSystemSleep=1` + `PreventUserIdleSystemSleep=1`(SUPREME 準則)。
-- **§一.12 5-min 回報**：Monitor `bdh0boch5` 每 300s 貼 dataset 進度(log 解析:當前 dataset / X-of-2814 股 / datasets_seen Z/10);sync 結束自停 + 完成通知。
+- **§一.12 5-min 回報**：Monitor 每 300s 貼進度;後**升級為全程式版** `bi44n5l02`(單行原子輸出:sync 進程 `STAT`/cpu/etime + caffeinate `PSS=1`/pid + 其他 python 數 + dataset 進度 X/2814 + DB rows best-effort);sync 進程結束自停 + 觸發 PHASE 5。(前身 `bdh0boch5` log-only 版已 `TaskStop`)
 - **§二.6 SHMM**：本次以「Monitor HB(log-based)+ background run 完成通知 + DB 為真實進度真相」組成;DB 連線間歇 FATAL 已以 log-based 規避。
 
 ---
