@@ -9,6 +9,10 @@
 
 **完整 catalog:82 表有完整 schema**（FinMind Taiwan 67 + 非Taiwan 13 + FRED 2:`FredData`+`fred_series`）。表名/欄位名 = FinMind/FRED API 確切大小寫逐字鏡像(§14.7-CC);型別由 generic auto-schema 依實際 API 回應值推導(§一.10;**字串下限 VARCHAR(255)、數字下限 NUMERIC(20,6),值超界自動加大** — 2026-06-08 用戶 directive 字串下限 100→255;`VARCHAR(493)` 等 >255 者為實際觀測值超界自動加大);intraday(日以下)排除 9、待解 3。
 
+> **🔬 2026-06-08 live API 驗證 note**:本字典 schema 經實際 FinMind/FRED API 逐一打驗證(**72/80 FinMind + 2 FRED 真打 ✓**)。**generic 型別為 sample-dependent**:欄位名 / 大小寫 / `VARCHAR(255)` / `NUMERIC(20,6)` floor / `date`→DATE 為**不變量**;**>255 VARCHAR 長度 / >(20,6) NUMERIC 精度 / 稀疏欄 VARCHAR↔NUMERIC↔DATE 隨觀測值 auto-widen**,最終以全市場全史 sync 觀測 max 定案。
+> - **4 處 live 修正(本次已套用真值)**:`TaiwanStockNews.link` 255→**592**;`TaiwanStockDispositionSecuritiesPeriod.measure` 493→**510**;`USStockInfo.MarketCap` VARCHAR(255)→**NUMERIC(24,6)**(稀疏欄此樣本全數字);`TaiwanStockConvertibleBondDailyOverview` 之 `LatestInitialDateOfPut`/`LatestDueDateOfPut` VARCHAR→**DATE** + `IssuanceAmount` →**NUMERIC(21,6)**。
+> - **8 表標 ᵈ**(2026-06-08 live re-probe 參數未命中 → schema 以**建檔時實打值**為準,**非缺表**;各表 heading 已標 ᵈ):`TaiwanExchangeRate`、`TaiwanStockCapitalReductionReferencePrice`(需減資股 data_id)、`TaiwanStockGovernmentBankBuySell`、`TaiwanStockMarginShortSaleSuspension`、`TaiwanStockMarketValueWeight`、`CrudeOilPrices`、`ExchangeRate`(需 currency data_id)、`InterestRate`(需 country data_id)。
+
 ## FinMind — Taiwan
 #### `TaiwanBusinessIndicator` (9 欄)
 | 欄位 | 型態及大小 |
@@ -42,7 +46,7 @@
 | `SBLShortSalesShortCovering` | NUMERIC(20,6) |
 | `date` | DATE |
 
-#### `TaiwanExchangeRate` (6 欄 · 最早資料 2006-01-02)
+#### `TaiwanExchangeRate` (6 欄 · 最早資料 2006-01-02) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `date` | DATE |
@@ -310,7 +314,7 @@
 | `volume` | NUMERIC(20,6) |
 | `trading_money` | NUMERIC(21,6) |
 
-#### `TaiwanStockCapitalReductionReferencePrice` (9 欄 · 最早資料 2012-11-12 · per-stock 減資事件)
+#### `TaiwanStockCapitalReductionReferencePrice` (9 欄 · 最早資料 2012-11-12 · per-stock 減資事件) — ᵈ(本次 live re-probe 未命中,需減資股 data_id;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `date` | DATE |
@@ -364,14 +368,14 @@
 | `DueDateOfStopConversion` | VARCHAR(255) |
 | `ConversionPrice` | NUMERIC(20,6) |
 | `NextEffectiveDateOfConversionPrice` | DATE |
-| `LatestInitialDateOfPut` | VARCHAR(255) |
-| `LatestDueDateOfPut` | VARCHAR(255) |
+| `LatestInitialDateOfPut` | DATE |
+| `LatestDueDateOfPut` | DATE |
 | `LatestPutPrice` | NUMERIC(20,6) |
 | `InitialDateOfEarlyRedemption` | DATE |
 | `DueDateOfEarlyRedemption` | DATE |
 | `EarlyRedemptionPrice` | NUMERIC(20,6) |
 | `DateOfDelisted` | DATE |
-| `IssuanceAmount` | NUMERIC(20,6) |
+| `IssuanceAmount` | NUMERIC(21,6) |
 | `OutstandingAmount` | NUMERIC(20,6) |
 | `ReferencePrice` | NUMERIC(20,6) |
 | `PriceOfUnderlyingStock` | NUMERIC(20,6) |
@@ -447,7 +451,7 @@
 | `stock_name` | VARCHAR(255) |
 | `disposition_cnt` | NUMERIC(20,6) |
 | `condition` | VARCHAR(255) |
-| `measure` | VARCHAR(493) |
+| `measure` | VARCHAR(510) |
 | `period_start` | DATE |
 | `period_end` | DATE |
 
@@ -500,7 +504,7 @@
 | `value` | NUMERIC(23,6) |
 | `origin_name` | VARCHAR(255) |
 
-#### `TaiwanStockGovernmentBankBuySell` (7 欄)
+#### `TaiwanStockGovernmentBankBuySell` (7 欄) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `date` | DATE |
@@ -633,7 +637,7 @@
 | `ShortSaleTodayBalance` | NUMERIC(20,6) |
 | `ShortSaleYesterdayBalance` | NUMERIC(20,6) |
 
-#### `TaiwanStockMarginShortSaleSuspension` (4 欄)
+#### `TaiwanStockMarginShortSaleSuspension` (4 欄) — ᵈ(本次 live re-probe 未命中,稀少事件;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `stock_id` | VARCHAR(255) |
@@ -648,7 +652,7 @@
 | `stock_id` | VARCHAR(255) |
 | `market_value` | NUMERIC(24,6) |
 
-#### `TaiwanStockMarketValueWeight` (6 欄)
+#### `TaiwanStockMarketValueWeight` (6 欄) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `rank` | NUMERIC(20,6) |
@@ -689,7 +693,7 @@
 |---|---|
 | `date` | DATE |
 | `stock_id` | VARCHAR(255) |
-| `link` | VARCHAR(255) |
+| `link` | VARCHAR(592) |
 | `source` | VARCHAR(255) |
 | `title` | VARCHAR(255) |
 
@@ -872,7 +876,7 @@
 | `fear_greed` | NUMERIC(20,6) |
 | `fear_greed_emotion` | VARCHAR(255) |
 
-#### `CrudeOilPrices` (3 欄 · 最早資料 1986-01-02)
+#### `CrudeOilPrices` (3 欄 · 最早資料 1986-01-02) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `date` | DATE |
@@ -899,7 +903,7 @@
 | `Adj_Close` | NUMERIC(20,6) |
 | `Volume` | NUMERIC(20,6) |
 
-#### `ExchangeRate` (4 欄)
+#### `ExchangeRate` (4 欄) — ᵈ(本次 live re-probe 未命中,需 currency data_id;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `InterbankRate` | NUMERIC(20,6) |
@@ -913,7 +917,7 @@
 | `date` | DATE |
 | `Price` | NUMERIC(20,6) |
 
-#### `InterestRate` (4 欄 · 最早資料 2024-01-31)
+#### `InterestRate` (4 欄 · 最早資料 2024-01-31) — ᵈ(本次 live re-probe 未命中,需 country data_id;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `country` | VARCHAR(255) |
@@ -970,7 +974,7 @@
 | `stock_name` | VARCHAR(255) |
 | `Country` | VARCHAR(255) |
 | `IPOYear` | NUMERIC(20,6) |
-| `MarketCap` | VARCHAR(255) |
+| `MarketCap` | NUMERIC(24,6) |
 | `Subsector` | VARCHAR(255) |
 
 #### `USStockPrice` (8 欄)
