@@ -118,28 +118,26 @@ CAT_PARAMS = {"iterations": 200, "learning_rate": 0.05, "depth": 5, "l2_leaf_reg
 N_ESTIMATORS = 200
 
 DEFAULT_PANELS = [
-    ("fs_20250915_feature_set_v0_5", "2025-09-15"),
-    ("fs_20251015_feature_set_v0_5", "2025-10-15"),
-    ("fs_20251115_feature_set_v0_5", "2025-11-15"),
-    ("fs_20251215_feature_set_v0_5", "2025-12-15"),
-    ("fs_20260115_feature_set_v0_5", "2026-01-15"),
-    ("fs_20260215_feature_set_v0_5", "2026-02-15"),
-    ("fs_20260315_feature_set_v0_5", "2026-03-15"),
-    ("fs_20260415_feature_set_v0_5", "2026-04-15"),
+    ("fs_20250915_feature_set_v0_6", "2025-09-15"),
+    ("fs_20251015_feature_set_v0_6", "2025-10-15"),
+    ("fs_20251115_feature_set_v0_6", "2025-11-15"),
+    ("fs_20251215_feature_set_v0_6", "2025-12-15"),
+    ("fs_20260115_feature_set_v0_6", "2026-01-15"),
+    ("fs_20260215_feature_set_v0_6", "2026-02-15"),
+    ("fs_20260315_feature_set_v0_6", "2026-03-15"),
+    ("fs_20260415_feature_set_v0_6", "2026-04-15"),
 ]
 
 SPEC_43 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d", "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
-    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
-    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
-    "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
-    "preferential_attachment_60d",
+    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
     "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
-    "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
+    "foreign_net_20d", "foreign_net_60d", "margin_ratio_60d",
     # §14.7-DC v0.3 strict: theme_is_semiconductor + fitness_signal_60d + theme_strength all removed (hardcoded knowledge / transitively tainted = AI hallucination)
 ]
 

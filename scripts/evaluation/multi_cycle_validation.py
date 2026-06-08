@@ -131,14 +131,12 @@ SPEC_43 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d", "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
-    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
-    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
-    "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
-    "preferential_attachment_60d",
+    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
     "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
-    "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
+    "foreign_net_20d", "foreign_net_60d", "margin_ratio_60d",
     # §14.7-DC v0.3 strict: theme_is_semiconductor + fitness_signal_60d + theme_strength all removed (hardcoded knowledge / transitively tainted = AI hallucination)
 ]
 
@@ -147,7 +145,7 @@ def get_panel_dates():
     """§14.7-DE / §一.16 反硬編:panel 窗由單一引用源 get_canonical_panel_dates() 資料驅動判定,
     嚴禁寫死日期(原 date(2018,6,15)→date(2026,4,30) / 95 panels 硬編已移除;§一.16 最終 sweep 2026-06-06)。
     回傳 [(feature_set_id, as_of_date), ...](與既有呼叫端介面一致)。"""
-    return get_canonical_panel_dates("feature_set_v0.5")
+    return get_canonical_panel_dates("feature_set_v0.6")
 
 
 def load_features(cur, fs_id, universe):

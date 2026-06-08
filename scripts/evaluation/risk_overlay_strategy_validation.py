@@ -142,7 +142,7 @@ def run(args):
                    AND s.snapshot_id=(SELECT snapshot_id FROM core_universe_snapshot
                                       WHERE status='committed' ORDER BY created_at DESC LIMIT 1)""")
     universe = list({r[0] for r in cur.fetchall()})
-    panels = get_canonical_panel_dates("feature_set_v0.5")
+    panels = get_canonical_panel_dates("feature_set_v0.6")
     if args.smoke:
         panels = panels[-24:]
     logger.info(f"Universe: {len(universe)} core; panels: {len(panels)} (canonical, {panels[0][1]}→{panels[-1][1]})")

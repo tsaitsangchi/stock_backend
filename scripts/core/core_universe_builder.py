@@ -2306,7 +2306,7 @@ class DoctrineNativeGateBuilder:
     }
 
     # §14.7-CB Stage 4 feature completeness gate(optional;per Reading B convergence verification)
-    # §14.7-DC v0.21 Step E: synced to feature_set_v0.5 SPEC_38(舊 SPEC_37 含 fs_v0.5 不存在之
+    # §14.7-DC v0.21 Step E: synced to feature_set_v0.6 SPEC_38(舊 SPEC_37 含 fs_v0.5 不存在之
     # kwave_*/mc_*/ms_* + 已移除 Tier 4-5 之 right_tail_concentration/barbell/fitness;會全 reject)
     SPEC_38_FEATURES = [
         "asset_growth_yoy", "avg_daily_value_log_252d",
@@ -2315,14 +2315,12 @@ class DoctrineNativeGateBuilder:
         "foreign_net_20d", "foreign_net_60d", "liquidity_rank_pct_sector_60d",
         "log_return_20d", "log_return_252d", "log_return_60d",
         "ma_ratio_20", "ma_ratio_60", "margin_ratio_60d",
-        "max_drawdown_252d", "net_income_positive_ratio_8q", "operating_margin_ttm",
-        "pb_ratio", "pe_ratio", "preferential_attachment_60d",
-        "revenue_yoy_12m", "revenue_yoy_3m", "revenue_yoy_3m_log",
+        "max_drawdown_252d", "operating_margin_ttm",
+        "pb_ratio", "pe_ratio", "revenue_yoy_12m", "revenue_yoy_3m", "revenue_yoy_3m_log",
         "right_tail_returns_skew_252d", "roe_ttm", "size_log_zscore_sector",
-        "trust_net_20d", "trust_net_60d", "turnover_mean_60d",
+        "turnover_mean_60d",
         "upside_capture_60d", "upside_volatility_60d", "volatility_252d",
-        "volatility_60d", "zero_volume_ratio_252d",
-    ]
+        "volatility_60d", ]
 
     POLICY_VERSION_STANDARD = "core_universe_policy_v0.13_doctrine_native_gate"
     POLICY_VERSION_STRICT = "core_universe_policy_v0.14_strict_feature_validity_gate"

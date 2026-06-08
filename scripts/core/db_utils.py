@@ -357,7 +357,7 @@ def get_db_conn():
     return get_db_connection()
 
 
-def get_canonical_panel_dates(feature_set_version="feature_set_v0.5"):
+def get_canonical_panel_dates(feature_set_version="feature_set_v0.6"):
     """§0.0-I 單一引用源 + §一.13 反硬編 + §14.7-DE Canonical Panel Source:
     資料驅動取「具備完整 canonical 特徵集(nf = 資料中最大 distinct 特徵數)」之 panels。
     回傳 [(feature_set_id, as_of_date), ...] 依日期排序;起點/終點/特徵數皆由 DB 自動判定,

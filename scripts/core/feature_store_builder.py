@@ -108,8 +108,8 @@ except ImportError as exc:
 
 
 CONSTITUTION_VER = "v6.1.0"
-TOOL_VER = "v0.8"  # 2026-06-01 §0.3-A K-wave 7 IC-pending features REMOVED(用戶治權 directive「死重應排除」): cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s} 從未通過 PHASE 9 IC-gate promote(ablation 從未實跑,canonical SPEC 始終 37,trainer/gate 不選)→ 移除避免死重 + 過擬合風險;§0.3-A doctrine + Stage 1 macro gate 保留。feature_set 回 canonical 37 source-pure。前 v0.7(2026-05-31 T_DC-30 +7 IC-pending);前 v0.6(2026-05-29 §14.7-DC v0.8): 移除 5 Tier 4-5 features
-DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.5"  # v0.5 = 38 source-pure features(v0.4 為 43 含 5 Tier 4-5;v0.5 為 §14.7-DC compliant)
+TOOL_VER = "v0.9"  # 2026-06-08 §14.7-DI 五鏡移除 5 特徵(trust_net_20d/60d + net_income_positive_ratio_8q + preferential_attachment_60d + zero_volume_ratio_252d[不顯影];37→32;feature_set_v0.6)+ FEATURE_DEFINITIONS 寫入權威閘;前 v0.8 2026-06-01 §0.3-A K-wave 7 IC-pending features REMOVED(用戶治權 directive「死重應排除」): cycle_phase_{5d,20d,60d,252d} + macro_beta_{t10y2y,unrate,ipg3344s} 從未通過 PHASE 9 IC-gate promote(ablation 從未實跑,canonical SPEC 始終 37,trainer/gate 不選)→ 移除避免死重 + 過擬合風險;§0.3-A doctrine + Stage 1 macro gate 保留。feature_set 回 canonical 37 source-pure。前 v0.7(2026-05-31 T_DC-30 +7 IC-pending);前 v0.6(2026-05-29 §14.7-DC v0.8): 移除 5 Tier 4-5 features
+DEFAULT_FEATURE_SET_VERSION = "feature_set_v0.6"  # v0.6 = 32 features(v0.5 為 37;§14.7-DI 五鏡移除 5:trust_net_20d/60d + net_income_positive_ratio_8q + preferential_attachment_60d + zero_volume_ratio_252d)
 DEFAULT_LABEL_HORIZON = 20
 
 # v0.5 SSOT helper(從 data_schema v2.20 import;v0.4 之 local _publication_date_gate 已移除)
@@ -168,7 +168,7 @@ FEATURE_DEFINITIONS = [
     # ── §0.2 八二法則 explicit 群 v0.5 §14.7-DC v0.8 MVP v0.21 Step B 移除 3 Tier 4 features
     # (right_tail_concentration_60d / barbell_balance_60d / fitness_signal_60d)
     # 剩餘 4 features per-sector aggregation(per §14.7-DC v0.8 source-pure compliant)
-    {"name": "preferential_attachment_60d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_daily_value 60d)attachment proxy;Barabási-Albert 1999;TW IC +0.015 OOS;§0.2"},
+    # [REMOVED 2026-06-08 §14.7-DI 五鏡:完全重複欄(=avg_daily_value_log_60d 位元相同 170721/170721)] {"name": "preferential_attachment_60d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_daily_value 60d)attachment proxy;Barabási-Albert 1999;TW IC +0.015 OOS;§0.2"},
     {"name": "right_tail_returns_skew_252d", "group": "pareto", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "zero_fill", "desc": "skew of positive daily log returns over 252d;right-tail asymmetry;TW IC ±0.02 regime-dep;§0.2"},
     {"name": "liquidity_rank_pct_sector_60d", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "sector 內 avg_value_60d 之 percentile rank ∈ [0,1];per-stock 相對集中度;TW IC +0.015 OOS;§0.2"},
     {"name": "size_log_zscore_sector", "group": "pareto", "source": "TaiwanStockPriceAdj × TaiwanStockInfo", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "log10(avg_value_60d) z-score within sector;Fama-French SMB proxy;TW IC ±0.01 emerging-market regime;§0.2"},
@@ -176,17 +176,17 @@ FEATURE_DEFINITIONS = [
     {"name": "avg_daily_value_log_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 60d)"},
     {"name": "avg_daily_value_log_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "log10(avg Trading_money over 252d)"},
     {"name": "turnover_mean_60d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "60d", "vtype": "numeric", "null": "drop", "desc": "avg Trading_turnover over 60d"},
-    {"name": "zero_volume_ratio_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "fraction of zero-volume days over 252d"},
+    # [REMOVED 2026-06-08 §14.7-DI 五鏡:不顯影(mean|SHAP|=0.00005 全場最低,模型幾乎忽略;98% zeros distinct≈2.4;dead_weight ablation 砍全✅)] {"name": "zero_volume_ratio_252d", "group": "liquidity", "source": "TaiwanStockPriceAdj", "window": "252d", "vtype": "numeric", "null": "drop", "desc": "fraction of zero-volume days over 252d"},
     # ── fundamental 群（4）
     {"name": "revenue_yoy_12m", "group": "fundamental", "source": "TaiwanStockMonthRevenue", "window": "24m", "vtype": "numeric", "null": "drop", "desc": "(sum recent 12m revenue / sum prior 12m revenue) - 1"},
     {"name": "revenue_yoy_3m", "group": "fundamental", "source": "TaiwanStockMonthRevenue", "window": "15m", "vtype": "numeric", "null": "drop", "desc": "(sum recent 3m revenue / sum same 3m prior year) - 1"},
     {"name": "eps_sum_4q", "group": "fundamental", "source": "TaiwanStockFinancialStatements", "window": "4q", "vtype": "numeric", "null": "zero_fill", "desc": "sum of EPS over last 4 quarters"},
-    {"name": "net_income_positive_ratio_8q", "group": "fundamental", "source": "TaiwanStockFinancialStatements", "window": "8q", "vtype": "numeric", "null": "zero_fill", "desc": "fraction of last 8q with positive net income"},
+    # [REMOVED 2026-06-08 §14.7-DI 五鏡:ablation 冗餘(157p purged 砍不傷 OOS IC;SHAP 96p→157p −0.23→+0.68 不穩)] {"name": "net_income_positive_ratio_8q", "group": "fundamental", "source": "TaiwanStockFinancialStatements", "window": "8q", "vtype": "numeric", "null": "zero_fill", "desc": "fraction of last 8q with positive net income"},
     # ── institutional 群（5）
     {"name": "foreign_net_20d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "20d", "vtype": "numeric", "null": "zero_fill", "desc": "Foreign_Investor net buy over 20d (shares)"},
     {"name": "foreign_net_60d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "Foreign_Investor net buy over 60d (shares)"},
-    {"name": "trust_net_20d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "20d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 20d"},
-    {"name": "trust_net_60d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 60d"},
+    # [REMOVED 2026-06-08 §14.7-DI 五鏡:真噪音(IC≈0/sign~50%/SHAP方向≈0)] {"name": "trust_net_20d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "20d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 20d"},
+    # [REMOVED 2026-06-08 §14.7-DI 五鏡:弱訊號冗餘(年t+2.52但ablation砍不傷;SHAP方向+0.16弱)] {"name": "trust_net_60d", "group": "institutional", "source": "TaiwanStockInstitutionalInvestorsBuySell", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "Investment_Trust net buy over 60d"},
     {"name": "margin_ratio_60d", "group": "institutional", "source": "TaiwanStockMarginPurchaseShortSale", "window": "60d", "vtype": "numeric", "null": "zero_fill", "desc": "avg margin/short balance ratio over 60d"},
     # ── theme 群 REMOVED per §14.7-DC v0.8 MVP v0.21 Step B+C-partial
     # (theme_strength = Tier 5 THEME_KEYWORDS dict-derived;theme_is_semiconductor = Tier 4
@@ -1317,6 +1317,10 @@ class FeatureStoreBuilder:
             # ablation IC = +0.0131 HARMFUL + macro deprecated(§14.7-CK)→ dead code 移除
 
             for fname, value in stock_features.items():
+                # §0.0-I SSOT:FEATURE_DEFINITIONS(經 null_strategy_map)為寫入權威閘 —
+                # §14.7-DI 五鏡移除之特徵雖仍被計算,但不在 active set → 不寫入 feature_values
+                if fname not in null_strategy_map:
+                    continue
                 imputed = False
                 if value is None:
                     strategy = null_strategy_map.get(fname, "drop")
@@ -1395,7 +1399,7 @@ class FeatureStoreBuilder:
                 self.universe_snapshot_id, self.policy_version,
                 len(self.core_stocks), len(self._active_feature_definitions()),
                 self.label_horizon,
-                f"feature_store_builder {TOOL_VER}; {len(self._active_feature_definitions())} features(37 canonical SPEC + 7 §0.3-A 多尺度循環 IC-pending)× {len(self.core_stocks)} stocks",
+                f"feature_store_builder {TOOL_VER}; {len(self._active_feature_definitions())} features(32 canonical SPEC,§14.7-DI 五鏡移除 5)× {len(self.core_stocks)} stocks",
             ),
         )
 

@@ -94,7 +94,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 CONSTITUTION_VER = "v6.1.0"
 TOOL_VER = "v0.1"
 SEED = 5422
-FEATURE_SET_VERSION = "feature_set_v0.5"
+FEATURE_SET_VERSION = "feature_set_v0.6"
 
 # probe model = lgbm(快速且具代表性之 ablation probe;與 multi_cycle_ensemble_validation 同 recipe)
 LGB_PARAMS = {"learning_rate": 0.05, "max_depth": 5, "num_leaves": 20, "min_child_samples": 30,
@@ -108,14 +108,12 @@ SPEC_37 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d", "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
-    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
-    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
-    "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
-    "preferential_attachment_60d",
+    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
     "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
-    "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
+    "foreign_net_20d", "foreign_net_60d", "margin_ratio_60d",
 ]
 
 # §0.3-A / §一.15 候選 7 特徵(cycle_phase 4 尺度 + macro_beta 3 因子)

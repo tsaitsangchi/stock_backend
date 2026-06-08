@@ -61,7 +61,7 @@ multi_cycle_condae_validation.py v0.1 (Conditional Autoencoder · Gu-Kelly-Xiu 2
 | 子項 | 對應方法 / 行為 | 治權契約 |
 | :--- | :--- | :--- |
 | A.1 Universe | 最新 committed snapshot core_tier='core_universe'(397 source-pure)| §14.7-DC v0.17 |
-| A.2 Panels | get_canonical_panel_dates('feature_set_v0.5')| §14.7-DE / §0.0-I 單一引用源 |
+| A.2 Panels | get_canonical_panel_dates('feature_set_v0.6')| §14.7-DE / §0.0-I 單一引用源 |
 | A.3 Features | load_features() → feature_values WHERE is_null_imputed IS NOT TRUE | §一.10 (b) DB / §14.7-DC |
 | A.4 Forward returns | load_forward_returns() → 真實 log return(TaiwanStockPriceAdj)| §一.10 (b) DB |
 | A.5 Metrics | summarize_horizon_metrics()(top-20 / 0.6% cost / Sharpe / Eff-t / T_CZ-6)| §14.7-DF / §14.7-CY / §14.7-CZ |
@@ -160,14 +160,12 @@ SPEC_43 = [
     "log_return_20d", "log_return_60d", "log_return_252d", "ma_ratio_20", "ma_ratio_60", "max_drawdown_252d",
     "upside_volatility_60d", "downside_volatility_60d", "convexity_60d", "volatility_60d", "volatility_252d",
     "upside_capture_60d", "downside_capture_60d",
-    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "zero_volume_ratio_252d", "turnover_mean_60d",
+    "avg_daily_value_log_60d", "avg_daily_value_log_252d", "turnover_mean_60d",
     "pe_ratio", "pb_ratio", "dividend_yield",
-    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "net_income_positive_ratio_8q",
-    "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
-    "preferential_attachment_60d",
+    "roe_ttm", "operating_margin_ttm", "eps_sum_4q", "revenue_yoy_3m_log", "asset_growth_yoy", "revenue_yoy_3m", "revenue_yoy_12m",
     "right_tail_returns_skew_252d",
     "liquidity_rank_pct_sector_60d", "size_log_zscore_sector",
-    "foreign_net_20d", "foreign_net_60d", "trust_net_20d", "trust_net_60d", "margin_ratio_60d",
+    "foreign_net_20d", "foreign_net_60d", "margin_ratio_60d",
     # §14.7-DC v0.3 strict: theme_is_semiconductor + fitness_signal_60d + theme_strength all removed (hardcoded knowledge / transitively tainted = AI hallucination)
 ]
 N_FEATURES = len(SPEC_43)
@@ -405,7 +403,7 @@ def main():
         universe = list({r[0] for r in cur.fetchall()})
         logger.info(f"  Universe: {len(universe)} stocks")
 
-        panels = get_canonical_panel_dates("feature_set_v0.5")  # §14.7-DE / §0.0-I 單一引用源
+        panels = get_canonical_panel_dates("feature_set_v0.6")  # §14.7-DE / §0.0-I 單一引用源
         logger.info(f"  Panels:   {len(panels)} ({panels[0][1]} ~ {panels[-1][1]}, data-driven §14.7-DE)")
 
         results = {}

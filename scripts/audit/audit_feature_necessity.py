@@ -103,17 +103,16 @@ SPEC_43 = [
                        "volatility_60d", "volatility_252d",
                        "upside_capture_60d", "downside_capture_60d"]),
     ("§0.1.C 流動性(4)", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                        "zero_volume_ratio_252d", "turnover_mean_60d"]),
+                        "turnover_mean_60d"]),
     ("§0.1.D 估值(3)", ["pe_ratio", "pb_ratio", "dividend_yield"]),
     ("§0.1.E 質量(4)", ["roe_ttm", "operating_margin_ttm",
-                       "eps_sum_4q", "net_income_positive_ratio_8q"]),
+                       "eps_sum_4q"]),
     ("§0.1.F 投資(4)", ["revenue_yoy_3m_log", "asset_growth_yoy",
                        "revenue_yoy_3m", "revenue_yoy_12m"]),
-    ("§0.2.A Pareto(4)", ["preferential_attachment_60d",
-                          "right_tail_returns_skew_252d",
+    ("§0.2.A Pareto(4)", ["right_tail_returns_skew_252d",
                           "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"]),
     ("§0.2.B 法人(5)", ["foreign_net_20d", "foreign_net_60d",
-                       "trust_net_20d", "trust_net_60d", "margin_ratio_60d"]),
+                       "margin_ratio_60d"]),
     # §0.2.C 主題 removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 ]
 
@@ -135,7 +134,7 @@ LITERATURE_REF = {
     "downside_capture_60d": "§9.9 C downside capture",
     "avg_daily_value_log_60d": "Liquidity premium",
     "avg_daily_value_log_252d": "LT liquidity",
-    "zero_volume_ratio_252d": "Stale price proxy",
+    
     "turnover_mean_60d": "Turnover signal",
     "pe_ratio": "Fama-French HML(TW IC -0.02~-0.04 OOS)",
     "pb_ratio": "Fama-French HML(TW IC -0.02~-0.04 OOS)",
@@ -143,19 +142,19 @@ LITERATURE_REF = {
     "roe_ttm": "Asness QMJ(TW IC +0.07 OOS)",
     "operating_margin_ttm": "QMJ profitability(TW IC +0.05 OOS)",
     "eps_sum_4q": "TTM earnings",
-    "net_income_positive_ratio_8q": "Profitability ratio",
+    
     "revenue_yoy_3m_log": "Revenue momentum(TW IC +0.04 OOS)",
     "asset_growth_yoy": "Cooper-Gulen-Schill 2008(TW IC -0.05 OOS)",
     "revenue_yoy_3m": "Revenue momentum",
     "revenue_yoy_12m": "LT revenue trend",
-    "preferential_attachment_60d": "Barabási-Albert 1999(TW IC +0.015 OOS)",
+    
     "right_tail_returns_skew_252d": "Tail asymmetry(TW IC ±0.02 regime-dep)",
     "liquidity_rank_pct_sector_60d": "Sector Pareto(TW IC +0.015 OOS)",
     "size_log_zscore_sector": "Fama-French SMB(TW IC ±0.01 regime)",
     "foreign_net_20d": "Foreign institutional flow",
     "foreign_net_60d": "LT foreign flow",
-    "trust_net_20d": "Investment trust flow(contrarian)",
-    "trust_net_60d": "LT investment trust flow",
+    
+    
     "margin_ratio_60d": "Margin sentiment",
 }
 

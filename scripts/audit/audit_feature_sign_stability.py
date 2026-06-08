@@ -104,17 +104,16 @@ SPEC_43 = [
                     "volatility_60d", "volatility_252d",
                     "upside_capture_60d", "downside_capture_60d"]),
     ("§0.1.C 流動性", ["avg_daily_value_log_60d", "avg_daily_value_log_252d",
-                     "zero_volume_ratio_252d", "turnover_mean_60d"]),
+                     "turnover_mean_60d"]),
     ("§0.1.D 估值", ["pe_ratio", "pb_ratio", "dividend_yield"]),
     ("§0.1.E 質量", ["roe_ttm", "operating_margin_ttm",
-                    "eps_sum_4q", "net_income_positive_ratio_8q"]),
+                    "eps_sum_4q"]),
     ("§0.1.F 投資", ["revenue_yoy_3m_log", "asset_growth_yoy",
                     "revenue_yoy_3m", "revenue_yoy_12m"]),
-    ("§0.2.A Pareto", ["preferential_attachment_60d",
-                       "right_tail_returns_skew_252d",
+    ("§0.2.A Pareto", ["right_tail_returns_skew_252d",
                        "liquidity_rank_pct_sector_60d", "size_log_zscore_sector"]),
     ("§0.2.B 法人", ["foreign_net_20d", "foreign_net_60d",
-                    "trust_net_20d", "trust_net_60d", "margin_ratio_60d"]),
+                    "margin_ratio_60d"]),
     # §0.2.C 主題 removed per §14.7-DC(theme_strength / theme_is_semiconductor = AI 幻像)
 ]
 
@@ -135,7 +134,7 @@ LITERATURE_SIGN = {
     "upside_capture_60d": "+", "downside_capture_60d": "+",
     # Liquidity
     "avg_daily_value_log_60d": "+", "avg_daily_value_log_252d": "+",
-    "zero_volume_ratio_252d": "-",
+    
     "turnover_mean_60d": "+",
     # Value: Fama-French HML(US dominant — low P/E wins)
     "pe_ratio": "-",  # v6.13.1: Fama-French HML dominant;TW 反向見 TW_EMPIRICAL_SIGN
@@ -143,18 +142,18 @@ LITERATURE_SIGN = {
     "dividend_yield": "+",  # v6.13.1: Litzenberger 1979 yield premium dominant
     # Quality: Asness QMJ(high quality → high return)
     "roe_ttm": "+", "operating_margin_ttm": "+",
-    "eps_sum_4q": "+", "net_income_positive_ratio_8q": "+",
+    "eps_sum_4q": "+", 
     # Investment: Cooper-Gulen-Schill
     "revenue_yoy_3m_log": "+", "asset_growth_yoy": "-",
     "revenue_yoy_3m": "+", "revenue_yoy_12m": "+",
     # Pareto:
-    "preferential_attachment_60d": "+",
+    
     "right_tail_returns_skew_252d": "+",  # v6.13.1: Kelly-Jiang 2014 positive skew premium
     "liquidity_rank_pct_sector_60d": "+",
     "size_log_zscore_sector": "-",  # v6.13.1: Fama-French SMB original — small wins → high size = "-"
     # Institutional: foreign positive / trust contrarian(TW empirical)
     "foreign_net_20d": "+", "foreign_net_60d": "+",
-    "trust_net_20d": "-", "trust_net_60d": "-",
+     
     "margin_ratio_60d": "+",
 }
 

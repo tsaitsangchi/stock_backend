@@ -1091,6 +1091,22 @@ K-wave 核心思想 = 「景氣循環 + 股價變化循環」,**非**固定 40-6
 
 ---
 
+**v0.6 Actual-Removal Update + T_DI-6/T_DI-7(2026-06-08 用戶 explicit「§14.7-DI 入憲(不顯影 + 日為最小單位)」入憲)**:
+
+§14.7-DI 由 research-mode **推進至實際落地**:五鏡在當前 157-panel(96→157 資料漂移後)**重現驗證後實際移除 5 特徵 → `feature_set_v0.6`(37→32)**:`trust_net_20d`(真噪音)+ `trust_net_60d`(弱訊號冗餘)+ `net_income_positive_ratio_8q`(ablation 冗餘)+ `preferential_attachment_60d`(位元完全重複=`avg_daily_value_log_60d`,170721/170721)+ `zero_volume_ratio_252d`(T_DI-6 不顯影)。落地:`feature_store_builder.py` + **43 檔 codemod**(SPEC 37→32,py_compile 全 PASS)+ 特徵庫重建 161 panel × 32 × 294 + pan-historical re-gate → **294 純核心**(0 imputed 跨全 v0.6 面板,committed DB)+ 9 樹模型 retrain。**honest disclosure(§一.8)**:五鏡再驗證救兩坑(① 資料 96→157 漂移使舊報告過時 ② 「不顯影」原則揪出漏網的 `zero_volume`);git **未 commit**;Phase D multi_cycle production 比較**未完成** → 絕對數據**不入**(避免 AP-3)。
+
+**T_DI-6(SHAP-Manifestation Removal — 「不顯影即排除」)**:AI 判斷特徵存廢時,特徵 mean|SHAP|(ensemble 三樹有號貢獻)≈0(**對模型預測結果值無顯影**)+ ablation 移除不傷 OOS IC → **須移除**(zero-discrimination 死重)。為第四鏡(SHAP)之移除準則化;**須與 ablation 合判,不得單看 SHAP**:「不顯影且 ablation-safe」必移(`zero_volume_ratio_252d` mean|SHAP|=0.00005 全 37 最低 + dead_weight 全 ✅);「顯影但 ablation 冗餘」亦可移(`net_income_positive_ratio_8q` rank 8 但冗餘,正交軸)。違反:保留模型已忽略(SHAP≈0)且 ablation-safe 之死重特徵。**用戶原文**:「訊號弱到不顯影模型預測的結果值時,此特徵就要排除」。
+
+**T_DI-7(Daily-Minimum Granularity + Generic Ingestion — 「日為最小單位」)**:AI 收 FinMind 資料時,本系統預測之**資料最小單位為「日」**(features/panel/walk-forward 皆日/月/季/年);**intraday/日以下 raw(tick/分K/5秒)不得進入此系統**;intraday source 之日級衍生值(如 5 秒委託統計收盤累積 → 每日大盤買均/賣均張數)須以**日級 derive 儲存**(每日一列),不存 intraday raw。配套:`scripts/ingestion/finmind_generic_ingest.py`(通用 auto-schema ingester,解除 `sovereign_sync_engine.DEFAULT_FINMIND_DATASETS` 11-dataset 自限 — 用戶「不要在此系統設限制」;字串≥VARCHAR(100)/數字≥NUMERIC(20,6);`INTRADAY_DATASETS` 守門預設拒絕);與核心 11 表嚴格路徑(§14.7-CD/CE 逐股驗證)**隔離並存**。違反:存 intraday raw 入庫、或讓 generic-ingested 資料未過 §14.7-DC source-pure gate 即進特徵/選股。**用戶原文**:「intraday(tick/分K/5秒)不進入此系統,因為此系統以日為最小單位資料來進行預測」。
+
+**雙層治權鎖(v0.6)**:主憲章 §14.7-DI(T_DI-1 ~ T_DI-7)+ 本條 §一.21 同次更新(per T_DC-6);任一側未對齊 → 結構性 violation。
+
+**證據基礎(2026-06-08 update)**:用戶 explicit「§14.7-DI 入憲(你的「不顯影」+「日為最小單位」原則)」之直接入憲。source-traceable(§一.10):五鏡 157-panel 重跑重現 JSON + DB query;`zero_volume` mean|SHAP|=0.00005;294 純核心 DB-verified(0 imputed/32 特徵);generic ingester py_compile PASS + 實測建表 `TaiwanStockTotalInstitutionalInvestors`(54 列,NUMERIC(23,6)/VARCHAR(100)/PK(date,name))+ intraday 守門拒絕實測。
+
+**T_DI-8(56-dataset 補抓三步序列 + API 權威;2026-06-08 用戶 explicit「56 個可補的逐一檢核没問題後再建立對應 table 再抓,請寫入憲章」入憲)**:AI 補抓 FinMind 資料時,依逐一實證稽核(12 已抓/56 可補/10 intraday/1 tier-排除/FRED 0 缺),56 可補 dataset 必依**三步序列**:(a) **逐一檢核**(actual API probe 確認可存取 + 正確參數,per §一.9 非預估);(b) **建表**(generic ingester auto-schema,**名稱/欄位以 API 回應為權威**,§二 Step 2.5 + §14.7-CC/CE;**嚴禁文件 casing**[實證 FinMind 文件 `Taiwanstock` typo,API 為 `TaiwanStock`];字串≥VARCHAR(100)/數字≥NUMERIC(20,6));(c) **再抓**。**禁令**:抓 intraday(10)/ 抓 tier-排除之 `TaiwanStockTradingDailyReportSecIdAgg` / 用文件 casing / 讓補抓資料未過 §14.7-DC source-pure gate 即進特徵/選股。**honest scope(§一.8)**:56 補抓為 in-progress,完成狀態以實際 DB table+rows 為準(避免 AP-3)。**雙層治權鎖**:主憲章 §14.7-DI T_DI-8 + 本條同次。**【執行完成 2026-06-08,DB-verified】**:Taiwan 表 11→66(+55);✅54 已抓 / 🔁1 reclassify→intraday(VariousIndicators5Seconds 實為 5 秒)/ ❌**2 tier-restricted**(SecIdAgg + **WarrantTradingDailyReport**;精確化由 1→2,Warrant 執行時新發現)→ 54/55 fetchable 全落地;ingester 強化 `--date`/`--securities-trader-id`/None→NULL/可空欄不入 PK。
+
+---
+
 ## 二、本專案編輯規則 (Project-Specific Edit Rules)
 
 ### 1. 編輯位置

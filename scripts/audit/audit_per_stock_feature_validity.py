@@ -114,7 +114,7 @@ FEATURE_RANGES = {
     "upside_capture_60d": (0, 0.2), "downside_capture_60d": (0, 0.2),
     # §0.1.C Liquidity
     "avg_daily_value_log_60d": (3, 12), "avg_daily_value_log_252d": (3, 12),
-    "zero_volume_ratio_252d": (0, 1),
+    
     # turnover_mean_60d: raw counts, range omitted
     # §0.1.D Value
     "pe_ratio": (0, 1000), "pb_ratio": (0, 50), "dividend_yield": (0, 30),
