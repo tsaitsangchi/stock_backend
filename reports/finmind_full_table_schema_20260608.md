@@ -7,7 +7,7 @@
 
 ---
 
-**完整 catalog:80 表有完整 schema**（FinMind Taiwan 66 + 非Taiwan 13 + FRED 1）。表名/欄位名 = FinMind/FRED API 確切大小寫逐字鏡像(§14.7-CC);型別由 generic auto-schema 依實際 API 回應值推導(§一.10);intraday(日以下)排除 9、待解 4。
+**完整 catalog:81 表有完整 schema**（FinMind Taiwan 67 + 非Taiwan 13 + FRED 1）。表名/欄位名 = FinMind/FRED API 確切大小寫逐字鏡像(§14.7-CC);型別由 generic auto-schema 依實際 API 回應值推導(§一.10);intraday(日以下)排除 9、待解 3。
 
 ## FinMind — Taiwan
 #### `TaiwanBusinessIndicator` (9 欄)
@@ -309,6 +309,19 @@
 | `price` | NUMERIC(20,6) |
 | `volume` | NUMERIC(20,6) |
 | `trading_money` | NUMERIC(21,6) |
+
+#### `TaiwanStockCapitalReductionReferencePrice` (9 欄 · 最早資料 2012-11-12 · per-stock 減資事件)
+| 欄位 | 型態及大小 |
+|---|---|
+| `date` | DATE |
+| `stock_id` | VARCHAR(100) |
+| `ClosingPriceonTheLastTradingDay` | NUMERIC(20,6) |
+| `PostReductionReferencePrice` | NUMERIC(20,6) |
+| `LimitUp` | NUMERIC(20,6) |
+| `LimitDown` | NUMERIC(20,6) |
+| `OpeningReferencePrice` | NUMERIC(20,6) |
+| `ExrightReferencePrice` | NUMERIC(20,6) |
+| `ReasonforCapitalReduction` | VARCHAR(100) |
 
 #### `TaiwanStockCashFlowsStatement` (5 欄)
 | 欄位 | 型態及大小 |
@@ -984,8 +997,7 @@
 
 **`series_id` 24 series**:T10Y2Y/T10Y3M/T10YIE/VIXCLS/BAMLH0A0HYM2/DTWEXBGS/M2SL/DGS10/DGS2/DGS3MO/UMCSENT/INDPRO/UNRATE/CPIAUCSL/PATENTUSALLTOTAL/B985RC1Q027SBEA/TCMDO/LFWA64TTUSA647N/SPPOPDPNDOLUSA/PALLFNFINDEXQ/QUSPAM770A/WTISPLC/IPG3344S/PCU4831114831115(定義見 §14.7-DJ 前述)。
 
-## 待解 4(需升 tier / 事件稀少 / 未知 country 參數,非不存在)
-- `TaiwanStockCapitalReductionReferencePrice`
+## 待解 3(需升 tier / 事件稀少 / 未知 country 參數,非不存在)
 - `TaiwanStockBlockTradingDailyReport`
 - `TaiwanStockWarrantTradingDailyReport`
 - `GovernmentBondsYield`
