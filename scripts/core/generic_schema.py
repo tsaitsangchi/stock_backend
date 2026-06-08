@@ -1,5 +1,5 @@
 """
-generic_schema.py v1.0 (Generic Auto-Schema Provisioning · 任意 API dataset → 自動推導型別/建表/upsert 單一引用源)
+generic_schema.py v1.1 (Generic Auto-Schema Provisioning · 任意 API dataset → 自動推導型別/建表/upsert 單一引用源;v1.1 §14.7-DJ FRED-generic:KEY_CANDIDATES series_id 前置於 date 使逐 series FRED 樣本正確推 (series_id,date) 複合 PK)
 ================================================================================
 **最後更新日期**: 2026-06-08
 **主權狀態**: GENERIC AUTO-SCHEMA SSOT (§0.0-I 單一引用源) — 從 API 回應動態推導欄位型別 + 自動建表 + 自動偵測/重用主鍵 + 冪等 upsert;退役 DATASET_REGISTRY schema 白名單後之全 FinMind 原始資料表唯一建表機制;§一.10 source-traceable(全部資料來自 API,零 synthetic/零 impute)
@@ -62,9 +62,10 @@ NUM_PRECISION_MIN = 20     # 用戶 directive:數字至少 NUMERIC(20,6)
 NUM_SCALE_MIN = 6
 TEXT_THRESHOLD = 4000      # 觀測字串超過此長度改用 TEXT
 # 主鍵候選欄(依優先序;挑出能唯一識別列之最小組合)。皆為結構性鍵提示(非資料值)。
-KEY_CANDIDATES = ["stock_id", "securities_trader_id", "date", "Time", "time",
-                  "year", "type", "name", "industry_category", "origin_name", "item",
-                  "series_id"]
+KEY_CANDIDATES = ["stock_id", "securities_trader_id", "series_id", "date", "Time", "time",
+                  "year", "type", "name", "industry_category", "origin_name", "item"]
+# series_id 排在 date 之前:FRED 逐 series 同步時單一樣本 series_id 恆定 → [series_id] 非唯一 →
+# 續加 date → (series_id, date) 唯一,正確推出複合 PK(避免誤判為單 date PK 致跨 series ON CONFLICT 誤刪)
 # 強制字串欄(數值樣貌但屬識別碼/期別標籤,須保留原樣不被當數字)
 FORCE_STR = {"stock_id", "securities_trader_id", "year"}
 # 一律視為 DATE 之欄名(語意明確之純日期欄)

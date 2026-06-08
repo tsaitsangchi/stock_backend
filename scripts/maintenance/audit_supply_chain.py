@@ -166,10 +166,9 @@ class ComplianceAuditor:
         else:
             print(f"🔎 正在驗收 FinMind/FRED API 契約 (憲法 {self.constitution_ver}, data_schema {self.schema_ver})...")
 
-        manager = SovereignSchemaManager()
-        # §14.7-DJ (pure-generic):FinMind 表已退役「宣告 schema vs API 欄位」pre-DDL 契約 probe
-        # (`_probe_finmind_contract` 已移除;改 generic auto-schema,正確性由 §14.7-CE 逐股 DB-vs-API 對帳
-        #  audit_full_db_vs_api_reconcile 驗證)。本段對 FinMind 表記 PASS+note(不硬 FAIL);僅 FRED 仍 probe。
+        # §14.7-DJ (pure-generic):FinMind 表 + FRED 兩表皆已退役「宣告 schema vs API 欄位」pre-DDL 契約 probe
+        # (`_probe_finmind_contract` / `_probe_fred_contract` 已從 data_schema 移除;改 generic auto-schema,
+        #  正確性由 §14.7-CE 逐股 DB-vs-API 對帳 audit_full_db_vs_api_reconcile 驗證)。本段一律記 PASS+note。
         targets = []
         if source == "finmind":
             targets = list(FINMIND_PIPELINE_DATASETS)
@@ -179,22 +178,8 @@ class ComplianceAuditor:
             targets = list(FINMIND_PIPELINE_DATASETS) + ["FredData"]
 
         for table_name in targets:
-            if table_name != "FredData":
-                self._record("API-Contract", table_name, "✅ PASS",
-                             "§14.7-DJ generic auto-schema:無宣告 DDL 契約 probe;由 §14.7-CE 逐股 DB-vs-API 對帳驗證")
-                continue
-            before = len(manager.contract_stats["details"])
-            try:
-                manager._probe_fred_contract()
-            except Exception as exc:
-                manager._record_contract("failed", table_name, f"{type(exc).__name__}: {exc}")
-            for line in manager.contract_stats["details"][before:]:
-                if "[API-PASS]" in line:
-                    self._record("API-Contract", table_name, "✅ PASS", line)
-                elif "[API-FAILED]" in line:
-                    self._record("API-Contract", table_name, "❌ FAILED", line)
-                else:
-                    self._record("API-Contract", table_name, "⚠️ WARNING", line)
+            self._record("API-Contract", table_name, "✅ PASS",
+                         "§14.7-DJ generic auto-schema:無宣告 DDL 契約 probe;由 §14.7-CE 逐股 DB-vs-API 對帳驗證")
 
     def audit_db_schema(self):
         # §14.7-DJ (pure-generic):驗收表清單改 FINMIND_PIPELINE_DATASETS(10)+ FredData + 2 infra;

@@ -1,7 +1,7 @@
 """
-fetch_fred_data.py v3.2 (FRED 全球宏觀資料 Fetcher · §0.3 K-wave indicators · per CLAUDE.md §一.11 三段式入憲)
+fetch_fred_data.py v3.3 (FRED 全球宏觀資料 Fetcher · §0.3 K-wave indicators · §14.7-DJ fred_series 改 generic provision_and_upsert · per CLAUDE.md §一.11 三段式入憲)
 ================================================================================
-**最後更新日期**: 2026-05-29(§一.11 三段式標頭補正;原 v3.2 邏輯不變)
+**最後更新日期**: 2026-06-08(§14.7-DJ:移除 hardcoded DDL_FRED/UPSERT_FRED,改 core.generic_schema.provision_and_upsert 建 fred_series;過濾 "."/null;per-series commit)
 **主權狀態**: ACTIVE (§0.3 K-wave 13 indicators + §14.7-BY/BZ doctrine purity + §14.7-BG/BH 配套 + §一.11 三段式合規)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
@@ -132,14 +132,14 @@ ensure_scripts_on_path(__file__)
 from core.db_utils import (
     get_db_conn,
     ensure_ddl,
-    safe_float,
     get_all_safe_starts,
     resolve_start_cached,
     FailureLogger,
-    commit_per_stock_per_day,
     dedup_rows,
     DDL_FETCH_LOG
 )
+# §14.7-DJ (pure-generic):fred_series 改 generic auto-schema 自動建表(退役 hardcoded DDL_FRED/UPSERT_FRED)。
+from core.generic_schema import provision_and_upsert
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -170,8 +170,9 @@ DEFAULT_FRED_SERIES = [
     "PCU4831114831115",  # Shipping Juglar: US Deep Sea Freight Transportation PPI (M / 1988~ / index Jun1988=100;取代 TW_SHIPPING_VWAP_YOY)
 ]
 
-DDL_FRED = """CREATE TABLE IF NOT EXISTS fred_series (series_id VARCHAR(50), date DATE, value NUMERIC(20,6), PRIMARY KEY (series_id, date));"""
-UPSERT_FRED = """INSERT INTO fred_series (series_id, date, value) VALUES %s ON CONFLICT (series_id, date) DO UPDATE SET value = EXCLUDED.value;"""
+# §14.7-DJ (pure-generic):fred_series 由 generic auto-schema 自動建表(provision_and_upsert);
+# 退役 hardcoded DDL_FRED/UPSERT_FRED。FRED 逐 series 樣本之 series_id 恆定 → KEY_CANDIDATES
+# 之 series_id-before-date 順序正確推出複合 PK (series_id, date)。
 
 _CLI_ARGS_STR = " ".join(sys.argv)
 
@@ -252,9 +253,7 @@ def fetch_fred_series(
     fetch_mode_override: str | None = None
 ):
     logger.info("=== [fred_series] 開始 ===")
-    ensure_ddl(conn, DDL_FRED)
-    conn.commit()
-    
+    # §14.7-DJ:generic auto-schema 於首次 provision_and_upsert 自動建表;不再 ensure_ddl(DDL_FRED)。
     latest = get_all_safe_starts(conn, "fred_series", id_col="series_id")
     flog = FailureLogger("fred_series", db_conn=conn, log_to_db=False)
     total_rows = 0
@@ -265,30 +264,37 @@ def fetch_fred_series(
         if not s:
             _write_fetch_log(conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode, status="skipped", error_message="up_to_date")
             continue
-        
+
         t0 = time.time()
         try:
             obs = fred_get(sid, api_key, s, end)
             dur = int((time.time() - t0) * 1000)
-            
+
             if obs:
+                # §14.7-DJ:轉 list[dict](series_id/date/value)。過濾 FRED 缺值標記 "." 與 null/空;
+                # value 保留原始字串交 PG 精確 cast(generic [Source Authority],無 Python float 中介)。
                 rows = []
                 for o in obs:
-                    v = safe_float(o.get("value")) if o.get("value") != "." else None
-                    if v is not None: 
-                        rows.append((sid, o.get("date"), v))
-                        
+                    v = o.get("value")
+                    if v is None or (isinstance(v, str) and v.strip() in (".", "")):
+                        continue
+                    rows.append({"series_id": sid, "date": o.get("date"), "value": v})
+
                 if rows:
-                    rows = dedup_rows(rows, (0, 1))
-                    res = commit_per_stock_per_day(
-                        conn, UPSERT_FRED, rows, "(%s, %s, %s)",
-                        stock_index=0, date_index=1, label=sid
-                    )
-                    n = sum(res.values())
+                    rows = dedup_rows(rows, ("series_id", "date"))
+                    cur = conn.cursor()
+                    try:
+                        n, _schema, _keys = provision_and_upsert(cur, "fred_series", rows)
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        raise
+                    finally:
+                        cur.close()
                     total_rows += n
                     _write_fetch_log(
                         conn, table_name="fred_series", stock_id=sid, fetch_mode=fetch_mode,
-                        fetch_date_from=s, fetch_date_to=end, rows_inserted=n, 
+                        fetch_date_from=s, fetch_date_to=end, rows_inserted=n,
                         duration_ms=dur, status="success" if n > 0 else "partial"
                     )
                 else:

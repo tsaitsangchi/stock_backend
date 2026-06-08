@@ -97,7 +97,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 try:
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
-    from core.data_schema import DATASET_REGISTRY, build_publication_date_gate, get_dataset_columns  # §14.7-DJ
+    from core.data_schema import build_publication_date_gate, get_dataset_columns  # §14.7-DJ:raw 型別查 DB
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
     sys.exit(1)
