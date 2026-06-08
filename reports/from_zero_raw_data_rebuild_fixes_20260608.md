@@ -53,6 +53,15 @@
 - **評估(§一.10 誠實)**:完成總時間**受 FinMind ~6000/hr 上限約束**,burst-vs-穩定跑 ~相同(burst 不會更快,只是先衝再等);cooldown 為 §7.x 受控暫停(非 crash);**riding 策略每次都自恢復**(cooldown1/2 皆然,無需重啟)。
 - **可選緩解(未執行)**:溫和重啟 `--workers 2` 無 `--dynamic-quota`(穩定 ≤6000/hr、避免 402 懲罰 overhead)+ §7.5 resume 跳過已抓 → 但**無速度增益**(總量受同一上限),故續 ride 不重啟。
 - **異常門檻**:單次 cooldown `idle` 若顯著超過第一次之 ~2000s(如 >2400s/~40min)仍不前進 → 才屬真異常(402 懲罰疊加 / backoff 連環)→ 屆時 `tail` log 診斷 + 考慮重啟。
+- **實測收尾(2026-06-09)**:全 10 dataset 共經數次 ~33min cooldown,每次皆自恢復,**無需任何重啟**;總耗時 19,077s(~5h18m)。
+
+### 問題 7：generic ingester 併發建表競態 → 8 個 (股,dataset) 缺格（2026-06-09 sync 完成揭露 + 已修 + 已補）
+- **現象**:sync 完成 verdict **FAILED**(exit 1);摘要 `成功 24490 / 警告 3649 / 失敗 8`。8 失敗全同一根因:`❌ … DuplicateObject: type "X" already exists` / `UniqueViolation: pg_type_typname_nsp_index`。
+- **根因**:`generic_schema.ensure_table` 對不存在的表發 `CREATE TABLE IF NOT EXISTS`,但此語句對 PostgreSQL `pg_type` catalog **非併發安全**;`--workers 4` 下該 dataset「第一支股」由 4 worker 同時建表 → 輸家撞 duplicate-type → 該 (股,dataset) insert 被擋 → **缺格**(贏家建表成功、其餘 2800+ 股正常)。
+- **8 缺格**:Price/`00400A`·`00403A`;PER/`1102`;財報/`1102`·`1103`;資產負債/`1102`·`1103`·`1104`(各 dataset 序最前幾支)。
+- **修法(code,`generic_schema.ensure_table` v1.4)**:`CREATE` 包 `SAVEPOINT _ensure_ct` + catch `DuplicateTable/DuplicateObject/UniqueViolation` → `ROLLBACK TO SAVEPOINT` 當「他人已建」→ fall-through 補欄/重用 PK → upsert 乾淨寫入。**防下次從零重建再咬最前幾支股。**
+- **補格(re-run writer,非手動補值,合 [[no-manual-data-fill]])**:`--id <股> --dataset <表> --strict-source-history`(表已存在→無競態→乾淨 insert)。8 格全補 verdict PERFECT:00400A 42、00403A 20、1102/PER 5108、1102/財報 2353、1103/財報 2315、1102/資產負債 5469、1103/資產負債 5241、1104/資產負債 5069。
+- **殘留(誠實,§一.8)**:`audit_supply_chain --include-logs` = PASS=32/WARN=0/**FAIL=1**,唯一 FAIL = 歷史 `pipeline_execution_log` `sync_all_full=failed`(原次確因 8 缺格 FAILED 之誠實記錄)。**不手動改 log**([[no-manual-data-fill]]):補格為另 8 筆 PERFECT lifecycle;當前 DB 資料完整 + reconcile PASS。
 
 ---
 
@@ -87,12 +96,13 @@ caffeinate -dimsu ./venv/bin/python scripts/ingestion/sovereign_sync_engine.py \
 
 ---
 
-## §3 程式改動清單（本次 from-zero 修法;狀態：未 commit）
+## §3 程式改動清單（本次 from-zero 修法）
 
-| 檔案 | 改動 | 問題 |
-|---|---|---|
-| `scripts/fetchers/fetch_fred_data.py` | `fetch_fred_series`:resume 查詢移到 `to_regclass` table-exists 守門後(API-first)| 2 |
-| `scripts/ingestion/sovereign_sync_engine.py` | `_resolve_stocks`:`--universe full` 在 membership 空/治理表未建時 fallback 全名冊(去重);except-path 落 fallback | 4/4a/4b |
+| 檔案 | 改動 | 問題 | commit |
+|---|---|---|---|
+| `scripts/fetchers/fetch_fred_data.py` | `fetch_fred_series`:resume 查詢移到 `to_regclass` table-exists 守門後(API-first)| 2 | d13a3bf |
+| `scripts/ingestion/sovereign_sync_engine.py` | `_resolve_stocks`:`--universe full` 在 membership 空/治理表未建時 fallback 全名冊(去重);except-path 落 fallback | 4/4a/4b | d13a3bf |
+| `scripts/core/generic_schema.py` | `ensure_table` v1.4:`CREATE TABLE` 包 SAVEPOINT + catch `DuplicateTable/DuplicateObject/UniqueViolation` → 併發建表競態安全 | 7 | (本次) |
 
 > `core/db_utils.py` **未改**(問題 2 採 B = 在 fetch_fred 守門,不動共用 `get_all_safe_starts`)。
 > 問題 1 為**純順序**(無 code);問題 3(bootstrap)**未修**(下游選股,raw-data 階段以 roster fallback 繞過)。
@@ -108,14 +118,15 @@ caffeinate -dimsu ./venv/bin/python scripts/ingestion/sovereign_sync_engine.py \
 
 ---
 
-## §5 完成驗收（待跑完補入,§一.10 不預先宣稱）
+## §5 完成驗收（2026-06-09 sync 完成後填入,§一.10 source-traceable）
 
-- [ ] 10 個 raw 表全建 + 全史 rows(實際數待 sync 完成 DB query)
-- [ ] `audit_supply_chain --include-logs` PERFECT(PHASE 4 gate)
-- [ ] `audit_full_db_vs_api_reconcile --scope all`：raw `TaiwanStockPrice` value_mismatch=0(PriceAdj 除權息回溯為良性 mismatch)
-- [ ] 總耗時(以 sync stdout `Total elapsed` 為準)
-- [ ] 2 code fix commit 封存
+- [x] **10 raw 表全建 + 全史 rows**(DB query):Price 10,702,331 / PriceAdj 10,700,339 / PER 7,358,448 / 法人 25,159,261 / 融資券 7,741,478 / 外資持股 8,399,781 / 財報 2,658,747 / 資產負債 8,233,577 / 月營收 460,992 / 股利 29,650;名冊 3,437;FRED `fred_series` 70,683 / `FredData` 48,916。**總寫入 81,493,520 筆**(+ 8 補格)。
+- [x] **總耗時 19,077s(~5h18m)**(sync stdout `Total elapsed`)。
+- [x] **`audit_full_db_vs_api_reconcile`(抽樣 12 股 × 10 表 + Info + FRED 28 series)PASS**:value_mismatch=0 / missing_in_db=0 / extra_in_db=0 → DB byte-match API origin / 0 system-generated(§一.10)。報告 `reports/full_db_vs_api_reconciliation_20260609.md`。**註:抽樣非全量**(全量 `--scope all` ~4.7hr 會重耗整個 quota;抽樣足以 attest 整合性)。
+- [x] **8 創表競態缺格已修 code(問題 7)+ re-run writer 補回**(全 PERFECT)。
+- [~] `audit_supply_chain --include-logs`:PASS=32 / WARN=0 / **FAIL=1**(唯一 FAIL = 歷史 `pipeline_execution_log` `sync_all_full=failed`,原次因 8 缺格 FAILED 之誠實記錄;不手動改 log per [[no-manual-data-fill]];當前資料已完整)。
+- [x] **code fix commit 封存**:problem 2/4 → `d13a3bf`;problem 6 doc → `4f306ec`;problem 7 race-fix + 本 §5 → (本次)。
 
 ---
 
-**事實來源（§一.10）**：問題/error 訊息自實跑 stdout;`max_connections=100`/連線 10、`_resolve_stocks→2814`、fred_series 24/70683、TaiwanStockPrice 1.78M rows 自 DB query;啟動 2026-06-08 23:55、TaiwanStockPrice ~69%(1950/2814)自 log + HB。完成數據待 sync 跑完補。
+**事實來源（§一.10）**：問題/error 訊息自實跑 stdout;`_resolve_stocks→2814`、各表 rows、8 缺格 before/after 自 DB query;sync 收尾摘要(81,493,520 筆 / 19,077s / 成功 24490 / 失敗 8)自 `/tmp/fullsync_20260608.log`;8 缺格根因自 log `❌ … DuplicateObject/UniqueViolation`;reconcile 0-mismatch 自 `audit_full_db_vs_api_reconcile` stdout + `/tmp/reconcile_20260609.json`;audit_supply_chain PASS=32/FAIL=1 自 `reports/compliance_audit_20260609_0725.md`。

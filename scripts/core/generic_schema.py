@@ -1,7 +1,7 @@
 """
-generic_schema.py v1.3 (Generic Auto-Schema Provisioning · 任意 API dataset → 自動推導型別/建表/upsert 單一引用源;v1.3 ensure_table 既有表自動加寬 VARCHAR 欄[解 146 Shareholding note 截斷];v1.2 §14.7-DJ 字串型別下限 VARCHAR 100→255[用戶 2026-06-08 directive];v1.1 FRED-generic:KEY_CANDIDATES series_id 前置於 date 使逐 series FRED 樣本正確推 (series_id,date) 複合 PK)
+generic_schema.py v1.4 (Generic Auto-Schema Provisioning · 任意 API dataset → 自動推導型別/建表/upsert 單一引用源;v1.4 ensure_table 併發建表競態安全[CREATE 包 SAVEPOINT + catch DuplicateObject/UniqueViolation 當「他人已建」;解 2026-06-09 從零 workers=4 之 8 (股,dataset) 缺格];v1.3 ensure_table 既有表自動加寬 VARCHAR 欄[解 146 Shareholding note 截斷];v1.2 §14.7-DJ 字串型別下限 VARCHAR 100→255[用戶 2026-06-08 directive];v1.1 FRED-generic:KEY_CANDIDATES series_id 前置於 date 使逐 series FRED 樣本正確推 (series_id,date) 複合 PK)
 ================================================================================
-**最後更新日期**: 2026-06-08
+**最後更新日期**: 2026-06-09
 **主權狀態**: GENERIC AUTO-SCHEMA SSOT (§0.0-I 單一引用源) — 從 API 回應動態推導欄位型別 + 自動建表 + 自動偵測/重用主鍵 + 冪等 upsert;退役 DATASET_REGISTRY schema 白名單後之全 FinMind 原始資料表唯一建表機制;§一.10 source-traceable(全部資料來自 API,零 synthetic/零 impute)
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
@@ -214,10 +214,25 @@ def ensure_table(cur, table, schema, keys):
     if not have:
         coldefs = ", ".join(f'"{c}" {t}' for c, t in schema.items())
         pk = ", ".join(f'"{c}"' for c in keys)
-        cur.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({coldefs}, '
-                    f'CONSTRAINT "{table}_pk" PRIMARY KEY ({pk}))')
-        return list(keys)
-    # 表已存在:補缺欄 + **自動加寬既有 VARCHAR 欄**
+        # CREATE TABLE IF NOT EXISTS 對 pg_type catalog 非併發安全:多 worker 同時建同表
+        # 會撞 DuplicateObject / pg_type_typname_nsp_index UniqueViolation
+        # (2026-06-09 從零全量實證:8 個 (股,dataset) 首建競態缺格)。
+        # SAVEPOINT 隔離 → 輸家 catch 後回滾本次 CREATE,fall-through 當「他人已建」處理,不丟該股資料。
+        import psycopg2
+        cur.execute("SAVEPOINT _ensure_ct")
+        try:
+            cur.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({coldefs}, '
+                        f'CONSTRAINT "{table}_pk" PRIMARY KEY ({pk}))')
+            cur.execute("RELEASE SAVEPOINT _ensure_ct")
+            return list(keys)
+        except (psycopg2.errors.DuplicateTable,
+                psycopg2.errors.DuplicateObject,
+                psycopg2.errors.UniqueViolation):
+            cur.execute("ROLLBACK TO SAVEPOINT _ensure_ct")
+            have = existing_columns(cur, table)
+            if not have:
+                raise
+    # 表已存在(或競態 fall-through):補缺欄 + **自動加寬既有 VARCHAR 欄**
     # (防 generic 早期樣本推窄寬度致後續批次 StringDataRightTruncation;
     #  2026-06-08 實證:TaiwanStockShareholding.note 早期 VARCHAR(100) 但部分股[如 1101]達 133 字 → 146 截斷失敗)
     existing = _db_col_types(cur, table)
