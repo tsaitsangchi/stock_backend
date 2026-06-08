@@ -867,8 +867,23 @@ class SovereignSyncEngine:
             try:
                 stocks = get_core_stocks_from_db(tiers=UNIVERSE_TIERS[universe])
             except Exception as exc:
-                self._detail("failed", f"{universe} universe 讀取失敗: {type(exc).__name__}: {exc}")
-                return []
+                if universe != FULL_MARKET_REQUIRED_UNIVERSE:
+                    self._detail("failed", f"{universe} universe 讀取失敗: {type(exc).__name__}: {exc}")
+                    return []
+                # full from-zero:core_universe_membership 治理表可能尚未建 → 視為空,落下方 roster fallback
+                self._detail("warning", f"full universe membership 讀取失敗(治理表未建,from-zero raw): {type(exc).__name__}: {exc}")
+                stocks = []
+            if not stocks and universe == FULL_MARKET_REQUIRED_UNIVERSE:
+                # §14.7-DJ from-zero raw-data:committed universe 空(尚未 bootstrap 選股)時,
+                # --universe full 直接 fallback 全名冊(TaiwanStockInfo roster)→ 全市場 raw 抓取,
+                # 與下游 universe 選股解耦(raw data = 全名冊每支都抓;雞與蛋之資料層解)。
+                try:
+                    from core.db_utils import get_db_stock_ids
+                    stocks = sorted(set(get_db_stock_ids()))
+                    self._detail("warning", f"full universe → fallback TaiwanStockInfo 全名冊 {len(stocks)} 檔(去重) for from-zero raw sync")
+                except Exception as exc:
+                    self._detail("failed", f"roster fallback 讀取失敗: {type(exc).__name__}: {exc}")
+                    return []
             if not stocks:
                 self._detail("warning", f"{universe} universe 無標的")
             return stocks

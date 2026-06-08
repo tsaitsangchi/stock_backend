@@ -253,8 +253,14 @@ def fetch_fred_series(
     fetch_mode_override: str | None = None
 ):
     logger.info("=== [fred_series] 開始 ===")
-    # §14.7-DJ:generic auto-schema 於首次 provision_and_upsert 自動建表;不再 ensure_ddl(DDL_FRED)。
-    latest = get_all_safe_starts(conn, "fred_series", id_col="series_id")
+    # §14.7-DJ API-first:fred_series 由 generic auto-schema 於首次 provision_and_upsert 自動建表
+    # (FRED API 為源頭,DB 表為「抓取之結果」非「抓取之前提」)。resume 最佳化(讀 DB 既有 max date
+    # 跳過已抓段)僅在 table 已存在時做;從零時 table 尚未建 → latest={} → 直接從 API 全抓。
+    latest = {}
+    with conn.cursor() as _chk:
+        _chk.execute("SELECT to_regclass(%s)", ("fred_series",))
+        if _chk.fetchone()[0] is not None:
+            latest = get_all_safe_starts(conn, "fred_series", id_col="series_id")
     flog = FailureLogger("fred_series", db_conn=conn, log_to_db=False)
     total_rows = 0
     fetch_mode = fetch_mode_override or "per_stock"
