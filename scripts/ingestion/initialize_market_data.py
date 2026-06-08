@@ -1,8 +1,8 @@
 """
-initialize_market_data.py v1.21 (Quantum Finance Genesis Edition - Deduplicated)
+initialize_market_data.py v1.22 (Quantum Finance Genesis Edition - Deduplicated · infra log 表字串欄 VARCHAR 100→255)
 ================================================================================
-**最後更新日期**: 2026-05-12
-**主權狀態**: PERFECT (創世自癒對齊)
+**最後更新日期**: 2026-06-08
+**主權狀態**: PERFECT (創世自癒對齊;infra log 表字串欄 ≥VARCHAR(255))
 **最高原則**: THE SUPREME AUTHORITY PRINCIPLE (最高權限原則)
 
 ## 🎯 零、這支程式在做什麼(白話說明,給人看的)
@@ -33,6 +33,7 @@ initialize_market_data.py v1.21 (Quantum Finance Genesis Edition - Deduplicated)
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
 | **v1.21** | 2026-05-12 | Antigravity | **衝突校準**：加入 pandas 去重邏輯，修復同一批次內重複 ID 導致的 SQL 衝突。 | **ACTIVE** |
+| v1.22 | 2026-06-08 | Claude | **infra log 表字串欄 VARCHAR(100)→VARCHAR(255)**(用戶 2026-06-08 directive「infra log 表 pipeline_execution_log/data_audit_log 升 ≥255」):兩 log 表之 task_name/category/stock_id/status/table_name/action_type 由 VARCHAR(100) 改 255,對齊 `data_schema.py INFRA_TABLE_SCHEMAS`(本已 VARCHAR(255))之 SSOT;`stocks` 表(非 log,未在此 scope)不動。 | **ACTIVE** |
 | v1.2 | 2026-05-12 | Antigravity | **創世重鑄**：實現自動偵測與引導建表。 | SUPERSEDED |
 | v1.1 | 2026-05-12 | Antigravity | **接口修復**：本地實現 API 通訊適配器。 | SUPERSEDED |
 | v1.0 | 2026-05-12 | Antigravity | **旗艦發佈**：重鑄為 v5.2 旗艦初始化引擎。 | SUPERSEDED |
@@ -68,15 +69,15 @@ def ensure_infrastructure():
         # 1. 建立日誌治理表
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pipeline_execution_log (
-                id SERIAL PRIMARY KEY, task_name VARCHAR(100), category VARCHAR(100), 
-                stock_id VARCHAR(100), status VARCHAR(100), duration_ms FLOAT, 
+                id SERIAL PRIMARY KEY, task_name VARCHAR(255), category VARCHAR(255),
+                stock_id VARCHAR(255), status VARCHAR(255), duration_ms FLOAT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS data_audit_log (
-                id SERIAL PRIMARY KEY, table_name VARCHAR(100), stock_id VARCHAR(100), 
-                data_date DATE, action_type VARCHAR(100), rows_affected INTEGER, 
+                id SERIAL PRIMARY KEY, table_name VARCHAR(255), stock_id VARCHAR(255),
+                data_date DATE, action_type VARCHAR(255), rows_affected INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)

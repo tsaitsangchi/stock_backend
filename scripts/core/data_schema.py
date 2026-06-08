@@ -1,5 +1,5 @@
 """
-data_schema.py v2.22 (Quantum Finance API-First Schema Sovereignty Edition · §14.7-DJ Pure-Generic Ingestion Retire)
+data_schema.py v2.23 (Quantum Finance API-First Schema Sovereignty Edition · §14.7-DJ Pure-Generic + FRED-Generic;DATASET_REGISTRY 徹底退役 → INFRA_TABLE_SCHEMAS 僅 2 infra,FRED 亦 generic)
 ================================================================================
 **最後更新日期**: 2026-06-08
 **主權狀態**: API CONTRACT FIRST (憲法 v6.1.0-patch 對齊 + §3.2A.J data_audit_log 5-tuple UNIQUE constraint 落地（v2.17）+ §8.5 第 9 條 Publication-date Discipline 之 PUBLICATION_DATE_STRATEGY_REGISTRY 落地（v2.18 Phase 1）+ FredData strict → transitional 追溯修正（v2.19 §14.7-BB Phase 2 dry-run 揭露）+ build_publication_date_gate() helper 升 SSOT（v2.20 Phase 3 配套;兩個 builder 共用）+ **§14.7-DJ Pure-Generic：DATASET_REGISTRY 退役 10 FinMind 原始表（改 generic auto-schema）僅留 2 infra + FredData；新增 get_dataset_columns/get_dataset_keys SSOT helper（DB information_schema 推導）；FINMIND_API_TABLES → FINMIND_PIPELINE_DATASETS；移除 _probe_finmind_contract（v2.22）**；維運矩陣場景齊全（含 Step 2A 離線復原）；8 項檢查面 100% 合規)
@@ -9,7 +9,7 @@ data_schema.py v2.22 (Quantum Finance API-First Schema Sovereignty Edition · §
 
 **一句話**:定義並建立本系統**全部原始資料表**(11 張 FinMind 表 + FRED + 基礎設施表)的 DDL,並持有「API 欄位 schema 主權」。
 
-**輸入 → 輸出**:(無)→ DB 內所有 raw 表結構 + DATASET_REGISTRY
+**輸入 → 輸出**:(無)→ DB 內 2 張 infra log 表結構(INFRA_TABLE_SCHEMAS)+ publication-date 規則 SSOT(FinMind/FRED raw 表改由 generic auto-schema 於首次 ingest 自動建立)
 
 **為什麼需要它**:所有資料的容器源頭;同步/特徵/模型都依賴這些表先存在。
 
@@ -89,17 +89,18 @@ except ImportError:
     print("❌ 核心組件導入失敗，請確認 db_utils.py")
     sys.exit(1)
 
-# 🏛️ 明確 DDL 註冊表 (2 infra + 1 FRED)。§14.7-DJ (pure-generic):FinMind 10 原始資料表已退役本 registry,
-# 改由 generic auto-schema 自動建表(core/generic_schema.py)。本 dict 僅保留「非 FinMind 個股 dataset」之
-# 系統內部表(pipeline_execution_log / data_audit_log,非 API 抓取)+ FredData(FRED API,單表多 series、
-# series_id 為 local-derived 不在 API 回應內 → 須明確 [date, series_id] key,generic 無法推導)。
-DATASET_REGISTRY = {
+# 🏛️ 明確 DDL 註冊表 (僅 2 infra log 表)。§14.7-DJ (pure-generic):FinMind 10 原始資料表 + FRED 兩表
+# (FredData / fred_series) 皆已退役本 registry,改由 generic auto-schema 自動建表(core/generic_schema.py;
+# FRED 逐 series 樣本經 KEY_CANDIDATES 之 series_id-before-date 順序正確推出複合 PK (series_id, date))。
+# 本 dict 僅保留「系統內部寫入、非 API ingest」之 infra log 表(pipeline_execution_log / data_audit_log),
+# 它們無外部 API 回應可推導 schema → 須明確宣告 DDL。
+INFRA_TABLE_SCHEMAS = {
     # --- Infrastructure (治權基礎設施 - 優先建立) ---
     "pipeline_execution_log": {
         "columns": {
-            "id": "SERIAL PRIMARY KEY", "task_name": "VARCHAR(255)", 
+            "id": "SERIAL PRIMARY KEY", "task_name": "VARCHAR(255)",
             "category": "VARCHAR(255)", "stock_id": "VARCHAR(255)",
-            "start_time": "TIMESTAMP", "end_time": "TIMESTAMP", 
+            "start_time": "TIMESTAMP", "end_time": "TIMESTAMP",
             "status": "VARCHAR(255)", "duration_ms": "BIGINT", "error_msg": "TEXT"
         },
         "unique_constraints": [] # 使用 Primary Key
@@ -115,15 +116,6 @@ DATASET_REGISTRY = {
         # multi-worker race-induced dup; timestamp microsecond 精度作 race boundary;
         # 配套 db_utils.write_data_audit_log() v2.48 之 ON CONFLICT DO NOTHING (憲章 §3.2A.J / §14.7-AY)
         "unique_constraints": ["table_name", "stock_id", "data_date", "action_type", "timestamp"]
-    },
-
-    # --- Macro (FRED 宏觀主權；單表多 series_id，預設核心序列 DFF/UNRATE/T10Y2Y/VIXCLS) ---
-    "FredData": {
-        "columns": {
-            "date": "DATE", "series_id": "VARCHAR(255)", 
-            "value": "NUMERIC(20, 6)", "realtime_start": "DATE", "realtime_end": "DATE"
-        },
-        "unique_constraints": ["date", "series_id"]
     },
 }
 # §14.7-DJ (pure-generic):FinMind 原始資料表已退役 DATASET_REGISTRY schema 白名單,改由 generic auto-schema
@@ -144,9 +136,10 @@ FINMIND_PIPELINE_DATASETS = [
 ]
 FINMIND_ROSTER_DATASET = "TaiwanStockInfo"  # 市場級資產名冊(seed);亦走 generic 自動建表
 
-FRED_CONTRACT_SERIES = "DFF"
-LOCAL_DERIVED_COLUMNS = {"FredData": {"series_id"}}
-INFRA_TABLES = {"pipeline_execution_log", "data_audit_log"}
+FRED_CONTRACT_SERIES = "DFF"  # FRED 取樣探測之代表序列(供稽核工具抓 API sample;非 pre-DDL 契約)
+# series_id 非 FRED API observation 回應內欄位(由 ingest code 補上)→ DB↔API 對帳須視為 local-derived 跳過。
+LOCAL_DERIVED_COLUMNS = {"FredData": {"series_id"}, "fred_series": {"series_id"}}
+INFRA_TABLES = set(INFRA_TABLE_SCHEMAS.keys())  # {"pipeline_execution_log", "data_audit_log"}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # §8.5-9 Publication-date Strategy Registry (v2.18 新增;對齊憲章 §8.5-9.2 分派表)
@@ -329,9 +322,10 @@ def build_publication_date_gate(table: str, as_of_param_placeholder: str = "%s")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # §14.7-DJ (pure-generic) 表 schema 單一引用源 helper
-# DATASET_REGISTRY 退役 FinMind 表後,下游(feature_store_schema / core_universe_schema 欄位繼承、
-# core_universe_builder、稽核工具)不得再直接 index DATASET_REGISTRY[table]["columns"];
-# 一律改呼叫以下 helper:infra+FredData 用宣告 schema;其餘(FinMind generic 表)即時查 DB information_schema。
+# DATASET_REGISTRY 退役後,下游(feature_store_schema / core_universe_schema 欄位繼承、
+# core_universe_builder、稽核工具)不得再直接 index 任何 registry[table]["columns"];
+# 一律改呼叫以下 helper:僅 2 infra log 表用宣告 schema(INFRA_TABLE_SCHEMAS);
+# 其餘(全 FinMind generic 表 + FRED FredData/fred_series)即時查 DB information_schema。
 # 此即用戶選定「由 DB information_schema 推導 expected-schema」之 §0.0-I 落地。
 # ──────────────────────────────────────────────────────────────────────────────
 _DB_SCHEMA_CACHE = {}
@@ -389,18 +383,18 @@ def _db_columns_with_types(table):
 
 def get_dataset_columns(table):
     """§0.0-I 表欄位型別 SSOT。回傳 {col: sql_type_str}。
-    infra+FredData → 宣告 schema(DATASET_REGISTRY);FinMind generic 表 → 即時查 DB information_schema。
+    infra log 表 → 宣告 schema(INFRA_TABLE_SCHEMAS);其餘(FinMind generic 表 + FRED)→ 即時查 DB information_schema。
     表尚未建立(空 DB)→ {}(呼叫端須容忍,如 builder 前置在 sync 後執行)。"""
-    if table in DATASET_REGISTRY:
-        return dict(DATASET_REGISTRY[table]["columns"])
+    if table in INFRA_TABLE_SCHEMAS:
+        return dict(INFRA_TABLE_SCHEMAS[table]["columns"])
     return _db_columns_with_types(table)
 
 
 def get_dataset_keys(table):
     """§0.0-I 表 unique-key SSOT。回傳 key 欄 list。
-    infra+FredData → 宣告 unique_constraints;FinMind generic 表 → 讀 DB 實際 PRIMARY KEY。"""
-    if table in DATASET_REGISTRY:
-        return list(DATASET_REGISTRY[table].get("unique_constraints", []))
+    infra log 表 → 宣告 unique_constraints;其餘(FinMind generic 表 + FRED)→ 讀 DB 實際 PRIMARY KEY。"""
+    if table in INFRA_TABLE_SCHEMAS:
+        return list(INFRA_TABLE_SCHEMAS[table].get("unique_constraints", []))
     from core.generic_schema import existing_pk
     conn = get_db_connection()
     try:
@@ -424,72 +418,21 @@ class SovereignSchemaManager:
         self.contract_stats["details"].append(f"{icon} [API-{status.upper()}] {item} - {detail}")
 
     def _api_tables_for_target(self, target_table):
-        # §14.7-DJ:FinMind 表退役明確契約(generic auto-schema)→ 僅 FredData 仍有 API contract probe。
-        if target_table:
-            if target_table in INFRA_TABLES:
-                return []
-            if target_table in DATASET_REGISTRY:   # 現僅 FredData
-                return [target_table]
-            return []  # FinMind 表為 generic auto-schema(無明確契約;不在此 probe;由 §14.7-CE DB-vs-API 對帳驗證)
-        return ["FredData"]
+        # §14.7-DJ (pure-generic):FinMind 表 + FRED 兩表皆退役明確契約(generic auto-schema);
+        # 無任何表需 pre-DDL API 契約 probe(此 init 僅建 2 infra log 表)。
+        return []
 
-    def _compare_columns(self, table_name, api_columns):
-        schema_columns = set(DATASET_REGISTRY[table_name]["columns"].keys())
-        api_columns = set(api_columns)
-        derived = LOCAL_DERIVED_COLUMNS.get(table_name, set())
-        missing_from_api = sorted(schema_columns - api_columns - derived)
-        missing_from_schema = sorted(api_columns - schema_columns)
-        return missing_from_api, missing_from_schema
-
-    # §14.7-DJ (pure-generic):`_probe_finmind_contract` 已移除 —— FinMind 表退役明確 schema 契約,
-    # 改 generic auto-schema 自動建表;其正確性由 §14.7-CE DB-vs-API 逐股對帳(audit_full_db_vs_api_reconcile)驗證,
-    # 不再以「宣告 schema vs API 欄位」之 pre-DDL 契約 probe 把關。FRED 仍保留 _probe_fred_contract。
-
-    def _probe_fred_contract(self):
-        api_key = os.getenv("FRED_API_KEY")
-        if not api_key:
-            self._record_contract("failed", "FredData", "FRED_API_KEY missing")
-            return
-        url = "https://api.stlouisfed.org/fred/series/observations"
-        params = {"series_id": FRED_CONTRACT_SERIES, "api_key": api_key, "file_type": "json", "limit": 1}
-        res = requests.get(url, params=params, timeout=30)
-        res.raise_for_status()
-        payload = res.json()
-        data = payload.get("observations", [])
-        if not data:
-            self._record_contract("failed", "FredData", "FRED returned empty observations")
-            return
-        missing_from_api, missing_from_schema = self._compare_columns("FredData", data[0].keys())
-        if missing_from_api or missing_from_schema:
-            problems = []
-            if missing_from_api:
-                problems.append(f"schema-only={missing_from_api}")
-            if missing_from_schema:
-                problems.append(f"api-only={missing_from_schema}")
-            self._record_contract("failed", "FredData", "; ".join(problems))
-        else:
-            self._record_contract("pass", "FredData", f"{len(data[0].keys())}+1 derived columns matched")
+    # §14.7-DJ (pure-generic):`_probe_finmind_contract` / `_probe_fred_contract` / `_compare_columns` 皆已移除 ——
+    # FinMind 表與 FRED 兩表(FredData / fred_series)均退役明確 schema 契約,改 generic auto-schema 自動建表;
+    # 其正確性由 §14.7-CE DB-vs-API 逐股對帳(audit_full_db_vs_api_reconcile)驗證,不再以「宣告 schema vs API 欄位」
+    # 之 pre-DDL 契約 probe 把關。infra log 表為系統內部寫入、非 API ingest,亦無外部契約。
 
     def probe_api_contracts(self, target_table=None):
-        """DDL 前置 API 契約探測。失敗時不得重鑄 schema。"""
-        targets = self._api_tables_for_target(target_table)
-        if not targets:
-            self._record_contract("pass", target_table or "infrastructure", "no external API contract required")
-            return True
-
-        print(f"🔎 正在執行 API-first 契約探測 ({self.constitution_ver})...")
-        for table_name in targets:
-            if table_name not in DATASET_REGISTRY:
-                # §14.7-DJ:FinMind 表退役明確契約(generic auto-schema);非錯誤,跳過 probe
-                self._record_contract("pass", table_name, "generic auto-schema (no pre-DDL contract; verified by §14.7-CE DB↔API reconcile)")
-                continue
-            try:
-                if table_name == "FredData":
-                    self._probe_fred_contract()
-            except Exception as e:
-                self._record_contract("failed", table_name, f"{type(e).__name__}: {e}")
-
-        return self.contract_stats["failed"] == 0
+        """DDL 前置 API 契約探測。§14.7-DJ:已無外部 API 契約需 pre-DDL probe(FinMind/FRED 皆 generic
+        auto-schema,由 §14.7-CE DB↔API 對帳驗證);本 init 僅建 infra log 表。一律 PASS。"""
+        self._record_contract("pass", target_table or "infrastructure",
+                              "no external API contract requires pre-DDL probe (§14.7-DJ generic auto-schema; verified by §14.7-CE DB↔API reconcile)")
+        return True
 
     def init_tables(self, target_table=None, force=False, skip_api_contract=False):
         """執行憲法 v6.0.0 API-first 標準之物理初始化"""
@@ -500,21 +443,23 @@ class SovereignSchemaManager:
             self.report_results(start_time, ddl_executed=False)
             return False
         if skip_api_contract:
-            self._record_contract("warn", "API-first", "--skip-api-contract used; DDL executed from local registry")
+            self._record_contract("warn", "API-first", "--skip-api-contract used; DDL executed from local infra schema")
 
         conn = get_db_connection()
         cur = conn.cursor()
 
         print("🛠️  正在啟動主權初始化程序...")
 
-        tables = [target_table] if target_table else DATASET_REGISTRY.keys()
+        # §14.7-DJ:本 init 僅建 2 infra log 表(INFRA_TABLE_SCHEMAS);FinMind/FRED 表由 generic auto-schema
+        # 於首次 ingest 自動建立(core/generic_schema.py),不在此 init。
+        tables = [target_table] if target_table else INFRA_TABLE_SCHEMAS.keys()
 
         for table_name in tables:
-            if table_name not in DATASET_REGISTRY:
+            if table_name not in INFRA_TABLE_SCHEMAS:
                 self.stats["failed"] += 1
-                self.stats["details"].append(f"❌ [FAILED] 表名: \"{table_name}\" - 未登錄於 DATASET_REGISTRY")
+                self.stats["details"].append(f"❌ [FAILED] 表名: \"{table_name}\" - 未登錄於 INFRA_TABLE_SCHEMAS(FinMind/FRED 表由 generic auto-schema 建,非此 init)")
                 continue
-            config = DATASET_REGISTRY[table_name]
+            config = INFRA_TABLE_SCHEMAS[table_name]
 
             try:
                 if force:
@@ -564,7 +509,7 @@ class SovereignSchemaManager:
             print(d)
         print("─" * 80)
         print(f"🔎 API PASS/WARN/FAIL : {self.contract_stats['pass']}/{self.contract_stats['warn']}/{self.contract_stats['failed']}")
-        print(f"📈 總計項目 : {len(DATASET_REGISTRY)}")
+        print(f"📈 總計項目 : {len(INFRA_TABLE_SCHEMAS)}")
         print(f"✅ 成功重鑄 : {self.stats['success']}")
         print(f"❌ 失敗項目 : {self.stats['failed']}")
         print(f"🧱 DDL 執行 : {'YES' if ddl_executed else 'NO'}")

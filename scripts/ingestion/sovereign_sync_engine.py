@@ -1,5 +1,5 @@
 """
-sovereign_sync_engine.py v1.24 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation · §6.8.7 第 (5) 條 全市場增量維運 · §14.7-DJ Pure-Generic Ingestion)
+sovereign_sync_engine.py v1.25 (Quantum Finance Market Universe Seed Engine · Functional Group Matrix Edition · §7.4-A Multi-Worker 402 Cascade Mitigation · §6.8.7 第 (5) 條 全市場增量維運 · §14.7-DJ Pure-Generic Ingestion + FRED-Generic;sync_fred 改 _generic_ingest,移除 _align_to_schema/_upsert_to_db registry 路徑)
 ================================================================================
 **最後更新日期**: 2026-06-08
 **主權狀態**: SUPPLY CHAIN RATE SOVEREIGNTY ALIGNED + STRICT SOURCE HISTORY + FULL-MARKET RESTRICTED GOVERNANCE EXCEPTION + AUTO STRICT-SOURCE-HISTORY ON FULL UNIVERSE + --full-history ALIAS FOR CORE FULL-HISTORY MODE + §14.7-AL CROSS-REF CALIBRATION + §14.7-AM ZERO-TO-FULL-MARKET+FRED SEQUENCE TREATY + §14.7-AM POST-INSCRIPTION CROSS-REF CALIBRATION #2 + §14.7-AM 雞與蛋缺陷補強 4 步序列 + CROSS-REF CALIBRATION #3 + §14.7-AP §7.5 STRICT RESUME MODE (DB max_date >= today-N days) + §6.8.8-C 升級配套落地 + **§7.4-A MULTI-WORKER 402 CASCADE MITIGATION (v1.22)** (憲法 v6.1.0 §7 / §14.7-L / §6.8.7 第 (1A) / 第 (4) 條對齊 + §6.8.8-C audit 時點漂移容忍 + §14.7-AP 治權閉環延伸 + §3.1 序列模組身分自我宣告 + 維運矩陣重組為 8 大功能群視角 + §14.7-AL/AM 雙入憲後行號 3 次校準累計 + §14.7-AM 雞與蛋缺陷補強之 4 步序列治權範本明文化 + **§7.4-A global 402 cool-down lock + Paywall402Cascade exception + --disable-402-cascade-mitigation flag (v1.22)；對齊 §14.7-AU v6.1.0 升版** + **§6.8.7 第 (5) 條 FULL-MARKET INCREMENTAL MAINTENANCE (v1.23：--incremental 抑制 auto-strict + 保留 §7.5 resume / --roster TaiwanStockInfo 全名冊解析；市場級一律留 audit)** + **§14.7-DJ PURE-GENERIC INGESTION (v1.24：FinMind 原始表退役 DATASET_REGISTRY → generic auto-schema 自動建表;_generic_ingest + CORE_PIPELINE_DATASETS;任意 dataset 可同步)**；8 項標頭強制檢驗 100% 合規)
@@ -272,8 +272,8 @@ try:
         write_data_audit_log,
         get_core_stocks_from_db,
     )
-    from core.data_schema import DATASET_REGISTRY, get_dataset_columns  # 僅 FredData + infra 仍持明確 schema
-    from core.generic_schema import provision_and_upsert  # §0.0-I FinMind 通用自動建表 SSOT
+    from core.data_schema import get_dataset_columns  # §0.0-I 表欄位 SSOT(infra 宣告;FinMind/FRED 查 DB)
+    from core.generic_schema import provision_and_upsert  # §0.0-I FinMind + FRED 通用自動建表 SSOT
     from core.finmind_client import FinMindClient
 except ImportError as exc:
     print(f"❌ 核心組件導入失敗，請確認 core/ 目錄: {exc}")
@@ -712,103 +712,15 @@ class SovereignSyncEngine:
             res.raise_for_status()
             return None, recovered_402  # unreachable but for linter
 
-    # ---------- schema / DB helpers (v1.10; schema contract inherited from v1.9) ----------
-
-    def _convert_type(self, series, sql_type):
-        if sql_type.startswith("DATE"):
-            return pd.to_datetime(series, errors="coerce").dt.date
-        if sql_type.startswith("TIMESTAMP"):
-            return pd.to_datetime(series, errors="coerce")
-        if sql_type.startswith("NUMERIC") or sql_type.startswith("INTEGER") or sql_type.startswith("BIGINT"):
-            return pd.to_numeric(series, errors="coerce")
-        return series.where(series.notna(), None)
-
-    def _align_to_schema(self, table_name, df):
-        config = DATASET_REGISTRY.get(table_name)
-        if not config:
-            raise ValueError(f"憲章未定義表名: {table_name}")
-
-        expected_cols = list(config["columns"].keys())
-        actual_cols = list(df.columns)
-        missing = [col for col in expected_cols if col not in actual_cols]
-        extra = [col for col in actual_cols if col not in expected_cols]
-        if missing or extra:
-            problems = []
-            if missing:
-                problems.append(f"missing={missing}")
-            if extra:
-                problems.append(f"extra={extra}")
-            raise ValueError(f"{table_name} API/schema 欄位不一致: {'; '.join(problems)}")
-
-        aligned = df[expected_cols].copy()
-        for col, sql_type in config["columns"].items():
-            aligned[col] = self._convert_type(aligned[col], sql_type)
-
-        unique_cols = config.get("unique_constraints", [])
-        if unique_cols:
-            before = len(aligned)
-            aligned = aligned.dropna(subset=unique_cols)
-            dropped = before - len(aligned)
-            if dropped:
-                self._detail("warning", f"{table_name}: 已丟棄 {dropped} 筆 unique key 欄位為空的資料")
-
-        aligned = aligned.where(pd.notnull(aligned), None)
-        if aligned.empty:
-            raise ValueError(f"{table_name} 清洗後資料為空")
-        return aligned
-
-    def _db_value(self, value):
-        if pd.isna(value):
-            return None
-        return value
-
-    def _upsert_to_db(self, table_name, df):
-        if df.empty:
-            raise ValueError(f"{table_name} 無可寫入資料")
-
-        config = DATASET_REGISTRY[table_name]
-        unique_cols = config.get("unique_constraints", [])
-        if not unique_cols:
-            raise ValueError(f"{table_name} 未定義 unique_constraints，禁止 upsert")
-
-        cols = list(df.columns)
-        quoted_cols = [f'"{col}"' for col in cols]
-        placeholders = ", ".join(["%s"] * len(cols))
-        conflict_cols = ", ".join([f'"{col}"' for col in unique_cols])
-        update_cols = ", ".join([f'"{col}" = EXCLUDED."{col}"' for col in cols if col not in unique_cols])
-        update_clause = "DO NOTHING" if not update_cols else f"DO UPDATE SET {update_cols}"
-
-        sql = f'''
-            INSERT INTO "{table_name}" ({", ".join(quoted_cols)})
-            VALUES ({placeholders})
-            ON CONFLICT ({conflict_cols})
-            {update_clause}
-        '''
-
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            data = [
-                tuple(self._db_value(value) for value in row)
-                for row in df.itertuples(index=False, name=None)
-            ]
-            cur.executemany(sql, data)
-            conn.commit()
-            rows = len(df)
-            audit_date = df.iloc[0].get("date", datetime.now().date()) if hasattr(df.iloc[0], "get") else datetime.now().date()
-            write_data_audit_log(table_name, "SYNC", audit_date, "UPSERT", rows)
-            return rows
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            cur.close()
-            conn.close()
+    # ---------- schema / DB helpers (§14.7-DJ pure-generic) ----------
+    # FinMind 原始表 + FRED(FredData)皆改 generic auto-schema(_generic_ingest → provision_and_upsert);
+    # 退役之 DATASET_REGISTRY 嚴格路徑(_align_to_schema / _upsert_to_db / _convert_type / _db_value)已移除。
+    # 僅 2 infra log 表仍由 data_schema.py 持明確 DDL(系統內部寫入,非 API ingest,不經本引擎)。
 
     def _generic_ingest(self, table, data_rows):
-        """§14.7-DJ (pure-generic):任意 FinMind dataset → generic auto-schema 自動建表 + 冪等 upsert。
+        """§14.7-DJ (pure-generic):任意 FinMind dataset + FRED → generic auto-schema 自動建表 + 冪等 upsert。
         委派 core.generic_schema.provision_and_upsert(infer_schema → ensure_table[重用既有 PK] → upsert);
-        保留 §0.4 audit log 寫入。回傳寫入列數。FRED/infra 表不走此路徑(仍由 _upsert_to_db / 明確 DDL)。"""
+        保留 §0.4 audit log 寫入。回傳寫入列數。infra log 表不走此路徑(明確 DDL,非經本引擎)。"""
         conn = get_db_connection()
         cur = conn.cursor()
         try:
@@ -856,7 +768,7 @@ class SovereignSyncEngine:
                 return
 
             # §14.7-DJ (pure-generic):FinMind 原始資料表改 generic auto-schema(自動建表 + 重用既有 PK)
-            # 取代退役之 DATASET_REGISTRY `_align_to_schema`/`_upsert_to_db` 嚴格路徑(該路徑現僅服務 FredData)。
+            # 取代退役之 DATASET_REGISTRY `_align_to_schema`/`_upsert_to_db` 嚴格路徑(已移除;FRED 亦走 generic)。
             rows = self._generic_ingest(dataset_name, data)
             self._add_rows(rows)
 
@@ -914,14 +826,21 @@ class SovereignSyncEngine:
             if not data:
                 raise RuntimeError("API 回傳 0 個 observation")
 
-            df = pd.DataFrame(data)
-            df["series_id"] = series_id
-            df = self._align_to_schema("FredData", df)
-            df = df.dropna(subset=["value"])
-            if df.empty:
+            # §14.7-DJ (pure-generic):FRED 亦改 generic auto-schema(FredData 表)。
+            # 過濾 FRED 缺值標記 value=="." 與 null/空(沿用既有 dropna 行為);否則 generic infer_schema
+            # 會因 "." 把 value 推成 VARCHAR。每筆補 series_id(非 API 回應欄位,local-derived)。
+            rows_payload = []
+            for o in data:
+                v = o.get("value")
+                if v is None or (isinstance(v, str) and v.strip() in (".", "")):
+                    continue
+                row = dict(o)
+                row["series_id"] = series_id
+                rows_payload.append(row)
+            if not rows_payload:
                 raise ValueError("全部 observation 在數據聖潔清洗後為空")
 
-            rows = self._upsert_to_db("FredData", df)
+            rows = self._generic_ingest("FredData", rows_payload)
             self._add_rows(rows)
             self._detail("success", f"FRED/{series_id}: {rows} 筆 UPSERT 成功")
         except Exception as exc:

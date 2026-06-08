@@ -99,11 +99,16 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 try:
     from core.data_schema import (
-        DATASET_REGISTRY,
-        FINMIND_API_TABLES,
+        # §14.7-DJ (pure-generic):FinMind 10 表 + FRED 兩表退役 DATASET_REGISTRY schema 白名單(改 generic
+        # auto-schema,DB 即真理);schema 來源改 get_dataset_columns/get_dataset_keys。僅 2 infra log 表用宣告。
+        FINMIND_PIPELINE_DATASETS,
+        FINMIND_ROSTER_DATASET,
+        INFRA_TABLE_SCHEMAS,
         FRED_CONTRACT_SERIES,
         LOCAL_DERIVED_COLUMNS,
         INFRA_TABLES,
+        get_dataset_columns,
+        get_dataset_keys,
     )
     from core.db_utils import get_db_connection, record_lifecycle, write_data_audit_log
     from core.finmind_client import FinMindClient
@@ -111,6 +116,35 @@ try:
 except ImportError as exc:
     print("❌ 核心組件導入失敗: {}".format(exc))
     sys.exit(1)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# §14.7-DJ (pure-generic) audit 表清單 + schema 來源 helper
+# DATASET_REGISTRY 退役後,本工具稽核範圍 = 2 infra log 表 + 10 FinMind pipeline 表 + roster + FredData。
+# schema(columns / unique_constraints)來源:infra 表用宣告(INFRA_TABLE_SCHEMAS);其餘(FinMind/FRED)
+# 即時查 DB information_schema(get_dataset_columns / get_dataset_keys)= generic auto-schema 所建。
+# ──────────────────────────────────────────────────────────────────────────────
+# FinMind API 取樣探測參數(非 schema 白名單;僅供 Layer B/C/D 抓 API sample 比對 DB 實體型別)。
+FINMIND_PROBE_PARAMS = {
+    t: {"dataset": t, "data_id": "2330",
+        "start_date": "2024-01-01" if t in (
+            "TaiwanStockFinancialStatements", "TaiwanStockBalanceSheet",
+            "TaiwanStockMonthRevenue") else (
+            "2020-01-01" if t == "TaiwanStockDividend" else "2024-05-01")}
+    for t in FINMIND_PIPELINE_DATASETS
+}
+FINMIND_PROBE_PARAMS[FINMIND_ROSTER_DATASET] = {
+    "dataset": FINMIND_ROSTER_DATASET, "data_id": "", "start_date": "2024-01-01"}
+
+
+def _all_audit_tables():
+    """稽核表清單(取代退役之 DATASET_REGISTRY.keys()):infra + FinMind pipeline + roster + FredData。"""
+    return (list(INFRA_TABLE_SCHEMAS.keys())
+            + list(FINMIND_PIPELINE_DATASETS)
+            + [FINMIND_ROSTER_DATASET, "FredData"])
+
+
+_ALL_AUDIT_TABLES_SET = set(_all_audit_tables())
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -210,7 +244,16 @@ class ApiSchemaComplianceAuditor:
     def _target_tables(self):
         if self.target_table:
             return [self.target_table]
-        return list(DATASET_REGISTRY.keys())
+        return _all_audit_tables()
+
+    def _dataset_config(self, table_name):
+        """§14.7-DJ:取代退役之 DATASET_REGISTRY[table];回傳 {"columns", "unique_constraints"}。
+        infra 表用宣告 schema;FinMind/FRED 表查 DB information_schema(generic auto-schema 所建)。
+        表尚未建立(空 DB)→ columns={}(各層自然 skip / 記空表)。"""
+        return {
+            "columns": get_dataset_columns(table_name),
+            "unique_constraints": get_dataset_keys(table_name),
+        }
 
     def _fetch_api_sample(self, table_name):
         """Fetch sample rows from FinMind or FRED API. Returns list or None."""
@@ -243,8 +286,8 @@ class ApiSchemaComplianceAuditor:
                 self._api_samples[table_name] = data
                 return data
 
-            if table_name in FINMIND_API_TABLES:
-                probe = FINMIND_API_TABLES[table_name]
+            if table_name in FINMIND_PROBE_PARAMS:
+                probe = FINMIND_PROBE_PARAMS[table_name]
                 client = FinMindClient()
                 params = {
                     "dataset": probe["dataset"],
@@ -275,9 +318,9 @@ class ApiSchemaComplianceAuditor:
         cur = conn.cursor()
         try:
             for table_name in self._target_tables():
-                if table_name not in DATASET_REGISTRY:
+                if table_name not in _ALL_AUDIT_TABLES_SET:
                     continue
-                config = DATASET_REGISTRY[table_name]
+                config = self._dataset_config(table_name)
                 cur.execute("""
                     SELECT column_name, data_type, character_maximum_length,
                            numeric_precision, numeric_scale, is_nullable
@@ -356,7 +399,7 @@ class ApiSchemaComplianceAuditor:
                 continue
             if not sample:
                 continue
-            config = DATASET_REGISTRY[table_name]
+            config = self._dataset_config(table_name)
             derived = LOCAL_DERIVED_COLUMNS.get(table_name, set())
             for col_name, ddl_str in config["columns"].items():
                 if col_name in derived:
@@ -406,7 +449,7 @@ class ApiSchemaComplianceAuditor:
             sample = self._fetch_api_sample(table_name)
             if not sample:
                 continue
-            config = DATASET_REGISTRY[table_name]
+            config = self._dataset_config(table_name)
             derived = LOCAL_DERIVED_COLUMNS.get(table_name, set())
             for col_name, ddl_str in config["columns"].items():
                 if col_name in derived:
@@ -457,7 +500,7 @@ class ApiSchemaComplianceAuditor:
             sample = self._fetch_api_sample(table_name)
             if not sample:
                 continue
-            config = DATASET_REGISTRY[table_name]
+            config = self._dataset_config(table_name)
             unique_cols = set(config.get("unique_constraints", []) or [])
             for col_name in config["columns"]:
                 null_count = sum(1 for row in sample if row.get(col_name) in (None, "", "."))
@@ -518,9 +561,9 @@ class ApiSchemaComplianceAuditor:
         cur = conn.cursor()
         try:
             for table_name in self._target_tables():
-                if table_name not in DATASET_REGISTRY:
+                if table_name not in _ALL_AUDIT_TABLES_SET:
                     continue
-                config = DATASET_REGISTRY[table_name]
+                config = self._dataset_config(table_name)
                 unique_cols = config.get("unique_constraints", []) or []
                 if not unique_cols:
                     continue
@@ -555,9 +598,9 @@ class ApiSchemaComplianceAuditor:
         cur = conn.cursor()
         try:
             for table_name in self._target_tables():
-                if table_name not in DATASET_REGISTRY:
+                if table_name not in _ALL_AUDIT_TABLES_SET:
                     continue
-                config = DATASET_REGISTRY[table_name]
+                config = self._dataset_config(table_name)
                 cols = [c for c, ddl in config["columns"].items()
                         if "SERIAL" not in ddl.upper()]
                 if not cols:
@@ -607,9 +650,9 @@ class ApiSchemaComplianceAuditor:
         cur = conn.cursor()
         try:
             for table_name in self._target_tables():
-                if table_name not in DATASET_REGISTRY:
+                if table_name not in _ALL_AUDIT_TABLES_SET:
                     continue
-                config = DATASET_REGISTRY[table_name]
+                config = self._dataset_config(table_name)
                 if "date" not in config["columns"] or table_name in INFRA_TABLES:
                     continue
 
@@ -750,9 +793,10 @@ class ApiSchemaComplianceAuditor:
             self.layer_skipped["H"] = True
             return
         # 對所有含 stock_id 的非 TaiwanStockInfo 表，驗證 stock_id ∈ TaiwanStockInfo
+        # §14.7-DJ:schema 來源改 get_dataset_columns(FinMind/FRED 查 DB;空 DB → 無欄位 → 該表自然排除)。
         stock_level_tables = [
-            t for t, cfg in DATASET_REGISTRY.items()
-            if "stock_id" in cfg["columns"] and t != "TaiwanStockInfo" and t not in INFRA_TABLES
+            t for t in _all_audit_tables()
+            if "stock_id" in get_dataset_columns(t) and t != FINMIND_ROSTER_DATASET and t not in INFRA_TABLES
         ]
         if self.target_table:
             if self.target_table not in stock_level_tables:
@@ -833,7 +877,7 @@ class ApiSchemaComplianceAuditor:
             for table_name, rules in sanity_rules.items():
                 if self.target_table and self.target_table != table_name:
                     continue
-                if table_name not in DATASET_REGISTRY:
+                if table_name not in _ALL_AUDIT_TABLES_SET:
                     continue
                 for col, condition, desc in rules:
                     try:
@@ -986,7 +1030,7 @@ if __name__ == "__main__":
     parser.add_argument("--include-fred", action="store_true",
                         help="含 FRED API probe（Layer B/C/D）")
     parser.add_argument("--table", type=str,
-                        help="只跑單一表（13 張 DATASET_REGISTRY 之一）")
+                        help="只跑單一表（infra / FinMind pipeline / roster / FredData 之一）")
     parser.add_argument("--skip-api-probe", action="store_true",
                         help="略過 Layer B/C/D 之 API 探測；只跑 DB-side 6 層")
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE,

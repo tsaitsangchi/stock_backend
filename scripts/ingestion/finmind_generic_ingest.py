@@ -11,7 +11,7 @@ finmind_generic_ingest.py v0.2 (Generic Schema-Inferring FinMind Ingester · 任
 
 **它怎麼做(步驟)**:
 1. 呼叫 FinMind `/api/v4/data`(帶 dataset / 可選 data_id / 日期範圍)。
-2. **看回應自動推導每欄型別**:純數字→`NUMERIC`(至少 20,6,值很大就自動加大);其他→`VARCHAR`(至少 100,很長就 TEXT);`date`→`DATE`;`stock_id`/識別碼/`Time`→強制 `VARCHAR`(避免被當數字掉前導零)。
+2. **看回應自動推導每欄型別**:純數字→`NUMERIC`(至少 20,6,值很大就自動加大);其他→`VARCHAR`(至少 255,很長就 TEXT);`date`→`DATE`;`stock_id`/識別碼/`Time`→強制 `VARCHAR`(避免被當數字掉前導零)。
 3. **自動偵測主鍵**(從 stock_id/date/Time/name/type… 等候選挑出能唯一識別列的組合)。
 4. **自動建表**(`CREATE TABLE IF NOT EXISTS`,表名=dataset 名)+ upsert(`ON CONFLICT (主鍵) DO UPDATE`)。
 5. 回報抓了幾列、寫了幾列、推導出的 schema。
@@ -23,7 +23,7 @@ finmind_generic_ingest.py v0.2 (Generic Schema-Inferring FinMind Ingester · 任
 **為什麼需要它**:解除「sync 只能抓 registry 預定義 11 個 dataset」的自我設限(用戶 2026-06-08 directive「不要在此系統設限制」),讓任意 FinMind 接口(大盤法人、委買委賣統計、現金流量…)都能落地探索,支撐 §14.7-DG regime/擇時等新方向。
 
 ## 📜 一、核心定義說明 (Core Definitions / The Constitution)
-1. **[Generic Auto-Schema]** (v0.1): 型別由 FinMind 回應動態推導,**零硬編 dataset schema**;字串 ≥ VARCHAR(100)、數字 ≥ NUMERIC(20,6)(用戶 directive 下限),值超界自動加大。
+1. **[Generic Auto-Schema]** (v0.1): 型別由 FinMind 回應動態推導,**零硬編 dataset schema**;字串 ≥ VARCHAR(255)、數字 ≥ NUMERIC(20,6)(用戶 directive 下限;2026-06-08 字串下限 100→255,實際下限由 `core.generic_schema.MIN_VARCHAR` 持有),值超界自動加大。
 2. **[Sovereignty Declaration]** (v0.1, 憲法 §3.1 序列 ingestion 模組): 本程式為 §3.1 **generic ingestion 旁路**;治權邊界:(a) §3.1 ingestion;(b) 五套禁令(§0.1-A/§0.2-A/§0.3-A/§0.0-E.4/§6.8)不涉;(c) T1-T3 不分層;(d) §8.5 anti-leakage 不處理(raw ingestion);(e) **不選股**;(f) **不算特徵**;(g) **不碰核心 11 表 / DATASET_REGISTRY 嚴格路徑**(隔離並存);(h) **不收 intraday / 日以下 dataset**(日為最小單位,`INTRADAY_DATASETS` 預設拒絕);(i) 唯一職責:任意「日級(含)以上」FinMind dataset → 自動建表 → upsert。
 3. **[Source Authority / No Synthetic]** (v0.1, §14.7-CC/§一.10): 全部資料**僅**來自 FinMind API(`api.finmindtrade.com`);不產生 synthetic / impute;NULL 即 NULL。
 4. **[Zero Hardcoded Verdict]** (v0.1, §5.6.3): 成功/失敗依實際 API status + 寫入結果動態判定。
@@ -45,7 +45,8 @@ finmind_generic_ingest.py v0.2 (Generic Schema-Inferring FinMind Ingester · 任
 | 版本 | 日期 | 修訂者 | 修訂說明 | 治權狀態 |
 | :--- | :--- | :--- | :--- | :--- |
 | v0.1 | 2026-06-08 | Claude | 首版:通用 auto-schema FinMind ingester(從回應推導型別 + 自動建表 + upsert);字串≥VARCHAR(100)/數字≥NUMERIC(20,6);與核心 11 表嚴格路徑隔離並存。對映用戶 directive「取消 DEFAULT_FINMIND_DATASETS 寫死清單,不要在此系統設限制」。 | SUPERSEDED |
-| v0.2 | 2026-06-08 | Claude | **去重至 §0.0-I 共用 SSOT**:infer_schema/detect_keys/ensure_table/upsert 移至 `core/generic_schema.py v1.0`,本檔改 `from core.generic_schema import ...`(不再持本地拷貝);commit 路徑改呼叫 `provision_and_upsert`(含 [Key Stability] 重用既有 PK + DATE 自動偵測 + NUMERIC 精確 cast 強化)。對映用戶 directive「全部的表都應是通用 ingester 建的」之共用機制提升。 | **ACTIVE** |
+| v0.2 | 2026-06-08 | Claude | **去重至 §0.0-I 共用 SSOT**:infer_schema/detect_keys/ensure_table/upsert 移至 `core/generic_schema.py v1.0`,本檔改 `from core.generic_schema import ...`(不再持本地拷貝);commit 路徑改呼叫 `provision_and_upsert`(含 [Key Stability] 重用既有 PK + DATE 自動偵測 + NUMERIC 精確 cast 強化)。對映用戶 directive「全部的表都應是通用 ingester 建的」之共用機制提升。 | SUPERSEDED |
+| v0.3 | 2026-06-08 | Claude | docstring 同步 `core.generic_schema v1.2` 之字串型別下限 100→255(用戶 directive「所有欄位字串型態最少要大於 varchar(255) 以上」);本檔**無 code 變更**(下限由所 import 之 `core.generic_schema.MIN_VARCHAR` 持有,自動繼承),僅 [Generic Auto-Schema] + 白話段標示更新。 | **ACTIVE** |
 """
 
 from __future__ import annotations
