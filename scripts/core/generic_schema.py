@@ -184,6 +184,25 @@ def existing_pk(cur, table):
     return [r[0] for r in cur.fetchall()]
 
 
+_SQLTYPE_RE = re.compile(r"^([A-Z ]+?)(?:\((\d+)(?:,(\d+))?\))?$")
+
+
+def _parse_sql_type(t):
+    m = _SQLTYPE_RE.match(t.strip().upper())
+    if not m:
+        return (t.strip().upper(), None, None)
+    return (m.group(1).strip(),
+            int(m.group(2)) if m.group(2) else None,
+            int(m.group(3)) if m.group(3) else None)
+
+
+def _db_col_types(cur, table):
+    """{col: (DATA_TYPE_UPPER, char_max_len)} from information_schema(供自動加寬比對)。"""
+    cur.execute("SELECT column_name, data_type, character_maximum_length "
+                "FROM information_schema.columns WHERE table_name=%s", (table,))
+    return {r[0]: (r[1].upper(), r[2]) for r in cur.fetchall()}
+
+
 def ensure_table(cur, table, schema, keys):
     """建表(若不存在)或補缺欄(若存在);回傳 effective_keys。
     **表已存在且有 PK → 一律沿用既有 PK**(Key Stability),否則用傳入 keys。"""
@@ -194,10 +213,24 @@ def ensure_table(cur, table, schema, keys):
         cur.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({coldefs}, '
                     f'CONSTRAINT "{table}_pk" PRIMARY KEY ({pk}))')
         return list(keys)
-    # 表已存在:補缺欄
+    # 表已存在:補缺欄 + **自動加寬既有 VARCHAR 欄**
+    # (防 generic 早期樣本推窄寬度致後續批次 StringDataRightTruncation;
+    #  2026-06-08 實證:TaiwanStockShareholding.note 早期 VARCHAR(100) 但部分股[如 1101]達 133 字 → 146 截斷失敗)
+    existing = _db_col_types(cur, table)
     for c, t in schema.items():
         if c not in have:
             cur.execute(f'ALTER TABLE "{table}" ADD COLUMN "{c}" {t}')
+            continue
+        base, n1, _n2 = _parse_sql_type(t)
+        ex = existing.get(c)
+        if not ex:
+            continue
+        ex_dt, ex_clen = ex[0], ex[1]
+        is_char = ex_dt in ("CHARACTER VARYING", "VARCHAR")
+        if is_char and base == "TEXT":
+            cur.execute(f'ALTER TABLE "{table}" ALTER COLUMN "{c}" TYPE TEXT')
+        elif is_char and base == "VARCHAR" and n1 and ex_clen and n1 > ex_clen:
+            cur.execute(f'ALTER TABLE "{table}" ALTER COLUMN "{c}" TYPE VARCHAR({n1})')
     pk = existing_pk(cur, table)
     return pk or list(keys)
 

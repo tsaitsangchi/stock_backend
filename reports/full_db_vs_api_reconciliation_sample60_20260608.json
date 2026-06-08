@@ -1,0 +1,885 @@
+{
+  "meta": {
+    "generated": "2026-06-08 23:10:25",
+    "scope": "all",
+    "n_stocks": 60,
+    "tables": [
+      "TaiwanStockPrice",
+      "TaiwanStockPriceAdj",
+      "TaiwanStockPER",
+      "TaiwanStockInstitutionalInvestorsBuySell",
+      "TaiwanStockMarginPurchaseShortSale",
+      "TaiwanStockShareholding",
+      "TaiwanStockFinancialStatements",
+      "TaiwanStockBalanceSheet",
+      "TaiwanStockMonthRevenue",
+      "TaiwanStockDividend"
+    ],
+    "start": "1990-01-01",
+    "end": "2026-06-08",
+    "api_calls": 637,
+    "elapsed": 518.3388414382935
+  },
+  "perstock": {
+    "TaiwanStockPrice": {
+      "stocks_done": 60,
+      "api_rows": 166132,
+      "db_rows": 166132,
+      "matched": 166131,
+      "value_mismatch": 1,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": [
+        {
+          "stock": "0050",
+          "key": [
+            "0050",
+            "2026-06-08"
+          ],
+          "type": "value_mismatch",
+          "diffs": [
+            [
+              "Trading_Volume",
+              "524952235",
+              "359952235.000000"
+            ],
+            [
+              "Trading_money",
+              "52211365308",
+              "36033115308.000000"
+            ],
+            [
+              "Trading_turnover",
+              "599172",
+              "599169.000000"
+            ]
+          ]
+        }
+      ]
+    },
+    "TaiwanStockPriceAdj": {
+      "stocks_done": 60,
+      "api_rows": 166114,
+      "db_rows": 166069,
+      "matched": 166069,
+      "value_mismatch": 0,
+      "missing_in_db": 45,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": [
+        {
+          "stock": "0050",
+          "key": [
+            "0050",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0051",
+          "key": [
+            "0051",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0052",
+          "key": [
+            "0052",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00401A",
+          "key": [
+            "00401A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00403A",
+          "key": [
+            "00403A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0053",
+          "key": [
+            "0053",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0055",
+          "key": [
+            "0055",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0056",
+          "key": [
+            "0056",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0061",
+          "key": [
+            "0061",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006201",
+          "key": [
+            "006201",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006204",
+          "key": [
+            "006204",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006205",
+          "key": [
+            "006205",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006206",
+          "key": [
+            "006206",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006207",
+          "key": [
+            "006207",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00632R",
+          "key": [
+            "00632R",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00633L",
+          "key": [
+            "00633L",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00636",
+          "key": [
+            "00636",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        }
+      ]
+    },
+    "TaiwanStockPER": {
+      "stocks_done": 60,
+      "api_rows": 0,
+      "db_rows": 0,
+      "matched": 0,
+      "value_mismatch": 0,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": []
+    },
+    "TaiwanStockInstitutionalInvestorsBuySell": {
+      "stocks_done": 60,
+      "api_rows": 673822,
+      "db_rows": 673787,
+      "matched": 673786,
+      "value_mismatch": 1,
+      "missing_in_db": 35,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": [
+        {
+          "stock": "0050",
+          "key": [
+            "0050",
+            "2026-06-08",
+            "Foreign_Investor"
+          ],
+          "type": "value_mismatch",
+          "diffs": [
+            [
+              "buy",
+              "193072340",
+              "28072340.000000"
+            ],
+            [
+              "sell",
+              "306397359",
+              "141397359.000000"
+            ]
+          ]
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08",
+            "Foreign_Investor"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08",
+            "Foreign_Dealer_Self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08",
+            "Investment_Trust"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08",
+            "Dealer_self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08",
+            "Dealer_Hedging"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08",
+            "Foreign_Investor"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08",
+            "Foreign_Dealer_Self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08",
+            "Investment_Trust"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08",
+            "Dealer_self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08",
+            "Dealer_Hedging"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08",
+            "Foreign_Investor"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08",
+            "Foreign_Dealer_Self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08",
+            "Investment_Trust"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08",
+            "Dealer_self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08",
+            "Dealer_Hedging"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00636K",
+          "key": [
+            "00636K",
+            "2026-06-08",
+            "Foreign_Investor"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00636K",
+          "key": [
+            "00636K",
+            "2026-06-08",
+            "Foreign_Dealer_Self"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00636K",
+          "key": [
+            "00636K",
+            "2026-06-08",
+            "Investment_Trust"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00636K",
+          "key": [
+            "00636K",
+            "2026-06-08",
+            "Dealer_self"
+          ],
+          "type": "missing_in_db"
+        }
+      ]
+    },
+    "TaiwanStockMarginPurchaseShortSale": {
+      "stocks_done": 60,
+      "api_rows": 157458,
+      "db_rows": 157408,
+      "matched": 157408,
+      "value_mismatch": 0,
+      "missing_in_db": 50,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": [
+        {
+          "stock": "0050",
+          "key": [
+            "0050",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0051",
+          "key": [
+            "0051",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0052",
+          "key": [
+            "0052",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00401A",
+          "key": [
+            "00401A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00403A",
+          "key": [
+            "00403A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00400A",
+          "key": [
+            "00400A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0053",
+          "key": [
+            "0053",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0055",
+          "key": [
+            "0055",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0056",
+          "key": [
+            "0056",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0057",
+          "key": [
+            "0057",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0061",
+          "key": [
+            "0061",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006201",
+          "key": [
+            "006201",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006203",
+          "key": [
+            "006203",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006204",
+          "key": [
+            "006204",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006205",
+          "key": [
+            "006205",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006206",
+          "key": [
+            "006206",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006207",
+          "key": [
+            "006207",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00635U",
+          "key": [
+            "00635U",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        }
+      ]
+    },
+    "TaiwanStockShareholding": {
+      "stocks_done": 60,
+      "api_rows": 167674,
+      "db_rows": 167620,
+      "matched": 167620,
+      "value_mismatch": 0,
+      "missing_in_db": 54,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": [
+        {
+          "stock": "0050",
+          "key": [
+            "0050",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0051",
+          "key": [
+            "0051",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0052",
+          "key": [
+            "0052",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00401A",
+          "key": [
+            "00401A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00403A",
+          "key": [
+            "00403A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00400A",
+          "key": [
+            "00400A",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0053",
+          "key": [
+            "0053",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0055",
+          "key": [
+            "0055",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0056",
+          "key": [
+            "0056",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0057",
+          "key": [
+            "0057",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "0061",
+          "key": [
+            "0061",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006201",
+          "key": [
+            "006201",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006203",
+          "key": [
+            "006203",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006204",
+          "key": [
+            "006204",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006205",
+          "key": [
+            "006205",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006206",
+          "key": [
+            "006206",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006207",
+          "key": [
+            "006207",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00625K",
+          "key": [
+            "00625K",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "00631L",
+          "key": [
+            "00631L",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        },
+        {
+          "stock": "006208",
+          "key": [
+            "006208",
+            "2026-06-08"
+          ],
+          "type": "missing_in_db"
+        }
+      ]
+    },
+    "TaiwanStockFinancialStatements": {
+      "stocks_done": 60,
+      "api_rows": 0,
+      "db_rows": 0,
+      "matched": 0,
+      "value_mismatch": 0,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": []
+    },
+    "TaiwanStockBalanceSheet": {
+      "stocks_done": 60,
+      "api_rows": 0,
+      "db_rows": 0,
+      "matched": 0,
+      "value_mismatch": 0,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": []
+    },
+    "TaiwanStockMonthRevenue": {
+      "stocks_done": 60,
+      "api_rows": 0,
+      "db_rows": 0,
+      "matched": 0,
+      "value_mismatch": 0,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": []
+    },
+    "TaiwanStockDividend": {
+      "stocks_done": 60,
+      "api_rows": 221,
+      "db_rows": 221,
+      "matched": 221,
+      "value_mismatch": 0,
+      "missing_in_db": 0,
+      "extra_in_db": 0,
+      "api_fail": 0,
+      "samples": []
+    }
+  },
+  "info": {
+    "api_fail": false,
+    "api_rows": 61,
+    "db_rows": 60,
+    "matched": 60,
+    "value_mismatch": 0,
+    "missing_in_db": 1,
+    "extra_in_db": 0,
+    "samples": [
+      {
+        "stock": "(info)",
+        "key": [
+          "006201",
+          "tpex",
+          "上櫃指數股票型基金(ETF)"
+        ],
+        "type": "missing_in_db"
+      }
+    ]
+  },
+  "fred": {
+    "series_total": 28,
+    "series_clean": 28,
+    "series_fail": 0,
+    "matched": 119595,
+    "value_mismatch": 0,
+    "missing_in_db": 21588,
+    "extra_in_db": 3,
+    "samples": [],
+    "per_table": {
+      "FredData": {
+        "series": 4,
+        "matched": 48914,
+        "value_mismatch": 0,
+        "missing_in_db": 0,
+        "extra_in_db": 0,
+        "fail": 0
+      },
+      "fred_series": {
+        "series": 24,
+        "matched": 70681,
+        "value_mismatch": 0,
+        "missing_in_db": 21588,
+        "extra_in_db": 3,
+        "fail": 0
+      }
+    }
+  }
+}
