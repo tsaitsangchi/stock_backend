@@ -2,23 +2,23 @@
 
 **日期**:2026-06-08 | **治權**:主憲章 §14.7-DJ 之 companion 完整檔 | **source**:§一.10 source-traceable(FinMind/FRED API + DB information_schema,2330 樣本 sync 實證)
 
-本檔為「經 FinMind API + FRED API 逐一建立、餵特徵庫之 12 feature-input 表」之完整資料字典(table 名 + 欄位名 + 型別 + 定義 + 長表 type 枚舉)。權威同主憲章 §14.7-DJ §二。
+本檔為「經 FinMind API + FRED API 逐一建立、餵特徵庫之 13 feature-input 表」之完整資料字典(table 名 + 欄位名 + 型別 + 定義 + 長表 type 枚舉)。權威同主憲章 §14.7-DJ §二。
 
 ---
 
-**通則**:全部資料 source = FinMind API(`api.finmindtrade.com/api/v4/data`)/ FRED API(`api.stlouisfed.org`),DB-verified 2026-06-08(以 2330 台積電樣本實際 sync 取得,§一.10 (b)(c));型別由 generic auto-schema **依實際觀測值動態推導**(字串≥VARCHAR(100)、數字≥NUMERIC(20,6),值超界自動加大——故 `Trading_money` NUMERIC(22,6)、`value` NUMERIC(23,6)等比舊硬編更貼合真實值、防截斷);per-stock 表 PK 由 detect_keys 自 API 偵測;**無 synthetic/impute 值**(§14.7-DC source-pure)。
+**通則**:全部資料 source = FinMind API(`api.finmindtrade.com/api/v4/data`)/ FRED API(`api.stlouisfed.org`),DB-verified 2026-06-08(以 2330 台積電樣本實際 sync 取得,§一.10 (b)(c));型別由 generic auto-schema **依實際觀測值動態推導**(字串≥VARCHAR(255)、數字≥NUMERIC(20,6),值超界自動加大——故 `Trading_money` NUMERIC(22,6)、`value` NUMERIC(23,6)等比舊硬編更貼合真實值、防截斷);per-stock 表 PK 由 detect_keys 自 API 偵測;**無 synthetic/impute 值**(§14.7-DC source-pure)。
 
-**計數**:generic-ingester-built FinMind feature-input 表 = **11**(10 per-stock + TaiwanStockInfo 名冊);FRED-API 表 = **1**(FredData,explicit-DDL 路徑);= **12 feature-input 表**。另 **54 探索性 FinMind extras**(§14.7-DI T_DI-8 通用 ingester 建,deferred,**非特徵輸入**,本字典不展開)。
+**計數**:generic-ingester-built FinMind feature-input 表 = **11**(10 per-stock + TaiwanStockInfo 名冊);FRED-API 表 = **2**(`FredData` 4-series + `fred_series` 24-series,**均 generic auto-schema**,PK `(series_id, date)`);= **13 feature-input 表**。另 **54 探索性 FinMind extras**(§14.7-DI T_DI-8 通用 ingester 建,deferred,**非特徵輸入**,本字典不展開)。
 
 #### 1. `TaiwanStockInfo` — 市場個股基本資料 / 全市場名冊(roster)
 - **來源**:FinMind TaiwanStockInfo(市場級,data_id 空) / **頻率**:快照(每次 sync 覆寫最新) / **PK**:['stock_id', 'type', 'industry_category'] / **用途**:roster 解析(get_db_stock_ids)+ 產業別/市場別過濾
 
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
-| `industry_category` | character varying(100) | 產業類別(半導體業/金融保險業/…;Index 為大盤指數列) |
-| `stock_id` | character varying(100) | 證券代號(e.g. 2330) |
-| `stock_name` | character varying(100) | 證券簡稱(台積電) |
-| `type` | character varying(100) | 市場別(twse=上市/tpex=上櫃/rotc/psl…) |
+| `industry_category` | character varying(255) | 產業類別(半導體業/金融保險業/…;Index 為大盤指數列) |
+| `stock_id` | character varying(255) | 證券代號(e.g. 2330) |
+| `stock_name` | character varying(255) | 證券簡稱(台積電) |
+| `type` | character varying(255) | 市場別(twse=上市/tpex=上櫃/rotc/psl…) |
 | `date` | date | 資料快照日 |
 
 #### 2. `TaiwanStockPrice` — 未還原日線行情
@@ -27,7 +27,7 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 交易日 |
-| `stock_id` | character varying(100) | 證券代號 |
+| `stock_id` | character varying(255) | 證券代號 |
 | `Trading_Volume` | numeric(20,6) | 成交股數(股) |
 | `Trading_money` | numeric(22,6) | 成交金額(元) |
 | `open` | numeric(20,6) | 開盤價(元) |
@@ -43,7 +43,7 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 交易日 |
-| `stock_id` | character varying(100) | 證券代號 |
+| `stock_id` | character varying(255) | 證券代號 |
 | `Trading_Volume` | numeric(20,6) | 成交股數(股) |
 | `Trading_money` | numeric(22,6) | 成交金額(元) |
 | `open` | numeric(20,6) | 還原開盤價 |
@@ -59,7 +59,7 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 交易日 |
-| `stock_id` | character varying(100) | 證券代號 |
+| `stock_id` | character varying(255) | 證券代號 |
 | `dividend_yield` | numeric(20,6) | 殖利率(%)=近12月現金股利/股價 |
 | `PER` | numeric(20,6) | 本益比=股價/近4季EPS |
 | `PBR` | numeric(20,6) | 股價淨值比=股價/每股淨值 |
@@ -70,9 +70,9 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 交易日 |
-| `stock_id` | character varying(100) | 證券代號 |
+| `stock_id` | character varying(255) | 證券代號 |
 | `buy` | numeric(20,6) | 買進(股或金額) |
-| `name` | character varying(100) | 法人別(見枚舉) |
+| `name` | character varying(255) | 法人別(見枚舉) |
 | `sell` | numeric(20,6) | 賣出(股或金額) |
 
 **`name` 法人別枚舉(DB-verified 5)**:
@@ -88,14 +88,14 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 交易日 |
-| `stock_id` | character varying(100) | 證券代號 |
+| `stock_id` | character varying(255) | 證券代號 |
 | `MarginPurchaseBuy` | numeric(20,6) | 融資買進(張) |
 | `MarginPurchaseCashRepayment` | numeric(20,6) | 融資現金償還(張) |
 | `MarginPurchaseLimit` | numeric(20,6) | 融資限額(張) |
 | `MarginPurchaseSell` | numeric(20,6) | 融資賣出(張) |
 | `MarginPurchaseTodayBalance` | numeric(20,6) | 融資今日餘額(張) |
 | `MarginPurchaseYesterdayBalance` | numeric(20,6) | 融資昨日餘額(張) |
-| `Note` | character varying(100) | 註記(X=處置/異常標記等) |
+| `Note` | character varying(255) | 註記(X=處置/異常標記等) |
 | `OffsetLoanAndShort` | numeric(20,6) | 資券互抵(張) |
 | `ShortSaleBuy` | numeric(20,6) | 融券買進/回補(張) |
 | `ShortSaleCashRepayment` | numeric(20,6) | 融券現券償還(張) |
@@ -110,9 +110,9 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 申報日 |
-| `stock_id` | character varying(100) | 證券代號 |
-| `stock_name` | character varying(100) | 證券簡稱 |
-| `InternationalCode` | character varying(100) | 國際證券識別碼 ISIN(TW0002330008) |
+| `stock_id` | character varying(255) | 證券代號 |
+| `stock_name` | character varying(255) | 證券簡稱 |
+| `InternationalCode` | character varying(255) | 國際證券識別碼 ISIN(TW0002330008) |
 | `ForeignInvestmentRemainingShares` | numeric(20,6) | 外資尚可投資股數 |
 | `ForeignInvestmentShares` | numeric(21,6) | 外資已持有股數 |
 | `ForeignInvestmentRemainRatio` | numeric(20,6) | 外資尚可投資比率(%) |
@@ -121,7 +121,7 @@
 | `ChineseInvestmentUpperLimitRatio` | numeric(20,6) | 陸資投資上限比率(%) |
 | `NumberOfSharesIssued` | numeric(21,6) | 已發行股數 |
 | `RecentlyDeclareDate` | date | 最近申報日 |
-| `note` | character varying(155) | 註記 |
+| `note` | character varying(255) | 註記 |
 
 #### 8. `TaiwanStockFinancialStatements` — 綜合損益表(long format,科目逐列)
 - **來源**:FinMind TaiwanStockFinancialStatements / **頻率**:季(quarterly) / **PK**:['stock_id', 'date', 'type'] / **用途**:基本面特徵(EPS/營收/毛利/營益/稅後淨利/母公司權益…)
@@ -129,10 +129,10 @@
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 財報日(季底) |
-| `stock_id` | character varying(100) | 證券代號 |
-| `type` | character varying(100) | 科目英文代號(見枚舉) |
+| `stock_id` | character varying(255) | 證券代號 |
+| `type` | character varying(255) | 科目英文代號(見枚舉) |
 | `value` | numeric(23,6) | 金額(元;EPS 為元/股) |
-| `origin_name` | character varying(100) | 科目中文名(權威定義,源自 API) |
+| `origin_name` | character varying(255) | 科目中文名(權威定義,源自 API) |
 
 **`type` 科目枚舉(2330 樣本 DB-verified,17 型;`origin_name` 即權威中文定義)**:
 ```
@@ -161,10 +161,10 @@ TotalNonoperatingIncomeAndExpense = 營業外收入及支出
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 財報日(季底) |
-| `stock_id` | character varying(100) | 證券代號 |
-| `type` | character varying(110) | 科目英文代號(見枚舉;_per 後綴=占總資產/總額百分比) |
+| `stock_id` | character varying(255) | 證券代號 |
+| `type` | character varying(255) | 科目英文代號(見枚舉;_per 後綴=占總資產/總額百分比) |
 | `value` | numeric(23,6) | 金額(元)或百分比(_per 列) |
-| `origin_name` | character varying(100) | 科目中文名(權威定義,源自 API) |
+| `origin_name` | character varying(255) | 科目中文名(權威定義,源自 API) |
 
 **`type` 科目枚舉(2330 樣本 DB-verified,101 型;`origin_name` 即權威中文定義)**:
 ```
@@ -277,8 +277,8 @@ UnappropriatedRetainedEarningsAaccumulatedDeficit_per = 未分配盈餘
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 資料月份(月初) |
-| `stock_id` | character varying(100) | 證券代號 |
-| `country` | character varying(100) | 地區(Taiwan) |
+| `stock_id` | character varying(255) | 證券代號 |
+| `country` | character varying(255) | 地區(Taiwan) |
 | `revenue` | numeric(22,6) | 當月營收(元) |
 | `revenue_month` | numeric(20,6) | 營收所屬月份(1-12) |
 | `revenue_year` | numeric(20,6) | 營收所屬年度 |
@@ -290,11 +290,11 @@ UnappropriatedRetainedEarningsAaccumulatedDeficit_per = 未分配盈餘
 | 欄位 | 型別(DB-verified) | 定義 |
 |---|---|---|
 | `date` | date | 申報基準日 |
-| `stock_id` | character varying(100) | 證券代號 |
-| `year` | character varying(100) | 股利所屬年度 |
+| `stock_id` | character varying(255) | 證券代號 |
+| `year` | character varying(255) | 股利所屬年度 |
 | `StockEarningsDistribution` | numeric(20,6) | 盈餘配股(元/股) |
 | `StockStatutorySurplus` | numeric(20,6) | 法定盈餘公積配股(元/股) |
-| `StockExDividendTradingDate` | character varying(100) | 除權交易日 |
+| `StockExDividendTradingDate` | character varying(255) | 除權交易日 |
 | `TotalEmployeeStockDividend` | numeric(20,6) | 員工配股總數 |
 | `TotalEmployeeStockDividendAmount` | numeric(20,6) | 員工配股總金額 |
 | `RatioOfEmployeeStockDividendOfTotal` | numeric(20,6) | 員工配股占總額比率 |
@@ -310,18 +310,31 @@ UnappropriatedRetainedEarningsAaccumulatedDeficit_per = 未分配盈餘
 | `RemunerationOfDirectorsAndSupervisors` | numeric(20,6) | 董監酬勞 |
 | `ParticipateDistributionOfTotalShares` | numeric(21,6) | 參與分配總股數 |
 | `AnnouncementDate` | date | 公告日(§8.5 publication-date strict) |
-| `AnnouncementTime` | character varying(100) | 公告時間 |
+| `AnnouncementTime` | character varying(255) | 公告時間 |
 
-#### 12. `FredData` — FRED 美國/全球宏觀指標(multi-series 單表)
-- **來源**:FRED API api.stlouisfed.org / **頻率**:隨 series(日/月/季/年) / **PK**:['date', 'series_id'] / **用途**:宏觀/regime 特徵(殖利率曲線/波動/通膨/景氣;§0.3 K-wave 5 驅動 proxy)。⚠️ 建表路徑=explicit-DDL(非 generic;series_id 為 local-derived 不在 API 回應,generic 無法推導 key)
+#### 12. `FredData` — FRED 宏觀指標(`sync_fred` 路徑,4 series)
+- **來源**:FRED API api.stlouisfed.org(`sovereign_sync_engine.sync_fred` 之 `FRED_LIST`) / **頻率**:隨 series(日) / **PK**:`['series_id', 'date']`(generic `detect_keys` 推導) / **用途**:宏觀/regime 特徵。**建表路徑=generic auto-schema**(2026-06-08(cont) 退役 explicit-DDL:`generic_schema.KEY_CANDIDATES` 將 `series_id` 前置於 `date` → 逐 series 樣本正確推 `(series_id, date)` 複合 PK,**推翻舊「generic 無法推導 key」前提**)。**4 series**:`DFF`(聯邦資金有效利率)/ `UNRATE`(失業率)/ `T10Y2Y`(10Y−2Y 殖利率差)/ `VIXCLS`(VIX);其中 3 個(UNRATE/T10Y2Y/VIXCLS)與 `fred_series` 重疊,`DFF` 為 FredData 獨有。
 
-| 欄位 | 型別(DB-verified) | 定義 |
+| 欄位 | 型別(generic 推導) | 定義 |
 |---|---|---|
-| `date` | date | 觀測日 |
-| `series_id` | character varying(255) | FRED 指標代號(見枚舉) |
-| `value` | numeric(20,6) | 觀測值 |
-| `realtime_start` | date | ALFRED vintage 起(資料版本可得起日) |
-| `realtime_end` | date | ALFRED vintage 迄 |
+| `date` | DATE | 觀測日 |
+| `series_id` | VARCHAR(255) | FRED 指標代號 |
+| `value` | NUMERIC(20,6) | 觀測值 |
+| `realtime_start` | DATE | ALFRED vintage 起(資料版本可得起日) |
+| `realtime_end` | DATE | ALFRED vintage 迄 |
+
+> ⚠️ **DB 現已清空(待重建)**;上表為 generic auto-schema 之 **forward schema**(字串≥VARCHAR(255)、數字≥NUMERIC(20,6)、`YYYY-MM-DD` 樣貌欄自動推 DATE),下次 sync 實體化。FRED observation 欄位 `realtime_start/realtime_end/date/value` 已 2026-06-08 **live-probe FRED API 驗證**(`sovereign_sync_engine.py:843` `_generic_ingest("FredData", row=dict(obs)+series_id)`);`series_id` 為 local-derived(每筆補)。
+
+#### 13. `fred_series` — FRED 宏觀指標(`fetch_fred_data` 路徑,24 series;特徵庫 K-wave 唯一來源)
+- **來源**:FRED API api.stlouisfed.org(`fetch_fred_data.py` 之 `DEFAULT_FRED_SERIES`) / **頻率**:隨 series(日/月/季/年) / **PK**:`['series_id', 'date']`(generic `detect_keys` 推導) / **用途**:§0.3 K-wave 5 大驅動 proxy(殖利率曲線/波動/通膨/景氣);`feature_store_builder.py:678/715` 之 13 K-wave series 唯一來源。**建表路徑=generic auto-schema**(2026-06-08(cont) 退役 hardcoded `DDL_FRED`/`UPSERT_FRED`)。
+
+| 欄位 | 型別(generic 推導) | 定義 |
+|---|---|---|
+| `series_id` | VARCHAR(255) | FRED 指標代號(見枚舉) |
+| `date` | DATE | 觀測日 |
+| `value` | NUMERIC(20,6) | 觀測值 |
+
+> ⚠️ `fred_series` **僅 3 欄**(payload `{series_id, date, value}`,**無 realtime_***),與 `FredData`(5 欄)結構不同;此為兩 writer payload 差異(code-verified `fetch_fred_data.py:281` vs `sovereign_sync_engine.py:843`)。
 
 **`series_id` 指標枚舉(`fetch_fred_data.DEFAULT_FRED_SERIES` 24 series;K-wave §0.3 5 大驅動 proxy)**:
 
