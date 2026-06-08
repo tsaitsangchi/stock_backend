@@ -11,8 +11,8 @@
 
 > **🔬 2026-06-08 live API 驗證 note**:本字典 schema 經實際 FinMind/FRED API 逐一打驗證(**72/80 FinMind + 2 FRED 真打 ✓**)。**generic 型別為 sample-dependent**:欄位名 / 大小寫 / `VARCHAR(255)` / `NUMERIC(20,6)` floor / `date`→DATE 為**不變量**;**>255 VARCHAR 長度 / >(20,6) NUMERIC 精度 / 稀疏欄 VARCHAR↔NUMERIC↔DATE 隨觀測值 auto-widen**,最終以全市場全史 sync 觀測 max 定案。
 > - **4 處 live 修正(本次已套用真值)**:`TaiwanStockNews.link` 255→**592**;`TaiwanStockDispositionSecuritiesPeriod.measure` 493→**510**;`USStockInfo.MarketCap` VARCHAR(255)→**NUMERIC(24,6)**(稀疏欄此樣本全數字);`TaiwanStockConvertibleBondDailyOverview` 之 `LatestInitialDateOfPut`/`LatestDueDateOfPut` VARCHAR→**DATE** + `IssuanceAmount` →**NUMERIC(21,6)**。
-> - **4 表標 ᵈ**(2026-06-08 live re-probe 仍未命中 → schema 以**建檔時實打值**為準,**非缺表**;各表 heading 已標 ᵈ):`TaiwanStockGovernmentBankBuySell`、`TaiwanStockMarketValueWeight`、`ExchangeRate`(需 currency data_id)、`InterestRate`(需 country data_id)。
-> - **2026-06-08(cont) 再攻克 4 個 → 改 live-confirmed**(找對 data_id,皆 live 確認與建檔值一致):`TaiwanExchangeRate`(data_id=USD)、`CrudeOilPrices`(data_id=WTI)、`TaiwanStockMarginShortSaleSuspension`(data_id=2330)、`TaiwanStockCapitalReductionReferencePrice`(data_id=2603)。→ live 驗證覆蓋 **78/82**(76 FinMind + 2 FRED)。
+> - **1 表標 ᵈ**(2026-06-08 API 全參數〔USD/EUR/JPY/CNY/country/無-data_id〕皆回 0 rows〔HTTP 200 success〕→ 疑 deprecated/空集;schema 以**建檔時實打值**為準,**非缺表**):`ExchangeRate`。
+> - **2026-06-08(cont) 再攻克 4 個 → 改 live-confirmed**(找對 data_id,皆 live 確認與建檔值一致):`TaiwanExchangeRate`(data_id=USD)、`CrudeOilPrices`(data_id=WTI)、`TaiwanStockMarginShortSaleSuspension`(data_id=2330)、`TaiwanStockCapitalReductionReferencePrice`(data_id=2603)。→ live 驗證覆蓋 **81/82**(79 FinMind + 2 FRED;2026-06-08 再攻克 `TaiwanStockGovernmentBankBuySell`〔無 data_id+單一 start〕/`TaiwanStockMarketValueWeight`〔data_id=2330〕/`InterestRate`〔無 data_id,start≥2024-02-01〕);僅餘 `ExchangeRate` 1 ᵈ。
 
 ## FinMind — Taiwan
 #### `TaiwanBusinessIndicator` (9 欄)
@@ -505,7 +505,7 @@
 | `value` | NUMERIC(23,6) |
 | `origin_name` | VARCHAR(255) |
 
-#### `TaiwanStockGovernmentBankBuySell` (7 欄) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
+#### `TaiwanStockGovernmentBankBuySell` (7 欄) — ✓ 2026-06-08 live 驗證(不帶 data_id + 單一 start_date;帶 end_date 觸發 size-too-large)
 | 欄位 | 型態及大小 |
 |---|---|
 | `date` | DATE |
@@ -653,7 +653,7 @@
 | `stock_id` | VARCHAR(255) |
 | `market_value` | NUMERIC(24,6) |
 
-#### `TaiwanStockMarketValueWeight` (6 欄) — ᵈ(本次 live re-probe 未命中;schema=建檔實打)
+#### `TaiwanStockMarketValueWeight` (6 欄) — ✓ 2026-06-08 live 驗證(data_id=2330,per-stock 指數權重)
 | 欄位 | 型態及大小 |
 |---|---|
 | `rank` | NUMERIC(20,6) |
@@ -904,7 +904,7 @@
 | `Adj_Close` | NUMERIC(20,6) |
 | `Volume` | NUMERIC(20,6) |
 
-#### `ExchangeRate` (4 欄) — ᵈ(本次 live re-probe 未命中,需 currency data_id;schema=建檔實打)
+#### `ExchangeRate` (4 欄) — ᵈ(2026-06-08 API 試 USD/EUR/JPY/CNY/country/無-data_id 皆回 0 rows〔HTTP 200 success〕→ 疑 deprecated/空集;schema=建檔實打)
 | 欄位 | 型態及大小 |
 |---|---|
 | `InterbankRate` | NUMERIC(20,6) |
@@ -918,7 +918,7 @@
 | `date` | DATE |
 | `Price` | NUMERIC(20,6) |
 
-#### `InterestRate` (4 欄 · 最早資料 2024-01-31) — ᵈ(本次 live re-probe 未命中,需 country data_id;schema=建檔實打)
+#### `InterestRate` (4 欄 · 最早資料 2024-01-31) — ✓ 2026-06-08 live 驗證(不帶 data_id,start≥2024-02-01)
 | 欄位 | 型態及大小 |
 |---|---|
 | `country` | VARCHAR(255) |
